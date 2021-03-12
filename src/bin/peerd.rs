@@ -105,8 +105,8 @@ use bitcoin::secp256k1::PublicKey;
 use internet2::{
     session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr,
 };
-use lnp_node::peerd::{self, Opts};
-use lnp_node::{Config, LogStyle};
+use farcaster_node::peerd::{self, Opts};
+use farcaster_node::{Config, LogStyle};
 use microservices::peer::PeerConnection;
 
 /*

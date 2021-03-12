@@ -19,9 +19,9 @@ extern crate log;
 
 use clap::Clap;
 
-use lnp_node::cli::Opts;
-use lnp_node::rpc::Client;
-use lnp_node::{Config, LogStyle};
+use farcaster_node::cli::Opts;
+use farcaster_node::rpc::Client;
+use farcaster_node::{Config, LogStyle};
 use microservices::shell::Exec;
 
 fn main() {

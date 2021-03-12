@@ -32,8 +32,9 @@ extern crate log;
 use clap::Clap;
 use std::convert::TryInto;
 
-use lnp_node::swapd::{self, Opts};
-use lnp_node::{Config, LogStyle};
+use farcaster_node::swapd::{self, Opts};
+use farcaster_node::{Config, LogStyle};
+
 
 fn main() {
     println!("swapd: farcaster swap microservice");

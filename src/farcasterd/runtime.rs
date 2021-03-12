@@ -165,19 +165,19 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Swap(channel_id) => {
-                        if self.channels.insert(channel_id.clone()) {
+                    ServiceId::Swap(swap_id) => {
+                        if self.channels.insert(swap_id.clone()) {
                             info!(
                                 "Swap {} is registered; total {} \
                                  swaps are known",
-                                channel_id,
+                                swap_id,
                                 self.channels.len()
                             );
                         } else {
                             warn!(
-                                "Channel {} was already registered; the \
+                                "Swap {} was already registered; the \
                                  service probably was relaunched",
-                                channel_id
+                                swap_id
                             );
                         }
                     }
@@ -188,7 +188,7 @@ impl Runtime {
 
                 if let Some(channel_params) = self.opening_channels.get(&source)
                 {
-                    // Tell channeld channel options and link it with the
+                    // Tell swapd channel options and link it with the
                     // connection daemon
                     debug!(
                         "Daemon {} is known: we spawned it to create a channel. \
@@ -197,7 +197,7 @@ impl Runtime {
                     notify_cli = Some((
                         channel_params.report_to.clone(),
                         Request::Progress(format!(
-                            "Channel daemon {} operational",
+                            "Swap daemon {} operational",
                             source
                         )),
                     ));
@@ -211,7 +211,7 @@ impl Runtime {
                 } else if let Some(channel_params) =
                     self.accepting_channels.get(&source)
                 {
-                    // Tell channeld channel options and link it with the
+                    // Tell swapd channel options and link it with the
                     // connection daemon
                     debug!(
                         "Daemon {} is known: we spawned it to create a channel. \
@@ -250,13 +250,13 @@ impl Runtime {
                 );
                 if let ServiceId::Swap(old_id) = source {
                     if !self.channels.remove(&old_id) {
-                        warn!("Channel daemon {} was unknown", source);
+                        warn!("Swap daemon {} was unknown", source);
                     }
                     self.channels.insert(new_id);
-                    debug!("Registered channel daemon id {}", new_id);
+                    debug!("Registered swap daemon id {}", new_id);
                 } else {
                     error!(
-                        "Chanel id update may be requested only by a channeld, not {}", 
+                        "Swap id update may be requested only by a swapd, not {}", 
                         source
                     );
                 }
@@ -418,7 +418,7 @@ impl Runtime {
 
             debug!("Instantiating peerd...");
 
-            // Start channeld
+            // Start swapd
             let child = launch(
                 "peerd",
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
@@ -443,7 +443,7 @@ impl Runtime {
     ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
 
-        // Start channeld
+        // Start swapd
         let child = launch("peerd", &["--connect", &node_addr.to_string()])?;
         let msg =
             format!("New instance of peerd launched with PID {}", child.id());
@@ -463,7 +463,7 @@ impl Runtime {
         mut channel_req: message::OpenChannel,
         accept: bool,
     ) -> Result<String, Error> {
-        debug!("Instantiating channeld...");
+        debug!("Instantiating swapd...");
 
         // We need to initialize temporary channel id here
         if !accept {
@@ -474,11 +474,11 @@ impl Runtime {
             );
         }
 
-        // Start channeld
+        // Start swapd
         let child =
-            launch("channeld", &[channel_req.temporary_channel_id.to_hex()])?;
+            launch("swapd", &[channel_req.temporary_channel_id.to_hex()])?;
         let msg = format!(
-            "New instance of channeld launched with PID {}",
+            "New instance of swapd launched with PID {}",
             child.id()
         );
         info!("{}", msg);
@@ -522,7 +522,7 @@ impl Runtime {
                 report_to,
             },
         );
-        debug!("Awaiting for channeld to connect...");
+        debug!("Awaiting for swapd to connect...");
 
         Ok(msg)
     }
