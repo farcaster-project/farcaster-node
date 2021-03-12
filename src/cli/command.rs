@@ -16,7 +16,7 @@ use std::convert::TryFrom;
 use std::str::FromStr;
 
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
-use lnp::{message, ChannelId, LIGHTNING_P2P_DEFAULT_PORT};
+use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
 #[cfg(feature = "rgb")]
@@ -42,7 +42,7 @@ impl Exec for Command {
                             ServiceId::Peer(node_addr),
                             Request::GetInfo,
                         )?;
-                    } else if let Ok(channel_id) = ChannelId::from_str(subj) {
+                    } else if let Ok(channel_id) = SwapId::from_str(subj) {
                         runtime.request(
                             ServiceId::Channel(channel_id),
                             Request::GetInfo,

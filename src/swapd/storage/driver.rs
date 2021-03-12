@@ -14,12 +14,12 @@
 
 use std::any::Any;
 
-use lnp::ChannelId;
+use lnp::ChannelId as SwapId;
 
 use crate::Error;
 
 pub trait Driver {
-    fn init(channel_id: ChannelId, config: Box<dyn Any>) -> Result<Self, Error>
+    fn init(channel_id: SwapId, config: Box<dyn Any>) -> Result<Self, Error>
     where
         Self: Sized;
 

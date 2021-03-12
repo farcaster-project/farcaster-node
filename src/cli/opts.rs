@@ -19,7 +19,7 @@ use std::str::FromStr;
 
 use bitcoin::OutPoint;
 use internet2::{FramingProtocol, PartialNodeAddr};
-use lnp::{ChannelId, TempChannelId};
+use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 #[cfg(feature = "rgb")]
 use rgb::ContractId;
 
@@ -127,7 +127,7 @@ pub enum Command {
     /// with bitcoins.
     Fund {
         /// Accepted channel to which the funding must be added
-        channel: TempChannelId,
+        channel: TempSwapId,
 
         /// Outpoint (in form of <txid>:<output_no>) which will be used as a
         /// channel funding. Output `scriptPubkey` must be equal to the one
@@ -139,7 +139,7 @@ pub enum Command {
     #[cfg(feature = "rgb")]
     Refill {
         /// Channel to which the funding must be added
-        channel: ChannelId,
+        channel: SwapId,
 
         /// Consignment file to read containing information about transfer of
         /// RGB20 asset to the funding transaction output
@@ -156,7 +156,7 @@ pub enum Command {
     /// Do an invoiceless direct payment
     Transfer {
         /// Channel to which the funding must be added
-        channel: ChannelId,
+        channel: SwapId,
 
         /// Asset amount to invoice, in atomic unit (satoshis or smallest asset
         /// unit type)
@@ -189,7 +189,7 @@ pub enum Command {
 
         /// Channel from which the payment should happen
         #[clap()]
-        channel: ChannelId,
+        channel: SwapId,
     },
 }
 

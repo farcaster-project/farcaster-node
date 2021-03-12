@@ -28,7 +28,7 @@ use internet2::{
 use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId, Messages, TempChannelId};
+use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::seals::OutpointReveal;
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
@@ -45,7 +45,7 @@ use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 pub fn run(
     config: Config,
     local_node: LocalNode,
-    channel_id: ChannelId,
+    channel_id: SwapId,
     chain: Chain,
     rgb20_socket_addr: ZmqSocketAddr,
 ) -> Result<(), Error> {
@@ -102,8 +102,8 @@ pub struct Runtime {
     local_node: LocalNode,
     chain: Chain,
 
-    channel_id: ChannelId,
-    temporary_channel_id: TempChannelId,
+    channel_id: SwapId,
+    temporary_channel_id: TempSwapId,
     state: Lifecycle,
     local_capacity: u64,
     remote_capacity: u64,
@@ -596,17 +596,17 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
 
         // Update channel id!
-        self.channel_id = ChannelId::with(self.funding_outpoint);
+        self.channel_id = SwapId::with(self.funding_outpoint);
         debug!("Updating channel id to {}", self.channel_id);
         self.send_ctl(
             senders,
             ServiceId::Farcasterd,
-            Request::UpdateChannelId(self.channel_id),
+            Request::UpdateSwapId(self.channel_id),
         )?;
         self.send_ctl(
             senders,
             self.peer_service.clone(),
-            Request::UpdateChannelId(self.channel_id),
+            Request::UpdateSwapId(self.channel_id),
         )?;
         // self.identity = self.channel_id.into();
         let msg = format!(

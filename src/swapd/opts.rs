@@ -16,7 +16,7 @@ use clap::{AppSettings, Clap, ValueHint};
 
 use bitcoin::hashes::hex::FromHex;
 use internet2::PartialNodeAddr;
-use lnp::ChannelId;
+use lnp::ChannelId as SwapId;
 
 use crate::opts::FUNGIBLED_RPC_ENDPOINT;
 
@@ -28,8 +28,8 @@ use crate::peerd::KeyOpts;
 /// description)
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(
-    name = "channeld",
-    bin_name = "channeld",
+    name = "swapd",
+    bin_name = "swapd",
     author,
     version,
     setting = AppSettings::ColoredHelp
@@ -44,8 +44,8 @@ pub struct Opts {
     pub rgb_opts: RgbOpts,
 
     /// Channel id
-    #[clap(parse(try_from_str = ChannelId::from_hex))]
-    pub channel_id: ChannelId,
+    #[clap(parse(try_from_str = SwapId::from_hex))]
+    pub channel_id: SwapId,
 
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables

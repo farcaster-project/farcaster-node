@@ -282,7 +282,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::UpdateChannelId(channel_id) => {
+            Request::UpdateSwapId(channel_id) => {
                 debug!(
                     "Renaming channeld service from temporary id {:#} to channel id #{:#}",
                     source, channel_id

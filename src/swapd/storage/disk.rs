@@ -15,7 +15,7 @@
 use std::any::Any;
 use std::path::PathBuf;
 
-use lnp::ChannelId;
+use lnp::ChannelId as SwapId;
 
 use super::Driver;
 use crate::Error;
@@ -25,13 +25,13 @@ pub struct DiskConfig {
 }
 
 pub struct DiskDriver {
-    channel_id: ChannelId,
+    channel_id: SwapId,
     config: DiskConfig,
 }
 
 impl Driver for DiskDriver {
     fn init(
-        channel_id: ChannelId,
+        channel_id: SwapId,
         config: Box<dyn Any>,
     ) -> Result<Self, Error> {
         let config = *config.downcast().map_err(|_| Error::Other(s!("")))?;

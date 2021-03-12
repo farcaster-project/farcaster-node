@@ -24,7 +24,7 @@ use std::time::Duration;
 use bitcoin::{secp256k1, OutPoint};
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId, Messages, TempChannelId};
+use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
@@ -47,7 +47,7 @@ pub enum Request {
 
     #[lnp_api(type = 1)]
     #[display("update_channel_id({0})")]
-    UpdateChannelId(ChannelId),
+    UpdateSwapId(SwapId),
 
     #[lnp_api(type = 2)]
     #[display("send_message({0})")]
@@ -151,7 +151,7 @@ pub enum Request {
     #[lnp_api(type = 1104)]
     #[display("channel_list({0})", alt = "{0:#}")]
     #[from]
-    ChannelList(List<ChannelId>),
+    ChannelList(List<SwapId>),
 
     #[lnp_api(type = 1203)]
     #[display("channel_funding({0})", alt = "{0:#}")]
@@ -207,7 +207,7 @@ pub struct NodeInfo {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub peers: Vec<NodeAddr>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub channels: Vec<ChannelId>,
+    pub channels: Vec<SwapId>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -232,7 +232,7 @@ pub struct PeerInfo {
     pub messages_sent: usize,
     pub messages_received: usize,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub channels: Vec<ChannelId>,
+    pub channels: Vec<SwapId>,
     pub connected: bool,
     pub awaits_pong: bool,
 }
@@ -251,9 +251,9 @@ pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
 #[display(ChannelInfo::to_yaml_string)]
 pub struct ChannelInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
-    pub channel_id: Option<ChannelId>,
+    pub channel_id: Option<SwapId>,
     #[serde_as(as = "DisplayFromStr")]
-    pub temporary_channel_id: TempChannelId,
+    pub temporary_channel_id: TempSwapId,
     pub state: Lifecycle,
     pub local_capacity: u64,
     #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]

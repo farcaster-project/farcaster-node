@@ -18,7 +18,7 @@ use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
 use internet2::{zmqsocket, NodeAddr, ZmqType};
-use lnp::{ChannelId, TempChannelId};
+use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 use lnpbp::strict_encoding::{strict_deserialize, strict_serialize};
 #[cfg(feature = "node")]
 use microservices::node::TryService;
@@ -95,8 +95,8 @@ pub enum ServiceId {
 
     #[display("channel<{0:#x}>")]
     #[from]
-    #[from(TempChannelId)]
-    Channel(ChannelId),
+    #[from(TempSwapId)]
+    Channel(SwapId),
 
     #[display("client<{0}>")]
     Client(u64),

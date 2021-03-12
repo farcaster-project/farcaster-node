@@ -24,7 +24,7 @@ use std::time::{Duration, SystemTime};
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
-use lnp::{message, ChannelId, Messages, TempChannelId};
+use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
@@ -57,7 +57,7 @@ pub struct Runtime {
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
-    channels: HashSet<ChannelId>,
+    channels: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
     opening_channels: HashMap<ServiceId, request::CreateChannel>,
     accepting_channels: HashMap<ServiceId, request::CreateChannel>,
@@ -243,7 +243,7 @@ impl Runtime {
                 }
             }
 
-            Request::UpdateChannelId(new_id) => {
+            Request::UpdateSwapId(new_id) => {
                 debug!(
                     "Requested to update channel id {} on {}",
                     source, new_id
@@ -467,7 +467,7 @@ impl Runtime {
 
         // We need to initialize temporary channel id here
         if !accept {
-            channel_req.temporary_channel_id = TempChannelId::random();
+            channel_req.temporary_channel_id = TempSwapId::random();
             debug!(
                 "Generated {} as a temporary channel id",
                 channel_req.temporary_channel_id
@@ -513,7 +513,7 @@ impl Runtime {
             &mut self.opening_channels
         };
         list.insert(
-            ServiceId::Channel(ChannelId::from_inner(
+            ServiceId::Channel(SwapId::from_inner(
                 channel_req.temporary_channel_id.into_inner(),
             )),
             request::CreateChannel {
