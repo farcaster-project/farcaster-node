@@ -26,19 +26,13 @@ pub mod cli {
     include!("src/cli/opts.rs");
 }
 pub mod lnpd {
-    include!("src/lnpd/opts.rs");
+    include!("src/farcasterd/opts.rs");
 }
 pub mod peerd {
     include!("src/peerd/opts.rs");
 }
-pub mod channeld {
-    include!("src/channeld/opts.rs");
-}
-pub mod gossipd {
-    include!("src/gossipd/opts.rs");
-}
-pub mod routed {
-    include!("src/routed/opts.rs");
+pub mod swapd {
+    include!("src/swapd/opts.rs");
 }
 
 fn main() -> Result<(), configure_me_codegen::Error> {
@@ -47,9 +41,7 @@ fn main() -> Result<(), configure_me_codegen::Error> {
     for app in [
         lnpd::Opts::into_app(),
         peerd::Opts::into_app(),
-        channeld::Opts::into_app(),
-        gossipd::Opts::into_app(),
-        routed::Opts::into_app(),
+        swapd::Opts::into_app(),
         cli::Opts::into_app(),
     ]
     .iter_mut()

@@ -24,19 +24,19 @@
     missing_docs
 )]
 
-//! Main executable for gossipd: lightning peer network microservice operating
-//! gossip protocol.
+//! Main executable for swapd: farcaster node swap operations microservice
 
 #[macro_use]
 extern crate log;
 
 use clap::Clap;
+use std::convert::TryInto;
 
-use lnp_node::gossipd::{self, Opts};
-use lnp_node::Config;
+use lnp_node::swapd::{self, Opts};
+use lnp_node::{Config, LogStyle};
 
 fn main() {
-    println!("gossipd: lightning peer network gossip daemon");
+    println!("swapd: farcaster swap microservice");
 
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
@@ -48,6 +48,15 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
+    let rgb20_socket_addr = opts
+        .rgb_opts
+        .rgb20_socket
+        .try_into()
+        .expect("RPC socket must be a valid ZMQ local file socket");
+
+    let node_id = opts.key_opts.local_node().node_id();
+    info!("{}: {}", "Local node id".ended(), node_id.addr());
+
     /*
     use self::internal::ResultExt;
     let (config_from_file, _) =
@@ -58,7 +67,14 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    gossipd::run(config).expect("Error running gossipd runtime");
+    swapd::run(
+        config,
+        opts.key_opts.local_node(),
+        opts.channel_id,
+        opts.shared.chain,
+        rgb20_socket_addr,
+    )
+    .expect("Error running swapd runtime");
 
     unreachable!()
 }

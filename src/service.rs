@@ -87,13 +87,7 @@ pub enum ServiceId {
     Loopback,
 
     #[display("lnpd")]
-    Lnpd,
-
-    #[display("gossipd")]
-    Gossip,
-
-    #[display("routed")]
-    Routing,
+    Farcasterd,
 
     #[display("peerd<{0}>")]
     #[from]
@@ -113,7 +107,7 @@ pub enum ServiceId {
 
 impl ServiceId {
     pub fn router() -> ServiceId {
-        ServiceId::Lnpd
+        ServiceId::Farcasterd
     }
 
     pub fn client() -> ServiceId {
@@ -238,12 +232,12 @@ where
             std::thread::sleep(core::time::Duration::from_secs(1));
             self.esb.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Lnpd,
+                ServiceId::Farcasterd,
                 Request::Hello,
             )?;
             self.esb.send_to(
                 ServiceBus::Msg,
-                ServiceId::Lnpd,
+                ServiceId::Farcasterd,
                 Request::Hello,
             )?;
         }

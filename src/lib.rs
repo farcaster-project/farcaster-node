@@ -55,15 +55,11 @@ pub mod opts;
 pub mod rpc;
 
 #[cfg(feature = "node")]
-pub mod channeld;
+pub mod swapd;
 #[cfg(feature = "node")]
-pub mod gossipd;
-#[cfg(feature = "node")]
-pub mod lnpd;
+pub mod farcasterd;
 #[cfg(feature = "node")]
 pub mod peerd;
-#[cfg(feature = "node")]
-pub mod routed;
 #[cfg(feature = "_rpc")]
 mod service;
 

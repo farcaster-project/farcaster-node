@@ -14,7 +14,7 @@
 
 use clap::{AppSettings, Clap};
 
-use crate::channeld::RgbOpts;
+use crate::swapd::RgbOpts;
 use crate::peerd::KeyOpts;
 
 /// Lightning node management daemon; part of LNP Node

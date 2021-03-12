@@ -1,4 +1,9 @@
-# lnp-node: Lightning Network Protocol Node
+# Farcaster-node: Atomic swap node
+
+This node was forked from `lnp-node` on 2021-03-12.
+
+Below the original for `lnp-node` README.
+
 
 `lnp-node` is a new Lightning Network node written from scratch in Rust. 
 Actually, it's a suite of daemons/microservices able to run both Lightning 

@@ -24,18 +24,18 @@
     missing_docs
 )]
 
-//! Main executable for lnpd: lightning node management microservice.
+//! Main executable for farcasterd: farcaster node management microservice.
 
 #[macro_use]
 extern crate log;
 
 use clap::Clap;
 
-use lnp_node::lnpd::{self, Opts};
+use lnp_node::farcasterd::{self, Opts};
 use lnp_node::{Config, LogStyle};
 
 fn main() {
-    println!("lnpd: lightning node management microservice");
+    println!("farcasterd: farcaster node management microservice");
 
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
@@ -60,7 +60,7 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    lnpd::run(config, node_id).expect("Error running lnpd runtime");
+    farcasterd::run(config, node_id).expect("Error running farcasterd runtime");
 
     unreachable!()
 }

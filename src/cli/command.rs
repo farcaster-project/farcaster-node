@@ -57,7 +57,7 @@ impl Exec for Command {
                         return Err(Error::Other(err));
                     }
                 } else {
-                    runtime.request(ServiceId::Lnpd, Request::GetInfo)?;
+                    runtime.request(ServiceId::Farcasterd, Request::GetInfo)?;
                 }
                 match runtime.response()? {
                     Request::NodeInfo(info) => println!("{}", info),
@@ -71,12 +71,12 @@ impl Exec for Command {
             }
 
             Command::Peers => {
-                runtime.request(ServiceId::Lnpd, Request::ListPeers)?;
+                runtime.request(ServiceId::Farcasterd, Request::ListPeers)?;
                 runtime.report_response()?;
             }
 
             Command::Channels => {
-                runtime.request(ServiceId::Lnpd, Request::ListChannels)?;
+                runtime.request(ServiceId::Farcasterd, Request::ListChannels)?;
                 runtime.report_response()?;
             }
 
@@ -87,7 +87,7 @@ impl Exec for Command {
             } => {
                 let socket =
                     RemoteSocketAddr::with_ip_addr(*overlay, *ip_addr, *port);
-                runtime.request(ServiceId::Lnpd, Request::Listen(socket))?;
+                runtime.request(ServiceId::Farcasterd, Request::Listen(socket))?;
                 runtime.report_progress()?;
             }
 
@@ -96,7 +96,7 @@ impl Exec for Command {
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
                     .expect("Provided node address is invalid");
 
-                runtime.request(ServiceId::Lnpd, Request::ConnectPeer(peer))?;
+                runtime.request(ServiceId::Farcasterd, Request::ConnectPeer(peer))?;
                 runtime.report_progress()?;
             }
 
@@ -118,7 +118,7 @@ impl Exec for Command {
                     .expect("Provided node address is invalid");
 
                 runtime.request(
-                    ServiceId::Lnpd,
+                    ServiceId::Farcasterd,
                     Request::OpenChannelWith(request::CreateChannel {
                         channel_req: message::OpenChannel {
                             funding_satoshis: *funding_satoshis,

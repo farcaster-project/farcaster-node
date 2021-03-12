@@ -377,7 +377,7 @@ impl Runtime {
                 senders.send_to(
                     ServiceBus::Msg,
                     self.identity(),
-                    ServiceId::Lnpd,
+                    ServiceId::Farcasterd,
                     request,
                 )?;
             }

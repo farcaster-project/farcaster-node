@@ -600,7 +600,7 @@ impl Runtime {
         debug!("Updating channel id to {}", self.channel_id);
         self.send_ctl(
             senders,
-            ServiceId::Lnpd,
+            ServiceId::Farcasterd,
             Request::UpdateChannelId(self.channel_id),
         )?;
         self.send_ctl(

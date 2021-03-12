@@ -35,7 +35,7 @@ use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
     let runtime = Runtime {
-        identity: ServiceId::Lnpd,
+        identity: ServiceId::Farcasterd,
         node_id,
         chain: config.chain.clone(),
         listens: none!(),
@@ -143,7 +143,7 @@ impl Runtime {
                 info!("{} daemon is {}", source.ended(), "connected".ended());
 
                 match &source {
-                    ServiceId::Lnpd => {
+                    ServiceId::Farcasterd => {
                         error!(
                             "{}",
                             "Unexpected another lnpd instance connection".err()
@@ -265,7 +265,7 @@ impl Runtime {
             Request::GetInfo => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Lnpd,
+                    ServiceId::Farcasterd,
                     source,
                     Request::NodeInfo(NodeInfo {
                         node_id: self.node_id,
@@ -287,7 +287,7 @@ impl Runtime {
             Request::ListPeers => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Lnpd,
+                    ServiceId::Farcasterd,
                     source,
                     Request::PeerList(
                         self.connections.iter().cloned().collect(),
@@ -298,7 +298,7 @@ impl Runtime {
             Request::ListChannels => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Lnpd,
+                    ServiceId::Farcasterd,
                     source,
                     Request::ChannelList(
                         self.channels.iter().cloned().collect(),
@@ -333,7 +333,7 @@ impl Runtime {
                 }
                     senders.send_to(
                         ServiceBus::Ctl,
-                        ServiceId::Lnpd,
+                        ServiceId::Farcasterd,
                         source.clone(),
                         resp.into_progress_or_failure(),
                     )?;
@@ -401,7 +401,7 @@ impl Runtime {
         if let Some((Some(respond_to), resp)) = notify_cli {
             senders.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Lnpd,
+                ServiceId::Farcasterd,
                 respond_to,
                 resp,
             )?;

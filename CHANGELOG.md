@@ -1,6 +1,13 @@
 Change Log
 ==========
 
+v0.0.0
+-------------
+- Farcaster fork for Bitcoin-Monero atomic swaps
+
+
+lnp-node pre-fork
+-------------
 v0.1.0-beta.3
 -------------
 - Support for lightning peer message encoding (before used custom strict-encding)
