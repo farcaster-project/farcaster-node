@@ -44,7 +44,7 @@ impl Exec for Command {
                         )?;
                     } else if let Ok(channel_id) = SwapId::from_str(subj) {
                         runtime.request(
-                            ServiceId::Channel(channel_id),
+                            ServiceId::Swap(channel_id),
                             Request::GetInfo,
                         )?;
                     } else {

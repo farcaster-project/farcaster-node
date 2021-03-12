@@ -314,7 +314,7 @@ impl Runtime {
                         .routing
                         .keys()
                         .filter_map(|id| {
-                            if let ServiceId::Channel(channel_id) = id {
+                            if let ServiceId::Swap(channel_id) = id {
                                 Some(channel_id.clone())
                             } else {
                                 None

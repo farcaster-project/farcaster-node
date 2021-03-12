@@ -146,7 +146,7 @@ impl Runtime {
                     ServiceId::Farcasterd => {
                         error!(
                             "{}",
-                            "Unexpected another lnpd instance connection".err()
+                            "Unexpected another farcasterd instance connection".err()
                         );
                     }
                     ServiceId::Peer(connection_id) => {
@@ -165,11 +165,11 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Channel(channel_id) => {
+                    ServiceId::Swap(channel_id) => {
                         if self.channels.insert(channel_id.clone()) {
                             info!(
-                                "Channel {} is registered; total {} \
-                                 channels are known",
+                                "Swap {} is registered; total {} \
+                                 swaps are known",
                                 channel_id,
                                 self.channels.len()
                             );
@@ -248,7 +248,7 @@ impl Runtime {
                     "Requested to update channel id {} on {}",
                     source, new_id
                 );
-                if let ServiceId::Channel(old_id) = source {
+                if let ServiceId::Swap(old_id) = source {
                     if !self.channels.remove(&old_id) {
                         warn!("Channel daemon {} was unknown", source);
                     }
@@ -513,7 +513,7 @@ impl Runtime {
             &mut self.opening_channels
         };
         list.insert(
-            ServiceId::Channel(SwapId::from_inner(
+            ServiceId::Swap(SwapId::from_inner(
                 channel_req.temporary_channel_id.into_inner(),
             )),
             request::CreateChannel {
