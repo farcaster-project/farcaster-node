@@ -95,11 +95,6 @@ pub enum Request {
     #[display("fund_channel({0})")]
     FundSwap(OutPoint),
 
-    // Can be issued from `cli` to a specific `peerd`
-    #[lnp_api(type = 207)]
-    #[display("transfer({0})")]
-    Transfer(Transfer),
-
     /* TODO: Activate after lightning-invoice library update
     // Can be issued from `cli` to a specific `peerd`
     #[lnp_api(type = 208)]
@@ -161,15 +156,6 @@ pub struct CreateSwap {
     pub swap_req: message::OpenChannel,
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("{amount} {asset:?} to {channeld}")]
-pub struct Transfer {
-    pub channeld: ServiceId,
-    pub amount: u64,
-    pub asset: Option<AssetId>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

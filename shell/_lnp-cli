@@ -233,8 +233,6 @@ _arguments "${_arguments_options[@]}" \
 ;;
 (transfer)
 _arguments "${_arguments_options[@]}" \
-'-a+[Asset ticker in which the invoice should be issued]' \
-'--asset=[Asset ticker in which the invoice should be issued]' \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \

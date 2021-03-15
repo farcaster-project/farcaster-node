@@ -789,21 +789,13 @@ _lnp-cli() {
             return 0
             ;;
         lnp__cli__transfer)
-            opts=" -a -d -c -v -T -m -x -n -h -V  --asset --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <channel> <amount> "
+            opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <channel> <amount> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 
-                --asset)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                    -a)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
                 --data-dir)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

@@ -646,22 +646,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "electrum-client"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21453800c95bb1aaa57490458c42d60c6277cb8a3e386030ec2381d5c2d4fa77"
-dependencies = [
- "bitcoin",
- "log",
- "rustls",
- "serde 1.0.120",
- "serde_json",
- "socks",
- "webpki",
- "webpki-roots",
-]
-
-[[package]]
 name = "env_logger"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -752,7 +736,7 @@ dependencies = [
  "configure_me_codegen",
  "descriptor-wallet",
  "dotenv",
- "electrum-client 0.5.0-beta.1",
+ "electrum-client",
  "env_logger",
  "farcaster-core",
  "internet2",
@@ -762,8 +746,6 @@ dependencies = [
  "log",
  "microservices",
  "nix",
- "rgb-core",
- "rgb_node",
  "serde 1.0.120",
  "serde_json",
  "serde_with",
@@ -1163,7 +1145,6 @@ dependencies = [
  "internet2",
  "lazy_static",
  "lnpbp",
- "rgb-core",
  "serde 1.0.120",
  "serde_with",
  "strict_encoding",
@@ -1799,53 +1780,6 @@ dependencies = [
  "serde_with",
  "serde_with_macros",
  "strict_encoding",
-]
-
-[[package]]
-name = "rgb20"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4784f7d276f20c7aa31ab3d2a63635f82adebb6a25dbe52ca34b18369b422897"
-dependencies = [
- "amplify",
- "amplify_derive",
- "bitcoin",
- "chrono",
- "lnpbp",
- "regex",
- "rgb-core",
- "serde 1.0.120",
- "serde_with",
- "url",
-]
-
-[[package]]
-name = "rgb_node"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dff0fbd6fabc9be09cd45aa634db800da3a2cf710d16ef104e2e7bba617d3fe9"
-dependencies = [
- "amplify",
- "amplify_derive",
- "base64 0.12.3",
- "bech32",
- "bitcoin",
- "chrono",
- "clap",
- "electrum-client 0.6.0",
- "env_logger",
- "internet2",
- "lazy_static",
- "lnpbp",
- "log",
- "microservices",
- "rgb-core",
- "rgb20",
- "serde 1.0.120",
- "serde_json",
- "serde_with",
- "serde_yaml",
- "toml 0.5.8",
 ]
 
 [[package]]

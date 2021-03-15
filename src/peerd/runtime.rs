@@ -414,9 +414,6 @@ impl Runtime {
             ))
             | Request::PeerMessage(Messages::UpdateFailMalformedHtlc(
                 message::UpdateFailMalformedHtlc { channel_id, .. },
-            ))
-            | Request::PeerMessage(Messages::AssignFunds(
-                message::AssignFunds { channel_id, .. },
             )) => {
                 let channeld: ServiceId = channel_id.clone().into();
                 senders.send_to(

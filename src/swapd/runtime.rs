@@ -29,13 +29,9 @@ use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
 use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
-use lnpbp::seals::OutpointReveal;
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use wallet::{HashPreimage, PubkeyScript};
-
-#[cfg(feature = "rgb")]
-use rgb::Consignment;
 
 use super::storage::{self, Driver};
 use crate::rpc::request::SwapInfo;
@@ -47,15 +43,7 @@ pub fn run(
     local_node: LocalNode,
     channel_id: SwapId,
     chain: Chain,
-    rgb20_socket_addr: ZmqSocketAddr,
 ) -> Result<(), Error> {
-    let rgb20_rpc = session::Raw::with_zmq_unencrypted(
-        ZmqType::Req,
-        &rgb20_socket_addr,
-        None,
-        None,
-    )?;
-    let rgb_unmarshaller = rgb_node::rpc::Reply::create_unmarshaller();
 
     let runtime = Runtime {
         identity: ServiceId::Swap(channel_id),
@@ -83,8 +71,6 @@ pub fn run(
         is_originator: false,
         obscuring_factor: 0,
         enquirer: None,
-        rgb20_rpc,
-        rgb_unmarshaller,
         storage: Box::new(storage::DiskDriver::init(
             channel_id,
             Box::new(storage::DiskConfig {
@@ -126,9 +112,6 @@ pub struct Runtime {
     obscuring_factor: u64,
 
     enquirer: Option<ServiceId>,
-    rgb20_rpc: session::Raw<session::PlainTranscoder, zmqsocket::Connection>,
-    rgb_unmarshaller: Unmarshaller<rgb_node::rpc::Reply>,
-
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -454,17 +437,6 @@ impl Runtime {
                 self.send_peer(
                     senders,
                     Messages::FundingCreated(funding_created),
-                )?;
-            }
-
-            Request::Transfer(transfer_req) => {
-                self.enquirer = source.into();
-
-                let update_add_htlc = self.transfer(senders, transfer_req)?;
-
-                self.send_peer(
-                    senders,
-                    Messages::UpdateAddHtlc(update_add_htlc),
                 )?;
             }
 
@@ -850,80 +822,6 @@ impl Runtime {
         // with_hashtype.push(SigHashType::All.as_u32() as u8);
 
         signature
-    }
-
-    pub fn transfer(
-        &mut self,
-        senders: &mut Senders,
-        transfer_req: request::Transfer,
-    ) -> Result<message::UpdateAddHtlc, Error> {
-        let enquirer = self.enquirer.clone();
-
-        let available = if let Some(asset_id) = transfer_req.asset {
-            self.local_balances.get(&asset_id).copied().unwrap_or(0)
-        } else {
-            self.local_capacity
-        };
-
-        if available < transfer_req.amount {
-            Err(Error::Other(s!(
-                "You do not have required amount of the asset"
-            )))?
-        }
-
-        info!(
-            "{} {} {} to the remote peer",
-            "Transferring".promo(),
-            transfer_req.amount.promoter(),
-            transfer_req
-                .asset
-                .map(|a| a.to_string())
-                .unwrap_or(s!("msat"))
-                .promoter(),
-        );
-
-        let preimage = HashPreimage::random();
-        let payment_hash = preimage.into();
-        let htlc = HtlcKnown {
-            preimage,
-            id: self.total_payments,
-            cltv_expiry: 0,
-            amount: transfer_req.amount,
-            asset_id: transfer_req.asset,
-        };
-        trace!("Generated HTLC: {:?}", htlc);
-        self.offered_htlc.push(htlc);
-
-        let update_add_htlc = message::UpdateAddHtlc {
-            channel_id: self.channel_id,
-            htlc_id: htlc.id,
-            amount_msat: transfer_req.amount,
-            payment_hash,
-            cltv_expiry: htlc.cltv_expiry,
-            onion_routing_packet: dumb!(), // TODO: Generate proper onion packet
-            asset_id: transfer_req.asset,
-        };
-        self.total_payments += 1;
-        match transfer_req.asset {
-            Some(asset_id) => {
-                self.local_balances.get_mut(&asset_id).map(|balance| {
-                    *balance -= transfer_req.amount;
-                });
-
-                let entry = self.remote_balances.entry(asset_id).or_insert(0);
-                *entry += transfer_req.amount;
-            }
-            None => {
-                self.local_capacity -= transfer_req.amount;
-                self.remote_capacity += transfer_req.amount;
-            }
-        }
-
-        let msg = format!("{}", "Funding transferred".ended());
-        info!("{}", msg);
-        let _ = self.report_progress_to(senders, &enquirer, msg);
-
-        Ok(update_add_htlc)
     }
 
 

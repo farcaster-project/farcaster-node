@@ -30,7 +30,6 @@
 extern crate log;
 
 use clap::Clap;
-use std::convert::TryInto;
 
 use farcaster_node::swapd::{self, Opts};
 use farcaster_node::{Config, LogStyle};
@@ -48,12 +47,6 @@ fn main() {
     trace!("Daemon configuration: {:?}", &config);
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
-
-    let rgb20_socket_addr = opts
-        .rgb_opts
-        .rgb20_socket
-        .try_into()
-        .expect("RPC socket must be a valid ZMQ local file socket");
 
     let node_id = opts.key_opts.local_node().node_id();
     info!("{}: {}", "Local node id".ended(), node_id.addr());
@@ -73,7 +66,6 @@ fn main() {
         opts.key_opts.local_node(),
         opts.channel_id,
         opts.shared.chain,
-        rgb20_socket_addr,
     )
     .expect("Error running swapd runtime");
 

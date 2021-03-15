@@ -143,11 +143,6 @@ pub enum Command {
         /// Asset amount to invoice, in atomic unit (satoshis or smallest asset
         /// unit type)
         amount: u64,
-
-        /// Asset ticker in which the invoice should be issued
-        #[cfg(feature = "rgb")]
-        #[clap(short, long)]
-        asset: Option<ContractId>,
     },
 
     /// Create an invoice

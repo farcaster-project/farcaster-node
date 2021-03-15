@@ -19,11 +19,6 @@ use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
-#[cfg(feature = "rgb")]
-use rgb::Consignment;
-#[cfg(feature = "rgb")]
-use rgb_node::util::file::ReadWrite;
-
 use super::Command;
 use crate::rpc::{request, Client, Request};
 use crate::{Error, LogStyle, ServiceId};
@@ -183,22 +178,6 @@ impl Exec for Command {
                 runtime.request(
                     channel.clone().into(),
                     Request::FundSwap(*funding_outpoint),
-                )?;
-                runtime.report_progress()?;
-            }
-
-            Command::Transfer {
-                channel,
-                amount,
-                asset,
-            } => {
-                runtime.request(
-                    channel.clone().into(),
-                    Request::Transfer(request::Transfer {
-                        channeld: channel.clone().into(),
-                        amount: *amount,
-                        asset: asset.map(|id| id.into()),
-                    }),
                 )?;
                 runtime.report_progress()?;
             }

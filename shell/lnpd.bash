@@ -20,21 +20,13 @@ _lnpd() {
 
     case "${cmd}" in
         lnpd)
-            opts=" -r -k -d -c -v -T -m -x -n -h -V  --rgb20-rpc --key-file --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  "
+            opts=" -k -d -c -v -T -m -x -n -h -V  --key-file --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 
-                --rgb20-rpc)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                    -r)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
                 --key-file)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
