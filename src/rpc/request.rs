@@ -24,7 +24,9 @@ use std::time::Duration;
 use bitcoin::{secp256k1, OutPoint};
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message as message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{
+    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
+};
 use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;

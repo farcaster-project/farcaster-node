@@ -30,10 +30,7 @@ pub struct DiskDriver {
 }
 
 impl Driver for DiskDriver {
-    fn init(
-        channel_id: SwapId,
-        config: Box<dyn Any>,
-    ) -> Result<Self, Error> {
+    fn init(channel_id: SwapId, config: Box<dyn Any>) -> Result<Self, Error> {
         let config = *config.downcast().map_err(|_| Error::Other(s!("")))?;
         Ok(Self { channel_id, config })
     }

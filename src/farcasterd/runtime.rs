@@ -24,10 +24,14 @@ use std::time::{Duration, SystemTime};
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{
+    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
+};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
+
+use farcaster_core::protocol::message as far_msg;
 
 use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
@@ -146,7 +150,8 @@ impl Runtime {
                     ServiceId::Farcasterd => {
                         error!(
                             "{}",
-                            "Unexpected another farcasterd instance connection".err()
+                            "Unexpected another farcasterd instance connection"
+                                .err()
                         );
                     }
                     ServiceId::Peer(connection_id) => {
@@ -186,13 +191,13 @@ impl Runtime {
                     }
                 }
 
-                if let Some(swap_params) = self.opening_swaps.get(&source)
-                {
+                if let Some(swap_params) = self.opening_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
                         "Daemon {} is known: we spawned it to create a swap. \
-                         Ordering swap opening", source
+                         Ordering swap opening",
+                        source
                     );
                     notify_cli = Some((
                         swap_params.report_to.clone(),
@@ -215,7 +220,8 @@ impl Runtime {
                     // connection daemon
                     debug!(
                         "Daemon {} is known: we spawned it to create a swap. \
-                         Ordering swap acceptance", source
+                         Ordering swap acceptance",
+                        source
                     );
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -300,9 +306,7 @@ impl Runtime {
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd,
                     source,
-                    Request::SwapList(
-                        self.swaps.iter().cloned().collect(),
-                    ),
+                    Request::SwapList(self.swaps.iter().cloned().collect()),
                 )?;
             }
 
@@ -374,8 +378,7 @@ impl Runtime {
                     "Creating channel".promo(),
                     source.promoter()
                 );
-                let resp =
-                    self.create_swap(peerd, report_to, swap_req, false);
+                let resp = self.create_swap(peerd, report_to, swap_req, false);
                 match resp {
                     Ok(_) => {}
                     Err(ref err) => error!("{}", err.err()),
@@ -476,12 +479,9 @@ impl Runtime {
         }
 
         // Start swapd
-        let child =
-            launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
-        let msg = format!(
-            "New instance of swapd launched with PID {}",
-            child.id()
-        );
+        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
+        let msg =
+            format!("New instance of swapd launched with PID {}", child.id());
         info!("{}", msg);
 
         // Construct channel creation request

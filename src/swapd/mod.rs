@@ -19,5 +19,5 @@ mod runtime;
 pub(self) mod storage;
 
 #[cfg(feature = "shell")]
-pub use opts::{Opts};
+pub use opts::Opts;
 pub use runtime::run;

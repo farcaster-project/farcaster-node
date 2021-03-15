@@ -82,7 +82,8 @@ impl Exec for Command {
             } => {
                 let socket =
                     RemoteSocketAddr::with_ip_addr(*overlay, *ip_addr, *port);
-                runtime.request(ServiceId::Farcasterd, Request::Listen(socket))?;
+                runtime
+                    .request(ServiceId::Farcasterd, Request::Listen(socket))?;
                 runtime.report_progress()?;
             }
 
@@ -91,7 +92,10 @@ impl Exec for Command {
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
                     .expect("Provided node address is invalid");
 
-                runtime.request(ServiceId::Farcasterd, Request::ConnectPeer(peer))?;
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::ConnectPeer(peer),
+                )?;
                 runtime.report_progress()?;
             }
 

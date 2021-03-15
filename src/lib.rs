@@ -57,13 +57,13 @@ pub mod opts;
 pub mod rpc;
 
 #[cfg(feature = "node")]
-pub mod swapd;
-#[cfg(feature = "node")]
 pub mod farcasterd;
 #[cfg(feature = "node")]
 pub mod peerd;
 #[cfg(feature = "_rpc")]
 mod service;
+#[cfg(feature = "node")]
+pub mod swapd;
 
 #[cfg(feature = "_rpc")]
 pub use config::Config;

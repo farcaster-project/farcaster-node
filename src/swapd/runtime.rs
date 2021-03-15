@@ -28,7 +28,9 @@ use internet2::{
 use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{
+    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
+};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use wallet::{HashPreimage, PubkeyScript};
@@ -44,7 +46,6 @@ pub fn run(
     channel_id: SwapId,
     chain: Chain,
 ) -> Result<(), Error> {
-
     let runtime = Runtime {
         identity: ServiceId::Swap(channel_id),
         peer_service: ServiceId::Loopback,
@@ -823,7 +824,6 @@ impl Runtime {
 
         signature
     }
-
 
     pub fn htlc_receive(
         &mut self,

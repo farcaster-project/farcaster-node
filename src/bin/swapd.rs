@@ -34,7 +34,6 @@ use clap::Clap;
 use farcaster_node::swapd::{self, Opts};
 use farcaster_node::{Config, LogStyle};
 
-
 fn main() {
     println!("swapd: farcaster swap microservice");
 
