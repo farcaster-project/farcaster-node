@@ -62,7 +62,7 @@ impl Exec for Command {
                 match runtime.response()? {
                     Request::NodeInfo(info) => println!("{}", info),
                     Request::PeerInfo(info) => println!("{}", info),
-                    Request::ChannelInfo(info) => println!("{}", info),
+                    Request::SwapInfo(info) => println!("{}", info),
                     _ => Err(Error::Other(format!(
                         "{}",
                         "Server returned unrecognizable response"
@@ -76,7 +76,7 @@ impl Exec for Command {
             }
 
             Command::Channels => {
-                runtime.request(ServiceId::Farcasterd, Request::ListChannels)?;
+                runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
                 runtime.report_response()?;
             }
 
@@ -198,34 +198,6 @@ impl Exec for Command {
                         channeld: channel.clone().into(),
                         amount: *amount,
                         asset: asset.map(|id| id.into()),
-                    }),
-                )?;
-                runtime.report_progress()?;
-            }
-
-            #[cfg(feature = "rgb")]
-            Command::Refill {
-                channel,
-                consignment,
-                outpoint,
-                blinding_factor,
-            } => {
-                trace!("Reading consignment from file {:?}", &consignment);
-                let consignment = Consignment::read_file(consignment.clone())
-                    .map_err(|err| {
-                    Error::Other(format!(
-                        "Error in consignment encoding: {}",
-                        err
-                    ))
-                })?;
-                trace!("Outpoint parsed as {}", outpoint);
-
-                runtime.request(
-                    channel.clone().into(),
-                    Request::RefillChannel(request::RefillChannel {
-                        consignment,
-                        outpoint: *outpoint,
-                        blinding: *blinding_factor,
                     }),
                 )?;
                 runtime.report_progress()?;

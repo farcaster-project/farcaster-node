@@ -41,10 +41,10 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
-        channels: none!(),
+        swaps: none!(),
         spawning_services: none!(),
-        opening_channels: none!(),
-        accepting_channels: none!(),
+        opening_swaps: none!(),
+        accepting_swaps: none!(),
     };
 
     Service::run(config, runtime, true)
@@ -57,10 +57,10 @@ pub struct Runtime {
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
-    channels: HashSet<SwapId>,
+    swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
-    opening_channels: HashMap<ServiceId, request::CreateChannel>,
-    accepting_channels: HashMap<ServiceId, request::CreateChannel>,
+    opening_swaps: HashMap<ServiceId, request::CreateChannel>,
+    accepting_swaps: HashMap<ServiceId, request::CreateChannel>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -166,12 +166,12 @@ impl Runtime {
                         }
                     }
                     ServiceId::Swap(swap_id) => {
-                        if self.channels.insert(swap_id.clone()) {
+                        if self.swaps.insert(swap_id.clone()) {
                             info!(
                                 "Swap {} is registered; total {} \
                                  swaps are known",
                                 swap_id,
-                                self.channels.len()
+                                self.swaps.len()
                             );
                         } else {
                             warn!(
@@ -186,7 +186,7 @@ impl Runtime {
                     }
                 }
 
-                if let Some(channel_params) = self.opening_channels.get(&source)
+                if let Some(channel_params) = self.opening_swaps.get(&source)
                 {
                     // Tell swapd channel options and link it with the
                     // connection daemon
@@ -207,9 +207,9 @@ impl Runtime {
                         source.clone(),
                         Request::OpenChannelWith(channel_params.clone()),
                     )?;
-                    self.opening_channels.remove(&source);
+                    self.opening_swaps.remove(&source);
                 } else if let Some(channel_params) =
-                    self.accepting_channels.get(&source)
+                    self.accepting_swaps.get(&source)
                 {
                     // Tell swapd channel options and link it with the
                     // connection daemon
@@ -223,7 +223,7 @@ impl Runtime {
                         source.clone(),
                         Request::AcceptChannelFrom(channel_params.clone()),
                     )?;
-                    self.accepting_channels.remove(&source);
+                    self.accepting_swaps.remove(&source);
                 } else if let Some(enquirer) =
                     self.spawning_services.get(&source)
                 {
@@ -249,10 +249,10 @@ impl Runtime {
                     source, new_id
                 );
                 if let ServiceId::Swap(old_id) = source {
-                    if !self.channels.remove(&old_id) {
+                    if !self.swaps.remove(&old_id) {
                         warn!("Swap daemon {} was unknown", source);
                     }
-                    self.channels.insert(new_id);
+                    self.swaps.insert(new_id);
                     debug!("Registered swap daemon id {}", new_id);
                 } else {
                     error!(
@@ -279,7 +279,7 @@ impl Runtime {
                             .unwrap_or(Duration::from_secs(0))
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
-                        channels: self.channels.iter().cloned().collect(),
+                        channels: self.swaps.iter().cloned().collect(),
                     }),
                 )?;
             }
@@ -295,13 +295,13 @@ impl Runtime {
                 )?;
             }
 
-            Request::ListChannels => {
+            Request::ListSwaps => {
                 senders.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd,
                     source,
                     Request::ChannelList(
-                        self.channels.iter().cloned().collect(),
+                        self.swaps.iter().cloned().collect(),
                     ),
                 )?;
             }
@@ -508,9 +508,9 @@ impl Runtime {
         };
 
         let list = if accept {
-            &mut self.accepting_channels
+            &mut self.accepting_swaps
         } else {
-            &mut self.opening_channels
+            &mut self.opening_swaps
         };
         list.insert(
             ServiceId::Swap(SwapId::from_inner(

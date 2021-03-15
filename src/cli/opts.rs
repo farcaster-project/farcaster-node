@@ -135,24 +135,6 @@ pub enum Command {
         funding_outpoint: OutPoint,
     },
 
-    /// Adds RGB assets to an existing channel
-    #[cfg(feature = "rgb")]
-    Refill {
-        /// Channel to which the funding must be added
-        channel: SwapId,
-
-        /// Consignment file to read containing information about transfer of
-        /// RGB20 asset to the funding transaction output
-        consignment: PathBuf,
-
-        /// Locally-controlled outpoint (specified when the invoice was
-        /// created)
-        outpoint: OutPoint,
-
-        /// Outpoint blinding factor (generated when the invoice was created)
-        blinding_factor: u64,
-    },
-
     /// Do an invoiceless direct payment
     Transfer {
         /// Channel to which the funding must be added

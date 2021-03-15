@@ -24,15 +24,14 @@ use std::time::Duration;
 use bitcoin::{secp256k1, OutPoint};
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{message as message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
 
-#[cfg(feature = "rgb")]
-use rgb::Consignment;
+use farcaster_core::protocol::message::{self as message0};
 
 use crate::ServiceId;
 
@@ -66,7 +65,7 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 102)]
     #[display("list_channels()")]
-    ListChannels,
+    ListSwaps,
 
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 200)]
@@ -95,12 +94,6 @@ pub enum Request {
     #[lnp_api(type = 205)]
     #[display("fund_channel({0})")]
     FundChannel(OutPoint),
-
-    // Can be issued from `cli` to a specific `peerd`
-    #[cfg(feature = "rgb")]
-    #[lnp_api(type = 206)]
-    #[display("refill_channel({0})")]
-    RefillChannel(RefillChannel),
 
     // Can be issued from `cli` to a specific `peerd`
     #[lnp_api(type = 207)]
@@ -141,7 +134,7 @@ pub enum Request {
     #[lnp_api(type = 1102)]
     #[display("channel_info({0})", alt = "{0:#}")]
     #[from]
-    ChannelInfo(ChannelInfo),
+    SwapInfo(SwapInfo),
 
     #[lnp_api(type = 1103)]
     #[display("peer_list({0})", alt = "{0:#}")]
@@ -177,16 +170,6 @@ pub struct Transfer {
     pub channeld: ServiceId,
     pub amount: u64,
     pub asset: Option<AssetId>,
-}
-
-#[cfg(feature = "rgb")]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("{outpoint}, {blinding}, ...")]
-pub struct RefillChannel {
-    pub consignment: Consignment,
-    pub outpoint: OutPoint,
-    pub blinding: u64,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -248,8 +231,8 @@ pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
     serde(crate = "serde_crate")
 )]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display(ChannelInfo::to_yaml_string)]
-pub struct ChannelInfo {
+#[display(SwapInfo::to_yaml_string)]
+pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub channel_id: Option<SwapId>,
     #[serde_as(as = "DisplayFromStr")]
@@ -287,7 +270,7 @@ impl ToYamlString for NodeInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for PeerInfo {}
 #[cfg(feature = "serde")]
-impl ToYamlString for ChannelInfo {}
+impl ToYamlString for SwapInfo {}
 
 #[derive(
     Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode,
