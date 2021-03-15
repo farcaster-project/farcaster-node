@@ -59,8 +59,8 @@ pub struct Runtime {
     connections: HashSet<NodeAddr>,
     swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
-    opening_swaps: HashMap<ServiceId, request::CreateChannel>,
-    accepting_swaps: HashMap<ServiceId, request::CreateChannel>,
+    opening_swaps: HashMap<ServiceId, request::CreateSwap>,
+    accepting_swaps: HashMap<ServiceId, request::CreateSwap>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -108,9 +108,9 @@ impl Runtime {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
-            Request::PeerMessage(Messages::OpenChannel(open_channel)) => {
-                info!("Creating channel by peer request from {}", source);
-                self.create_channel(source, None, open_channel, true)?;
+            Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
+                info!("Creating swap by peer request from {}", source);
+                self.create_swap(source, None, open_swap, true)?;
             }
 
             Request::PeerMessage(_) => {
@@ -186,16 +186,16 @@ impl Runtime {
                     }
                 }
 
-                if let Some(channel_params) = self.opening_swaps.get(&source)
+                if let Some(swap_params) = self.opening_swaps.get(&source)
                 {
-                    // Tell swapd channel options and link it with the
+                    // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
-                        "Daemon {} is known: we spawned it to create a channel. \
-                         Ordering channel opening", source
+                        "Daemon {} is known: we spawned it to create a swap. \
+                         Ordering swap opening", source
                     );
                     notify_cli = Some((
-                        channel_params.report_to.clone(),
+                        swap_params.report_to.clone(),
                         Request::Progress(format!(
                             "Swap daemon {} operational",
                             source
@@ -205,23 +205,23 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
-                        Request::OpenChannelWith(channel_params.clone()),
+                        Request::OpenSwapWith(swap_params.clone()),
                     )?;
                     self.opening_swaps.remove(&source);
-                } else if let Some(channel_params) =
+                } else if let Some(swap_params) =
                     self.accepting_swaps.get(&source)
                 {
-                    // Tell swapd channel options and link it with the
+                    // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
-                        "Daemon {} is known: we spawned it to create a channel. \
-                         Ordering channel acceptance", source
+                        "Daemon {} is known: we spawned it to create a swap. \
+                         Ordering swap acceptance", source
                     );
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
-                        Request::AcceptChannelFrom(channel_params.clone()),
+                        Request::AcceptSwapFrom(swap_params.clone()),
                     )?;
                     self.accepting_swaps.remove(&source);
                 } else if let Some(enquirer) =
@@ -279,7 +279,7 @@ impl Runtime {
                             .unwrap_or(Duration::from_secs(0))
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
-                        channels: self.swaps.iter().cloned().collect(),
+                        swaps: self.swaps.iter().cloned().collect(),
                     }),
                 )?;
             }
@@ -300,7 +300,7 @@ impl Runtime {
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd,
                     source,
-                    Request::ChannelList(
+                    Request::SwapList(
                         self.swaps.iter().cloned().collect(),
                     ),
                 )?;
@@ -364,8 +364,8 @@ impl Runtime {
                 ));
             }
 
-            Request::OpenChannelWith(request::CreateChannel {
-                channel_req,
+            Request::OpenSwapWith(request::CreateSwap {
+                swap_req,
                 peerd,
                 report_to,
             }) => {
@@ -375,7 +375,7 @@ impl Runtime {
                     source.promoter()
                 );
                 let resp =
-                    self.create_channel(peerd, report_to, channel_req, false);
+                    self.create_swap(peerd, report_to, swap_req, false);
                 match resp {
                     Ok(_) => {}
                     Err(ref err) => error!("{}", err.err()),
@@ -456,27 +456,28 @@ impl Runtime {
         Ok(msg)
     }
 
-    fn create_channel(
+    // FIXME: swapify
+    fn create_swap(
         &mut self,
         source: ServiceId,
         report_to: Option<ServiceId>,
-        mut channel_req: message::OpenChannel,
+        mut swap_req: message::OpenChannel,
         accept: bool,
     ) -> Result<String, Error> {
         debug!("Instantiating swapd...");
 
         // We need to initialize temporary channel id here
         if !accept {
-            channel_req.temporary_channel_id = TempSwapId::random();
+            swap_req.temporary_channel_id = TempSwapId::random();
             debug!(
                 "Generated {} as a temporary channel id",
-                channel_req.temporary_channel_id
+                swap_req.temporary_channel_id
             );
         }
 
         // Start swapd
         let child =
-            launch("swapd", &[channel_req.temporary_channel_id.to_hex()])?;
+            launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
         let msg = format!(
             "New instance of swapd launched with PID {}",
             child.id()
@@ -485,7 +486,7 @@ impl Runtime {
 
         // Construct channel creation request
         let node_key = self.node_id;
-        let channel_req = message::OpenChannel {
+        let swap_req = message::OpenChannel {
             chain_hash: self.chain.clone().chain_params().genesis_hash.into(),
             // TODO: Take these parameters from configuration
             push_msat: 0,
@@ -504,7 +505,7 @@ impl Runtime {
             first_per_commitment_point: node_key,
             channel_flags: 1, // Announce the channel
             // shutdown_scriptpubkey: None,
-            ..channel_req
+            ..swap_req
         };
 
         let list = if accept {
@@ -514,10 +515,10 @@ impl Runtime {
         };
         list.insert(
             ServiceId::Swap(SwapId::from_inner(
-                channel_req.temporary_channel_id.into_inner(),
+                swap_req.temporary_channel_id.into_inner(),
             )),
-            request::CreateChannel {
-                channel_req,
+            request::CreateSwap {
+                swap_req,
                 peerd: source,
                 report_to,
             },

@@ -252,7 +252,7 @@ impl Runtime {
                 let _ = self.send_ctl(
                     senders,
                     &enquirer,
-                    Request::ChannelFunding(script_pubkey),
+                    Request::SwapFunding(script_pubkey),
                 );
             }
 
@@ -383,8 +383,8 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::OpenChannelWith(request::CreateChannel {
-                channel_req,
+            Request::OpenSwapWith(request::CreateSwap {
+                swap_req: channel_req,
                 peerd,
                 report_to,
             }) => {
@@ -411,8 +411,8 @@ impl Runtime {
                 self.state = Lifecycle::Proposed;
             }
 
-            Request::AcceptChannelFrom(request::CreateChannel {
-                channel_req,
+            Request::AcceptSwapFrom(request::CreateSwap {
+                swap_req: channel_req,
                 peerd,
                 report_to,
             }) => {
@@ -444,7 +444,7 @@ impl Runtime {
                 self.state = Lifecycle::Accepted;
             }
 
-            Request::FundChannel(funding_outpoint) => {
+            Request::FundSwap(funding_outpoint) => {
                 self.enquirer = source.into();
 
                 let funding_created =

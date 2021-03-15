@@ -31,7 +31,7 @@ required-features = ["cli"]
 
 [dependencies]
 # Farcaster crates
-farcaster_core = { version = "0.1.0", git = "https://github.com/zkao/farcaster-core", branch = "pkg" }
+farcaster-core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 
 # LNP/BP crates
 amplify = "3"

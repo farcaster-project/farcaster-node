@@ -735,18 +735,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "farcaster_core"
-version = "0.1.0"
-source = "git+https://github.com/zkao/farcaster-core?branch=pkg#fc043d9b5881f4c7de80ed488f7301f59734889f"
-dependencies = [
- "bitcoin",
- "curve25519-dalek",
- "monero",
- "rand_core 0.5.1",
- "secp256k1",
-]
-
-[[package]]
 name = "farcaster_node"
 version = "0.0.1"
 dependencies = [
@@ -767,7 +755,6 @@ dependencies = [
  "electrum-client 0.5.0-beta.1",
  "env_logger",
  "farcaster-core",
- "farcaster_core",
  "internet2",
  "lazy_static",
  "lnp-core",

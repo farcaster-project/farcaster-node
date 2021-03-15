@@ -85,15 +85,15 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 203)]
     #[display("create_channel_with(...)")]
-    OpenChannelWith(CreateChannel),
+    OpenSwapWith(CreateSwap),
 
     #[lnp_api(type = 204)]
     #[display("accept_channel_from(...)")]
-    AcceptChannelFrom(CreateChannel),
+    AcceptSwapFrom(CreateSwap),
 
     #[lnp_api(type = 205)]
     #[display("fund_channel({0})")]
-    FundChannel(OutPoint),
+    FundSwap(OutPoint),
 
     // Can be issued from `cli` to a specific `peerd`
     #[lnp_api(type = 207)]
@@ -144,12 +144,12 @@ pub enum Request {
     #[lnp_api(type = 1104)]
     #[display("channel_list({0})", alt = "{0:#}")]
     #[from]
-    ChannelList(List<SwapId>),
+    SwapList(List<SwapId>),
 
     #[lnp_api(type = 1203)]
     #[display("channel_funding({0})", alt = "{0:#}")]
     #[from]
-    ChannelFunding(PubkeyScript),
+    SwapFunding(PubkeyScript),
 }
 
 impl rpc_connection::Request for Request {}
@@ -157,8 +157,8 @@ impl rpc_connection::Request for Request {}
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{peerd}, ...")]
-pub struct CreateChannel {
-    pub channel_req: message::OpenChannel,
+pub struct CreateSwap {
+    pub swap_req: message::OpenChannel,
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
 }
@@ -190,7 +190,7 @@ pub struct NodeInfo {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub peers: Vec<NodeAddr>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub channels: Vec<SwapId>,
+    pub swaps: Vec<SwapId>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

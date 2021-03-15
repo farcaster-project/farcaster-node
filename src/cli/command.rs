@@ -119,8 +119,8 @@ impl Exec for Command {
 
                 runtime.request(
                     ServiceId::Farcasterd,
-                    Request::OpenChannelWith(request::CreateChannel {
-                        channel_req: message::OpenChannel {
+                    Request::OpenSwapWith(request::CreateSwap {
+                        swap_req: message::OpenChannel {
                             funding_satoshis: *funding_satoshis,
                             // The rest of parameters will be filled in by the
                             // daemon
@@ -132,7 +132,7 @@ impl Exec for Command {
                 )?;
                 runtime.report_progress()?;
                 match runtime.response()? {
-                    Request::ChannelFunding(pubkey_script) => {
+                    Request::SwapFunding(pubkey_script) => {
                         let address =
                             bitcoin::Network::try_from(runtime.chain())
                                 .ok()
@@ -182,7 +182,7 @@ impl Exec for Command {
             } => {
                 runtime.request(
                     channel.clone().into(),
-                    Request::FundChannel(*funding_outpoint),
+                    Request::FundSwap(*funding_outpoint),
                 )?;
                 runtime.report_progress()?;
             }
