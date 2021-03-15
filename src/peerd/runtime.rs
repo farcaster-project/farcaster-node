@@ -310,17 +310,6 @@ impl Runtime {
                         .as_secs(),
                     messages_sent: self.messages_sent,
                     messages_received: self.messages_received,
-                    channels: self
-                        .routing
-                        .keys()
-                        .filter_map(|id| {
-                            if let ServiceId::Swap(channel_id) = id {
-                                Some(channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
                     connected: !self.connect,
                     awaits_pong: self.awaited_pong.is_some(),
                 };

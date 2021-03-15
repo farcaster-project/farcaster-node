@@ -214,8 +214,6 @@ pub struct PeerInfo {
     pub since: u64,
     pub messages_sent: usize,
     pub messages_received: usize,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub channels: Vec<SwapId>,
     pub connected: bool,
     pub awaits_pong: bool,
 }
