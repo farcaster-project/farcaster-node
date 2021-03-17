@@ -709,10 +709,11 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "farcaster-core"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#b3b72864527a082aa7ab1f8fa504487dd2c2eb07"
+source = "git+https://github.com/zkao/farcaster-core?branch=strict_encoding#0666aa271f8953318dbcc1a9dfe9858d6254817a"
 dependencies = [
  "bitcoin",
  "curve25519-dalek",
+ "lnpbp",
  "monero",
  "rand_core 0.5.1",
  "secp256k1",

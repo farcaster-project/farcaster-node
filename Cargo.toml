@@ -31,7 +31,7 @@ required-features = ["cli"]
 
 [dependencies]
 # Farcaster crates
-farcaster-core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster-core = { version = "0.1.0", git = "https://github.com/zkao/farcaster-core", branch = "strict_encoding" }
 
 # LNP/BP crates
 amplify = "3"
@@ -70,7 +70,7 @@ shellexpand = { version = "2", optional = true }
 zmq = "0.9"
 
 [build-dependencies]
-farcaster-core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster-core = { version = "0.1.0", git = "https://github.com/zkao/farcaster-core", branch = "strict_encoding" }
 amplify = "3"
 amplify_derive = "2.4.2"
 lnpbp = "0.3"

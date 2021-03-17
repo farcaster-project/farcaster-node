@@ -31,8 +31,6 @@ use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use farcaster_core::protocol::message as far_msg;
-
 use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
