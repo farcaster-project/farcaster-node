@@ -34,17 +34,22 @@ use microservices::rpc_connection;
 use wallet::PubkeyScript;
 
 use farcaster_core::{
+    bitcoin::Bitcoin, monero::Monero,
     protocol_message::CommitAliceSessionParams,
-    bitcoin::Bitcoin,
-    monero::Monero,
 };
 
-#[derive(Clone, Debug, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[non_exhaustive]
 pub enum FarMsgs {
-    CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>)
+    CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>),
 }
+
+impl std::fmt::Display for FarMsgs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 
 use crate::ServiceId;
 
@@ -68,6 +73,7 @@ pub enum Request {
     #[lnp_api(type = 3)]
     #[display("send_message({0})")]
     FarMsgs(FarMsgs),
+
 
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 100)]
