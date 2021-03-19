@@ -25,7 +25,7 @@ use farcaster_node::{Config, LogStyle};
 use microservices::shell::Exec;
 
 fn main() {
-    println!("lnp-cli: command-line tool for working with LNP node");
+    println!("swap-cli: command-line tool for working with Farcaster node");
 
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);

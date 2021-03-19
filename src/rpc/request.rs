@@ -32,7 +32,6 @@ use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
-
 use farcaster_core::{
     bitcoin::Bitcoin, monero::Monero,
     protocol_message::CommitAliceSessionParams,
@@ -41,6 +40,38 @@ use farcaster_core::{
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 pub enum FarMsgs {
+    // Part I: Generic messages outside of channel operations
+    // ======================================================
+    /// Once authentication is complete, the first message reveals the features
+    /// supported or required by this node, even if this is a reconnection.
+    // #[lnp_api(type = 16)]
+    // #[display(inner)]
+    Init(message::Init),
+
+    /// For simplicity of diagnosis, it's often useful to tell a peer that
+    /// something is incorrect.
+    // #[lnp_api(type = 17)]
+    // #[display(inner)]
+    Error(message::Error),
+
+    /// In order to allow for the existence of long-lived TCP connections, at
+    /// times it may be required that both ends keep alive the TCP connection
+    /// at the application level. Such messages also allow obfuscation of
+    /// traffic patterns.
+    // #[lnp_api(type = 18)]
+    // #[display(inner)]
+    Ping(message::Ping),
+
+    /// The pong message is to be sent whenever a ping message is received. It
+    /// serves as a reply and also serves to keep the connection alive, while
+    /// explicitly notifying the other end that the receiver is still active.
+    /// Within the received ping message, the sender will specify the number of
+    /// bytes to be included within the data payload of the pong message.
+    // #[lnp_api(type = 19)]
+    // #[display("pong(...)")]
+    Pong(Vec<u8>),
+
+
     CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>),
 }
 

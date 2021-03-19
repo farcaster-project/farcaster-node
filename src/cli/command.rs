@@ -69,11 +69,14 @@ impl Exec for Command {
                 runtime.request(ServiceId::Farcasterd, Request::ListPeers)?;
                 runtime.report_response()?;
             }
-
-            Command::Channels => {
+            Command::Ls => {
                 runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
                 runtime.report_response()?;
             }
+            // Command::FarMsg{swapid} => {
+            //     runtime.request(ServiceId::Peer(swapid), Request::ListSwaps)?;
+            //     runtime.report_response()?;
+            // }
 
             Command::Listen {
                 ip_addr,

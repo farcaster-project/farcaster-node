@@ -15,6 +15,7 @@
 mod client;
 mod reply;
 pub mod request;
+pub mod messages;
 
 pub use client::Client;
 pub use reply::Reply;

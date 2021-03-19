@@ -23,11 +23,11 @@ use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 #[cfg(feature = "rgb")]
 use rgb::ContractId;
 
-/// Command-line tool for working with LNP node
+/// Command-line tool for working with Farcaster node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(
-    name = "lnp-cli",
-    bin_name = "lnp-cli",
+    name = "swap-cli",
+    bin_name = "swap-cli",
     author,
     version,
     setting = AppSettings::ColoredHelp
@@ -103,8 +103,11 @@ pub enum Command {
     /// Lists existing peer connections
     Peers,
 
-    /// Lists existing channels
-    Channels,
+    /// Lists existing swaps
+    Ls,
+
+    /// Test farcaster messages
+    FarMsg { swapid: SwapId },
 
     /// Proposes a new channel to the remote peer, which must be already
     /// connected.
@@ -145,8 +148,8 @@ pub enum Command {
         amount: u64,
     },
 
-    /// Create an invoice
-    Invoice {
+    /// Create an Offer
+    Offer {
         /// Asset amount to invoice, in atomic unit (satoshis or smallest asset
         /// unit type)
         amount: u64,
