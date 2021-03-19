@@ -2,7 +2,7 @@
 name = "farcaster_node"
 description = "Farcaster node"
 version = "0.0.1"
-authors = ["Dr. Maxim Orlovsky <orlovsky@pandoracore.com>"]
+authors = ["Farcaster devs", "Dr. Maxim Orlovsky <orlovsky@pandoracore.com>"]
 license = "MIT"
 keywords = ["bitcoin", "monero", "node", "atomic swaps" ]
 edition = "2018"
@@ -26,7 +26,7 @@ name = "swapd"
 required-features = ["server"]
 
 [[bin]]
-name = "lnp-cli"
+name = "swap-cli"
 required-features = ["cli"]
 
 [dependencies]
