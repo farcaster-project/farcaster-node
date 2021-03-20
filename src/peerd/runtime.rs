@@ -284,7 +284,7 @@ impl Runtime {
         match request {
             Request::UpdateSwapId(channel_id) => {
                 debug!(
-                    "Renaming channeld service from temporary id {:#} to channel id #{:#}",
+                    "Renaming swapd service from temporary id {:#} to swap id #{:#}",
                     source, channel_id
                 );
                 self.routing.remove(&source);
@@ -310,21 +310,14 @@ impl Runtime {
                         .as_secs(),
                     messages_sent: self.messages_sent,
                     messages_received: self.messages_received,
-                    channels: self
-                        .routing
-                        .keys()
-                        .filter_map(|id| {
-                            if let ServiceId::Swap(channel_id) = id {
-                                Some(channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
                     connected: !self.connect,
                     awaits_pong: self.awaited_pong.is_some(),
                 };
                 self.send_ctl(senders, source, Request::PeerInfo(info))?;
+            }
+
+            Request::PingPeer => {
+                self.handle_bridge(senders, source, request)?;
             }
 
             _ => {
@@ -351,6 +344,7 @@ impl Runtime {
         }
 
         match &request {
+
             Request::PingPeer => {
                 self.ping()?;
             }
@@ -425,9 +419,6 @@ impl Runtime {
             ))
             | Request::PeerMessage(Messages::UpdateFailMalformedHtlc(
                 message::UpdateFailMalformedHtlc { channel_id, .. },
-            ))
-            | Request::PeerMessage(Messages::AssignFunds(
-                message::AssignFunds { channel_id, .. },
             )) => {
                 let channeld: ServiceId = channel_id.clone().into();
                 senders.send_to(

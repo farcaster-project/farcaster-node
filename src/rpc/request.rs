@@ -24,15 +24,63 @@ use std::time::Duration;
 use bitcoin::{secp256k1, OutPoint};
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{
+    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
+};
 use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
+use farcaster_core::{
+    bitcoin::Bitcoin, monero::Monero,
+    protocol_message::CommitAliceSessionParams,
+};
 
-#[cfg(feature = "rgb")]
-use rgb::Consignment;
+#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+pub enum FarMsgs {
+    // Part I: Generic messages outside of channel operations
+    // ======================================================
+    /// Once authentication is complete, the first message reveals the features
+    /// supported or required by this node, even if this is a reconnection.
+    // #[lnp_api(type = 16)]
+    // #[display(inner)]
+    Init(message::Init),
+
+    /// For simplicity of diagnosis, it's often useful to tell a peer that
+    /// something is incorrect.
+    // #[lnp_api(type = 17)]
+    // #[display(inner)]
+    Error(message::Error),
+
+    /// In order to allow for the existence of long-lived TCP connections, at
+    /// times it may be required that both ends keep alive the TCP connection
+    /// at the application level. Such messages also allow obfuscation of
+    /// traffic patterns.
+    // #[lnp_api(type = 18)]
+    // #[display(inner)]
+    Ping(message::Ping),
+
+    /// The pong message is to be sent whenever a ping message is received. It
+    /// serves as a reply and also serves to keep the connection alive, while
+    /// explicitly notifying the other end that the receiver is still active.
+    /// Within the received ping message, the sender will specify the number of
+    /// bytes to be included within the data payload of the pong message.
+    // #[lnp_api(type = 19)]
+    // #[display("pong(...)")]
+    Pong(Vec<u8>),
+
+
+    CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>),
+}
+
+impl std::fmt::Display for FarMsgs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 
 use crate::ServiceId;
 
@@ -53,6 +101,11 @@ pub enum Request {
     #[display("send_message({0})")]
     PeerMessage(Messages),
 
+    #[lnp_api(type = 3)]
+    #[display("send_message({0})")]
+    FarMsgs(FarMsgs),
+
+
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 100)]
     #[display("get_info()")]
@@ -66,7 +119,7 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 102)]
     #[display("list_channels()")]
-    ListChannels,
+    ListSwaps,
 
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 200)]
@@ -86,26 +139,15 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 203)]
     #[display("create_channel_with(...)")]
-    OpenChannelWith(CreateChannel),
+    OpenSwapWith(CreateSwap),
 
     #[lnp_api(type = 204)]
     #[display("accept_channel_from(...)")]
-    AcceptChannelFrom(CreateChannel),
+    AcceptSwapFrom(CreateSwap),
 
     #[lnp_api(type = 205)]
     #[display("fund_channel({0})")]
-    FundChannel(OutPoint),
-
-    // Can be issued from `cli` to a specific `peerd`
-    #[cfg(feature = "rgb")]
-    #[lnp_api(type = 206)]
-    #[display("refill_channel({0})")]
-    RefillChannel(RefillChannel),
-
-    // Can be issued from `cli` to a specific `peerd`
-    #[lnp_api(type = 207)]
-    #[display("transfer({0})")]
-    Transfer(Transfer),
+    FundSwap(OutPoint),
 
     /* TODO: Activate after lightning-invoice library update
     // Can be issued from `cli` to a specific `peerd`
@@ -141,7 +183,7 @@ pub enum Request {
     #[lnp_api(type = 1102)]
     #[display("channel_info({0})", alt = "{0:#}")]
     #[from]
-    ChannelInfo(ChannelInfo),
+    SwapInfo(SwapInfo),
 
     #[lnp_api(type = 1103)]
     #[display("peer_list({0})", alt = "{0:#}")]
@@ -151,12 +193,12 @@ pub enum Request {
     #[lnp_api(type = 1104)]
     #[display("channel_list({0})", alt = "{0:#}")]
     #[from]
-    ChannelList(List<SwapId>),
+    SwapList(List<SwapId>),
 
     #[lnp_api(type = 1203)]
     #[display("channel_funding({0})", alt = "{0:#}")]
     #[from]
-    ChannelFunding(PubkeyScript),
+    SwapFunding(PubkeyScript),
 }
 
 impl rpc_connection::Request for Request {}
@@ -164,29 +206,10 @@ impl rpc_connection::Request for Request {}
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{peerd}, ...")]
-pub struct CreateChannel {
-    pub channel_req: message::OpenChannel,
+pub struct CreateSwap {
+    pub swap_req: message::OpenChannel,
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("{amount} {asset:?} to {channeld}")]
-pub struct Transfer {
-    pub channeld: ServiceId,
-    pub amount: u64,
-    pub asset: Option<AssetId>,
-}
-
-#[cfg(feature = "rgb")]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("{outpoint}, {blinding}, ...")]
-pub struct RefillChannel {
-    pub consignment: Consignment,
-    pub outpoint: OutPoint,
-    pub blinding: u64,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -207,7 +230,7 @@ pub struct NodeInfo {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub peers: Vec<NodeAddr>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub channels: Vec<SwapId>,
+    pub swaps: Vec<SwapId>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -231,8 +254,6 @@ pub struct PeerInfo {
     pub since: u64,
     pub messages_sent: usize,
     pub messages_received: usize,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub channels: Vec<SwapId>,
     pub connected: bool,
     pub awaits_pong: bool,
 }
@@ -248,8 +269,8 @@ pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
     serde(crate = "serde_crate")
 )]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display(ChannelInfo::to_yaml_string)]
-pub struct ChannelInfo {
+#[display(SwapInfo::to_yaml_string)]
+pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub channel_id: Option<SwapId>,
     #[serde_as(as = "DisplayFromStr")]
@@ -287,7 +308,7 @@ impl ToYamlString for NodeInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for PeerInfo {}
 #[cfg(feature = "serde")]
-impl ToYamlString for ChannelInfo {}
+impl ToYamlString for SwapInfo {}
 
 #[derive(
     Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode,

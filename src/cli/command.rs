@@ -19,11 +19,6 @@ use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
-#[cfg(feature = "rgb")]
-use rgb::Consignment;
-#[cfg(feature = "rgb")]
-use rgb_node::util::file::ReadWrite;
-
 use super::Command;
 use crate::rpc::{request, Client, Request};
 use crate::{Error, LogStyle, ServiceId};
@@ -44,7 +39,7 @@ impl Exec for Command {
                         )?;
                     } else if let Ok(channel_id) = SwapId::from_str(subj) {
                         runtime.request(
-                            ServiceId::Swap(channel_id),
+                            ServiceId::Swaps(channel_id),
                             Request::GetInfo,
                         )?;
                     } else {
@@ -62,7 +57,7 @@ impl Exec for Command {
                 match runtime.response()? {
                     Request::NodeInfo(info) => println!("{}", info),
                     Request::PeerInfo(info) => println!("{}", info),
-                    Request::ChannelInfo(info) => println!("{}", info),
+                    Request::SwapInfo(info) => println!("{}", info),
                     _ => Err(Error::Other(format!(
                         "{}",
                         "Server returned unrecognizable response"
@@ -75,8 +70,8 @@ impl Exec for Command {
                 runtime.report_response()?;
             }
 
-            Command::Channels => {
-                runtime.request(ServiceId::Farcasterd, Request::ListChannels)?;
+            Command::Ls => {
+                runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
                 runtime.report_response()?;
             }
 
@@ -87,7 +82,8 @@ impl Exec for Command {
             } => {
                 let socket =
                     RemoteSocketAddr::with_ip_addr(*overlay, *ip_addr, *port);
-                runtime.request(ServiceId::Farcasterd, Request::Listen(socket))?;
+                runtime
+                    .request(ServiceId::Farcasterd, Request::Listen(socket))?;
                 runtime.report_progress()?;
             }
 
@@ -96,7 +92,10 @@ impl Exec for Command {
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
                     .expect("Provided node address is invalid");
 
-                runtime.request(ServiceId::Farcasterd, Request::ConnectPeer(peer))?;
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::ConnectPeer(peer),
+                )?;
                 runtime.report_progress()?;
             }
 
@@ -108,129 +107,6 @@ impl Exec for Command {
                 runtime
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
             }
-
-            Command::Propose {
-                peer,
-                funding_satoshis,
-            } => {
-                let node_addr = peer
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .expect("Provided node address is invalid");
-
-                runtime.request(
-                    ServiceId::Farcasterd,
-                    Request::OpenChannelWith(request::CreateChannel {
-                        channel_req: message::OpenChannel {
-                            funding_satoshis: *funding_satoshis,
-                            // The rest of parameters will be filled in by the
-                            // daemon
-                            ..dumb!()
-                        },
-                        peerd: ServiceId::Peer(node_addr),
-                        report_to: Some(runtime.identity()),
-                    }),
-                )?;
-                runtime.report_progress()?;
-                match runtime.response()? {
-                    Request::ChannelFunding(pubkey_script) => {
-                        let address =
-                            bitcoin::Network::try_from(runtime.chain())
-                                .ok()
-                                .and_then(|network| {
-                                    pubkey_script.address(network)
-                                });
-                        match address {
-                            None => {
-                                eprintln!(
-                                    "{}", 
-                                    "Can't generate funding address for a given network".err()
-                                );
-                                println!(
-                                    "{}\nAssembly: {}\nHex: {:x}",
-                                    "Please transfer channel funding to an output \
-                                     with the following raw `scriptPubkey`"
-                                        .progress(),
-                                    pubkey_script,
-                                    pubkey_script,
-                                );
-                            }
-                            Some(address) => {
-                                println!(
-                                    "{} {}",
-                                    "Please transfer channel funding to "
-                                        .progress(),
-                                    address.ended()
-                                );
-                            }
-                        }
-                    }
-                    other => {
-                        eprintln!(
-                            "{} {} {}",
-                            "Unexpected server response".err(),
-                            other,
-                            "while waiting for channel funding information"
-                                .err()
-                        );
-                    }
-                }
-            }
-
-            Command::Fund {
-                channel,
-                funding_outpoint,
-            } => {
-                runtime.request(
-                    channel.clone().into(),
-                    Request::FundChannel(*funding_outpoint),
-                )?;
-                runtime.report_progress()?;
-            }
-
-            Command::Transfer {
-                channel,
-                amount,
-                asset,
-            } => {
-                runtime.request(
-                    channel.clone().into(),
-                    Request::Transfer(request::Transfer {
-                        channeld: channel.clone().into(),
-                        amount: *amount,
-                        asset: asset.map(|id| id.into()),
-                    }),
-                )?;
-                runtime.report_progress()?;
-            }
-
-            #[cfg(feature = "rgb")]
-            Command::Refill {
-                channel,
-                consignment,
-                outpoint,
-                blinding_factor,
-            } => {
-                trace!("Reading consignment from file {:?}", &consignment);
-                let consignment = Consignment::read_file(consignment.clone())
-                    .map_err(|err| {
-                    Error::Other(format!(
-                        "Error in consignment encoding: {}",
-                        err
-                    ))
-                })?;
-                trace!("Outpoint parsed as {}", outpoint);
-
-                runtime.request(
-                    channel.clone().into(),
-                    Request::RefillChannel(request::RefillChannel {
-                        consignment,
-                        outpoint: *outpoint,
-                        blinding: *blinding_factor,
-                    }),
-                )?;
-                runtime.report_progress()?;
-            }
-
             _ => unimplemented!(),
         }
         Ok(())

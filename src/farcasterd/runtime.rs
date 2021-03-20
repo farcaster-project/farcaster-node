@@ -24,7 +24,9 @@ use std::time::{Duration, SystemTime};
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{
+    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
+};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
@@ -41,10 +43,10 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
-        channels: none!(),
+        swaps: none!(),
         spawning_services: none!(),
-        opening_channels: none!(),
-        accepting_channels: none!(),
+        opening_swaps: none!(),
+        accepting_swaps: none!(),
     };
 
     Service::run(config, runtime, true)
@@ -57,10 +59,10 @@ pub struct Runtime {
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
-    channels: HashSet<SwapId>,
+    swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
-    opening_channels: HashMap<ServiceId, request::CreateChannel>,
-    accepting_channels: HashMap<ServiceId, request::CreateChannel>,
+    opening_swaps: HashMap<ServiceId, request::CreateSwap>,
+    accepting_swaps: HashMap<ServiceId, request::CreateSwap>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -108,9 +110,11 @@ impl Runtime {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
-            Request::PeerMessage(Messages::OpenChannel(open_channel)) => {
-                info!("Creating channel by peer request from {}", source);
-                self.create_channel(source, None, open_channel, true)?;
+            // TODO put offer here
+
+            Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
+                info!("Creating swap by peer request from {}", source);
+                self.create_swap(source, None, open_swap, true)?;
             }
 
             Request::PeerMessage(_) => {
@@ -146,7 +150,8 @@ impl Runtime {
                     ServiceId::Farcasterd => {
                         error!(
                             "{}",
-                            "Unexpected another farcasterd instance connection".err()
+                            "Unexpected another farcasterd instance connection"
+                                .err()
                         );
                     }
                     ServiceId::Peer(connection_id) => {
@@ -165,19 +170,19 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Swap(channel_id) => {
-                        if self.channels.insert(channel_id.clone()) {
+                    ServiceId::Swaps(swap_id) => {
+                        if self.swaps.insert(swap_id.clone()) {
                             info!(
                                 "Swap {} is registered; total {} \
                                  swaps are known",
-                                channel_id,
-                                self.channels.len()
+                                swap_id,
+                                self.swaps.len()
                             );
                         } else {
                             warn!(
-                                "Channel {} was already registered; the \
+                                "Swap {} was already registered; the \
                                  service probably was relaunched",
-                                channel_id
+                                swap_id
                             );
                         }
                     }
@@ -186,18 +191,18 @@ impl Runtime {
                     }
                 }
 
-                if let Some(channel_params) = self.opening_channels.get(&source)
-                {
-                    // Tell channeld channel options and link it with the
+                if let Some(swap_params) = self.opening_swaps.get(&source) {
+                    // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
-                        "Daemon {} is known: we spawned it to create a channel. \
-                         Ordering channel opening", source
+                        "Daemon {} is known: we spawned it to create a swap. \
+                         Ordering swap opening",
+                        source
                     );
                     notify_cli = Some((
-                        channel_params.report_to.clone(),
+                        swap_params.report_to.clone(),
                         Request::Progress(format!(
-                            "Channel daemon {} operational",
+                            "Swap daemon {} operational",
                             source
                         )),
                     ));
@@ -205,25 +210,26 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
-                        Request::OpenChannelWith(channel_params.clone()),
+                        Request::OpenSwapWith(swap_params.clone()),
                     )?;
-                    self.opening_channels.remove(&source);
-                } else if let Some(channel_params) =
-                    self.accepting_channels.get(&source)
+                    self.opening_swaps.remove(&source);
+                } else if let Some(swap_params) =
+                    self.accepting_swaps.get(&source)
                 {
-                    // Tell channeld channel options and link it with the
+                    // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
-                        "Daemon {} is known: we spawned it to create a channel. \
-                         Ordering channel acceptance", source
+                        "Daemon {} is known: we spawned it to create a swap. \
+                         Ordering swap acceptance",
+                        source
                     );
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
-                        Request::AcceptChannelFrom(channel_params.clone()),
+                        Request::AcceptSwapFrom(swap_params.clone()),
                     )?;
-                    self.accepting_channels.remove(&source);
+                    self.accepting_swaps.remove(&source);
                 } else if let Some(enquirer) =
                     self.spawning_services.get(&source)
                 {
@@ -248,15 +254,15 @@ impl Runtime {
                     "Requested to update channel id {} on {}",
                     source, new_id
                 );
-                if let ServiceId::Swap(old_id) = source {
-                    if !self.channels.remove(&old_id) {
-                        warn!("Channel daemon {} was unknown", source);
+                if let ServiceId::Swaps(old_id) = source {
+                    if !self.swaps.remove(&old_id) {
+                        warn!("Swap daemon {} was unknown", source);
                     }
-                    self.channels.insert(new_id);
-                    debug!("Registered channel daemon id {}", new_id);
+                    self.swaps.insert(new_id);
+                    debug!("Registered swap daemon id {}", new_id);
                 } else {
                     error!(
-                        "Chanel id update may be requested only by a channeld, not {}", 
+                        "Swap id update may be requested only by a swapd, not {}", 
                         source
                     );
                 }
@@ -279,7 +285,7 @@ impl Runtime {
                             .unwrap_or(Duration::from_secs(0))
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
-                        channels: self.channels.iter().cloned().collect(),
+                        swaps: self.swaps.iter().cloned().collect(),
                     }),
                 )?;
             }
@@ -295,14 +301,12 @@ impl Runtime {
                 )?;
             }
 
-            Request::ListChannels => {
+            Request::ListSwaps => {
                 senders.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd,
                     source,
-                    Request::ChannelList(
-                        self.channels.iter().cloned().collect(),
-                    ),
+                    Request::SwapList(self.swaps.iter().cloned().collect()),
                 )?;
             }
 
@@ -364,8 +368,8 @@ impl Runtime {
                 ));
             }
 
-            Request::OpenChannelWith(request::CreateChannel {
-                channel_req,
+            Request::OpenSwapWith(request::CreateSwap {
+                swap_req,
                 peerd,
                 report_to,
             }) => {
@@ -374,8 +378,7 @@ impl Runtime {
                     "Creating channel".promo(),
                     source.promoter()
                 );
-                let resp =
-                    self.create_channel(peerd, report_to, channel_req, false);
+                let resp = self.create_swap(peerd, report_to, swap_req, false);
                 match resp {
                     Ok(_) => {}
                     Err(ref err) => error!("{}", err.err()),
@@ -418,7 +421,7 @@ impl Runtime {
 
             debug!("Instantiating peerd...");
 
-            // Start channeld
+            // Start swapd
             let child = launch(
                 "peerd",
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
@@ -443,7 +446,7 @@ impl Runtime {
     ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
 
-        // Start channeld
+        // Start swapd
         let child = launch("peerd", &["--connect", &node_addr.to_string()])?;
         let msg =
             format!("New instance of peerd launched with PID {}", child.id());
@@ -456,36 +459,34 @@ impl Runtime {
         Ok(msg)
     }
 
-    fn create_channel(
+    // FIXME: swapify
+    fn create_swap(
         &mut self,
         source: ServiceId,
         report_to: Option<ServiceId>,
-        mut channel_req: message::OpenChannel,
+        mut swap_req: message::OpenChannel,
         accept: bool,
     ) -> Result<String, Error> {
-        debug!("Instantiating channeld...");
+        debug!("Instantiating swapd...");
 
         // We need to initialize temporary channel id here
         if !accept {
-            channel_req.temporary_channel_id = TempSwapId::random();
+            swap_req.temporary_channel_id = TempSwapId::random();
             debug!(
                 "Generated {} as a temporary channel id",
-                channel_req.temporary_channel_id
+                swap_req.temporary_channel_id
             );
         }
 
-        // Start channeld
-        let child =
-            launch("channeld", &[channel_req.temporary_channel_id.to_hex()])?;
-        let msg = format!(
-            "New instance of channeld launched with PID {}",
-            child.id()
-        );
+        // Start swapd
+        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
+        let msg =
+            format!("New instance of swapd launched with PID {}", child.id());
         info!("{}", msg);
 
         // Construct channel creation request
         let node_key = self.node_id;
-        let channel_req = message::OpenChannel {
+        let swap_req = message::OpenChannel {
             chain_hash: self.chain.clone().chain_params().genesis_hash.into(),
             // TODO: Take these parameters from configuration
             push_msat: 0,
@@ -504,25 +505,25 @@ impl Runtime {
             first_per_commitment_point: node_key,
             channel_flags: 1, // Announce the channel
             // shutdown_scriptpubkey: None,
-            ..channel_req
+            ..swap_req
         };
 
         let list = if accept {
-            &mut self.accepting_channels
+            &mut self.accepting_swaps
         } else {
-            &mut self.opening_channels
+            &mut self.opening_swaps
         };
         list.insert(
-            ServiceId::Swap(SwapId::from_inner(
-                channel_req.temporary_channel_id.into_inner(),
+            ServiceId::Swaps(SwapId::from_inner(
+                swap_req.temporary_channel_id.into_inner(),
             )),
-            request::CreateChannel {
-                channel_req,
+            request::CreateSwap {
+                swap_req,
                 peerd: source,
                 report_to,
             },
         );
-        debug!("Awaiting for channeld to connect...");
+        debug!("Awaiting for swapd to connect...");
 
         Ok(msg)
     }

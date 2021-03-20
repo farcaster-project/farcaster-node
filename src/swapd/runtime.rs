@@ -28,17 +28,15 @@ use internet2::{
 use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
-use lnpbp::seals::OutpointReveal;
+use lnp::{
+    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
+};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use wallet::{HashPreimage, PubkeyScript};
 
-#[cfg(feature = "rgb")]
-use rgb::Consignment;
-
 use super::storage::{self, Driver};
-use crate::rpc::request::ChannelInfo;
+use crate::rpc::request::SwapInfo;
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 
@@ -47,18 +45,9 @@ pub fn run(
     local_node: LocalNode,
     channel_id: SwapId,
     chain: Chain,
-    rgb20_socket_addr: ZmqSocketAddr,
 ) -> Result<(), Error> {
-    let rgb20_rpc = session::Raw::with_zmq_unencrypted(
-        ZmqType::Req,
-        &rgb20_socket_addr,
-        None,
-        None,
-    )?;
-    let rgb_unmarshaller = rgb_node::rpc::Reply::create_unmarshaller();
-
     let runtime = Runtime {
-        identity: ServiceId::Swap(channel_id),
+        identity: ServiceId::Swaps(channel_id),
         peer_service: ServiceId::Loopback,
         local_node,
         chain,
@@ -83,8 +72,6 @@ pub fn run(
         is_originator: false,
         obscuring_factor: 0,
         enquirer: None,
-        rgb20_rpc,
-        rgb_unmarshaller,
         storage: Box::new(storage::DiskDriver::init(
             channel_id,
             Box::new(storage::DiskConfig {
@@ -126,9 +113,6 @@ pub struct Runtime {
     obscuring_factor: u64,
 
     enquirer: Option<ServiceId>,
-    rgb20_rpc: session::Raw<session::PlainTranscoder, zmqsocket::Connection>,
-    rgb_unmarshaller: Unmarshaller<rgb_node::rpc::Reply>,
-
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -195,20 +179,6 @@ impl Runtime {
         Ok(())
     }
 
-    fn request_rbg20(
-        &mut self,
-        request: rgb_node::rpc::fungible::Request,
-    ) -> Result<rgb_node::rpc::Reply, Error> {
-        let data = request.serialize();
-        self.rgb20_rpc.send_raw_message(&data)?;
-        let raw = self.rgb20_rpc.recv_raw_message()?;
-        let reply = &*self.rgb_unmarshaller.unmarshall(&raw)?;
-        if let rgb_node::rpc::Reply::Failure(failure) = reply {
-            error!("{} {}", "RGB Node reported failure:".err(), failure.err())
-        }
-        Ok(reply.clone())
-    }
-
     fn handle_rpc_msg(
         &mut self,
         senders: &mut Senders,
@@ -266,7 +236,7 @@ impl Runtime {
                 let _ = self.send_ctl(
                     senders,
                     &enquirer,
-                    Request::ChannelFunding(script_pubkey),
+                    Request::SwapFunding(script_pubkey),
                 );
             }
 
@@ -373,19 +343,6 @@ impl Runtime {
 
             Request::PeerMessage(Messages::RevokeAndAck(_revoke_ack)) => {}
 
-            #[cfg(feature = "rgb")]
-            Request::PeerMessage(Messages::AssignFunds(assign_req)) => {
-                self.refill(
-                    senders,
-                    assign_req.consignment,
-                    assign_req.outpoint,
-                    assign_req.blinding,
-                    false,
-                )?;
-
-                // TODO: Re-sign the commitment and return to the remote peer
-            }
-
             Request::PeerMessage(_) => {
                 // Ignore the rest of LN peer messages
             }
@@ -410,8 +367,8 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::OpenChannelWith(request::CreateChannel {
-                channel_req,
+            Request::OpenSwapWith(request::CreateSwap {
+                swap_req: channel_req,
                 peerd,
                 report_to,
             }) => {
@@ -438,8 +395,8 @@ impl Runtime {
                 self.state = Lifecycle::Proposed;
             }
 
-            Request::AcceptChannelFrom(request::CreateChannel {
-                channel_req,
+            Request::AcceptSwapFrom(request::CreateSwap {
+                swap_req: channel_req,
                 peerd,
                 report_to,
             }) => {
@@ -471,7 +428,7 @@ impl Runtime {
                 self.state = Lifecycle::Accepted;
             }
 
-            Request::FundChannel(funding_outpoint) => {
+            Request::FundSwap(funding_outpoint) => {
                 self.enquirer = source.into();
 
                 let funding_created =
@@ -481,39 +438,6 @@ impl Runtime {
                 self.send_peer(
                     senders,
                     Messages::FundingCreated(funding_created),
-                )?;
-            }
-
-            #[cfg(feature = "rgb")]
-            Request::RefillChannel(refill_req) => {
-                self.enquirer = source.into();
-
-                self.refill(
-                    senders,
-                    refill_req.consignment.clone(),
-                    refill_req.outpoint,
-                    refill_req.blinding,
-                    true,
-                )?;
-
-                let assign_funds = message::AssignFunds {
-                    channel_id: self.channel_id,
-                    consignment: refill_req.consignment,
-                    outpoint: refill_req.outpoint,
-                    blinding: refill_req.blinding,
-                };
-
-                self.send_peer(senders, Messages::AssignFunds(assign_funds))?;
-            }
-
-            Request::Transfer(transfer_req) => {
-                self.enquirer = source.into();
-
-                let update_add_htlc = self.transfer(senders, transfer_req)?;
-
-                self.send_peer(
-                    senders,
-                    Messages::UpdateAddHtlc(update_add_htlc),
                 )?;
             }
 
@@ -536,7 +460,7 @@ impl Runtime {
                 } else {
                     Some(self.channel_id)
                 };
-                let info = ChannelInfo {
+                let info = SwapInfo {
                     channel_id,
                     temporary_channel_id: self.temporary_channel_id,
                     state: self.state,
@@ -573,7 +497,7 @@ impl Runtime {
                     local_keys: self.local_keys.clone(),
                     remote_keys: bmap(&self.remote_peer, &self.remote_keys),
                 };
-                self.send_ctl(senders, source, Request::ChannelInfo(info))?;
+                self.send_ctl(senders, source, Request::SwapInfo(info))?;
             }
 
             _ => {
@@ -899,149 +823,6 @@ impl Runtime {
         // with_hashtype.push(SigHashType::All.as_u32() as u8);
 
         signature
-    }
-
-    pub fn transfer(
-        &mut self,
-        senders: &mut Senders,
-        transfer_req: request::Transfer,
-    ) -> Result<message::UpdateAddHtlc, Error> {
-        let enquirer = self.enquirer.clone();
-
-        let available = if let Some(asset_id) = transfer_req.asset {
-            self.local_balances.get(&asset_id).copied().unwrap_or(0)
-        } else {
-            self.local_capacity
-        };
-
-        if available < transfer_req.amount {
-            Err(Error::Other(s!(
-                "You do not have required amount of the asset"
-            )))?
-        }
-
-        info!(
-            "{} {} {} to the remote peer",
-            "Transferring".promo(),
-            transfer_req.amount.promoter(),
-            transfer_req
-                .asset
-                .map(|a| a.to_string())
-                .unwrap_or(s!("msat"))
-                .promoter(),
-        );
-
-        let preimage = HashPreimage::random();
-        let payment_hash = preimage.into();
-        let htlc = HtlcKnown {
-            preimage,
-            id: self.total_payments,
-            cltv_expiry: 0,
-            amount: transfer_req.amount,
-            asset_id: transfer_req.asset,
-        };
-        trace!("Generated HTLC: {:?}", htlc);
-        self.offered_htlc.push(htlc);
-
-        let update_add_htlc = message::UpdateAddHtlc {
-            channel_id: self.channel_id,
-            htlc_id: htlc.id,
-            amount_msat: transfer_req.amount,
-            payment_hash,
-            cltv_expiry: htlc.cltv_expiry,
-            onion_routing_packet: dumb!(), // TODO: Generate proper onion packet
-            asset_id: transfer_req.asset,
-        };
-        self.total_payments += 1;
-        match transfer_req.asset {
-            Some(asset_id) => {
-                self.local_balances.get_mut(&asset_id).map(|balance| {
-                    *balance -= transfer_req.amount;
-                });
-
-                let entry = self.remote_balances.entry(asset_id).or_insert(0);
-                *entry += transfer_req.amount;
-            }
-            None => {
-                self.local_capacity -= transfer_req.amount;
-                self.remote_capacity += transfer_req.amount;
-            }
-        }
-
-        let msg = format!("{}", "Funding transferred".ended());
-        info!("{}", msg);
-        let _ = self.report_progress_to(senders, &enquirer, msg);
-
-        Ok(update_add_htlc)
-    }
-
-    #[cfg(feature = "rgb")]
-    pub fn refill(
-        &mut self,
-        senders: &mut Senders,
-        consignment: Consignment,
-        outpoint: OutPoint,
-        blinding: u64,
-        refill_originator: bool,
-    ) -> Result<(), Error> {
-        let enquirer = self.enquirer.clone();
-
-        debug!("Validating consignment with RGB Node ...");
-        self.request_rbg20(rgb_node::rpc::fungible::Request::Validate(
-            consignment.clone(),
-        ))?;
-
-        debug!("Adding consignment to stash via RGB Node ...");
-        self.request_rbg20(rgb_node::rpc::fungible::Request::Accept(
-            rgb_node::rpc::fungible::AcceptApi {
-                consignment: consignment.clone(),
-                reveal_outpoints: vec![OutpointReveal {
-                    blinding: blinding,
-                    txid: outpoint.txid,
-                    vout: outpoint.vout,
-                }],
-            },
-        ))?;
-
-        debug!("Requesting new balances for {} ...", outpoint);
-        match self
-            .request_rbg20(rgb_node::rpc::fungible::Request::Assets(outpoint))?
-        {
-            rgb_node::rpc::Reply::Assets(balances) => {
-                for (id, balances) in balances {
-                    let asset_id = AssetId::from(id);
-                    let balance: u64 = balances.into_iter().sum();
-                    info!(
-                        "{} {} of {} to balance",
-                        "Adding".promo(),
-                        balance.promoter(),
-                        asset_id.promoter()
-                    );
-                    let msg = format!(
-                        "adding {} of {} to balance",
-                        balance.ender(),
-                        asset_id.ender()
-                    );
-                    let _ = self.report_progress_to(senders, &enquirer, msg);
-
-                    if refill_originator {
-                        self.local_balances.insert(asset_id, balance);
-                        self.remote_balances.insert(asset_id, 0);
-                    } else {
-                        self.remote_balances.insert(asset_id, balance);
-                        self.local_balances.insert(asset_id, 0);
-                    };
-                }
-            }
-            _ => Err(Error::Other(s!("Unrecognized RGB Node response")))?,
-        }
-
-        let _ = self.report_success_to(
-            senders,
-            &enquirer,
-            Some("transfer completed"),
-        );
-        Ok(())
     }
 
     pub fn htlc_receive(

@@ -17,17 +17,16 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use bitcoin::OutPoint;
+use bitcoin::{OutPoint, Network};
 use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
-#[cfg(feature = "rgb")]
-use rgb::ContractId;
 
-/// Command-line tool for working with LNP node
+
+/// Command-line tool for working with Farcaster node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(
-    name = "lnp-cli",
-    bin_name = "lnp-cli",
+    name = "swap-cli",
+    bin_name = "swap-cli",
     author,
     version,
     setting = AppSettings::ColoredHelp
@@ -49,10 +48,20 @@ impl Opts {
     }
 }
 
+// TODO: when ready in core, use real offer
+#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+pub struct Offer;
+
+impl std::fmt::Display for Offer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
-    /// Bind to a socket and start listening for incoming LN peer connections
+    /// Bind to a socket and start listening for incoming LN peer connections, Maker's action
     #[display("listen<{overlay}://{ip_addr}:{port}>")]
     Listen {
         /// IPv4 or IPv6 address to bind to
@@ -68,7 +77,7 @@ pub enum Command {
         overlay: FramingProtocol,
     },
 
-    /// Connect to the remote lightning network peer
+    /// Connect to the remote lightning network peer, Taker's action
     Connect {
         /// Address of the remote node, in
         /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
@@ -89,108 +98,20 @@ pub enum Command {
         subject: Option<String>,
     },
 
-    /*
-    /// Lists all funds available for channel creation for given list of assets
-    /// and provides information about funding points (bitcoin address or UTXO
-    /// for RGB assets)
-    Funds {
-        /// Space-separated list of asset identifiers or tickers. If none are
-        /// given lists all avaliable assets
-        #[clap()]
-        asset: Vec<String>,
-    },
-     */
     /// Lists existing peer connections
     Peers,
 
-    /// Lists existing channels
-    Channels,
+    /// Lists running swaps
+    Ls,
 
-    /// Proposes a new channel to the remote peer, which must be already
-    /// connected.
-    ///
-    /// Bitcoins will be added after the channel acceptance with `fund`
-    /// command. RGB assets are added to the channel later with `refill``
-    /// command
-    Propose {
-        /// Address of the remote node, in
-        /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
-        peer: PartialNodeAddr,
+    /// Test farcaster messages
+    FarMsg { swapid: SwapId },
 
-        /// Amount of satoshis to allocate to the channel (the actual
-        /// allocation will happen later using `fund` command after the
-        /// channel acceptance)
-        funding_satoshis: u64,
-    },
+    /// Create an maker's offer
+    MakeOffer(Offer),
 
-    /// Fund new channel (which must be already accepted by the remote peer)
-    /// with bitcoins.
-    Fund {
-        /// Accepted channel to which the funding must be added
-        channel: TempSwapId,
-
-        /// Outpoint (in form of <txid>:<output_no>) which will be used as a
-        /// channel funding. Output `scriptPubkey` must be equal to the one
-        /// provided by the `propose` command.
-        funding_outpoint: OutPoint,
-    },
-
-    /// Adds RGB assets to an existing channel
-    #[cfg(feature = "rgb")]
-    Refill {
-        /// Channel to which the funding must be added
-        channel: SwapId,
-
-        /// Consignment file to read containing information about transfer of
-        /// RGB20 asset to the funding transaction output
-        consignment: PathBuf,
-
-        /// Locally-controlled outpoint (specified when the invoice was
-        /// created)
-        outpoint: OutPoint,
-
-        /// Outpoint blinding factor (generated when the invoice was created)
-        blinding_factor: u64,
-    },
-
-    /// Do an invoiceless direct payment
-    Transfer {
-        /// Channel to which the funding must be added
-        channel: SwapId,
-
-        /// Asset amount to invoice, in atomic unit (satoshis or smallest asset
-        /// unit type)
-        amount: u64,
-
-        /// Asset ticker in which the invoice should be issued
-        #[cfg(feature = "rgb")]
-        #[clap(short, long)]
-        asset: Option<ContractId>,
-    },
-
-    /// Create an invoice
-    Invoice {
-        /// Asset amount to invoice, in atomic unit (satoshis or smallest asset
-        /// unit type)
-        amount: u64,
-
-        /// Asset ticker in which the invoice should be issued
-        #[clap(default_value = "btc")]
-        asset: String,
-    },
-
-    /// Pay the invoice
-    Pay {
-        /// Invoice bech32 string
-        #[clap()]
-        // TODO: Replace with `Invoice` type once our fix will get merged:
-        //       <<https://github.com/rust-bitcoin/rust-lightning-invoice/pull/43>>
-        invoice: String,
-
-        /// Channel from which the payment should happen
-        #[clap()]
-        channel: SwapId,
-    },
+    /// Takers accepts offer
+    TakeOffer(Offer),
 }
 
 #[derive(

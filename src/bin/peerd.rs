@@ -102,11 +102,11 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
 use bitcoin::secp256k1::PublicKey;
+use farcaster_node::peerd::{self, Opts};
+use farcaster_node::{Config, LogStyle};
 use internet2::{
     session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr,
 };
-use lnp_node::peerd::{self, Opts};
-use lnp_node::{Config, LogStyle};
 use microservices::peer::PeerConnection;
 
 /*

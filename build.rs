@@ -25,7 +25,7 @@ pub mod opts {
 pub mod cli {
     include!("src/cli/opts.rs");
 }
-pub mod lnpd {
+pub mod farcasterd {
     include!("src/farcasterd/opts.rs");
 }
 pub mod peerd {
@@ -39,7 +39,7 @@ fn main() -> Result<(), configure_me_codegen::Error> {
     let outdir = "./shell";
 
     for app in [
-        lnpd::Opts::into_app(),
+        farcasterd::Opts::into_app(),
         peerd::Opts::into_app(),
         swapd::Opts::into_app(),
         cli::Opts::into_app(),

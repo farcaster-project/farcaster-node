@@ -19,13 +19,13 @@ extern crate log;
 
 use clap::Clap;
 
-use lnp_node::cli::Opts;
-use lnp_node::rpc::Client;
-use lnp_node::{Config, LogStyle};
+use farcaster_node::cli::Opts;
+use farcaster_node::rpc::Client;
+use farcaster_node::{Config, LogStyle};
 use microservices::shell::Exec;
 
 fn main() {
-    println!("lnp-cli: command-line tool for working with LNP node");
+    println!("swap-cli: command-line tool for working with Farcaster node");
 
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);

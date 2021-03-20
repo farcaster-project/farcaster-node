@@ -31,8 +31,8 @@ extern crate log;
 
 use clap::Clap;
 
-use lnp_node::farcasterd::{self, Opts};
-use lnp_node::{Config, LogStyle};
+use farcaster_node::farcasterd::{self, Opts};
+use farcaster_node::{Config, LogStyle};
 
 fn main() {
     println!("farcasterd: farcaster node management microservice");
