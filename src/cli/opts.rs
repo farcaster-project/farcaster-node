@@ -17,11 +17,10 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use bitcoin::OutPoint;
+use bitcoin::{OutPoint, Network};
 use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
-#[cfg(feature = "rgb")]
-use rgb::ContractId;
+
 
 /// Command-line tool for working with Farcaster node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
@@ -46,6 +45,16 @@ pub struct Opts {
 impl Opts {
     pub fn process(&mut self) {
         self.shared.process()
+    }
+}
+
+// TODO: when ready in core, use real offer
+#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+pub struct Offer;
+
+impl std::fmt::Display for Offer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -130,10 +139,10 @@ pub enum Command {
     /// with bitcoins.
     Fund {
         /// Accepted channel to which the funding must be added
-        channel: TempSwapId,
+        swap: TempSwapId,
 
         /// Outpoint (in form of <txid>:<output_no>) which will be used as a
-        /// channel funding. Output `scriptPubkey` must be equal to the one
+        /// swap funding. Output `scriptPubkey` must be equal to the one
         /// provided by the `propose` command.
         funding_outpoint: OutPoint,
     },
@@ -148,16 +157,8 @@ pub enum Command {
         amount: u64,
     },
 
-    /// Create an Offer
-    Offer {
-        /// Asset amount to invoice, in atomic unit (satoshis or smallest asset
-        /// unit type)
-        amount: u64,
-
-        /// Asset ticker in which the invoice should be issued
-        #[clap(default_value = "btc")]
-        asset: String,
-    },
+    /// Create an maker's offer
+    Offer(Offer),
 
     /// Pay the invoice
     Pay {
