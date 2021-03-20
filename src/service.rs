@@ -96,7 +96,7 @@ pub enum ServiceId {
     #[display("channel<{0:#x}>")]
     #[from]
     #[from(TempSwapId)]
-    Swap(SwapId),
+    Swaps(SwapId),
 
     #[display("client<{0}>")]
     Client(u64),

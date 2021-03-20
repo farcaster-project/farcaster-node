@@ -110,6 +110,8 @@ impl Runtime {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
+            // TODO put offer here
+
             Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
                 info!("Creating swap by peer request from {}", source);
                 self.create_swap(source, None, open_swap, true)?;
@@ -168,7 +170,7 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Swap(swap_id) => {
+                    ServiceId::Swaps(swap_id) => {
                         if self.swaps.insert(swap_id.clone()) {
                             info!(
                                 "Swap {} is registered; total {} \
@@ -252,7 +254,7 @@ impl Runtime {
                     "Requested to update channel id {} on {}",
                     source, new_id
                 );
-                if let ServiceId::Swap(old_id) = source {
+                if let ServiceId::Swaps(old_id) = source {
                     if !self.swaps.remove(&old_id) {
                         warn!("Swap daemon {} was unknown", source);
                     }
@@ -512,7 +514,7 @@ impl Runtime {
             &mut self.opening_swaps
         };
         list.insert(
-            ServiceId::Swap(SwapId::from_inner(
+            ServiceId::Swaps(SwapId::from_inner(
                 swap_req.temporary_channel_id.into_inner(),
             )),
             request::CreateSwap {

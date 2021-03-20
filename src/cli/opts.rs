@@ -61,7 +61,7 @@ impl std::fmt::Display for Offer {
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
-    /// Bind to a socket and start listening for incoming LN peer connections
+    /// Bind to a socket and start listening for incoming LN peer connections, Maker's action
     #[display("listen<{overlay}://{ip_addr}:{port}>")]
     Listen {
         /// IPv4 or IPv6 address to bind to
@@ -77,7 +77,7 @@ pub enum Command {
         overlay: FramingProtocol,
     },
 
-    /// Connect to the remote lightning network peer
+    /// Connect to the remote lightning network peer, Taker's action
     Connect {
         /// Address of the remote node, in
         /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
@@ -98,44 +98,16 @@ pub enum Command {
         subject: Option<String>,
     },
 
-    /*
-    /// Lists all funds available for channel creation for given list of assets
-    /// and provides information about funding points (bitcoin address or UTXO
-    /// for RGB assets)
-    Funds {
-        /// Space-separated list of asset identifiers or tickers. If none are
-        /// given lists all avaliable assets
-        #[clap()]
-        asset: Vec<String>,
-    },
-     */
     /// Lists existing peer connections
     Peers,
 
-    /// Lists existing swaps
+    /// Lists running swaps
     Ls,
 
     /// Test farcaster messages
     FarMsg { swapid: SwapId },
 
-    /// Proposes a new channel to the remote peer, which must be already
-    /// connected.
-    ///
-    /// Bitcoins will be added after the channel acceptance with `fund`
-    /// command. RGB assets are added to the channel later with `refill``
-    /// command
-    Propose {
-        /// Address of the remote node, in
-        /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
-        peer: PartialNodeAddr,
-
-        /// Amount of satoshis to allocate to the channel (the actual
-        /// allocation will happen later using `fund` command after the
-        /// channel acceptance)
-        funding_satoshis: u64,
-    },
-
-    /// Fund new channel (which must be already accepted by the remote peer)
+    /// Fund a new swap (which must be already accepted by the remote peer)
     /// with bitcoins.
     Fund {
         /// Accepted channel to which the funding must be added
@@ -158,20 +130,10 @@ pub enum Command {
     },
 
     /// Create an maker's offer
-    Offer(Offer),
+    MakeOffer(Offer),
 
-    /// Pay the invoice
-    Pay {
-        /// Invoice bech32 string
-        #[clap()]
-        // TODO: Replace with `Invoice` type once our fix will get merged:
-        //       <<https://github.com/rust-bitcoin/rust-lightning-invoice/pull/43>>
-        invoice: String,
-
-        /// Channel from which the payment should happen
-        #[clap()]
-        channel: SwapId,
-    },
+    /// Takers accepts offer
+    TakeOffer(Offer),
 }
 
 #[derive(

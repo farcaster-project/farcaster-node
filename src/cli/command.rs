@@ -39,7 +39,7 @@ impl Exec for Command {
                         )?;
                     } else if let Ok(channel_id) = SwapId::from_str(subj) {
                         runtime.request(
-                            ServiceId::Swap(channel_id),
+                            ServiceId::Swaps(channel_id),
                             Request::GetInfo,
                         )?;
                     } else {
@@ -69,6 +69,7 @@ impl Exec for Command {
                 runtime.request(ServiceId::Farcasterd, Request::ListPeers)?;
                 runtime.report_response()?;
             }
+
             Command::Ls => {
                 runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
                 runtime.report_response()?;
@@ -111,79 +112,12 @@ impl Exec for Command {
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
             }
 
-            Command::Propose {
-                peer,
-                funding_satoshis,
-            } => {
-                let node_addr = peer
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .expect("Provided node address is invalid");
-
-                runtime.request(
-                    ServiceId::Farcasterd,
-                    Request::OpenSwapWith(request::CreateSwap {
-                        swap_req: message::OpenChannel {
-                            funding_satoshis: *funding_satoshis,
-                            // The rest of parameters will be filled in by the
-                            // daemon
-                            ..dumb!()
-                        },
-                        peerd: ServiceId::Peer(node_addr),
-                        report_to: Some(runtime.identity()),
-                    }),
-                )?;
-                runtime.report_progress()?;
-                match runtime.response()? {
-                    Request::SwapFunding(pubkey_script) => {
-                        let address =
-                            bitcoin::Network::try_from(runtime.chain())
-                                .ok()
-                                .and_then(|network| {
-                                    pubkey_script.address(network)
-                                });
-                        match address {
-                            None => {
-                                eprintln!(
-                                    "{}", 
-                                    "Can't generate funding address for a given network".err()
-                                );
-                                println!(
-                                    "{}\nAssembly: {}\nHex: {:x}",
-                                    "Please transfer channel funding to an output \
-                                     with the following raw `scriptPubkey`"
-                                        .progress(),
-                                    pubkey_script,
-                                    pubkey_script,
-                                );
-                            }
-                            Some(address) => {
-                                println!(
-                                    "{} {}",
-                                    "Please transfer channel funding to "
-                                        .progress(),
-                                    address.ended()
-                                );
-                            }
-                        }
-                    }
-                    other => {
-                        eprintln!(
-                            "{} {} {}",
-                            "Unexpected server response".err(),
-                            other,
-                            "while waiting for channel funding information"
-                                .err()
-                        );
-                    }
-                }
-            }
-
             Command::Fund {
-                channel,
+                swap,
                 funding_outpoint,
             } => {
                 runtime.request(
-                    channel.clone().into(),
+                    swap.clone().into(),
                     Request::FundSwap(*funding_outpoint),
                 )?;
                 runtime.report_progress()?;
