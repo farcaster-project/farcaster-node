@@ -74,10 +74,6 @@ impl Exec for Command {
                 runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
                 runtime.report_response()?;
             }
-            // Command::FarMsg{swapid} => {
-            //     runtime.request(ServiceId::Peer(swapid), Request::ListSwaps)?;
-            //     runtime.report_response()?;
-            // }
 
             Command::Listen {
                 ip_addr,
@@ -111,18 +107,6 @@ impl Exec for Command {
                 runtime
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
             }
-
-            Command::Fund {
-                swap,
-                funding_outpoint,
-            } => {
-                runtime.request(
-                    swap.clone().into(),
-                    Request::FundSwap(*funding_outpoint),
-                )?;
-                runtime.report_progress()?;
-            }
-
             _ => unimplemented!(),
         }
         Ok(())

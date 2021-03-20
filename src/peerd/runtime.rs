@@ -284,7 +284,7 @@ impl Runtime {
         match request {
             Request::UpdateSwapId(channel_id) => {
                 debug!(
-                    "Renaming channeld service from temporary id {:#} to channel id #{:#}",
+                    "Renaming swapd service from temporary id {:#} to swap id #{:#}",
                     source, channel_id
                 );
                 self.routing.remove(&source);
@@ -344,6 +344,7 @@ impl Runtime {
         }
 
         match &request {
+
             Request::PingPeer => {
                 self.ping()?;
             }

@@ -107,28 +107,6 @@ pub enum Command {
     /// Test farcaster messages
     FarMsg { swapid: SwapId },
 
-    /// Fund a new swap (which must be already accepted by the remote peer)
-    /// with bitcoins.
-    Fund {
-        /// Accepted channel to which the funding must be added
-        swap: TempSwapId,
-
-        /// Outpoint (in form of <txid>:<output_no>) which will be used as a
-        /// swap funding. Output `scriptPubkey` must be equal to the one
-        /// provided by the `propose` command.
-        funding_outpoint: OutPoint,
-    },
-
-    /// Do an invoiceless direct payment
-    Transfer {
-        /// Channel to which the funding must be added
-        channel: SwapId,
-
-        /// Asset amount to invoice, in atomic unit (satoshis or smallest asset
-        /// unit type)
-        amount: u64,
-    },
-
     /// Create an maker's offer
     MakeOffer(Offer),
 
