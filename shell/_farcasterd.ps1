@@ -2,12 +2,12 @@
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 
-Register-ArgumentCompleter -Native -CommandName 'lnpd' -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName 'farcasterd' -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commandElements = $commandAst.CommandElements
     $command = @(
-        'lnpd'
+        'farcasterd'
         for ($i = 1; $i -lt $commandElements.Count; $i++) {
             $element = $commandElements[$i]
             if ($element -isnot [StringConstantExpressionAst] -or
@@ -19,7 +19,7 @@ Register-ArgumentCompleter -Native -CommandName 'lnpd' -ScriptBlock {
     }) -join ';'
 
     $completions = @(switch ($command) {
-        'lnpd' {
+        'farcasterd' {
             [CompletionResult]::new('-k', 'k', [CompletionResultType]::ParameterName, 'Node key file')
             [CompletionResult]::new('--key-file', 'key-file', [CompletionResultType]::ParameterName, 'Node key file')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')

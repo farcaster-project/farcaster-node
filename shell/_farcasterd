@@ -1,8 +1,8 @@
-#compdef lnpd
+#compdef farcasterd
 
 autoload -U is-at-least
 
-_lnpd() {
+_farcasterd() {
     typeset -A opt_args
     typeset -a _arguments_options
     local ret=1
@@ -39,12 +39,12 @@ _lnpd() {
     
 }
 
-(( $+functions[_lnpd_commands] )) ||
-_lnpd_commands() {
+(( $+functions[_farcasterd_commands] )) ||
+_farcasterd_commands() {
     local commands; commands=(
         
     )
-    _describe -t commands 'lnpd commands' commands "$@"
+    _describe -t commands 'farcasterd commands' commands "$@"
 }
 
-_lnpd "$@"
+_farcasterd "$@"

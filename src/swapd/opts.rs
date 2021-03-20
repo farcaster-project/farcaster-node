@@ -18,8 +18,6 @@ use bitcoin::hashes::hex::FromHex;
 use internet2::PartialNodeAddr;
 use lnp::ChannelId as SwapId;
 
-use crate::opts::FUNGIBLED_RPC_ENDPOINT;
-
 use crate::peerd::KeyOpts;
 
 /// Lightning peer network channel daemon; part of LNP Node

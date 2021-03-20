@@ -86,7 +86,7 @@ pub enum ServiceId {
     #[display("loopback")]
     Loopback,
 
-    #[display("lnpd")]
+    #[display("farcasterd")]
     Farcasterd,
 
     #[display("peerd<{0}>")]
