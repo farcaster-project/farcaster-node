@@ -344,6 +344,9 @@ impl Runtime {
         }
 
         match &request {
+            Request::PingPeer => {
+                self.ping()?;
+            }
 
             Request::PeerMessage(Messages::Ping(message::Ping {
                 pong_size,
