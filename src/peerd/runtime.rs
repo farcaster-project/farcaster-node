@@ -316,6 +316,10 @@ impl Runtime {
                 self.send_ctl(senders, source, Request::PeerInfo(info))?;
             }
 
+            Request::PingPeer => {
+                self.handle_bridge(senders, source, request)?;
+            }
+
             _ => {
                 error!("Request is not supported by the CTL interface");
                 return Err(Error::NotSupported(
