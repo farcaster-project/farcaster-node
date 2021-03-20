@@ -1,5 +1,62 @@
 # Farcaster-node: Atomic swap node
 
+## Running the node
+### Clone and build the project
+```
+git clone https://github.com/farcaster-project/farcaster-node.git
+cd farcaster-node
+cargo build --all-features
+```
+
+### Launch two nodes
+
+On one terminal launch the farcasterd node `node0` with data dir 0
+```
+ ./target/debug/farcasterd -vvvv -d ./.data_dir_0
+ 
+```
+On a second terminal launch a second farcasterd node `node1` with data dir 1
+```
+ ./target/debug/farcasterd -vvvv -d ./.data_dir_1
+```
+
+### Client
+
+On a third terminal
+
+Create aliases for nodes client
+```
+# client for node0
+alias swap0-cli="./target/debug/swap-cli -d ./.data_dir_0" 
+# client for node1
+alias swap1-cli="./target/debug/swap-cli -d ./.data_dir_1"
+```
+
+Create aliases for node address
+```
+node0=$(swap0-cli info | awk '/node_id/ {print $2"@127.0.0.1"}')
+node1=$(swap1-cli info | awk '/node_id/ {print $2"@127.0.0.1"}')
+```
+
+### `node0` listens and `node1` connect
+
+`node0` listens for a connection
+```
+swap0-cli listen
+```
+
+This will launch a `peerd` service for `node0`, which is a daemon that handles peer connections
+
+`node1` connect to `node0`
+```
+swap1-cli connect $node0
+```
+
+This will launch a `peerd` service for `node1`
+
+That is about all you can do for now.
+
+## LNP-node original readme
 This node was forked from `lnp-node` on 2021-03-12.
 
 Below the original for `lnp-node` README.
