@@ -106,10 +106,10 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 
     fn handle(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        _bus: ServiceBus,
-        _addr: ServiceId,
-        _request: Request,
+        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        bus: ServiceBus,
+        addr: ServiceId,
+        request: Request,
     ) -> Result<(), Error> {
         // Bridge does not receive replies for now
         Ok(())
@@ -317,7 +317,7 @@ impl Runtime {
             }
 
             Request::PingPeer => {
-                self.handle_bridge(senders, source, request)?;
+                self.ping()?;
             }
 
             _ => {
@@ -344,10 +344,6 @@ impl Runtime {
         }
 
         match &request {
-
-            Request::PingPeer => {
-                self.ping()?;
-            }
 
             Request::PeerMessage(Messages::Ping(message::Ping {
                 pong_size,

@@ -1,4 +1,4 @@
-_gossipd() {
+_swapd() {
     local i cur prev opts cmds
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -9,8 +9,8 @@ _gossipd() {
     for i in ${COMP_WORDS[@]}
     do
         case "${i}" in
-            gossipd)
-                cmd="gossipd"
+            swapd)
+                cmd="swapd"
                 ;;
             
             *)
@@ -19,19 +19,19 @@ _gossipd() {
     done
 
     case "${cmd}" in
-        gossipd)
-            opts=" -r -d -c -v -T -m -x -n -h -V  --rgb20-rpc --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  "
+        swapd)
+            opts=" -k -d -c -v -T -m -x -n -h -V  --key-file --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <channel-id> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 
-                --rgb20-rpc)
+                --key-file)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                    -r)
+                    -k)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -94,4 +94,4 @@ _gossipd() {
     esac
 }
 
-complete -F _gossipd -o bashdefault -o default gossipd
+complete -F _swapd -o bashdefault -o default swapd
