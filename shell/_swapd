@@ -1,8 +1,8 @@
-#compdef channeld
+#compdef swapd
 
 autoload -U is-at-least
 
-_channeld() {
+_swapd() {
     typeset -A opt_args
     typeset -a _arguments_options
     local ret=1
@@ -17,8 +17,6 @@ _channeld() {
     _arguments "${_arguments_options[@]}" \
 '-k+[Node key file]: :_files' \
 '--key-file=[Node key file]: :_files' \
-'-r+[ZMQ socket name/address for RGB Node fungible RPC interface (RGB20 RPC)]: :_files' \
-'--rgb20-rpc=[ZMQ socket name/address for RGB Node fungible RPC interface (RGB20 RPC)]: :_files' \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
@@ -42,12 +40,12 @@ _channeld() {
     
 }
 
-(( $+functions[_channeld_commands] )) ||
-_channeld_commands() {
+(( $+functions[_swapd_commands] )) ||
+_swapd_commands() {
     local commands; commands=(
         
     )
-    _describe -t commands 'channeld commands' commands "$@"
+    _describe -t commands 'swapd commands' commands "$@"
 }
 
-_channeld "$@"
+_swapd "$@"

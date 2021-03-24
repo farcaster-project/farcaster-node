@@ -16,14 +16,14 @@ use clap::{AppSettings, Clap};
 
 use crate::peerd::KeyOpts;
 
-/// Lightning node management daemon; part of LNP Node
+/// Farcaster node management daemon; part of Farcaster Node
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
 /// description)
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(
-    name = "lnpd",
-    bin_name = "lnpd",
+    name = "farcasterd",
+    bin_name = "farcasterd",
     author,
     version,
     setting = AppSettings::ColoredHelp

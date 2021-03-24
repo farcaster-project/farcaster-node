@@ -344,6 +344,9 @@ impl Runtime {
         }
 
         match &request {
+            Request::PingPeer => {
+                self.ping()?;
+            }
 
             Request::PeerMessage(Messages::Ping(message::Ping {
                 pong_size,
@@ -431,8 +434,9 @@ impl Runtime {
                 debug!("Got peer LNPWP message {}", message);
             }
 
-            _ => {
+            other => {
                 error!("Request is not supported by the BRIDGE interface");
+                dbg!(other);
                 return Err(Error::NotSupported(
                     ServiceBus::Bridge,
                     request.get_type(),

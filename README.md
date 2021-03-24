@@ -27,9 +27,9 @@ On a third terminal
 Create aliases for nodes client
 ```
 # client for node0
-alias swap0-cli="./target/debug/swap-cli -d ./.data_dir_0" 
+alias swap0-cli="./target/debug/swap-cli -d .data_dir_0" 
 # client for node1
-alias swap1-cli="./target/debug/swap-cli -d ./.data_dir_1"
+alias swap1-cli="./target/debug/swap-cli -d .data_dir_1"
 ```
 
 Create aliases for node address

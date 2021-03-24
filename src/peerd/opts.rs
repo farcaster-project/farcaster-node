@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use internet2::{FramingProtocol, LocalNode, RemoteNodeAddr};
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::opts::LNP_NODE_KEY_FILE;
+use crate::opts::FARCASTER_NODE_KEY_FILE;
 
 /// Lightning peer network connection daemon; part of LNP Node
 ///
@@ -101,8 +101,8 @@ pub struct KeyOpts {
     #[clap(
         short,
         long,
-        env = "LNP_NODE_KEY_FILE",
-        default_value = LNP_NODE_KEY_FILE,
+        env = "FARCASTER_NODE_KEY_FILE",
+        default_value = FARCASTER_NODE_KEY_FILE,
         value_hint = ValueHint::FilePath
     )]
     pub key_file: String,

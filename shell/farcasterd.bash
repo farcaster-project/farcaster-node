@@ -1,4 +1,4 @@
-_lnpd() {
+_farcasterd() {
     local i cur prev opts cmds
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -9,8 +9,8 @@ _lnpd() {
     for i in ${COMP_WORDS[@]}
     do
         case "${i}" in
-            lnpd)
-                cmd="lnpd"
+            farcasterd)
+                cmd="farcasterd"
                 ;;
             
             *)
@@ -19,7 +19,7 @@ _lnpd() {
     done
 
     case "${cmd}" in
-        lnpd)
+        farcasterd)
             opts=" -k -d -c -v -T -m -x -n -h -V  --key-file --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -94,4 +94,4 @@ _lnpd() {
     esac
 }
 
-complete -F _lnpd -o bashdefault -o default lnpd
+complete -F _farcasterd -o bashdefault -o default farcasterd
