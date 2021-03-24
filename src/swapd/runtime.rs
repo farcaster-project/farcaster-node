@@ -173,7 +173,7 @@ impl Runtime {
         senders.send_to(
             ServiceBus::Msg,
             self.identity(),
-            self.peer_service.clone(),
+            self.peer_service.clone(), // = ServiceId::Loopback
             Request::PeerMessage(message),
         )?;
         Ok(())
