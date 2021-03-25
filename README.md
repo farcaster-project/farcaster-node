@@ -12,12 +12,12 @@ cargo build --all-features
 
 On one terminal launch the farcasterd node `node0` with data dir 0
 ```
- ./target/debug/farcasterd -vvvv -d ./.data_dir_0
+ ./target/debug/farcasterd -vvvv -d .data_dir_0
  
 ```
 On a second terminal launch a second farcasterd node `node1` with data dir 1
 ```
- ./target/debug/farcasterd -vvvv -d ./.data_dir_1
+ ./target/debug/farcasterd -vvvv -d .data_dir_1
 ```
 
 ### Client

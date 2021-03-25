@@ -34,6 +34,9 @@ pub mod peerd {
 pub mod swapd {
     include!("src/swapd/opts.rs");
 }
+pub mod syncerd {
+    include!("src/syncerd/opts.rs");
+}
 
 fn main() -> Result<(), configure_me_codegen::Error> {
     let outdir = "./shell";
@@ -43,6 +46,7 @@ fn main() -> Result<(), configure_me_codegen::Error> {
         peerd::Opts::into_app(),
         swapd::Opts::into_app(),
         cli::Opts::into_app(),
+
     ]
     .iter_mut()
     {
