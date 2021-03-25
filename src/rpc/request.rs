@@ -118,8 +118,12 @@ pub enum Request {
 
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 102)]
-    #[display("list_channels()")]
+    #[display("list_swaps()")]
     ListSwaps,
+
+    #[lnp_api(type = 103)]
+    #[display("list_tasks()")]
+    ListTasks,
 
     // Can be issued from `cli` to `lnpd`
     #[lnp_api(type = 200)]
@@ -170,6 +174,11 @@ pub enum Request {
     #[from]
     Failure(Failure),
 
+    #[lnp_api(type = 1099)]
+    #[display("syncer_info({0})", alt = "{0:#}")]
+    #[from]
+    SyncerInfo(SyncerInfo),
+
     #[lnp_api(type = 1100)]
     #[display("node_info({0})", alt = "{0:#}")]
     #[from]
@@ -191,14 +200,25 @@ pub enum Request {
     PeerList(List<NodeAddr>),
 
     #[lnp_api(type = 1104)]
-    #[display("channel_list({0})", alt = "{0:#}")]
+    #[display("swap_list({0})", alt = "{0:#}")]
     #[from]
     SwapList(List<SwapId>),
+
+    #[lnp_api(type = 1105)]
+    #[display("task_list({0})", alt = "{0:#}")]
+    #[from]
+    TaskList(List<u64>), // FIXME
 
     #[lnp_api(type = 1203)]
     #[display("channel_funding({0})", alt = "{0:#}")]
     #[from]
     SwapFunding(PubkeyScript),
+
+    #[lnp_api(type = 1300)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    CreateTask(u64), // FIXME
+
 }
 
 impl rpc_connection::Request for Request {}
@@ -232,6 +252,26 @@ pub struct NodeInfo {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub swaps: Vec<SwapId>,
 }
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display(SyncerInfo::to_yaml_string)]
+pub struct SyncerInfo {
+    pub syncer_id: secp256k1::PublicKey,
+    #[serde_as(as = "DurationSeconds")]
+    pub uptime: Duration,
+    pub since: u64,
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    pub tasks: Vec<u64>,
+}
+
+
 
 #[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
@@ -309,6 +349,9 @@ impl ToYamlString for NodeInfo {}
 impl ToYamlString for PeerInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for SwapInfo {}
+#[cfg(feature = "serde")]
+impl ToYamlString for SyncerInfo {}
+
 
 #[derive(
     Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode,

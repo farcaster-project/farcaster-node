@@ -101,6 +101,9 @@ pub enum ServiceId {
     #[display("client<{0}>")]
     Client(u64),
 
+    #[display("syncer")]
+    Syncer,
+
     #[display("other<{0}>")]
     Other(ClientName),
 }

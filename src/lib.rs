@@ -11,7 +11,7 @@
 // You should have received a copy of the MIT License
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
-
+#![allow(unused_imports)]
 #![recursion_limit = "256"]
 // Coding conventions
 #![deny(
@@ -64,6 +64,8 @@ pub mod peerd;
 mod service;
 #[cfg(feature = "node")]
 pub mod swapd;
+
+pub mod syncerd;
 
 #[cfg(feature = "_rpc")]
 pub use config::Config;

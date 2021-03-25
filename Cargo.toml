@@ -29,6 +29,10 @@ required-features = ["server"]
 name = "swap-cli"
 required-features = ["cli"]
 
+# [[bin]]
+# name = "syncer"
+# required-features = ["server"]
+
 [dependencies]
 # Farcaster crates
 farcaster-core = { version = "0.1.0", git = "https://github.com/zkao/farcaster-core", branch = "strict_encoding" }
