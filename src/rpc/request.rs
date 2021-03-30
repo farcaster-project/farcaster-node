@@ -35,13 +35,53 @@ use microservices::rpc_connection;
 use wallet::PubkeyScript;
 use farcaster_core::{
     bitcoin::Bitcoin, monero::Monero,
-    protocol_message::CommitAliceSessionParams,
+    protocol_message,
 };
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
-pub enum FarMsgs {
+pub enum ProtocolMessagesAlice {
+    #[api(type = 20)]
+    #[display("commit_a(...)")]
+    CommitAliceSessionParams(protocol_message::CommitAliceSessionParams<Bitcoin, Monero>),
+    #[api(type = 22)]
+    #[display("reveal_a(...)")]
+    RevealAliceSessionParams(protocol_message::RevealAliceSessionParams<Bitcoin, Monero>),
+    #[api(type = 25)]
+    #[display("refunprocsig_a(...)")]
+    RefundProcedureSignatures(protocol_message::RefundProcedureSignatures<Bitcoin>),
+    #[api(type = 27)]
+    #[display("abort(...)")]
+    Abort(protocol_message::Abort),
+}
+
+#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[api(encoding = "strict")]
+pub enum ProtocolMessagesBob {
+    #[api(type = 21)]
+    #[display("commit_b(...)")]
+    CommitBobSessionParams(protocol_message::CommitBobSessionParams<Bitcoin, Monero>),
+    #[api(type = 23)]
+    #[display("reveal_b(...)")]
+    RevealBobSessionParams(protocol_message::RevealBobSessionParams<Bitcoin, Monero>),
+    #[api(type = 24)]
+    #[display("corearb_b(...)")]
+    CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<Bitcoin>),
+    #[api(type = 26)]
+    #[display("buyprocsig_b(...)")]
+    BuyProcedureSignature(protocol_message::BuyProcedureSignature<Bitcoin>),
+}
+
+
+use crate::ServiceId;
+
+#[derive(Clone, Debug, Display, From, Api)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[api(encoding = "strict")]
+#[non_exhaustive]
+pub enum Request {
     // Part I: Generic messages outside of channel operations
     // ======================================================
     /// Once authentication is complete, the first message reveals the features
@@ -73,19 +113,6 @@ pub enum FarMsgs {
     #[display("pong(...)")]
     Pong(Vec<u8>),
 
-    #[api(type = 20)]
-    #[display("commita(...)")]
-    CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>),
-}
-
-
-use crate::ServiceId;
-
-#[derive(Clone, Debug, Display, From, Api)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[api(encoding = "strict")]
-#[non_exhaustive]
-pub enum Request {
     #[api(type = 0)]
     #[display("hello()")]
     Hello,
@@ -100,8 +127,11 @@ pub enum Request {
 
     #[api(type = 3)]
     #[display("send_message({0})")]
-    FarMsgs(FarMsgs),
+    ProtocolMessagesAlice(ProtocolMessagesAlice),
 
+    #[api(type = 4)]
+    #[display("send_message({0})")]
+    ProtocolMessagesBob(ProtocolMessagesBob),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
