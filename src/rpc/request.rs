@@ -22,6 +22,9 @@ use std::iter::FromIterator;
 use std::time::Duration;
 
 use bitcoin::{secp256k1, OutPoint};
+use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
+use farcaster_core::protocol_message;
+use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
 use lnp::{
@@ -32,34 +35,79 @@ use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
-use farcaster_core::{
-    bitcoin::Bitcoin, monero::Monero,
-    protocol_message::CommitAliceSessionParams,
-};
-
-#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-pub enum FarMsgs {
+#[api(encoding = "strict")]
+pub enum ProtocolMessagesAlice {
+    #[api(type = 20)]
+    #[display("commit_a(...)")]
+    CommitAliceSessionParams(
+        protocol_message::CommitAliceSessionParams<Bitcoin, Monero>,
+    ),
+    #[api(type = 22)]
+    #[display("reveal_a(...)")]
+    RevealAliceSessionParams(
+        protocol_message::RevealAliceSessionParams<Bitcoin, Monero>,
+    ),
+    #[api(type = 25)]
+    #[display("refunprocsig_a(...)")]
+    RefundProcedureSignatures(
+        protocol_message::RefundProcedureSignatures<Bitcoin>,
+    ),
+    #[api(type = 27)]
+    #[display("abort(...)")]
+    Abort(protocol_message::Abort),
+}
+
+#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[api(encoding = "strict")]
+pub enum ProtocolMessagesBob {
+    #[api(type = 21)]
+    #[display("commit_b(...)")]
+    CommitBobSessionParams(
+        protocol_message::CommitBobSessionParams<Bitcoin, Monero>,
+    ),
+    #[api(type = 23)]
+    #[display("reveal_b(...)")]
+    RevealBobSessionParams(
+        protocol_message::RevealBobSessionParams<Bitcoin, Monero>,
+    ),
+    #[api(type = 24)]
+    #[display("corearb_b(...)")]
+    CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<Bitcoin>),
+    #[api(type = 26)]
+    #[display("buyprocsig_b(...)")]
+    BuyProcedureSignature(protocol_message::BuyProcedureSignature<Bitcoin>),
+}
+
+use crate::ServiceId;
+
+#[derive(Clone, Debug, Display, From, Api)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[api(encoding = "strict")]
+#[non_exhaustive]
+pub enum Request {
     // Part I: Generic messages outside of channel operations
     // ======================================================
     /// Once authentication is complete, the first message reveals the features
     /// supported or required by this node, even if this is a reconnection.
-    // #[lnp_api(type = 16)]
-    // #[display(inner)]
+    #[api(type = 16)]
+    #[display(inner)]
     Init(message::Init),
 
     /// For simplicity of diagnosis, it's often useful to tell a peer that
     /// something is incorrect.
-    // #[lnp_api(type = 17)]
-    // #[display(inner)]
+    #[api(type = 17)]
+    #[display(inner)]
     Error(message::Error),
 
     /// In order to allow for the existence of long-lived TCP connections, at
     /// times it may be required that both ends keep alive the TCP connection
     /// at the application level. Such messages also allow obfuscation of
     /// traffic patterns.
-    // #[lnp_api(type = 18)]
-    // #[display(inner)]
+    #[api(type = 18)]
+    #[display(inner)]
     Ping(message::Ping),
 
     /// The pong message is to be sent whenever a ping message is received. It
@@ -67,158 +115,136 @@ pub enum FarMsgs {
     /// explicitly notifying the other end that the receiver is still active.
     /// Within the received ping message, the sender will specify the number of
     /// bytes to be included within the data payload of the pong message.
-    // #[lnp_api(type = 19)]
-    // #[display("pong(...)")]
+    #[api(type = 19)]
+    #[display("pong(...)")]
     Pong(Vec<u8>),
 
-
-    CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>),
-}
-
-impl std::fmt::Display for FarMsgs {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-
-use crate::ServiceId;
-
-#[derive(Clone, Debug, Display, From, LnpApi)]
-#[encoding_crate(lnpbp::strict_encoding)]
-#[lnp_api(encoding = "strict")]
-#[non_exhaustive]
-pub enum Request {
-    #[lnp_api(type = 0)]
+    #[api(type = 0)]
     #[display("hello()")]
     Hello,
 
-    #[lnp_api(type = 1)]
+    #[api(type = 1)]
     #[display("update_channel_id({0})")]
     UpdateSwapId(SwapId),
 
-    #[lnp_api(type = 2)]
+    #[api(type = 2)]
     #[display("send_message({0})")]
     PeerMessage(Messages),
 
-    #[lnp_api(type = 3)]
+    #[api(type = 3)]
     #[display("send_message({0})")]
-    FarMsgs(FarMsgs),
+    ProtocolMessagesAlice(ProtocolMessagesAlice),
 
+    #[api(type = 4)]
+    #[display("send_message({0})")]
+    ProtocolMessagesBob(ProtocolMessagesBob),
 
     // Can be issued from `cli` to `lnpd`
-    #[lnp_api(type = 100)]
+    #[api(type = 100)]
     #[display("get_info()")]
     GetInfo,
 
     // Can be issued from `cli` to `lnpd`
-    #[lnp_api(type = 101)]
+    #[api(type = 101)]
     #[display("list_peers()")]
     ListPeers,
 
     // Can be issued from `cli` to `lnpd`
-    #[lnp_api(type = 102)]
+    #[api(type = 102)]
     #[display("list_swaps()")]
     ListSwaps,
 
-    #[lnp_api(type = 103)]
+    #[api(type = 103)]
     #[display("list_tasks()")]
     ListTasks,
 
     // Can be issued from `cli` to `lnpd`
-    #[lnp_api(type = 200)]
+    #[api(type = 200)]
     #[display("listen({0})")]
     Listen(RemoteSocketAddr),
 
     // Can be issued from `cli` to `lnpd`
-    #[lnp_api(type = 201)]
+    #[api(type = 201)]
     #[display("connect({0})")]
     ConnectPeer(NodeAddr),
 
     // Can be issued from `cli` to a specific `peerd`
-    #[lnp_api(type = 202)]
+    #[api(type = 202)]
     #[display("ping_peer()")]
     PingPeer,
 
     // Can be issued from `cli` to `lnpd`
-    #[lnp_api(type = 203)]
+    #[api(type = 203)]
     #[display("create_channel_with(...)")]
     OpenSwapWith(CreateSwap),
 
-    #[lnp_api(type = 204)]
+    #[api(type = 204)]
     #[display("accept_channel_from(...)")]
     AcceptSwapFrom(CreateSwap),
 
-    #[lnp_api(type = 205)]
+    #[api(type = 205)]
     #[display("fund_channel({0})")]
     FundSwap(OutPoint),
 
-    /* TODO: Activate after lightning-invoice library update
-    // Can be issued from `cli` to a specific `peerd`
-    #[lnp_api(type = 208)]
-    #[display("pay_invoice({0})")]
-    PayInvoice(Invoice),
-     */
     // Responses to CLI
     // ----------------
-    #[lnp_api(type = 1002)]
+    #[api(type = 1002)]
     #[display("progress({0})")]
     Progress(String),
 
-    #[lnp_api(type = 1001)]
+    #[api(type = 1001)]
     #[display("success({0})")]
     Success(OptionDetails),
 
-    #[lnp_api(type = 1000)]
+    #[api(type = 1000)]
     #[display("failure({0:#})")]
     #[from]
     Failure(Failure),
 
-    #[lnp_api(type = 1099)]
+    #[api(type = 1099)]
     #[display("syncer_info({0})", alt = "{0:#}")]
     #[from]
     SyncerInfo(SyncerInfo),
 
-    #[lnp_api(type = 1100)]
+    #[api(type = 1100)]
     #[display("node_info({0})", alt = "{0:#}")]
     #[from]
     NodeInfo(NodeInfo),
 
-    #[lnp_api(type = 1101)]
+    #[api(type = 1101)]
     #[display("node_info({0})", alt = "{0:#}")]
     #[from]
     PeerInfo(PeerInfo),
 
-    #[lnp_api(type = 1102)]
+    #[api(type = 1102)]
     #[display("channel_info({0})", alt = "{0:#}")]
     #[from]
     SwapInfo(SwapInfo),
 
-    #[lnp_api(type = 1103)]
+    #[api(type = 1103)]
     #[display("peer_list({0})", alt = "{0:#}")]
     #[from]
     PeerList(List<NodeAddr>),
 
-    #[lnp_api(type = 1104)]
+    #[api(type = 1104)]
     #[display("swap_list({0})", alt = "{0:#}")]
     #[from]
     SwapList(List<SwapId>),
 
-    #[lnp_api(type = 1105)]
+    #[api(type = 1105)]
     #[display("task_list({0})", alt = "{0:#}")]
     #[from]
     TaskList(List<u64>), // FIXME
 
-    #[lnp_api(type = 1203)]
+    #[api(type = 1203)]
     #[display("channel_funding({0})", alt = "{0:#}")]
     #[from]
     SwapFunding(PubkeyScript),
 
-    #[lnp_api(type = 1300)]
+    #[api(type = 1300)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     CreateTask(u64), // FIXME
-
 }
 
 impl rpc_connection::Request for Request {}
@@ -270,8 +296,6 @@ pub struct SyncerInfo {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub tasks: Vec<u64>,
 }
-
-
 
 #[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
@@ -351,7 +375,6 @@ impl ToYamlString for PeerInfo {}
 impl ToYamlString for SwapInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for SyncerInfo {}
-
 
 #[derive(
     Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode,

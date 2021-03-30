@@ -33,22 +33,25 @@ required-features = ["cli"]
 # name = "syncer"
 # required-features = ["server"]
 
+
 [dependencies]
 # Farcaster crates
-farcaster-core = { version = "0.1.0", git = "https://github.com/zkao/farcaster-core", branch = "strict_encoding" }
+farcaster_core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster_chains = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 
 # LNP/BP crates
 amplify = "3"
-amplify_derive = "2.4.2"
-lnpbp = "0.3"
-descriptor-wallet = { version = "0.3.3", features = ["keygen"] }
+amplify_derive = "2.4.3"
+lightning_encoding = "0.4.0-beta.1"
+lnpbp = {version = "0.4", features = ["all"]}
+descriptor-wallet = { version = "0.4", features = ["electrum"] }
 slip132 = "0.3"
-lnp-core = "0.3"
-internet2 = { version = "0.3.7", default-features = false, features = ["derive", "descriptor-wallet", "bitcoin-ext", "lnpbp"] }
-microservices = { version = "0.3.7", default-features = false, features = ["peer"] }
+lnp-core = "0.3.1"
+internet2 = { version = "0.3.10" }
+microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 # Bitcoin
 bitcoin = "0.26"
-electrum-client = { version = "0.5.0-beta.1", optional = true, git = "https://github.com/LNP-BP/rust-electrum-client", branch = "bitcoin-0.26" }
+electrum-client = { version = "0.6", optional = true }
 # Rust language
 lazy_static = "1.4"
 chrono = "0.4"
@@ -74,14 +77,16 @@ shellexpand = { version = "2", optional = true }
 zmq = "0.9"
 
 [build-dependencies]
-farcaster-core = { version = "0.1.0", git = "https://github.com/zkao/farcaster-core", branch = "strict_encoding" }
+farcaster_core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster_chains = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 amplify = "3"
-amplify_derive = "2.4.2"
-lnpbp = "0.3"
+amplify_derive = "2.4.3"
+lnpbp = {version = "0.4", features = ["all"]}
+lightning_encoding = "0.4.0-beta.1"
 bitcoin = "0.26"
 lnp-core =  "0.3"
-internet2 = { version = "0.3.7", default-features = false, features = ["derive", "descriptor-wallet", "bitcoin-ext", "lnpbp"] }
-microservices = { version = "0.3.7", default-features = false, features = ["peer"] }
+internet2 = { version = "0.3.10" }
+microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 lazy_static = "1.4"
 clap = "3.0.0-beta.2"
 clap_generate = "3.0.0-beta.2"

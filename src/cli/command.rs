@@ -24,20 +24,20 @@ use crate::rpc::{request, Client, Request};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
-    type Runtime = Client;
+    type Client = Client;
     type Error = Error;
 
-    fn exec(&self, runtime: &mut Self::Runtime) -> Result<(), Self::Error> {
+    fn exec(self, runtime: &mut Self::Client) -> Result<(), Self::Error> {
         debug!("Performing {:?}: {}", self, self);
         match self {
             Command::Info { subject } => {
                 if let Some(subj) = subject {
-                    if let Ok(node_addr) = NodeAddr::from_str(subj) {
+                    if let Ok(node_addr) = NodeAddr::from_str(&subj) {
                         runtime.request(
                             ServiceId::Peer(node_addr),
                             Request::GetInfo,
                         )?;
-                    } else if let Ok(channel_id) = SwapId::from_str(subj) {
+                    } else if let Ok(channel_id) = SwapId::from_str(&subj) {
                         runtime.request(
                             ServiceId::Swaps(channel_id),
                             Request::GetInfo,
@@ -81,7 +81,7 @@ impl Exec for Command {
                 overlay,
             } => {
                 let socket =
-                    RemoteSocketAddr::with_ip_addr(*overlay, *ip_addr, *port);
+                    RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
                 runtime
                     .request(ServiceId::Farcasterd, Request::Listen(socket))?;
                 runtime.report_progress()?;

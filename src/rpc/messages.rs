@@ -1,14 +1,14 @@
 use amplify::DumbDefault;
+use lnp::ChannelId as SwapId;
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 use std::io;
-use lnp::{ChannelId as SwapId};
 
 use bitcoin::hashes::{sha256, Hmac};
 use bitcoin::secp256k1::{PublicKey, Signature};
 use bitcoin::{Script, Txid};
-use internet2::lightning_encoding::{self, LightningDecode, LightningEncode};
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
+use lightning_encoding::{self, LightningDecode, LightningEncode};
 use lnpbp::chain::AssetId;
 use wallet::SECP256K1_PUBKEY_DUMB;
 use wallet::{HashLock, HashPreimage};
@@ -105,9 +105,8 @@ pub struct Features {
     /// Anchor outputs
     // #[lnpwp_feature(20, 21, requires(option_static_remotekey))]
     pub option_anchor_outputs: FeatureFlag,
-
-    // /// FIXME: turn back on Rest of feature flags which are unknown to the current implementation
-    // pub unknown: FlagVec,
+    /* /// FIXME: turn back on Rest of feature flags which are unknown to
+     * the current implementation pub unknown: FlagVec, */
 }
 
 /// TODO: Implement proper strict encoding for Features
@@ -191,12 +190,8 @@ pub enum FarMsgs {
     // #[lnp_api(type = 19)]
     // #[display("pong(...)")]
     Pong(Vec<u8>),
-
-
-
     // CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>),
 }
-
 
 /// In order to allow for the existence of long-lived TCP connections, at
 /// times it may be required that both ends keep alive the TCP connection

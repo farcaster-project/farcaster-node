@@ -17,10 +17,9 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use bitcoin::{OutPoint, Network};
+use bitcoin::{Network, OutPoint};
 use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
-
 
 /// Command-line tool for working with Farcaster node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
@@ -61,7 +60,8 @@ impl std::fmt::Display for Offer {
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
-    /// Bind to a socket and start listening for incoming LN peer connections, Maker's action
+    /// Bind to a socket and start listening for incoming LN peer connections,
+    /// Maker's action
     #[display("listen<{overlay}://{ip_addr}:{port}>")]
     Listen {
         /// IPv4 or IPv6 address to bind to
