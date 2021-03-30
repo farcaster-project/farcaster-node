@@ -469,7 +469,7 @@ impl Runtime {
                         &self.remote_peer,
                         &self.remote_capacity,
                     ),
-                    assets: self.local_balances.keys().cloned().collect(),
+                    assets: none!(),
                     local_balances: self.local_balances.clone(),
                     remote_balances: bmap(
                         &self.remote_peer,

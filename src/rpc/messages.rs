@@ -7,7 +7,7 @@ use lnp::{ChannelId as SwapId};
 use bitcoin::hashes::{sha256, Hmac};
 use bitcoin::secp256k1::{PublicKey, Signature};
 use bitcoin::{Script, Txid};
-use internet2::lightning_encoding::{self, LightningDecode, LightningEncode};
+use lightning_encoding::{self, LightningDecode, LightningEncode};
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lnpbp::chain::AssetId;
 use wallet::SECP256K1_PUBKEY_DUMB;

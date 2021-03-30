@@ -32,7 +32,9 @@ extern crate amplify;
 extern crate amplify_derive;
 #[macro_use]
 extern crate lnpbp;
-#[cfg_attr(feature = "_rpc", macro_use)]
+// #[cfg_attr(feature = "_rpc", macro_use)]
+
+#[macro_use]
 extern crate internet2;
 
 #[cfg(feature = "shell")]
