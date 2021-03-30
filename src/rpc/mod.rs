@@ -13,9 +13,9 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 mod client;
+pub mod messages;
 mod reply;
 pub mod request;
-pub mod messages;
 
 pub use client::Client;
 pub use reply::Reply;

@@ -46,7 +46,6 @@ fn main() -> Result<(), configure_me_codegen::Error> {
         peerd::Opts::into_app(),
         swapd::Opts::into_app(),
         cli::Opts::into_app(),
-
     ]
     .iter_mut()
     {

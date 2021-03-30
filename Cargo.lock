@@ -688,16 +688,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 
 [[package]]
-name = "farcaster_core"
+name = "farcaster_chains"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#5db8597abeff315ba38cbd7fe55e925e4d685eaf"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#87a7b72d3dfd6c8be4abf7cf1d3110b61ed6bd4e"
 dependencies = [
  "bitcoin",
- "curve25519-dalek",
+ "farcaster_core",
  "hex",
  "monero",
- "rand_core 0.5.1",
- "secp256k1",
+ "strict_encoding",
+]
+
+[[package]]
+name = "farcaster_core"
+version = "0.1.0"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#87a7b72d3dfd6c8be4abf7cf1d3110b61ed6bd4e"
+dependencies = [
+ "hex",
  "strict_encoding",
  "thiserror",
 ]
@@ -722,6 +729,7 @@ dependencies = [
  "dotenv",
  "electrum-client",
  "env_logger",
+ "farcaster_chains",
  "farcaster_core",
  "internet2",
  "lazy_static",

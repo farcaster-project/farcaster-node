@@ -111,7 +111,6 @@ impl Runtime {
             }
 
             // TODO put offer here
-
             Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
                 info!("Creating swap by peer request from {}", source);
                 self.create_swap(source, None, open_swap, true)?;

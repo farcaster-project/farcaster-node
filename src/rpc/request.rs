@@ -22,8 +22,10 @@ use std::iter::FromIterator;
 use std::time::Duration;
 
 use bitcoin::{secp256k1, OutPoint};
-use internet2::{NodeAddr, RemoteSocketAddr};
+use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
+use farcaster_core::protocol_message;
 use internet2::Api;
+use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
 use lnp::{
     message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
@@ -33,24 +35,25 @@ use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
-use farcaster_core::{
-    bitcoin::Bitcoin, monero::Monero,
-    protocol_message,
-};
-
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
 pub enum ProtocolMessagesAlice {
     #[api(type = 20)]
     #[display("commit_a(...)")]
-    CommitAliceSessionParams(protocol_message::CommitAliceSessionParams<Bitcoin, Monero>),
+    CommitAliceSessionParams(
+        protocol_message::CommitAliceSessionParams<Bitcoin, Monero>,
+    ),
     #[api(type = 22)]
     #[display("reveal_a(...)")]
-    RevealAliceSessionParams(protocol_message::RevealAliceSessionParams<Bitcoin, Monero>),
+    RevealAliceSessionParams(
+        protocol_message::RevealAliceSessionParams<Bitcoin, Monero>,
+    ),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
-    RefundProcedureSignatures(protocol_message::RefundProcedureSignatures<Bitcoin>),
+    RefundProcedureSignatures(
+        protocol_message::RefundProcedureSignatures<Bitcoin>,
+    ),
     #[api(type = 27)]
     #[display("abort(...)")]
     Abort(protocol_message::Abort),
@@ -62,10 +65,14 @@ pub enum ProtocolMessagesAlice {
 pub enum ProtocolMessagesBob {
     #[api(type = 21)]
     #[display("commit_b(...)")]
-    CommitBobSessionParams(protocol_message::CommitBobSessionParams<Bitcoin, Monero>),
+    CommitBobSessionParams(
+        protocol_message::CommitBobSessionParams<Bitcoin, Monero>,
+    ),
     #[api(type = 23)]
     #[display("reveal_b(...)")]
-    RevealBobSessionParams(protocol_message::RevealBobSessionParams<Bitcoin, Monero>),
+    RevealBobSessionParams(
+        protocol_message::RevealBobSessionParams<Bitcoin, Monero>,
+    ),
     #[api(type = 24)]
     #[display("corearb_b(...)")]
     CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<Bitcoin>),
@@ -73,7 +80,6 @@ pub enum ProtocolMessagesBob {
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<Bitcoin>),
 }
-
 
 use crate::ServiceId;
 
@@ -239,7 +245,6 @@ pub enum Request {
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     CreateTask(u64), // FIXME
-
 }
 
 impl rpc_connection::Request for Request {}
@@ -291,8 +296,6 @@ pub struct SyncerInfo {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub tasks: Vec<u64>,
 }
-
-
 
 #[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
@@ -372,7 +375,6 @@ impl ToYamlString for PeerInfo {}
 impl ToYamlString for SwapInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for SyncerInfo {}
-
 
 #[derive(
     Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode,

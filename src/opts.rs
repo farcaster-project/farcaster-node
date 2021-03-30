@@ -29,7 +29,8 @@ pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/.farcaster_node";
 pub const FARCASTER_NODE_DATA_DIR: &'static str =
     "~/Library/Application Support/FARCASTER Node";
 #[cfg(target_os = "windows")]
-pub const FARCASTER_NODE_DATA_DIR: &'static str = "~\\AppData\\Local\\FARCASTER Node";
+pub const FARCASTER_NODE_DATA_DIR: &'static str =
+    "~\\AppData\\Local\\FARCASTER Node";
 #[cfg(target_os = "ios")]
 pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/Documents";
 #[cfg(target_os = "android")]
@@ -50,8 +51,8 @@ pub const FARCASTER_NODE_KEY_FILE: &'static str = "{data_dir}/key.dat";
 pub struct Opts {
     /// Data directory path
     ///
-    /// Path to the directory that contains FARCASTER Node data, and where ZMQ RPC
-    /// socket files are located
+    /// Path to the directory that contains FARCASTER Node data, and where ZMQ
+    /// RPC socket files are located
     #[clap(
         short,
         long,
