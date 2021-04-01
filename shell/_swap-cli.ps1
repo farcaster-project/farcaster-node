@@ -45,7 +45,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('peers', 'peers', [CompletionResultType]::ParameterValue, 'Lists existing peer connections')
             [CompletionResult]::new('ls', 'ls', [CompletionResultType]::ParameterValue, 'Lists running swaps')
             [CompletionResult]::new('far-msg', 'far-msg', [CompletionResultType]::ParameterValue, 'Test farcaster messages')
-            [CompletionResult]::new('make-offer', 'make-offer', [CompletionResultType]::ParameterValue, 'Create an maker''s offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice')
+            [CompletionResult]::new('make-offer', 'make-offer', [CompletionResultType]::ParameterValue, 'Create a maker''s offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Prints this message or the help of the given subcommand(s)')
             break
         }

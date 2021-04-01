@@ -703,6 +703,7 @@ name = "farcaster_core"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "internet2",
  "strict_encoding",
  "thiserror",
 ]

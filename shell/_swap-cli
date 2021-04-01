@@ -260,7 +260,7 @@ _swap-cli_commands() {
 "peers:Lists existing peer connections" \
 "ls:Lists running swaps" \
 "far-msg:Test farcaster messages" \
-"make-offer:Create an maker's offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice" \
+"make-offer:Create a maker's offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice" \
 "help:Prints this message or the help of the given subcommand(s)" \
     )
     _describe -t commands 'swap-cli commands' commands "$@"

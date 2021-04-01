@@ -15,7 +15,7 @@
 use std::convert::TryFrom;
 use std::str::FromStr;
 
-use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
+use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr, RemoteNodeAddr};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
@@ -52,6 +52,7 @@ impl Exec for Command {
                         return Err(Error::Other(err));
                     }
                 } else {
+                    // subject is none
                     runtime.request(ServiceId::Farcasterd, Request::GetInfo)?;
                 }
                 match runtime.response()? {
@@ -118,16 +119,44 @@ impl Exec for Command {
                 fee_strategy,
                 maker_role,
             } => {
-                dbg!(network);
-                dbg!(arbitrating);
-                dbg!(accordant);
-                dbg!(arbitrating_assets);
-                dbg!(accordant_assets);
-                dbg!(cancel_timelock);
-                dbg!(punish_timelock);
-                dbg!(fee_strategy);
-                dbg!(maker_role);
-            },
+                use farcaster_core::negotiation::{Offer, PublicOffer};
+                let offer = Offer {
+                    network,
+                    arbitrating,
+                    accordant,
+                    arbitrating_assets,
+                    accordant_assets,
+                    cancel_timelock,
+                    punish_timelock,
+                    fee_strategy,
+                    maker_role,
+                };
+
+                runtime.request(ServiceId::Farcasterd, Request::GetInfo)?;
+                let node_id = match runtime.response()? {
+                    Request::NodeInfo(info) => Ok(info.node_id),
+                    _ => Err(Error::Rpc(
+                        microservices::rpc::Error::UnexpectedServerResponse,
+                    )),
+                }?;
+                use std::str::FromStr;
+                // FIXME Create Default RemoteSocketAddr, should not be hardcoded
+                let overlay = FromStr::from_str("tcp").map_err(|_| Error::Other("Parsing overlay".to_string()))?;
+                let ip = FromStr::from_str("0.0.0.0").map_err(|_| Error::Other("Parsing ip".to_string()))?;
+                let port = FromStr::from_str("9735").map_err(|_| Error::Other("Parsing port".to_string()))?;
+                let remote_addr = RemoteSocketAddr::with_ip_addr(overlay, ip, port);
+
+                // Start listening
+                runtime
+                    .request(ServiceId::Farcasterd, Request::Listen(remote_addr))?;
+                // Report to cli
+                runtime.report_progress()?;
+                // Create public offer
+                let peer = RemoteNodeAddr {node_id, remote_addr};
+                let public_offer = offer.to_public_v1(peer);
+                println!("{}", "\nPlease share the following offer with counterparty: \n");
+                println!("{:?}", farcaster_core::consensus::serialize_hex(&public_offer));
+            }
             _ => unimplemented!(),
         }
         Ok(())

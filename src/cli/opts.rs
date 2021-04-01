@@ -104,7 +104,7 @@ pub enum Command {
     /// Test farcaster messages
     FarMsg { swapid: SwapId },
 
-    /// Create an maker's offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice
+    /// Create a maker's offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice
     MakeOffer {
         /// Type of offer and network to use
         network: Network,
@@ -121,7 +121,7 @@ pub enum Command {
         /// The punish timelock parameter of the arbitrating blockchain
         punish_timelock: CSVTimelock,
         /// The chosen fee strategy for the arbitrating transactions
-        fee_strategy: FeeStrategy<Amount>,
+        fee_strategy: FeeStrategy<farcaster_chains::bitcoin::SatPerVByte>,
         /// The future maker swap role
         maker_role: SwapRole,
     },
