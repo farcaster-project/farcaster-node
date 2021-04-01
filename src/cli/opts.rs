@@ -17,7 +17,6 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use bitcoin::{Network, OutPoint};
 use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 
@@ -46,16 +45,14 @@ impl Opts {
         self.shared.process()
     }
 }
-
-// TODO: when ready in core, use real offer
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-pub struct Offer;
-
-impl std::fmt::Display for Offer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
-    }
-}
+use farcaster_chains::{
+    bitcoin::{Amount, Bitcoin, CSVTimelock},
+    monero::Monero,
+};
+use farcaster_core::{
+    blockchain::{FeeStrategy, Network},
+    role::SwapRole,
+};
 
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
@@ -107,11 +104,29 @@ pub enum Command {
     /// Test farcaster messages
     FarMsg { swapid: SwapId },
 
-    /// Create an maker's offer
-    MakeOffer(Offer),
-
-    /// Takers accepts offer
-    TakeOffer(Offer),
+    /// Create an maker's offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice
+    MakeOffer {
+        /// Type of offer and network to use
+        network: Network,
+        /// The chosen arbitrating blockchain
+        arbitrating: Bitcoin,
+        /// The chosen accordant blockchain
+        accordant: Monero,
+        /// Amount of arbitrating assets to exchanged
+        arbitrating_assets: Amount,
+        /// Amount of accordant assets to exchanged
+        accordant_assets: u64,
+        /// The cancel timelock parameter of the arbitrating blockchain
+        cancel_timelock: CSVTimelock,
+        /// The punish timelock parameter of the arbitrating blockchain
+        punish_timelock: CSVTimelock,
+        /// The chosen fee strategy for the arbitrating transactions
+        fee_strategy: FeeStrategy<Amount>,
+        /// The future maker swap role
+        maker_role: SwapRole,
+    },
+    /* /// Takers accepts offer
+     * TakeOffer(Offer), */
 }
 
 #[derive(

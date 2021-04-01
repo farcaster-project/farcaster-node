@@ -226,28 +226,15 @@ _arguments "${_arguments_options[@]}" \
 '--help[Prints help information]' \
 '-V[Prints version information]' \
 '--version[Prints version information]' \
-&& ret=0
-;;
-(take-offer)
-_arguments "${_arguments_options[@]}" \
-'-d+[Data directory path]: :_files -/' \
-'--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
-'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
+':network -- Type of offer and network to use:' \
+':arbitrating -- The chosen arbitrating blockchain:' \
+':accordant -- The chosen accordant blockchain:' \
+':arbitrating-assets -- Amount of arbitrating assets to exchanged:' \
+':accordant-assets -- Amount of accordant assets to exchanged:' \
+':cancel-timelock -- The cancel timelock parameter of the arbitrating blockchain:' \
+':punish-timelock -- The punish timelock parameter of the arbitrating blockchain:' \
+':fee-strategy -- The chosen fee strategy for the arbitrating transactions:' \
+':maker-role -- The future maker swap role:' \
 && ret=0
 ;;
 (help)
@@ -273,8 +260,7 @@ _swap-cli_commands() {
 "peers:Lists existing peer connections" \
 "ls:Lists running swaps" \
 "far-msg:Test farcaster messages" \
-"make-offer:Create an maker's offer" \
-"take-offer:Takers accepts offer" \
+"make-offer:Create an maker's offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice" \
 "help:Prints this message or the help of the given subcommand(s)" \
     )
     _describe -t commands 'swap-cli commands' commands "$@"
@@ -341,13 +327,6 @@ _swap-cli__ping_commands() {
         
     )
     _describe -t commands 'swap-cli ping commands' commands "$@"
-}
-(( $+functions[_swap-cli__take-offer_commands] )) ||
-_swap-cli__take-offer_commands() {
-    local commands; commands=(
-        
-    )
-    _describe -t commands 'swap-cli take-offer commands' commands "$@"
 }
 
 _swap-cli "$@"

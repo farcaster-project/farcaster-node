@@ -107,6 +107,27 @@ impl Exec for Command {
                 runtime
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
             }
+            Command::MakeOffer {
+                network,
+                arbitrating,
+                accordant,
+                arbitrating_assets,
+                accordant_assets,
+                cancel_timelock,
+                punish_timelock,
+                fee_strategy,
+                maker_role,
+            } => {
+                dbg!(network);
+                dbg!(arbitrating);
+                dbg!(accordant);
+                dbg!(arbitrating_assets);
+                dbg!(accordant_assets);
+                dbg!(cancel_timelock);
+                dbg!(punish_timelock);
+                dbg!(fee_strategy);
+                dbg!(maker_role);
+            },
             _ => unimplemented!(),
         }
         Ok(())
