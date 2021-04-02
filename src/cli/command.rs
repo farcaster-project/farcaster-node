@@ -93,7 +93,9 @@ impl Exec for Command {
             Command::Connect { peer: node_locator } => {
                 let peer = node_locator
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                    .ok_or_else(|| {
+                        internet2::presentation::Error::InvalidEndpoint
+                    })?;
 
                 runtime.request(
                     ServiceId::Farcasterd,
@@ -103,9 +105,10 @@ impl Exec for Command {
             }
 
             Command::Ping { peer } => {
-                let node_addr = peer
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                let node_addr =
+                    peer.to_node_addr(LIGHTNING_P2P_DEFAULT_PORT).ok_or_else(
+                        || internet2::presentation::Error::InvalidEndpoint,
+                    )?;
 
                 runtime
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
@@ -120,6 +123,9 @@ impl Exec for Command {
                 punish_timelock,
                 fee_strategy,
                 maker_role,
+                ip_addr,
+                port,
+                overlay,
             } => {
                 use farcaster_core::negotiation::{Offer, PublicOffer};
                 let offer = Offer {
@@ -142,16 +148,8 @@ impl Exec for Command {
                     )),
                 }?;
 
-                // FIXME following should not be hardcoded
-                use std::str::FromStr;
-                let overlay = FromStr::from_str("tcp")
-                    .map_err(|_| Error::Other("Parsing overlay".to_string()))?;
-                let ip = FromStr::from_str("0.0.0.0")
-                    .map_err(|_| Error::Other("Parsing ip".to_string()))?;
-                let port = FromStr::from_str("9735")
-                    .map_err(|_| Error::Other("Parsing port".to_string()))?;
                 let remote_addr =
-                    RemoteSocketAddr::with_ip_addr(overlay, ip, port);
+                    RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
 
                 // Start listening
                 runtime.request(
@@ -166,15 +164,24 @@ impl Exec for Command {
                     remote_addr,
                 };
                 let public_offer = offer.to_public_v1(peer);
-                println!("{}", "\nPlease share the following Offer with Taker: \n");
-                println!("{:?}", &public_offer.to_string());
+                let msg = format!(
+                    "Share the following offer with taker:\n {:?}",
+                    &public_offer.to_string().progress(),
+                );
+                info!("{}", msg);
             }
 
             Command::TakeOffer { public_offer } => {
+                println!(
+                    "\nAccepting offer following offer without verification:\n"
+                );
+                println!("{:?}", &public_offer);
                 let peer = public_offer
                     .daemon_service
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                    .ok_or_else(|| {
+                        internet2::presentation::Error::InvalidEndpoint
+                    })?;
                 // connect to counterparty node
                 runtime.request(
                     ServiceId::Farcasterd,

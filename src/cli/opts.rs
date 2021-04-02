@@ -76,7 +76,7 @@ pub enum Command {
         overlay: FramingProtocol,
     },
 
-    /// Connect to the remote lightning network peer, Taker's action
+    /// Connect to the remote lightning network peer
     Connect {
         /// Address of the remote node, in
         /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
@@ -111,23 +111,52 @@ pub enum Command {
     /// Alice`
     MakeOffer {
         /// Type of offer and network to use
+        #[clap(default_value = "Testnet")]
         network: Network,
+
         /// The chosen arbitrating blockchain
+        #[clap(default_value = "Bitcoin")]
         arbitrating: Bitcoin,
+
         /// The chosen accordant blockchain
+        #[clap(default_value = "Monero")]
         accordant: Monero,
+
         /// Amount of arbitrating assets to exchanged
+        #[clap(default_value = "100")]
         arbitrating_assets: Amount,
+
         /// Amount of accordant assets to exchanged
+        #[clap(default_value = "100")]
         accordant_assets: u64,
+
         /// The cancel timelock parameter of the arbitrating blockchain
+        #[clap(default_value = "10")]
         cancel_timelock: CSVTimelock,
+
         /// The punish timelock parameter of the arbitrating blockchain
+        #[clap(default_value = "30")]
         punish_timelock: CSVTimelock,
+
         /// The chosen fee strategy for the arbitrating transactions
+        #[clap(default_value = "20")]
         fee_strategy: FeeStrategy<farcaster_chains::bitcoin::SatPerVByte>,
+
         /// The future maker swap role
+        #[clap(default_value = "Alice")]
         maker_role: SwapRole,
+
+        /// IPv4 or IPv6 address to bind to
+        #[clap(default_value = "0.0.0.0")]
+        ip_addr: IpAddr,
+
+        /// Port to use; defaults to the native LN port.
+        #[clap(default_value = "9735")]
+        port: u16,
+
+        /// Use overlay protocol (http, websocket etc)
+        #[clap(default_value = "tcp")]
+        overlay: FramingProtocol,
     },
     /// Taker accepts offer and connects to Maker's daemon.
     TakeOffer {
