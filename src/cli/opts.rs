@@ -103,10 +103,12 @@ pub enum Command {
     /// Lists running swaps
     Ls,
 
-    /// Test farcaster messages
-    FarMsg { swapid: SwapId },
-
-    /// Create a maker's offer, e.g.: make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice
+    /// Maker creates offer and start listening. Command used to to print a hex
+    /// representation of the offer that shall be shared with Taker.
+    /// Additionally it spins up the listener awaiting for connection related to
+    /// this offer. Example usage:
+    /// `make-offer Testnet Bitcoin Monero 100000 200 10 10 20
+    /// Alice`
     MakeOffer {
         /// Type of offer and network to use
         network: Network,
@@ -127,9 +129,9 @@ pub enum Command {
         /// The future maker swap role
         maker_role: SwapRole,
     },
-    /// Takers accepts offer
+    /// Taker accepts offer and connects to Maker's daemon.
     TakeOffer {
-        /// hex encoded offer
+        /// Hex encoded offer
         public_offer: PublicOffer<Bitcoin, Monero>
     }
 }

@@ -93,7 +93,7 @@ impl Exec for Command {
             Command::Connect { peer: node_locator } => {
                 let peer = node_locator
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .expect("Provided node address is invalid");
+                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
                 runtime.request(
                     ServiceId::Farcasterd,
@@ -105,7 +105,7 @@ impl Exec for Command {
             Command::Ping { peer } => {
                 let node_addr = peer
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .expect("Provided node address is invalid");
+                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
                 runtime
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
@@ -141,9 +141,9 @@ impl Exec for Command {
                         microservices::rpc::Error::UnexpectedServerResponse,
                     )),
                 }?;
+
+                // FIXME following should not be hardcoded
                 use std::str::FromStr;
-                // FIXME Create Default RemoteSocketAddr, should not be
-                // hardcoded
                 let overlay = FromStr::from_str("tcp")
                     .map_err(|_| Error::Other("Parsing overlay".to_string()))?;
                 let ip = FromStr::from_str("0.0.0.0")
@@ -166,23 +166,21 @@ impl Exec for Command {
                     remote_addr,
                 };
                 let public_offer = offer.to_public_v1(peer);
-                println!("{}", "\nPlease share the following offer with swap counterparty: \n");
-                println!(
-                    "{:?}",
-                    farcaster_core::consensus::serialize_hex(&public_offer)
-                );
+                println!("{}", "\nPlease share the following Offer with Taker: \n");
+                println!("{:?}", &public_offer.to_string());
             }
 
             Command::TakeOffer { public_offer } => {
                 let peer = public_offer
                     .daemon_service
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .expect("Provided node address is invalid");
-
+                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                // connect to counterparty node
                 runtime.request(
                     ServiceId::Farcasterd,
                     Request::ConnectPeer(peer),
                 )?;
+                //report progress to cli
                 runtime.report_progress()?;
             }
             _ => unimplemented!(),
