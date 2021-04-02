@@ -20,6 +20,17 @@ use std::str::FromStr;
 use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 
+use farcaster_chains::{
+    bitcoin::{Amount, Bitcoin, CSVTimelock},
+    monero::Monero,
+};
+use farcaster_core::{
+    blockchain::{FeeStrategy, Network},
+    role::SwapRole,
+    negotiation::PublicOffer,
+};
+
+
 /// Command-line tool for working with Farcaster node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(
@@ -45,15 +56,6 @@ impl Opts {
         self.shared.process()
     }
 }
-use farcaster_chains::{
-    bitcoin::{Amount, Bitcoin, CSVTimelock},
-    monero::Monero,
-};
-use farcaster_core::{
-    blockchain::{FeeStrategy, Network},
-    role::SwapRole,
-};
-
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
@@ -125,8 +127,11 @@ pub enum Command {
         /// The future maker swap role
         maker_role: SwapRole,
     },
-    /* /// Takers accepts offer
-     * TakeOffer(Offer), */
+    /// Takers accepts offer
+    TakeOffer {
+        /// hex encoded offer
+        public_offer: PublicOffer<Bitcoin, Monero>
+    }
 }
 
 #[derive(

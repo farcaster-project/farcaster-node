@@ -15,7 +15,9 @@
 use std::convert::TryFrom;
 use std::str::FromStr;
 
-use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr, RemoteNodeAddr};
+use internet2::{
+    NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr,
+};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
@@ -140,22 +142,48 @@ impl Exec for Command {
                     )),
                 }?;
                 use std::str::FromStr;
-                // FIXME Create Default RemoteSocketAddr, should not be hardcoded
-                let overlay = FromStr::from_str("tcp").map_err(|_| Error::Other("Parsing overlay".to_string()))?;
-                let ip = FromStr::from_str("0.0.0.0").map_err(|_| Error::Other("Parsing ip".to_string()))?;
-                let port = FromStr::from_str("9735").map_err(|_| Error::Other("Parsing port".to_string()))?;
-                let remote_addr = RemoteSocketAddr::with_ip_addr(overlay, ip, port);
+                // FIXME Create Default RemoteSocketAddr, should not be
+                // hardcoded
+                let overlay = FromStr::from_str("tcp")
+                    .map_err(|_| Error::Other("Parsing overlay".to_string()))?;
+                let ip = FromStr::from_str("0.0.0.0")
+                    .map_err(|_| Error::Other("Parsing ip".to_string()))?;
+                let port = FromStr::from_str("9735")
+                    .map_err(|_| Error::Other("Parsing port".to_string()))?;
+                let remote_addr =
+                    RemoteSocketAddr::with_ip_addr(overlay, ip, port);
 
                 // Start listening
-                runtime
-                    .request(ServiceId::Farcasterd, Request::Listen(remote_addr))?;
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::Listen(remote_addr),
+                )?;
                 // Report to cli
                 runtime.report_progress()?;
                 // Create public offer
-                let peer = RemoteNodeAddr {node_id, remote_addr};
+                let peer = RemoteNodeAddr {
+                    node_id,
+                    remote_addr,
+                };
                 let public_offer = offer.to_public_v1(peer);
-                println!("{}", "\nPlease share the following offer with counterparty: \n");
-                println!("{:?}", farcaster_core::consensus::serialize_hex(&public_offer));
+                println!("{}", "\nPlease share the following offer with swap counterparty: \n");
+                println!(
+                    "{:?}",
+                    farcaster_core::consensus::serialize_hex(&public_offer)
+                );
+            }
+
+            Command::TakeOffer { public_offer } => {
+                let peer = public_offer
+                    .daemon_service
+                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
+                    .expect("Provided node address is invalid");
+
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::ConnectPeer(peer),
+                )?;
+                runtime.report_progress()?;
             }
             _ => unimplemented!(),
         }
