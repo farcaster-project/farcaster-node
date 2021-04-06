@@ -183,7 +183,7 @@ _arguments "${_arguments_options[@]}" \
 '--version[Prints version information]' \
 && ret=0
 ;;
-(make-offer)
+(make)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
@@ -203,18 +203,21 @@ _arguments "${_arguments_options[@]}" \
 '--help[Prints help information]' \
 '-V[Prints version information]' \
 '--version[Prints version information]' \
-':network -- Type of offer and network to use:' \
-':arbitrating -- The chosen arbitrating blockchain:' \
-':accordant -- The chosen accordant blockchain:' \
-':arbitrating-assets -- Amount of arbitrating assets to exchanged:' \
-':accordant-assets -- Amount of accordant assets to exchanged:' \
-':cancel-timelock -- The cancel timelock parameter of the arbitrating blockchain:' \
-':punish-timelock -- The punish timelock parameter of the arbitrating blockchain:' \
-':fee-strategy -- The chosen fee strategy for the arbitrating transactions:' \
-':maker-role -- The future maker swap role:' \
+'::network -- Type of offer and network to use:' \
+'::arbitrating -- The chosen arbitrating blockchain:' \
+'::accordant -- The chosen accordant blockchain:' \
+'::arbitrating-assets -- Amount of arbitrating assets to exchanged:' \
+'::accordant-assets -- Amount of accordant assets to exchanged:' \
+'::cancel-timelock -- The cancel timelock parameter of the arbitrating blockchain:' \
+'::punish-timelock -- The punish timelock parameter of the arbitrating blockchain:' \
+'::fee-strategy -- The chosen fee strategy for the arbitrating transactions:' \
+'::maker-role -- The future maker swap role:' \
+'::ip-addr -- IPv4 or IPv6 address to bind to:' \
+'::port -- Port to use; defaults to the native LN port:' \
+'::overlay -- Use overlay protocol (http, websocket etc):' \
 && ret=0
 ;;
-(take-offer)
+(take)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
@@ -254,13 +257,13 @@ esac
 _swap-cli_commands() {
     local commands; commands=(
         "listen:Bind to a socket and start listening for incoming LN peer connections, Maker's action" \
-"connect:Connect to the remote lightning network peer, Taker's action" \
+"connect:Connect to the remote lightning network peer" \
 "ping:Ping remote peer (must be already connected)" \
 "info:General information about the running node" \
 "peers:Lists existing peer connections" \
 "ls:Lists running swaps" \
-"make-offer:Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice`" \
-"take-offer:Taker accepts offer and connects to Maker's daemon" \
+"make:Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice`" \
+"take:Taker accepts offer and connects to Maker's daemon" \
 "help:Prints this message or the help of the given subcommand(s)" \
     )
     _describe -t commands 'swap-cli commands' commands "$@"
@@ -300,12 +303,12 @@ _swap-cli__ls_commands() {
     )
     _describe -t commands 'swap-cli ls commands' commands "$@"
 }
-(( $+functions[_swap-cli__make-offer_commands] )) ||
-_swap-cli__make-offer_commands() {
+(( $+functions[_swap-cli__make_commands] )) ||
+_swap-cli__make_commands() {
     local commands; commands=(
         
     )
-    _describe -t commands 'swap-cli make-offer commands' commands "$@"
+    _describe -t commands 'swap-cli make commands' commands "$@"
 }
 (( $+functions[_swap-cli__peers_commands] )) ||
 _swap-cli__peers_commands() {
@@ -321,12 +324,12 @@ _swap-cli__ping_commands() {
     )
     _describe -t commands 'swap-cli ping commands' commands "$@"
 }
-(( $+functions[_swap-cli__take-offer_commands] )) ||
-_swap-cli__take-offer_commands() {
+(( $+functions[_swap-cli__take_commands] )) ||
+_swap-cli__take_commands() {
     local commands; commands=(
         
     )
-    _describe -t commands 'swap-cli take-offer commands' commands "$@"
+    _describe -t commands 'swap-cli take commands' commands "$@"
 }
 
 _swap-cli "$@"

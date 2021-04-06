@@ -113,7 +113,7 @@ impl Exec for Command {
                 runtime
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
             }
-            Command::MakeOffer {
+            Command::Make {
                 network,
                 arbitrating,
                 accordant,
@@ -127,8 +127,7 @@ impl Exec for Command {
                 port,
                 overlay,
             } => {
-                use farcaster_core::negotiation::{Offer, PublicOffer};
-                let offer = Offer {
+                let offer = farcaster_core::negotiation::Offer {
                     network,
                     arbitrating,
                     accordant,
@@ -164,18 +163,16 @@ impl Exec for Command {
                     remote_addr,
                 };
                 let public_offer = offer.to_public_v1(peer);
-                let msg = format!(
-                    "Share the following offer with taker:\n {:?}",
-                    &public_offer.to_string().progress(),
-                );
-                info!("{}", msg);
+                let instruction =
+                    format!("Share the following offer with taker:",);
+                let hex = format!("{:?}", &public_offer.to_string());
+                println!("{} \n {}", instruction.progress(), hex.amount());
             }
 
-            Command::TakeOffer { public_offer } => {
-                println!(
-                    "\nAccepting offer following offer without verification:\n"
-                );
-                println!("{:?}", &public_offer);
+            Command::Take { public_offer } => {
+                let msg = "\nAccepting following offer without verification:\n";
+                println!("{}", msg.err());
+                println!("{:?}", &public_offer.amount());
                 let peer = public_offer
                     .daemon_service
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
@@ -189,6 +186,12 @@ impl Exec for Command {
                 )?;
                 //report progress to cli
                 runtime.report_progress()?;
+
+                // pass offer to farcasterd to initiate the swap
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::TakeOffer(public_offer),
+                )?;
             }
             _ => unimplemented!(),
         }

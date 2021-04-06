@@ -28,8 +28,8 @@ _swap-cli() {
             ls)
                 cmd+="__ls"
                 ;;
-            make-offer)
-                cmd+="__make__offer"
+            make)
+                cmd+="__make"
                 ;;
             peers)
                 cmd+="__peers"
@@ -37,8 +37,8 @@ _swap-cli() {
             ping)
                 cmd+="__ping"
                 ;;
-            take-offer)
-                cmd+="__take__offer"
+            take)
+                cmd+="__take"
                 ;;
             *)
                 ;;
@@ -47,7 +47,7 @@ _swap-cli() {
 
     case "${cmd}" in
         swap__cli)
-            opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  listen connect ping info peers ls make-offer take-offer help"
+            opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  listen connect ping info peers ls make take help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -401,8 +401,8 @@ _swap-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        swap__cli__make__offer)
-            opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <network> <arbitrating> <accordant> <arbitrating-assets> <accordant-assets> <cancel-timelock> <punish-timelock> <fee-strategy> <maker-role> "
+        swap__cli__make)
+            opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <network> <arbitrating> <accordant> <arbitrating-assets> <accordant-assets> <cancel-timelock> <punish-timelock> <fee-strategy> <maker-role> <ip-addr> <port> <overlay> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -590,7 +590,7 @@ _swap-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        swap__cli__take__offer)
+        swap__cli__take)
             opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <public-offer> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use bitcoin::{secp256k1, OutPoint};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
-use farcaster_core::protocol_message;
+use farcaster_core::{negotiation::PublicOffer, protocol_message};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
@@ -173,14 +173,18 @@ pub enum Request {
     #[display("ping_peer()")]
     PingPeer,
 
+    #[api(type = 204)]
+    #[display("accept_channel_from(...)")]
+    AcceptSwapFrom(CreateSwap),
+
+    #[api(type = 199)]
+    #[display("accept_channel_from(...)")]
+    TakeOffer(PublicOffer<Bitcoin, Monero>),
+
     // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
     #[display("create_channel_with(...)")]
     OpenSwapWith(CreateSwap),
-
-    #[api(type = 204)]
-    #[display("accept_channel_from(...)")]
-    AcceptSwapFrom(CreateSwap),
 
     #[api(type = 205)]
     #[display("fund_channel({0})")]

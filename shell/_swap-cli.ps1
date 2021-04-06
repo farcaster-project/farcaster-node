@@ -39,13 +39,13 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('-V', 'V', [CompletionResultType]::ParameterName, 'Prints version information')
             [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Prints version information')
             [CompletionResult]::new('listen', 'listen', [CompletionResultType]::ParameterValue, 'Bind to a socket and start listening for incoming LN peer connections, Maker''s action')
-            [CompletionResult]::new('connect', 'connect', [CompletionResultType]::ParameterValue, 'Connect to the remote lightning network peer, Taker''s action')
+            [CompletionResult]::new('connect', 'connect', [CompletionResultType]::ParameterValue, 'Connect to the remote lightning network peer')
             [CompletionResult]::new('ping', 'ping', [CompletionResultType]::ParameterValue, 'Ping remote peer (must be already connected)')
             [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'General information about the running node')
             [CompletionResult]::new('peers', 'peers', [CompletionResultType]::ParameterValue, 'Lists existing peer connections')
             [CompletionResult]::new('ls', 'ls', [CompletionResultType]::ParameterValue, 'Lists running swaps')
-            [CompletionResult]::new('make-offer', 'make-offer', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice`')
-            [CompletionResult]::new('take-offer', 'take-offer', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to Maker''s daemon')
+            [CompletionResult]::new('make', 'make', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice`')
+            [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to Maker''s daemon')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Prints this message or the help of the given subcommand(s)')
             break
         }
@@ -181,7 +181,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Prints version information')
             break
         }
-        'swap-cli;make-offer' {
+        'swap-cli;make' {
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-c', 'c', [CompletionResultType]::ParameterName, 'Path to the configuration file')
@@ -202,7 +202,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Prints version information')
             break
         }
-        'swap-cli;take-offer' {
+        'swap-cli;take' {
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-c', 'c', [CompletionResultType]::ParameterName, 'Path to the configuration file')

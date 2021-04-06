@@ -30,7 +30,6 @@ use farcaster_core::{
     negotiation::PublicOffer,
 };
 
-
 /// Command-line tool for working with Farcaster node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(
@@ -109,7 +108,7 @@ pub enum Command {
     /// this offer. Example usage:
     /// `make-offer Testnet Bitcoin Monero 100000 200 10 10 20
     /// Alice`
-    MakeOffer {
+    Make {
         /// Type of offer and network to use
         #[clap(default_value = "Testnet")]
         network: Network,
@@ -159,7 +158,7 @@ pub enum Command {
         overlay: FramingProtocol,
     },
     /// Taker accepts offer and connects to Maker's daemon.
-    TakeOffer {
+    Take {
         /// Hex encoded offer
         public_offer: PublicOffer<Bitcoin, Monero>
     }
