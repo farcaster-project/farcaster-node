@@ -32,6 +32,69 @@ alias swap0-cli="./target/debug/swap-cli -d .data_dir_0"
 alias swap1-cli="./target/debug/swap-cli -d .data_dir_1"
 ```
 
+### Make and take offer
+### Make
+Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. params of make:
+```
+swap0-cli make --help
+```
+
+ARGS:
+    <network>
+            Type of offer and network to use [default: Testnet]
+    <arbitrating>
+            The chosen arbitrating blockchain [default: Bitcoin]
+    <accordant>
+            The chosen accordant blockchain [default: Monero]
+    <arbitrating-assets>
+            Amount of arbitrating assets to exchanged [default: 100]
+    <accordant-assets>
+            Amount of accordant assets to exchanged [default: 100]
+    <cancel-timelock>
+            The cancel timelock parameter of the arbitrating blockchain [default: 10]
+    <punish-timelock>
+            The punish timelock parameter of the arbitrating blockchain [default: 30]
+    <fee-strategy>
+            The chosen fee strategy for the arbitrating transactions [default: 20]
+    <maker-role>
+            The future maker swap role [default: Alice]
+    <ip-addr>
+            IPv4 or IPv6 address to bind to [default: 0.0.0.0]
+    <port>
+            Port to use; defaults to the native LN port [default: 9735]
+    <overlay>
+            Use overlay protocol (http, websocket etc) [default: tcp]
+
+
+```
+swap0-cli make Testnet Bitcoin Monero 1000 201 10 10 21 Bob
+```
+
+This will produce the following hex encoded offer: 
+
+`464353574150010002000000808000008008e80300000000000008c900000000000000040a000000040a0000000108150000000000000002026981c0e141351c1aae13014379d629dfddb3b5375c1265c34203b5d13c69cd270000000000000000000000000000000000000000000000000000000000000000000000260700`
+
+This public offer should be shared by maker with taker. It also contains information on how to connect to taker.
+
+Additionally, it adds the public offers to the set of public offers in farcasterd that will be later used to initiate the swap upon takers message
+ 
+### Take
+Taker accepts offer and connects to Maker's daemon
+
+arguments of take
+ARGS:
+    <public-offer>
+            Hex encoded offer
+
+Example of taking the offer above produced by maker. 
+```
+swap1-cli take 464353574150010002000000808000008008e80300000000000008c900000000000000040a000000040a0000000108150000000000000002026981c0e141351c1aae13014379d629dfddb3b5375c1265c34203b5d13c69cd270000000000000000000000000000000000000000000000000000000000000000000000260700
+```
+
+## Listening and connecting
+
+`make` and `take` take care of listening and connecting, but if you would like to do it manually, read on.
+
 Create aliases for node address
 ```
 node0=$(swap0-cli info | awk '/node_id/ {print $2"@127.0.0.1"}')
