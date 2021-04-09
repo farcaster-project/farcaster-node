@@ -15,7 +15,9 @@
 use std::convert::TryFrom;
 use std::str::FromStr;
 
-use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
+use internet2::{
+    NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr,
+};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
@@ -39,7 +41,7 @@ impl Exec for Command {
                         )?;
                     } else if let Ok(channel_id) = SwapId::from_str(&subj) {
                         runtime.request(
-                            ServiceId::Swaps(channel_id),
+                            ServiceId::Swap(channel_id),
                             Request::GetInfo,
                         )?;
                     } else {
@@ -52,6 +54,7 @@ impl Exec for Command {
                         return Err(Error::Other(err));
                     }
                 } else {
+                    // subject is none
                     runtime.request(ServiceId::Farcasterd, Request::GetInfo)?;
                 }
                 match runtime.response()? {
@@ -90,7 +93,9 @@ impl Exec for Command {
             Command::Connect { peer: node_locator } => {
                 let peer = node_locator
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .expect("Provided node address is invalid");
+                    .ok_or_else(|| {
+                        internet2::presentation::Error::InvalidEndpoint
+                    })?;
 
                 runtime.request(
                     ServiceId::Farcasterd,
@@ -100,12 +105,70 @@ impl Exec for Command {
             }
 
             Command::Ping { peer } => {
-                let node_addr = peer
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .expect("Provided node address is invalid");
+                let node_addr =
+                    peer.to_node_addr(LIGHTNING_P2P_DEFAULT_PORT).ok_or_else(
+                        || internet2::presentation::Error::InvalidEndpoint,
+                    )?;
 
                 runtime
                     .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
+            }
+            Command::Make {
+                network,
+                arbitrating,
+                accordant,
+                arbitrating_assets,
+                accordant_assets,
+                cancel_timelock,
+                punish_timelock,
+                fee_strategy,
+                maker_role,
+                ip_addr,
+                port,
+                overlay,
+            } => {
+                let offer = farcaster_core::negotiation::Offer {
+                    network,
+                    arbitrating,
+                    accordant,
+                    arbitrating_assets,
+                    accordant_assets,
+                    cancel_timelock,
+                    punish_timelock,
+                    fee_strategy,
+                    maker_role,
+                };
+                let remote_addr =
+                    RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
+                let proto_offer = request::ProtoPublicOffer { offer, remote_addr };
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::MakeOffer(proto_offer),
+                )?;
+                // Report to cli
+                // report connection
+                runtime.report_progress()?;
+
+                let public_offer = runtime.response()?;
+                let instruction =
+                    format!("Share the following offer with taker:",);
+                let hex = format!("{:?}", &public_offer);
+                println!("{} \n {}", instruction.progress(), hex.amount());
+            }
+
+            Command::Take { public_offer } => {
+                let msg = "\nAccepting following offer without verification:\n";
+                println!("{}", msg.err());
+                println!("{:?}", &public_offer);
+
+                // pass offer to farcasterd to initiate the swap
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::TakeOffer(public_offer),
+                )?;
+                //report progress to cli
+                runtime.report_progress()?;
+                runtime.report_progress()?;
             }
             _ => unimplemented!(),
         }

@@ -23,7 +23,10 @@ use std::time::Duration;
 
 use bitcoin::{secp256k1, OutPoint};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
-use farcaster_core::protocol_message;
+use farcaster_core::{
+    negotiation::{Offer, PublicOffer},
+    protocol_message,
+};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
@@ -35,6 +38,7 @@ use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
+
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
@@ -173,14 +177,26 @@ pub enum Request {
     #[display("ping_peer()")]
     PingPeer,
 
+    #[api(type = 204)]
+    #[display("accept_channel_from(...)")]
+    AcceptSwapFrom(CreateSwap),
+
+    #[api(type = 199)]
+    #[display("public_offer({0:#}))")]
+    TakeOffer(PublicOffer<Bitcoin, Monero>),
+
+    #[api(type = 198)]
+    #[display("proto_puboffer({0:#})")]
+    MakeOffer(ProtoPublicOffer),
+
+    #[api(type = 197)]
+    #[display("public_offer_hex({0})")]
+    PublicOfferHex(String),
+
     // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
     #[display("create_channel_with(...)")]
     OpenSwapWith(CreateSwap),
-
-    #[api(type = 204)]
-    #[display("accept_channel_from(...)")]
-    AcceptSwapFrom(CreateSwap),
 
     #[api(type = 205)]
     #[display("fund_channel({0})")]
@@ -277,6 +293,16 @@ pub struct NodeInfo {
     pub peers: Vec<NodeAddr>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub swaps: Vec<SwapId>,
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    pub offers: Vec<PublicOffer<Bitcoin, Monero>>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("proto_puboffer")]
+pub struct ProtoPublicOffer {
+    pub offer: Offer<Bitcoin, Monero>,
+    pub remote_addr: RemoteSocketAddr,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

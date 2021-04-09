@@ -122,7 +122,7 @@ impl Runtime {
     ) -> Result<(), Error> {
         let mut notify_cli = None;
         match (&request, &source) {
-            (Request::CreateTask(task), ServiceId::Swaps(swapid)) => {
+            (Request::CreateTask(task), ServiceId::Swap(swapid)) => {
                 self.create_task(task, swapid)?;
             }
             (Request::Hello, _) => {

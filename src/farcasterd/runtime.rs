@@ -7,6 +7,7 @@
 // copyright and related and neighboring rights to this software to
 // the public domain worldwide. This software is distributed without
 // any warranty.
+
 //
 // You should have received a copy of the MIT License
 // along with this software.
@@ -16,6 +17,7 @@ use amplify::Wrapper;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
+use std::hash::Hash;
 use std::io;
 use std::net::SocketAddr;
 use std::process;
@@ -23,9 +25,10 @@ use std::time::{Duration, SystemTime};
 
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
-use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
+use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{
     message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
+    LIGHTNING_P2P_DEFAULT_PORT,
 };
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
@@ -35,6 +38,10 @@ use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
+use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
+use farcaster_core::{negotiation::PublicOffer};
+use farcaster_core::role::SwapRole;
+
 pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
@@ -43,10 +50,11 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
-        swaps: none!(),
+        running_swaps: none!(),
         spawning_services: none!(),
         opening_swaps: none!(),
         accepting_swaps: none!(),
+        offers: none!(),
     };
 
     Service::run(config, runtime, true)
@@ -59,10 +67,11 @@ pub struct Runtime {
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
-    swaps: HashSet<SwapId>,
+    running_swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
     opening_swaps: HashMap<ServiceId, request::CreateSwap>,
     accepting_swaps: HashMap<ServiceId, request::CreateSwap>,
+    offers: HashSet<PublicOffer<Bitcoin, Monero>>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -109,13 +118,10 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
-
-            // TODO put offer here
-            Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
-                info!("Creating swap by peer request from {}", source);
-                self.create_swap(source, None, open_swap, true)?;
-            }
-
+            // Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
+            //     info!("Creating swap by peer request from {}", source);
+            //     self.create_swap(source, None, open_swap, true)?;
+            // }
             Request::PeerMessage(_) => {
                 // Ignore the rest of LN peer messages
             }
@@ -139,7 +145,7 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        let mut notify_cli = None;
+        let mut notify_cli: Vec<(Option<ServiceId>, Request)> = none!();
         match request {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
@@ -169,13 +175,13 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Swaps(swap_id) => {
-                        if self.swaps.insert(swap_id.clone()) {
+                    ServiceId::Swap(swap_id) => {
+                        if self.running_swaps.insert(swap_id.clone()) {
                             info!(
                                 "Swap {} is registered; total {} \
                                  swaps are known",
                                 swap_id,
-                                self.swaps.len()
+                                self.running_swaps.len()
                             );
                         } else {
                             warn!(
@@ -194,11 +200,11 @@ impl Runtime {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
-                        "Daemon {} is known: we spawned it to create a swap. \
+                        "Swapd {} is known: we spawned it to create a swap. \
                          Ordering swap opening",
                         source
                     );
-                    notify_cli = Some((
+                    notify_cli.push((
                         swap_params.report_to.clone(),
                         Request::Progress(format!(
                             "Swap daemon {} operational",
@@ -237,7 +243,7 @@ impl Runtime {
                          connection by a request from {}",
                         source, enquirer
                     );
-                    notify_cli = Some((
+                    notify_cli.push((
                         Some(enquirer.clone()),
                         Request::Success(OptionDetails::with(format!(
                             "Peer connected to {}",
@@ -253,15 +259,15 @@ impl Runtime {
                     "Requested to update channel id {} on {}",
                     source, new_id
                 );
-                if let ServiceId::Swaps(old_id) = source {
-                    if !self.swaps.remove(&old_id) {
+                if let ServiceId::Swap(old_id) = source {
+                    if !self.running_swaps.remove(&old_id) {
                         warn!("Swap daemon {} was unknown", source);
                     }
-                    self.swaps.insert(new_id);
+                    self.running_swaps.insert(new_id);
                     debug!("Registered swap daemon id {}", new_id);
                 } else {
                     error!(
-                        "Swap id update may be requested only by a swapd, not {}", 
+                        "Swap id update may be requested only by a swapd, not {}",
                         source
                     );
                 }
@@ -270,8 +276,8 @@ impl Runtime {
             Request::GetInfo => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Farcasterd,
-                    source,
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
                     Request::NodeInfo(NodeInfo {
                         node_id: self.node_id,
                         listens: self.listens.iter().cloned().collect(),
@@ -284,7 +290,8 @@ impl Runtime {
                             .unwrap_or(Duration::from_secs(0))
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
-                        swaps: self.swaps.iter().cloned().collect(),
+                        swaps: self.running_swaps.iter().cloned().collect(),
+                        offers: self.offers.iter().cloned().collect(),
                     }),
                 )?;
             }
@@ -292,8 +299,8 @@ impl Runtime {
             Request::ListPeers => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Farcasterd,
-                    source,
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
                     Request::PeerList(
                         self.connections.iter().cloned().collect(),
                     ),
@@ -303,9 +310,11 @@ impl Runtime {
             Request::ListSwaps => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Farcasterd,
-                    source,
-                    Request::SwapList(self.swaps.iter().cloned().collect()),
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
+                    Request::SwapList(
+                        self.running_swaps.iter().cloned().collect(),
+                    ),
                 )?;
             }
 
@@ -317,7 +326,7 @@ impl Runtime {
                         addr
                     );
                     warn!("{}", msg.err());
-                    notify_cli = Some((
+                    notify_cli.push((
                         Some(source.clone()),
                         Request::Failure(Failure { code: 1, info: msg }),
                     ));
@@ -330,17 +339,17 @@ impl Runtime {
                     );
                     let resp = self.listen(addr);
                     match resp {
-                    Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}", 
-                                   "listens".ended(), addr_str),
-                    Err(ref err) => error!("{}", err.err())
-                }
+                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}", 
+                                       "listens".ended(), addr_str),
+                        Err(ref err) => error!("{}", err.err())
+                    }
                     senders.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd,
                         source.clone(),
                         resp.into_progress_or_failure(),
                     )?;
-                    notify_cli = Some((
+                    notify_cli.push((
                         Some(source.clone()),
                         Request::Success(OptionDetails::with(format!(
                             "Node {} listens for connections on {}",
@@ -361,57 +370,281 @@ impl Runtime {
                     Ok(_) => {}
                     Err(ref err) => error!("{}", err.err()),
                 }
-                notify_cli = Some((
+                notify_cli.push((
                     Some(source.clone()),
                     resp.into_progress_or_failure(),
                 ));
             }
 
-            Request::OpenSwapWith(request::CreateSwap {
-                swap_req,
-                peerd,
-                report_to,
+            // Request::OpenSwapWith(request::CreateSwap {
+            //     swap_req,
+            //     peerd,
+            //     report_to,
+            // }) => {
+            //     info!(
+            //         "{} by request from {}",
+            //         "Creating channel".promo(),
+            //         source.promoter()
+            //     );
+            //     let resp = self.create_swap(peerd, report_to, swap_req,
+            // false);     match resp {
+            //         Ok(_) => {}
+            //         Err(ref err) => error!("{}", err.err()),
+            //     }
+            //     notify_cli.push(Some((
+            //         Some(source.clone()),
+            //         resp.into_progress_or_failure(),
+            //     ));
+            // }
+            Request::MakeOffer(request::ProtoPublicOffer {
+                offer,
+                remote_addr,
             }) => {
-                info!(
-                    "{} by request from {}",
-                    "Creating channel".promo(),
-                    source.promoter()
-                );
-                let resp = self.create_swap(peerd, report_to, swap_req, false);
-                match resp {
-                    Ok(_) => {}
-                    Err(ref err) => error!("{}", err.err()),
+                // recurse to start listening
+                self.handle_rpc_ctl(
+                    senders,
+                    source.clone(),
+                    Request::Listen(remote_addr),
+                )?;
+                let peer = internet2::RemoteNodeAddr {
+                    node_id: self.node_id,
+                    remote_addr,
+                };
+                let public_offer = offer.to_public_v1(peer);
+                let hex_public_offer = public_offer.to_string();
+                if self.offers.insert(public_offer) {
+                    // let msg =
+                    //     format!("Pubic offer registered: {}",
+                    // hex_public_offer);
+                    info!(
+                        "{} {}",
+                        "Pubic offer registered:".promoter(),
+                        &hex_public_offer.amount()
+                    );
+                    // notify_cli.push(Some((
+                    //     Some(source.clone()),
+                    //     Request::Success(OptionDetails(Some(msg))),
+                    // ));
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd, // source
+                        source,                // destination
+                        Request::PublicOfferHex(hex_public_offer),
+                    )?;
+                } else {
+                    let msg = "This PublicOffer was previously registered";
+                    warn!("{}", msg.err());
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: msg.to_string(),
+                        }),
+                    ));
                 }
-                notify_cli = Some((
-                    Some(source.clone()),
-                    resp.into_progress_or_failure(),
-                ));
             }
 
-            _ => {
-                error!(
-                    "{}",
-                    "Request is not supported by the CTL interface".err()
-                );
-                return Err(Error::NotSupported(
-                    ServiceBus::Ctl,
-                    request.get_type(),
-                ));
+            Request::TakeOffer(public_offer) => {
+                if self.offers.contains(&public_offer) {
+                    let msg = format!(
+                        "Offer on {} already exists, ignoring request",
+                        &public_offer.to_string()
+                    );
+                    warn!("{}", msg.err());
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Failure(Failure { code: 2, info: msg }),
+                    ));
+                } else {
+                    let PublicOffer {
+                        version,
+                        offer,
+                        daemon_service,
+                    } = public_offer.clone();
+                    let peer = daemon_service
+                        .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
+                        .ok_or_else(|| {
+                            internet2::presentation::Error::InvalidEndpoint
+                        })?;
+                    // Connect
+                    info!(
+                        "{} to remote peer {}",
+                        "Connecting".promo(),
+                        peer.promoter()
+                    );
+                    let peer_connected =
+                        self.connect_peer(source.clone(), peer);
+
+                    notify_cli.push((
+                        Some(source.clone()),
+                        peer_connected.into_progress_or_failure(),
+                    ));
+
+                     let offer_registered = format!(
+                        "{} \n {}",
+                        "Pubic offer registered:".promo(),
+                        &public_offer.amount()
+                    );
+                    self.offers.insert(public_offer);
+                    info!("{}", offer_registered.amount());
+
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Success(OptionDetails(Some(offer_registered))),
+                    ));
+                    // use farcaster_core::session::BobSessionParams;
+                    // BobSessionParams::new();
+                    // since we're takers, invert
+                    // we need BobSessionParams that should come from Client?
+                    // match offer.maker_role {
+                    //     SwapRole::Alice => {
+                    //         BobSessionParams::new();
+                    //         let commit_b =  CommitBobSessionParams {buy, cancel, refund, adaptor, spend, view };
+                    //         request::ProtocolMessagesBob::CommitBobSessionParams(commit_b)},
+                    //     // let commit_a = ;
+                    //     SwapRole::Bob => request::ProtocolMessagesAlice::CommitAliceSessionParams(commit_a),
+                    // };
+                    // self.create_swap(public_offer, source, report_to,
+                    // swap_req, accept)?;
+                    // self.take_offer(source, report_to, swap_req, accept)
+                }
             }
+
+            Request::Init(_) => {}
+            Request::Error(_) => {}
+            Request::Ping(_) => {}
+            Request::Pong(_) => {}
+            Request::PeerMessage(_) => {}
+            Request::ProtocolMessagesAlice(_) => {}
+            Request::ProtocolMessagesBob(_) => {}
+            Request::ListTasks => {}
+            Request::PingPeer => {}
+            Request::AcceptSwapFrom(_) => {}
+            Request::FundSwap(_) => {}
+            Request::Progress(_) => {}
+            Request::Success(_) => {}
+            Request::Failure(_) => {}
+            Request::SyncerInfo(_) => {}
+            Request::NodeInfo(_) => {}
+            Request::PeerInfo(_) => {}
+            Request::SwapInfo(_) => {}
+            Request::TaskList(_) => {}
+            Request::SwapFunding(_) => {}
+            Request::CreateTask(_) => {}
+            _ => unimplemented!(),
         }
-
-        if let Some((Some(respond_to), resp)) = notify_cli {
-            senders.send_to(
-                ServiceBus::Ctl,
-                ServiceId::Farcasterd,
-                respond_to,
-                resp,
-            )?;
+        for (respond_to, resp) in notify_cli {
+            if let Some(respond_to) = respond_to {
+                info!(
+                    "Respond to {} -> Response {}",
+                    respond_to.amount(),
+                    resp.promo(),
+                );
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    respond_to,
+                    resp,
+                )?;
+            }
         }
 
         Ok(())
     }
+    fn take_offer(
+        &mut self,
+        source: ServiceId,
+        report_to: Option<ServiceId>,
+        mut swap_req: message::AcceptChannel,
+        accept: bool,
+    ) -> Result<(), Error> {
+        debug!("Instantiating swapd...");
 
+        // We need to initialize temporary channel id here
+        if !accept {
+            swap_req.temporary_channel_id = TempSwapId::random();
+            debug!(
+                "Generated {} as a temporary channel id",
+                swap_req.temporary_channel_id
+            );
+        }
+
+        // Start swapd
+        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
+        let msg =
+            format!("New instance of swapd launched with PID {}", child.id());
+        info!("{}", msg);
+        Ok(())
+    }
+    // FIXME: swapify
+    fn create_swap(
+        &mut self,
+        offer: PublicOffer<Bitcoin, Monero>,
+        source: ServiceId,
+        report_to: Option<ServiceId>,
+        mut swap_req: message::OpenChannel,
+        accept: bool,
+    ) -> Result<String, Error> {
+        debug!("Instantiating swapd...");
+
+        // We need to initialize temporary channel id here
+        if !accept {
+            swap_req.temporary_channel_id = TempSwapId::random();
+            debug!(
+                "Generated {} as a temporary channel id",
+                swap_req.temporary_channel_id
+            );
+        }
+
+        // Start swapd
+        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
+        let msg =
+            format!("New instance of swapd launched with PID {}", child.id());
+        info!("{}", msg);
+
+        // Construct channel creation request
+        let node_key = self.node_id;
+        // let swap_req = message::OpenChannel {
+        //     chain_hash:
+        // self.chain.clone().chain_params().genesis_hash.into(),     //
+        // TODO: Take these parameters from configuration     push_msat:
+        // 0,     dust_limit_satoshis: 0,
+        //     max_htlc_value_in_flight_msat: 10000,
+        //     channel_reserve_satoshis: 0,
+        //     htlc_minimum_msat: 0,
+        //     feerate_per_kw: 1,
+        //     to_self_delay: 1,
+        //     max_accepted_htlcs: 1000,
+        //     funding_pubkey: node_key,
+        //     revocation_basepoint: node_key,
+        //     payment_point: node_key,
+        //     delayed_payment_basepoint: node_key,
+        //     htlc_basepoint: node_key,
+        //     first_per_commitment_point: node_key,
+        //     channel_flags: 1, // Announce the channel
+        //     // shutdown_scriptpubkey: None,
+        //     ..swap_req
+        // };
+
+        let list = if accept {
+            &mut self.accepting_swaps
+        } else {
+            &mut self.opening_swaps
+        };
+        list.insert(
+            ServiceId::Swap(SwapId::from_inner(
+                swap_req.temporary_channel_id.into_inner(),
+            )),
+            request::CreateSwap {
+                swap_req,
+                peerd: source,
+                report_to,
+            },
+        );
+        debug!("Awaiting for swapd to connect...");
+
+        Ok(msg)
+    }
     fn listen(&mut self, addr: RemoteSocketAddr) -> Result<String, Error> {
         if let RemoteSocketAddr::Ftcp(inet) = addr {
             let socket_addr = SocketAddr::try_from(inet)?;
@@ -454,75 +687,6 @@ impl Runtime {
         self.spawning_services
             .insert(ServiceId::Peer(node_addr), source);
         debug!("Awaiting for peerd to connect...");
-
-        Ok(msg)
-    }
-
-    // FIXME: swapify
-    fn create_swap(
-        &mut self,
-        source: ServiceId,
-        report_to: Option<ServiceId>,
-        mut swap_req: message::OpenChannel,
-        accept: bool,
-    ) -> Result<String, Error> {
-        debug!("Instantiating swapd...");
-
-        // We need to initialize temporary channel id here
-        if !accept {
-            swap_req.temporary_channel_id = TempSwapId::random();
-            debug!(
-                "Generated {} as a temporary channel id",
-                swap_req.temporary_channel_id
-            );
-        }
-
-        // Start swapd
-        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
-        let msg =
-            format!("New instance of swapd launched with PID {}", child.id());
-        info!("{}", msg);
-
-        // Construct channel creation request
-        let node_key = self.node_id;
-        let swap_req = message::OpenChannel {
-            chain_hash: self.chain.clone().chain_params().genesis_hash.into(),
-            // TODO: Take these parameters from configuration
-            push_msat: 0,
-            dust_limit_satoshis: 0,
-            max_htlc_value_in_flight_msat: 10000,
-            channel_reserve_satoshis: 0,
-            htlc_minimum_msat: 0,
-            feerate_per_kw: 1,
-            to_self_delay: 1,
-            max_accepted_htlcs: 1000,
-            funding_pubkey: node_key,
-            revocation_basepoint: node_key,
-            payment_point: node_key,
-            delayed_payment_basepoint: node_key,
-            htlc_basepoint: node_key,
-            first_per_commitment_point: node_key,
-            channel_flags: 1, // Announce the channel
-            // shutdown_scriptpubkey: None,
-            ..swap_req
-        };
-
-        let list = if accept {
-            &mut self.accepting_swaps
-        } else {
-            &mut self.opening_swaps
-        };
-        list.insert(
-            ServiceId::Swaps(SwapId::from_inner(
-                swap_req.temporary_channel_id.into_inner(),
-            )),
-            request::CreateSwap {
-                swap_req,
-                peerd: source,
-                report_to,
-            },
-        );
-        debug!("Awaiting for swapd to connect...");
 
         Ok(msg)
     }
