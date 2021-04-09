@@ -47,7 +47,7 @@ pub fn run(
     chain: Chain,
 ) -> Result<(), Error> {
     let runtime = Runtime {
-        identity: ServiceId::Swaps(channel_id),
+        identity: ServiceId::Swap(channel_id),
         peer_service: ServiceId::Loopback,
         local_node,
         chain,

@@ -160,7 +160,7 @@ pub enum Command {
     /// Taker accepts offer and connects to Maker's daemon.
     Take {
         /// Hex encoded offer
-        public_offer: PublicOffer<Bitcoin, Monero>
+        public_offer: PublicOffer<Bitcoin, Monero>,
     }
 }
 
