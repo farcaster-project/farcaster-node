@@ -38,7 +38,7 @@ Maker creates offer and start listening. Command used to to print a hex represen
 ```
 swap0-cli make --help
 ```
-
+```
 ARGS:
     <network>
             Type of offer and network to use [default: Testnet]
@@ -64,7 +64,7 @@ ARGS:
             Port to use; defaults to the native LN port [default: 9735]
     <overlay>
             Use overlay protocol (http, websocket etc) [default: tcp]
-
+```
 
 ```
 swap0-cli make Testnet Bitcoin Monero 1000 201 10 10 21 Bob
@@ -81,10 +81,10 @@ Additionally, it adds the public offers to the set of public offers in farcaster
 ### Take
 Taker accepts offer and connects to Maker's daemon
 
-arguments of take
-ARGS:
-    <public-offer>
-            Hex encoded offer
+arguments of `take`
+```
+<public-offer> Hex encoded offer
+```
 
 Example of taking the offer above produced by maker. 
 ```
