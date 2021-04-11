@@ -43,5 +43,5 @@ fn main() {
     trace!("Executing command: {:?}", opts.command);
     opts.command
         .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{}", err.err()));
+        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 }

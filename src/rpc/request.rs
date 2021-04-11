@@ -189,10 +189,6 @@ pub enum Request {
     #[display("proto_puboffer({0:#})")]
     MakeOffer(ProtoPublicOffer),
 
-    #[api(type = 197)]
-    #[display("public_offer_hex({0})")]
-    PublicOfferHex(String),
-
     // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
     #[display("create_channel_with(...)")]
@@ -216,6 +212,10 @@ pub enum Request {
     #[display("failure({0:#})")]
     #[from]
     Failure(Failure),
+
+    #[api(type = 1098)]
+    #[display("public_offer_hex({0})")]
+    PublicOfferHex(String),
 
     #[api(type = 1099)]
     #[display("syncer_info({0})", alt = "{0:#}")]
