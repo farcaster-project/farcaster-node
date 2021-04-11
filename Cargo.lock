@@ -690,19 +690,20 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "farcaster_chains"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#238ba8c410b4e65aae2e351455022dff7c6dc81b"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#945be77dbff30e19906c3827781938c7f5da93cb"
 dependencies = [
  "bitcoin",
  "farcaster_core",
  "hex",
  "monero",
  "strict_encoding",
+ "thiserror",
 ]
 
 [[package]]
 name = "farcaster_core"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#238ba8c410b4e65aae2e351455022dff7c6dc81b"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#945be77dbff30e19906c3827781938c7f5da93cb"
 dependencies = [
  "hex",
  "internet2",
