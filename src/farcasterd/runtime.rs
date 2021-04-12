@@ -498,23 +498,29 @@ impl Runtime {
                     let peer_connected =
                         self.connect_peer(source.clone(), peer);
 
+                    let peer_connected_is_ok = peer_connected.is_ok();
+
                     notify_cli.push((
                         Some(source.clone()),
                         peer_connected.into_progress_or_failure(),
                     ));
 
-                    let offer_registered = format!(
-                        "{} \n {}",
-                        "Pubic offer registered:".promo(),
-                        &public_offer.amount()
-                    );
-                    self.offers.insert(public_offer);
-                    info!("{}", offer_registered.amount());
+                    if peer_connected_is_ok {
+                        let offer_registered = format!(
+                            "{} \n {}",
+                            "Pubic offer registered:".promo(),
+                            &public_offer.amount()
+                        );
+                        self.offers.insert(public_offer);
+                        info!("{}", offer_registered.amount());
 
-                    notify_cli.push((
-                        Some(source.clone()),
-                        Request::Success(OptionDetails(Some(offer_registered))),
-                    ));
+                        notify_cli.push((
+                            Some(source.clone()),
+                            Request::Success(OptionDetails(Some(
+                                offer_registered,
+                            ))),
+                        ));
+                    }
                     // use farcaster_core::session::BobSessionParams;
                     // BobSessionParams::new();
                     // since we're takers, invert
@@ -683,7 +689,7 @@ impl Runtime {
 
             debug!("Instantiating peerd...");
 
-            // Start swapd
+            // Start peerd
             let child = launch(
                 "peerd",
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
@@ -708,8 +714,17 @@ impl Runtime {
     ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
 
-        // Start swapd
-        let child = launch("peerd", &["--connect", &node_addr.to_string()])?;
+        // Start peerd
+        let child = launch("peerd", &["--connect", &node_addr.to_string()]);
+        let (child, status) =
+            child.and_then(|mut c| c.wait().map(|s| (c, s)))?;
+
+        if !status.success() {
+            return Err(Error::Peer(
+                internet2::presentation::Error::InvalidEndpoint,
+            ));
+        }
+
         let msg =
             format!("New instance of peerd launched with PID {}", child.id());
         info!("{}", msg);
