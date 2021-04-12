@@ -716,10 +716,15 @@ impl Runtime {
 
         // Start peerd
         let child = launch("peerd", &["--connect", &node_addr.to_string()]);
-        let (child, status) =
-            child.and_then(|mut c| c.wait().map(|s| (c, s)))?;
 
-        if !status.success() {
+        // in case it can't connect wait for it to crash
+        std::thread::sleep(Duration::from_secs_f32(0.5));
+
+        // status is Some if peerd returns
+        let (child, status) =
+            child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
+
+        if let Some(_) = status {
             return Err(Error::Peer(
                 internet2::presentation::Error::InvalidEndpoint,
             ));
