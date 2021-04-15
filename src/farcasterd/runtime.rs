@@ -14,7 +14,6 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use amplify::Wrapper;
-use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::hash::Hash;
@@ -22,6 +21,10 @@ use std::io;
 use std::net::SocketAddr;
 use std::process;
 use std::time::{Duration, SystemTime};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Read,
+};
 
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
@@ -38,11 +41,25 @@ use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
-use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
-use farcaster_core::negotiation::PublicOffer;
-use farcaster_core::role::SwapRole;
+use farcaster_chains::{
+    bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr,
+};
+use farcaster_core::{
+    blockchain::FeePolitic,
+    bundle::BobSessionParams,
+    crypto::FromSeed,
+    datum::Key,
+    negotiation::PublicOffer,
+    role::{Alice, Bob, SwapRole},
+};
 
-pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
+use std::str::FromStr;
+
+pub fn run(
+    config: Config,
+    node_id: secp256k1::PublicKey,
+    seed: [u8 ; 32],
+) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         node_id,
@@ -55,6 +72,7 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
         opening_swaps: none!(),
         accepting_swaps: none!(),
         offers: none!(),
+        seed,
     };
 
     Service::run(config, runtime, true)
@@ -71,7 +89,8 @@ pub struct Runtime {
     spawning_services: HashMap<ServiceId, ServiceId>,
     opening_swaps: HashMap<ServiceId, request::CreateSwap>,
     accepting_swaps: HashMap<ServiceId, request::CreateSwap>,
-    offers: HashSet<PublicOffer<Bitcoin, Monero>>,
+    offers: HashSet<PublicOffer<BtcXmr>>,
+    seed: [u8 ; 32],
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -409,7 +428,7 @@ impl Runtime {
                     );
                     let resp = self.listen(remote_addr);
                     match resp {
-                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}", 
+                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}",
                                        "listens".ended(), remote_addr),
                         Err(ref err) => error!("{}", err.err())
                     }
@@ -436,7 +455,8 @@ impl Runtime {
                 if self.offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
-                        "Pubic offer registered, please share with taker: ".promo(),
+                        "Pubic offer registered, please share with taker: "
+                            .promo(),
                         hex_public_offer.amount()
                     );
                     info!(
@@ -455,7 +475,7 @@ impl Runtime {
                     //     Request::PublicOfferHex(hex_public_offer),
                     // )?;
                 } else {
-                    let msg = "This PublicOffer was previously registered";
+                    let msg = "This Public offer was previously registered";
                     warn!("{}", msg.err());
                     notify_cli.push((
                         Some(source.clone()),
@@ -511,7 +531,7 @@ impl Runtime {
                             "Pubic offer registered:".promo(),
                             &public_offer.amount()
                         );
-                        self.offers.insert(public_offer);
+                        self.offers.insert(public_offer.clone());
                         info!("{}", offer_registered.amount());
 
                         notify_cli.push((
@@ -521,22 +541,25 @@ impl Runtime {
                             ))),
                         ));
                     }
-                    // use farcaster_core::session::BobSessionParams;
-                    // BobSessionParams::new();
                     // since we're takers, invert
                     // we need BobSessionParams that should come from Client?
-                    // match offer.maker_role {
-                    //     SwapRole::Alice => {
-                    //         BobSessionParams::new();
-                    //         let commit_b =  CommitBobSessionParams {buy,
-                    // cancel, refund, adaptor, spend, view };
-                    //         request::ProtocolMessagesBob::
-                    // CommitBobSessionParams(commit_b)},
-                    //     // let commit_a = ;
-                    //     SwapRole::Bob =>
+                    // Bitcoin::get_pubkey();
+                    match offer.maker_role {
+                        SwapRole::Alice => {
+                            let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
+                                .expect("Parsable address");
+                            let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
+                            let params = bob.session_params(&self.seed, &self.seed, &public_offer);
+                        },
+                        SwapRole::Bob => {
+                            let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
+                                .expect("Parsable address");
+                            let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePolitic::Aggressive);
+                            alice.session_params(&self.seed, &self.seed, &public_offer);
+                        }
                     // request::ProtocolMessagesAlice::
                     // CommitAliceSessionParams(commit_a),
-                    // };
+                    };
                     // self.create_swap(public_offer, source, report_to,
                     // swap_req, accept)?;
                     // self.take_offer(source, report_to, swap_req, accept)
@@ -615,7 +638,7 @@ impl Runtime {
     // FIXME: swapify
     fn create_swap(
         &mut self,
-        offer: PublicOffer<Bitcoin, Monero>,
+        offer: PublicOffer<BtcXmr>,
         source: ServiceId,
         report_to: Option<ServiceId>,
         mut swap_req: message::OpenChannel,
@@ -713,14 +736,19 @@ impl Runtime {
         node_addr: NodeAddr,
     ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
-
+        if self.connections.contains(&node_addr) {
+            return Err(Error::Other(format!(
+                "Already connected to peer {}",
+                node_addr
+            )));
+        }
         // Start peerd
         let child = launch("peerd", &["--connect", &node_addr.to_string()]);
 
         // in case it can't connect wait for it to crash
         std::thread::sleep(Duration::from_secs_f32(0.5));
 
-        // status is Some if peerd returns
+        // status is Some if peerd returns because it crashed
         let (child, status) =
             child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 

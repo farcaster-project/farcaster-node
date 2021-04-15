@@ -91,6 +91,13 @@ pub struct Opts {
     pub shared: crate::opts::Opts,
 }
 
+impl Opts {
+    pub fn process(&mut self) {
+        self.shared.process();
+        self.key_opts.process(&self.shared);
+    }
+}
+
 /// Node key configuration
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 pub struct KeyOpts {
@@ -108,11 +115,19 @@ pub struct KeyOpts {
     pub key_file: String,
 }
 
-impl Opts {
-    pub fn process(&mut self) {
-        self.shared.process();
-        self.key_opts.process(&self.shared);
-    }
+use bitcoin::secp256k1::{
+    rand::{thread_rng, Rng},
+    SecretKey,
+};
+use lnpbp::strict_encoding;
+
+/// Hold secret keys and seeds
+#[derive(StrictEncode, StrictDecode)]
+pub struct NodeSecrets {
+    /// local node private information
+    local_node: LocalNode,
+    /// seed used for deriving addresses
+    wallet_seed: [u8; 32],
 }
 
 impl KeyOpts {
@@ -121,8 +136,16 @@ impl KeyOpts {
     }
 
     pub fn local_node(&self) -> LocalNode {
+        self.node_secrets().local_node
+    }
+
+    pub fn wallet_seed(&self) -> [u8; 32] {
+        self.node_secrets().wallet_seed
+    }
+
+    pub fn node_secrets(&self) -> NodeSecrets {
         if PathBuf::from(self.key_file.clone()).exists() {
-            LocalNode::strict_decode(fs::File::open(&self.key_file).expect(
+            NodeSecrets::strict_decode(fs::File::open(&self.key_file).expect(
                 &format!(
                     "Unable to open key file {}; please check that the user \
                      running the daemon has necessary permissions",
@@ -131,15 +154,26 @@ impl KeyOpts {
             ))
             .expect("Unable to read node code file format")
         } else {
-            let local_node = LocalNode::new();
+            let mut rng = thread_rng();
+            let private_key = SecretKey::new(&mut rng);
+            let ephemeral_private_key = SecretKey::new(&mut rng);
+            let local_node =
+                LocalNode::from_keys(private_key, ephemeral_private_key);
+            let seed_key = SecretKey::new(&mut rng);
+            let wallet_seed: [u8; 32] = thread_rng().gen();
+            let node_wallet = NodeSecrets {
+                local_node,
+                wallet_seed,
+            };
+
             let key_file = fs::File::create(&self.key_file).expect(&format!(
                 "Unable to create key file '{}'; please check that the path exists",
                 self.key_file
             ));
-            local_node
+            node_wallet
                 .strict_encode(key_file)
-                .expect("Unable to save generated node kay");
-            local_node
+                .expect("Unable to save generated node key");
+            node_wallet
         }
     }
 }

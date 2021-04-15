@@ -22,7 +22,7 @@ use std::iter::FromIterator;
 use std::time::Duration;
 
 use bitcoin::{secp256k1, OutPoint};
-use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
+use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
 use farcaster_core::{
     negotiation::{Offer, PublicOffer},
     protocol_message,
@@ -46,17 +46,17 @@ pub enum ProtocolMessagesAlice {
     #[api(type = 20)]
     #[display("commit_a(...)")]
     CommitAliceSessionParams(
-        protocol_message::CommitAliceSessionParams<Bitcoin, Monero>,
+        protocol_message::CommitAliceSessionParams<BtcXmr>,
     ),
     #[api(type = 22)]
     #[display("reveal_a(...)")]
     RevealAliceSessionParams(
-        protocol_message::RevealAliceSessionParams<Bitcoin, Monero>,
+        protocol_message::RevealAliceSessionParams<BtcXmr>,
     ),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
     RefundProcedureSignatures(
-        protocol_message::RefundProcedureSignatures<Bitcoin>,
+        protocol_message::RefundProcedureSignatures<BtcXmr>,
     ),
     #[api(type = 27)]
     #[display("abort(...)")]
@@ -70,19 +70,19 @@ pub enum ProtocolMessagesBob {
     #[api(type = 21)]
     #[display("commit_b(...)")]
     CommitBobSessionParams(
-        protocol_message::CommitBobSessionParams<Bitcoin, Monero>,
+        protocol_message::CommitBobSessionParams<BtcXmr>,
     ),
     #[api(type = 23)]
     #[display("reveal_b(...)")]
     RevealBobSessionParams(
-        protocol_message::RevealBobSessionParams<Bitcoin, Monero>,
+        protocol_message::RevealBobSessionParams<BtcXmr>,
     ),
     #[api(type = 24)]
     #[display("corearb_b(...)")]
-    CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<Bitcoin>),
+    CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<BtcXmr>),
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
-    BuyProcedureSignature(protocol_message::BuyProcedureSignature<Bitcoin>),
+    BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
 }
 
 use crate::ServiceId;
@@ -177,22 +177,23 @@ pub enum Request {
     #[display("ping_peer()")]
     PingPeer,
 
+    // Can be issued from `cli` to `lnpd`
+    #[api(type = 203)]
+    #[display("create_channel_with(...)")]
+    OpenSwapWith(CreateSwap),
+
     #[api(type = 204)]
     #[display("accept_channel_from(...)")]
     AcceptSwapFrom(CreateSwap),
 
     #[api(type = 199)]
     #[display("public_offer({0:#}))")]
-    TakeOffer(PublicOffer<Bitcoin, Monero>),
+    TakeOffer(PublicOffer<BtcXmr>),
 
     #[api(type = 198)]
     #[display("proto_puboffer({0:#})")]
     MakeOffer(ProtoPublicOffer),
 
-    // Can be issued from `cli` to `lnpd`
-    #[api(type = 203)]
-    #[display("create_channel_with(...)")]
-    OpenSwapWith(CreateSwap),
 
     #[api(type = 205)]
     #[display("fund_channel({0})")]
@@ -294,14 +295,14 @@ pub struct NodeInfo {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub swaps: Vec<SwapId>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub offers: Vec<PublicOffer<Bitcoin, Monero>>,
+    pub offers: Vec<PublicOffer<BtcXmr>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
-    pub offer: Offer<Bitcoin, Monero>,
+    pub offer: Offer<BtcXmr>,
     pub remote_addr: RemoteSocketAddr,
 }
 
