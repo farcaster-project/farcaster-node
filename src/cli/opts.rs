@@ -23,6 +23,7 @@ use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 use farcaster_chains::{
     bitcoin::{Amount, Bitcoin, CSVTimelock},
     monero::Monero,
+    pairs::btcxmr::BtcXmr,
 };
 use farcaster_core::{
     blockchain::{FeeStrategy, Network},
@@ -105,9 +106,8 @@ pub enum Command {
     /// Maker creates offer and start listening. Command used to to print a hex
     /// representation of the offer that shall be shared with Taker.
     /// Additionally it spins up the listener awaiting for connection related to
-    /// this offer. Example usage:
-    /// `make-offer Testnet Bitcoin Monero 100000 200 10 10 20
-    /// Alice`
+    /// this offer. Example usage: `make Testnet Bitcoin Monero 100000 200 10 10
+    /// 20 Alice`
     Make {
         /// Type of offer and network to use
         #[clap(default_value = "Testnet")]
@@ -142,7 +142,7 @@ pub enum Command {
         fee_strategy: FeeStrategy<farcaster_chains::bitcoin::fee::SatPerVByte>,
 
         /// The future maker swap role
-        #[clap(default_value = "Alice")]
+        #[clap(default_value = "Alice", possible_values = &["Alice", "Bob"])]
         maker_role: SwapRole,
 
         /// IPv4 or IPv6 address to bind to
@@ -160,7 +160,7 @@ pub enum Command {
     /// Taker accepts offer and connects to Maker's daemon.
     Take {
         /// Hex encoded offer
-        public_offer: PublicOffer<Bitcoin, Monero>,
+        public_offer: PublicOffer<BtcXmr>,
     }
 }
 

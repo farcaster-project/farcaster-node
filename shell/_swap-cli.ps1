@@ -44,7 +44,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'General information about the running node')
             [CompletionResult]::new('peers', 'peers', [CompletionResultType]::ParameterValue, 'Lists existing peer connections')
             [CompletionResult]::new('ls', 'ls', [CompletionResultType]::ParameterValue, 'Lists running swaps')
-            [CompletionResult]::new('make', 'make', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make-offer Testnet Bitcoin Monero 100000 200 10 10 20 Alice`')
+            [CompletionResult]::new('make', 'make', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make Testnet Bitcoin Monero 100000 200 10 10 20 Alice`')
             [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to Maker''s daemon')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Prints this message or the help of the given subcommand(s)')
             break

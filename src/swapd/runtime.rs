@@ -83,6 +83,46 @@ pub fn run(
     Service::run(config, runtime, false)
 }
 
+trait AssetUnit {}
+
+use farcaster_chains::bitcoin::{Amount, CSVTimelock, fee::SatPerVByte};
+
+pub enum AliceLifecycle{
+    StartA,
+    CommitA,
+    RevealA,
+    RefundProcedureSignatures,
+    FinishA,
+}
+
+// enum BInterdaemon {
+//     StartB(),
+//     CommitB(BCommit, OKBCommit),
+//     RevealB(ACommitB, BCommitA, BReveal),
+//     CorearbB(BRevealA, ARevealB, OKCoreArb, CoreArbit),
+//     BuyProcSigB(CoreArbitA, RfndProcSigB, OKbuy),
+//     FinishB(),
+// }
+
+pub struct RuntimeSwapd {
+    identify: ServiceId,
+    peer_service: ServiceId,
+    local_node: LocalNode,
+    swap_id: SwapId,
+    temporary_swap_id: TempSwapId,
+    funding_outpoint: OutPoint,
+    accordant_amount: Amount,
+    arbitrating_amount: u64,
+    cancel_timelock: CSVTimelock,
+    punish_timelock: CSVTimelock,
+    swap_role: farcaster_core::role::SwapRole,
+    fee_strategy: SatPerVByte,
+    enquirer: Option<ServiceId>,
+    #[allow(dead_code)]
+    storage: Box<dyn storage::Driver>,
+}
+
+
 pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
