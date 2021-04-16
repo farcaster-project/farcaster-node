@@ -28,7 +28,7 @@ use crate::{Config, Error, LogStyle, ServiceId};
 pub struct Client {
     identity: ServiceId,
     chain: Chain,
-    response_queue: Vec<Request>,
+    response_queue: std::collections::VecDeque<Request>,
     esb: esb::Controller<ServiceBus, Request, Handler>,
 }
 
@@ -85,23 +85,24 @@ impl Client {
     pub fn response(&mut self) -> Result<Request, Error> {
         if self.response_queue.is_empty() {
             for (_, _, rep) in self.esb.recv_poll()? {
-                self.response_queue.push(rep);
+                self.response_queue.push_back(rep);
             }
         }
-        return Ok(self
+        Ok(self
             .response_queue
-            .pop()
-            .expect("We always have at least one element"));
+            .pop_front()
+            .expect("We always have at least one element"))
     }
 
     pub fn report_failure(&mut self) -> Result<Request, Error> {
         match self.response()? {
             Request::Failure(fail) => {
-                eprintln!(
-                    "{}: {}",
-                    "Request failure".err(),
-                    fail.err_details()
-                );
+                // // Errors reported on swap-cli binary
+                // eprintln!(
+                //     "{}: {}",
+                //     "Request failure".err(),
+                //     fail.err_details()
+                // );
                 Err(Error::from(fail))?
             }
             resp => Ok(resp),

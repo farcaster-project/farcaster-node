@@ -139,7 +139,7 @@ pub enum Command {
 
         /// The chosen fee strategy for the arbitrating transactions
         #[clap(default_value = "20")]
-        fee_strategy: FeeStrategy<farcaster_chains::bitcoin::SatPerVByte>,
+        fee_strategy: FeeStrategy<farcaster_chains::bitcoin::fee::SatPerVByte>,
 
         /// The future maker swap role
         #[clap(default_value = "Alice")]

@@ -217,7 +217,7 @@ fn main() {
                 debug!("Awaiting for incoming connections...");
                 let (stream, remote_socket_addr) = listener
                     .accept()
-                    .expect("Error accepting incpming peer connection");
+                    .expect("Error accepting incoming peer connection");
                 debug!("New connection from {}", remote_socket_addr);
 
                 remote_socket = remote_socket_addr.into();

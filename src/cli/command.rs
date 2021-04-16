@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, time::Duration};
 use std::str::FromStr;
 
 use internet2::{
@@ -145,15 +145,16 @@ impl Exec for Command {
                     ServiceId::Farcasterd,
                     Request::MakeOffer(proto_offer),
                 )?;
-                // Report to cli
-                // report connection
+                // report success of failure of the request to cli
                 runtime.report_progress()?;
 
-                let public_offer = runtime.response()?;
-                let instruction =
-                    format!("Share the following offer with taker:",);
-                let hex = format!("{:?}", &public_offer);
-                println!("{} \n {}", instruction.progress(), hex.amount());
+                // TODO: activate when we do client side offer validation, must
+                // be activated on farcasterd as well
+                // let public_offer = runtime.response()?;
+                // let instruction =
+                //     format!("Share the following offer with taker:",);
+                // let hex = format!("{:?}", &public_offer);
+                // println!("{} \n {}", instruction.progress(), hex.amount());
             }
 
             Command::Take { public_offer } => {
@@ -166,8 +167,7 @@ impl Exec for Command {
                     ServiceId::Farcasterd,
                     Request::TakeOffer(public_offer),
                 )?;
-                //report progress to cli
-                runtime.report_progress()?;
+                // report success of failure of the request to cli
                 runtime.report_progress()?;
             }
             _ => unimplemented!(),

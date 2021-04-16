@@ -190,7 +190,6 @@ pub enum FarMsgs {
     // #[lnp_api(type = 19)]
     // #[display("pong(...)")]
     Pong(Vec<u8>),
-    // CommitAliceSessionParams(CommitAliceSessionParams<Bitcoin, Monero>),
 }
 
 /// In order to allow for the existence of long-lived TCP connections, at

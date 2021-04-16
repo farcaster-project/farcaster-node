@@ -39,7 +39,7 @@ use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero};
-use farcaster_core::{negotiation::PublicOffer};
+use farcaster_core::negotiation::PublicOffer;
 use farcaster_core::role::SwapRole;
 
 pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
@@ -400,12 +400,33 @@ impl Runtime {
                 offer,
                 remote_addr,
             }) => {
-                // recurse to start listening
-                self.handle_rpc_ctl(
-                    senders,
-                    source.clone(),
-                    Request::Listen(remote_addr),
-                )?;
+                if !self.listens.contains(&remote_addr) {
+                    self.listens.insert(remote_addr);
+                    info!(
+                        "{} for incoming LN peer connections on {}",
+                        "Starting listener".promo(),
+                        remote_addr.promo()
+                    );
+                    let resp = self.listen(remote_addr);
+                    match resp {
+                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}", 
+                                       "listens".ended(), remote_addr),
+                        Err(ref err) => error!("{}", err.err())
+                    }
+                    notify_cli.push((
+                        Some(source.clone()),
+                        resp.into_progress_or_failure()
+                        // Request::Progress(format!(
+                        //     "Node {} listens for connections on {}",
+                        //     self.node_id, remote_addr
+                        // )),
+                    ));
+                } else {
+                    info!("Already listening on {}", &remote_addr);
+                    let msg = format!("Already listening on {}", &remote_addr);
+                    notify_cli
+                        .push((Some(source.clone()), Request::Progress(msg)));
+                }
                 let peer = internet2::RemoteNodeAddr {
                     node_id: self.node_id,
                     remote_addr,
@@ -413,24 +434,26 @@ impl Runtime {
                 let public_offer = offer.to_public_v1(peer);
                 let hex_public_offer = public_offer.to_string();
                 if self.offers.insert(public_offer) {
-                    // let msg =
-                    //     format!("Pubic offer registered: {}",
-                    // hex_public_offer);
+                    let msg = format!(
+                        "{} {}",
+                        "Pubic offer registered, please share with taker: ".promo(),
+                        hex_public_offer.amount()
+                    );
                     info!(
                         "{} {}",
-                        "Pubic offer registered:".promoter(),
+                        "Pubic offer registered:".promo(),
                         &hex_public_offer.amount()
                     );
-                    // notify_cli.push(Some((
-                    //     Some(source.clone()),
-                    //     Request::Success(OptionDetails(Some(msg))),
-                    // ));
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        ServiceId::Farcasterd, // source
-                        source,                // destination
-                        Request::PublicOfferHex(hex_public_offer),
-                    )?;
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Success(OptionDetails(Some(msg))),
+                    ));
+                    // senders.send_to(
+                    //     ServiceBus::Ctl,
+                    //     ServiceId::Farcasterd, // source
+                    //     source,                // destination
+                    //     Request::PublicOfferHex(hex_public_offer),
+                    // )?;
                 } else {
                     let msg = "This PublicOffer was previously registered";
                     warn!("{}", msg.err());
@@ -447,13 +470,13 @@ impl Runtime {
             Request::TakeOffer(public_offer) => {
                 if self.offers.contains(&public_offer) {
                     let msg = format!(
-                        "Offer on {} already exists, ignoring request",
+                        "Offer {} already exists, ignoring request",
                         &public_offer.to_string()
                     );
                     warn!("{}", msg.err());
                     notify_cli.push((
                         Some(source.clone()),
-                        Request::Failure(Failure { code: 2, info: msg }),
+                        Request::Failure(Failure { code: 1, info: msg }),
                     ));
                 } else {
                     let PublicOffer {
@@ -475,23 +498,29 @@ impl Runtime {
                     let peer_connected =
                         self.connect_peer(source.clone(), peer);
 
+                    let peer_connected_is_ok = peer_connected.is_ok();
+
                     notify_cli.push((
                         Some(source.clone()),
                         peer_connected.into_progress_or_failure(),
                     ));
 
-                     let offer_registered = format!(
-                        "{} \n {}",
-                        "Pubic offer registered:".promo(),
-                        &public_offer.amount()
-                    );
-                    self.offers.insert(public_offer);
-                    info!("{}", offer_registered.amount());
+                    if peer_connected_is_ok {
+                        let offer_registered = format!(
+                            "{} \n {}",
+                            "Pubic offer registered:".promo(),
+                            &public_offer.amount()
+                        );
+                        self.offers.insert(public_offer);
+                        info!("{}", offer_registered.amount());
 
-                    notify_cli.push((
-                        Some(source.clone()),
-                        Request::Success(OptionDetails(Some(offer_registered))),
-                    ));
+                        notify_cli.push((
+                            Some(source.clone()),
+                            Request::Success(OptionDetails(Some(
+                                offer_registered,
+                            ))),
+                        ));
+                    }
                     // use farcaster_core::session::BobSessionParams;
                     // BobSessionParams::new();
                     // since we're takers, invert
@@ -499,10 +528,14 @@ impl Runtime {
                     // match offer.maker_role {
                     //     SwapRole::Alice => {
                     //         BobSessionParams::new();
-                    //         let commit_b =  CommitBobSessionParams {buy, cancel, refund, adaptor, spend, view };
-                    //         request::ProtocolMessagesBob::CommitBobSessionParams(commit_b)},
+                    //         let commit_b =  CommitBobSessionParams {buy,
+                    // cancel, refund, adaptor, spend, view };
+                    //         request::ProtocolMessagesBob::
+                    // CommitBobSessionParams(commit_b)},
                     //     // let commit_a = ;
-                    //     SwapRole::Bob => request::ProtocolMessagesAlice::CommitAliceSessionParams(commit_a),
+                    //     SwapRole::Bob =>
+                    // request::ProtocolMessagesAlice::
+                    // CommitAliceSessionParams(commit_a),
                     // };
                     // self.create_swap(public_offer, source, report_to,
                     // swap_req, accept)?;
@@ -533,8 +566,11 @@ impl Runtime {
             Request::CreateTask(_) => {}
             _ => unimplemented!(),
         }
-        for (respond_to, resp) in notify_cli {
+        let mut len = 0;
+        for (respond_to, resp) in notify_cli.into_iter() {
             if let Some(respond_to) = respond_to {
+                len += 1;
+                println!("{}", len);
                 info!(
                     "Respond to {} -> Response {}",
                     respond_to.amount(),
@@ -653,7 +689,7 @@ impl Runtime {
 
             debug!("Instantiating peerd...");
 
-            // Start swapd
+            // Start peerd
             let child = launch(
                 "peerd",
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
@@ -678,8 +714,22 @@ impl Runtime {
     ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
 
-        // Start swapd
-        let child = launch("peerd", &["--connect", &node_addr.to_string()])?;
+        // Start peerd
+        let child = launch("peerd", &["--connect", &node_addr.to_string()]);
+
+        // in case it can't connect wait for it to crash
+        std::thread::sleep(Duration::from_secs_f32(0.5));
+
+        // status is Some if peerd returns
+        let (child, status) =
+            child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
+
+        if let Some(_) = status {
+            return Err(Error::Peer(
+                internet2::presentation::Error::InvalidEndpoint,
+            ));
+        }
+
         let msg =
             format!("New instance of peerd launched with PID {}", child.id());
         info!("{}", msg);
