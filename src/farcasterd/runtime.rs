@@ -541,17 +541,17 @@ impl Runtime {
                             ))),
                         ));
                     }
-                    // since we're takers, invert
-                    // we need BobSessionParams that should come from Client?
-                    // Bitcoin::get_pubkey();
-                    match offer.maker_role {
-                        SwapRole::Alice => {
+
+                    // since we're takers, we are on the other side
+                    let taker_role = offer.maker_role.other();
+                    match taker_role {
+                        SwapRole::Bob => {
                             let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
                                 .expect("Parsable address");
                             let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                             let params = bob.session_params(&self.seed, &self.seed, &public_offer);
                         },
-                        SwapRole::Bob => {
+                        SwapRole::Alice => {
                             let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
                                 .expect("Parsable address");
                             let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePolitic::Aggressive);
