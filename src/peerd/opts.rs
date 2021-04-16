@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, ArgGroup, Clap, ValueHint};
-use std::fs;
+use std::{fs, io::Read};
 use std::net::IpAddr;
 use std::path::PathBuf;
 
@@ -159,7 +159,11 @@ impl KeyOpts {
             let ephemeral_private_key = SecretKey::new(&mut rng);
             let local_node =
                 LocalNode::from_keys(private_key, ephemeral_private_key);
-            let wallet_seed: [u8; 32] = rng.gen();
+            let mut wallet_seed = [0u8; 32];
+            let wallet_key = SecretKey::new(&mut rng);
+            let mut wallet_key = wallet_key[..].iter();
+            let mut reader = std::io::Cursor::new(&mut wallet_key);
+            reader.read_exact(&mut wallet_seed).unwrap();
             let node_wallet = NodeSecrets {
                 local_node,
                 wallet_seed,
