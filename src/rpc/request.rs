@@ -22,11 +22,10 @@ use std::iter::FromIterator;
 use std::time::Duration;
 
 use bitcoin::{secp256k1, OutPoint};
-use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
-use farcaster_core::{
-    negotiation::{Offer, PublicOffer},
-    protocol_message,
+use farcaster_chains::{
+    bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr,
 };
+use farcaster_core::{bundle::{AliceParameters, BobParameters}, negotiation::{Offer, PublicOffer}, protocol_message};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
@@ -42,17 +41,16 @@ use wallet::PubkeyScript;
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
-pub enum ProtocolMessagesAlice {
+pub enum ProtocolMessages {
+    // #[api(type = 20)]
+    // #[display("commit_a(...)")]
+    // CommitAliceSessionParams(protocol_message::CommitAliceParameters<BtcXmr>),
     #[api(type = 20)]
-    #[display("commit_a(...)")]
-    CommitAliceSessionParams(
-        protocol_message::CommitAliceParameters<BtcXmr>,
-    ),
+    #[display("reveal_a(...)")]
+    Commit(Commit),
     #[api(type = 22)]
     #[display("reveal_a(...)")]
-    RevealAliceSessionParams(
-        protocol_message::RevealAliceParameters<BtcXmr>,
-    ),
+    RevealAliceSessionParams(protocol_message::RevealAliceParameters<BtcXmr>),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
     RefundProcedureSignatures(
@@ -61,22 +59,12 @@ pub enum ProtocolMessagesAlice {
     #[api(type = 27)]
     #[display("abort(...)")]
     Abort(protocol_message::Abort),
-}
-
-#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[api(encoding = "strict")]
-pub enum ProtocolMessagesBob {
-    #[api(type = 21)]
-    #[display("commit_b(...)")]
-    CommitBobSessionParams(
-        protocol_message::CommitBobParameters<BtcXmr>,
-    ),
+    // #[api(type = 21)]
+    // #[display("commit_b(...)")]
+    // CommitBobSessionParams(protocol_message::CommitBobParameters<BtcXmr>),
     #[api(type = 23)]
     #[display("reveal_b(...)")]
-    RevealBobSessionParams(
-        protocol_message::RevealBobParameters<BtcXmr>,
-    ),
+    RevealBobSessionParams(protocol_message::RevealBobParameters<BtcXmr>),
     #[api(type = 24)]
     #[display("corearb_b(...)")]
     CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<BtcXmr>),
@@ -84,6 +72,23 @@ pub enum ProtocolMessagesBob {
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
 }
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("commit")]
+pub enum Commit {
+    Alice(CommitAliceParameters<BtcXmr>),
+    Bob(CommitBobParameters<BtcXmr>),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, )]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("params")]
+pub enum Parameters {
+    Alice(AliceParameters<BtcXmr>),
+    Bob(BobParameters<BtcXmr>),
+}
+
 
 use crate::ServiceId;
 
@@ -135,13 +140,9 @@ pub enum Request {
     #[display("send_message({0})")]
     PeerMessage(Messages),
 
-    #[api(type = 3)]
+    #[api(type = 5)]
     #[display("send_message({0})")]
-    ProtocolMessagesAlice(ProtocolMessagesAlice),
-
-    #[api(type = 4)]
-    #[display("send_message({0})")]
-    ProtocolMessagesBob(ProtocolMessagesBob),
+    ProtocolMessages(ProtocolMessages),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
@@ -179,12 +180,8 @@ pub enum Request {
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
-    #[display("create_channel_with(...)")]
-    OpenSwapWith(CreateSwap),
-
-    #[api(type = 204)]
-    #[display("accept_channel_from(...)")]
-    AcceptSwapFrom(CreateSwap),
+    #[display("take_swap(...)")]
+    InitSwap(InitSwap),
 
     #[api(type = 199)]
     #[display("public_offer({0:#}))")]
@@ -193,7 +190,6 @@ pub enum Request {
     #[api(type = 198)]
     #[display("proto_puboffer({0:#})")]
     MakeOffer(ProtoPublicOffer),
-
 
     #[api(type = 205)]
     #[display("fund_channel({0})")]
@@ -266,13 +262,22 @@ pub enum Request {
 
 impl rpc_connection::Request for Request {}
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+use farcaster_core::protocol_message::{
+    CommitAliceParameters, CommitBobParameters,
+};
+// use farcaster_chains::pairs::btcxmr::BtcXmr;
+
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("{peerd}, ...")]
-pub struct CreateSwap {
-    pub swap_req: message::OpenChannel,
+#[display("{peerd}, {swap_req}")]
+pub struct InitSwap {
+    pub swap_req: Commit,
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
+    pub offer: PublicOffer<BtcXmr>,
+    pub params: Parameters,
+    pub swap_id: SwapId,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -363,7 +368,7 @@ pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
 #[display(SwapInfo::to_yaml_string)]
 pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
-    pub channel_id: Option<SwapId>,
+    pub swap_id: Option<SwapId>,
     #[serde_as(as = "DisplayFromStr")]
     pub temporary_channel_id: TempSwapId,
     pub state: Lifecycle,

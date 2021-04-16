@@ -20,6 +20,7 @@ use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
+use farcaster_core::negotiation::PublicOffer;
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
@@ -33,11 +34,14 @@ use lnp::{
 };
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
+use request::Parameters;
 use wallet::{HashPreimage, PubkeyScript};
 
 use super::storage::{self, Driver};
-use crate::rpc::request::SwapInfo;
-use crate::rpc::{request, Request, ServiceBus};
+use crate::rpc::{
+    request::{self, ProtocolMessages},
+    Request, ServiceBus,
+};
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 
 pub fn run(
@@ -51,7 +55,7 @@ pub fn run(
         peer_service: ServiceId::Loopback,
         local_node,
         chain,
-        channel_id: zero!(),
+        swap_id: zero!(),
         temporary_channel_id: channel_id.into(),
         state: default!(),
         local_capacity: 0,
@@ -65,6 +69,7 @@ pub fn run(
         total_payments: 0,
         pending_payments: 0,
         params: default!(),
+        parameters: None,
         local_keys: dumb!(),
         remote_keys: dumb!(),
         offered_htlc: empty!(),
@@ -85,9 +90,9 @@ pub fn run(
 
 trait AssetUnit {}
 
-use farcaster_chains::bitcoin::{Amount, CSVTimelock, fee::SatPerVByte};
+use farcaster_chains::{bitcoin::{fee::SatPerVByte, Amount, CSVTimelock}, pairs::btcxmr::BtcXmr};
 
-pub enum AliceLifecycle{
+pub enum AliceLifecycle {
     StartA,
     CommitA,
     RevealA,
@@ -122,14 +127,12 @@ pub struct RuntimeSwapd {
     storage: Box<dyn storage::Driver>,
 }
 
-
 pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
     local_node: LocalNode,
     chain: Chain,
-
-    channel_id: SwapId,
+    swap_id: SwapId,
     temporary_channel_id: TempSwapId,
     state: Lifecycle,
     local_capacity: u64,
@@ -143,6 +146,7 @@ pub struct Runtime {
     total_payments: u64,
     pending_payments: u16,
     params: payment::channel::Params,
+    parameters: Option<Parameters>,
     local_keys: payment::channel::Keyset,
     remote_keys: payment::channel::Keyset,
 
@@ -208,13 +212,13 @@ impl Runtime {
     fn send_peer(
         &self,
         senders: &mut Senders,
-        message: Messages,
+        message: request::ProtocolMessages,
     ) -> Result<(), Error> {
         senders.send_to(
             ServiceBus::Msg,
             self.identity(),
             self.peer_service.clone(), // = ServiceId::Loopback
-            Request::PeerMessage(message),
+            Request::ProtocolMessages(message),
         )?;
         Ok(())
     }
@@ -288,10 +292,10 @@ impl Runtime {
                 let funding_signed =
                     self.funding_created(senders, funding_created)?;
 
-                self.send_peer(
-                    senders,
-                    Messages::FundingSigned(funding_signed),
-                )?;
+                // self.send_peer(
+                //     senders,
+                //     Messages::FundingSigned(funding_signed),
+                // )?;
 
                 self.state = Lifecycle::Funded;
 
@@ -326,16 +330,16 @@ impl Runtime {
                 let _ = self.report_progress_to(senders, &enquirer, msg);
 
                 let funding_locked = message::FundingLocked {
-                    channel_id: self.channel_id,
+                    channel_id: self.swap_id,
                     next_per_commitment_point: self
                         .local_keys
                         .first_per_commitment_point,
                 };
 
-                self.send_peer(
-                    senders,
-                    Messages::FundingLocked(funding_locked),
-                )?;
+                // self.send_peer(
+                //     senders,
+                //     Messages::FundingLocked(funding_locked),
+                // )?;
 
                 self.state = Lifecycle::Active;
                 self.local_capacity = self.params.funding_satoshis;
@@ -407,10 +411,13 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::OpenSwapWith(request::CreateSwap {
-                swap_req: channel_req,
+            Request::InitSwap(request::InitSwap {
+                swap_req,
                 peerd,
                 report_to,
+                offer,
+                params,
+                swap_id
             }) => {
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
@@ -419,7 +426,7 @@ impl Runtime {
                     self.remote_peer = Some(addr.clone());
                 }
 
-                self.open_channel(senders, &channel_req).map_err(|err| {
+                self.take_swap(senders, &swap_req, offer, swap_id, params).map_err(|err| {
                     self.report_failure_to(
                         senders,
                         &report_to,
@@ -430,15 +437,18 @@ impl Runtime {
                     )
                 })?;
 
-                self.send_peer(senders, Messages::OpenChannel(channel_req))?;
+                self.send_peer(senders, ProtocolMessages::Commit(swap_req))?;
 
                 self.state = Lifecycle::Proposed;
             }
 
-            Request::AcceptSwapFrom(request::CreateSwap {
-                swap_req: channel_req,
+            Request::InitSwap(request::InitSwap {
+                swap_req,
                 peerd,
                 report_to,
+                offer,
+                params,
+                swap_id,
             }) => {
                 self.peer_service = peerd.clone();
                 self.state = Lifecycle::Proposed;
@@ -447,8 +457,8 @@ impl Runtime {
                     self.remote_peer = Some(addr.clone());
                 }
 
-                let accept_channel = self
-                    .accept_channel(senders, &channel_req, &peerd)
+                let commitment = self
+                    .make_swap(senders, &swap_req, &peerd, offer, swap_id, params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -462,7 +472,7 @@ impl Runtime {
 
                 self.send_peer(
                     senders,
-                    Messages::AcceptChannel(accept_channel),
+                    ProtocolMessages::Commit(commitment),
                 )?;
 
                 self.state = Lifecycle::Accepted;
@@ -475,10 +485,10 @@ impl Runtime {
                     self.fund_channel(senders, funding_outpoint)?;
 
                 self.state = Lifecycle::Funding;
-                self.send_peer(
-                    senders,
-                    Messages::FundingCreated(funding_created),
-                )?;
+                // self.send_peer(
+                //     senders,
+                //     Messages::FundingCreated(funding_created),
+                // )?;
             }
 
             Request::GetInfo => {
@@ -495,13 +505,13 @@ impl Runtime {
                         .unwrap_or_default()
                 }
 
-                let channel_id = if self.channel_id == zero!() {
+                let swap_id = if self.swap_id == zero!() {
                     None
                 } else {
-                    Some(self.channel_id)
+                    Some(self.swap_id)
                 };
-                let info = SwapInfo {
-                    channel_id,
+                let info = request::SwapInfo {
+                    swap_id,
                     temporary_channel_id: self.temporary_channel_id,
                     state: self.state,
                     local_capacity: self.local_capacity,
@@ -560,23 +570,23 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
 
         // Update channel id!
-        self.channel_id = SwapId::with(self.funding_outpoint);
-        debug!("Updating channel id to {}", self.channel_id);
+        self.swap_id = SwapId::with(self.funding_outpoint);
+        debug!("Updating channel id to {}", self.swap_id);
         self.send_ctl(
             senders,
             ServiceId::Farcasterd,
-            Request::UpdateSwapId(self.channel_id),
+            Request::UpdateSwapId(self.swap_id),
         )?;
         self.send_ctl(
             senders,
             self.peer_service.clone(),
-            Request::UpdateSwapId(self.channel_id),
+            Request::UpdateSwapId(self.swap_id),
         )?;
         // self.identity = self.channel_id.into();
         let msg = format!(
             "{} set to {}",
             "Channel ID".ended(),
-            self.channel_id.ender()
+            self.swap_id.ender()
         );
         info!("{}", msg);
         let _ = self.report_progress_to(senders, &enquirer, msg);
@@ -584,16 +594,19 @@ impl Runtime {
         Ok(())
     }
 
-    pub fn open_channel(
+    pub fn take_swap(
         &mut self,
         senders: &mut Senders,
-        channel_req: &message::OpenChannel,
+        swap_req: &request::Commit,
+        offer: PublicOffer<BtcXmr>,
+        swap_id: SwapId,
+        params: Parameters,
     ) -> Result<(), payment::channel::NegotiationError> {
         info!(
-            "{} remote peer to {} with temp id {:#}",
-            "Proposing".promo(),
-            "open a channel".promo(),
-            channel_req.temporary_channel_id.promoter()
+            "{} {} with temp id {:#}",
+            "Proposing to the Maker".promo(),
+            "that I take the swap offer".promo(),
+            swap_id.promoter()
         );
         // Ignoring possible reporting errors here and after: do not want to
         // halt the channel just because the client disconnected
@@ -601,27 +614,34 @@ impl Runtime {
         let _ = self.report_progress_to(
             senders,
             &enquirer,
-            format!("Proposing remote peer to open a channel"),
+            format!("Proposing to the Maker remote peer that I take the swap offer"),
         );
 
         self.is_originator = true;
-        self.params = payment::channel::Params::with(&channel_req)?;
-        self.local_keys = payment::channel::Keyset::from(channel_req);
+        self.parameters = Some(params);
+        // self.local_keys = match params {
+        //     Parameters::Bob(bob) => bob.
+        // };
+        // self.params = payment::channel::Params::with(&swap_req)?;
+        // self.local_keys = payment::channel::Keyset::from(swap_req);
 
         Ok(())
     }
 
-    pub fn accept_channel(
+    pub fn make_swap(
         &mut self,
         senders: &mut Senders,
-        channel_req: &message::OpenChannel,
+        swap_req: &request::Commit,
         peerd: &ServiceId,
-    ) -> Result<message::AcceptChannel, payment::channel::NegotiationError>
+        offer: PublicOffer<BtcXmr>,
+        swap_id: SwapId,
+        params: Parameters,
+    ) -> Result<request::Commit, Error>
     {
         let msg = format!(
             "{} with temp id {:#} from remote peer {}",
             "Accepting channel".promo(),
-            channel_req.temporary_channel_id.promoter(),
+            swap_id.promoter(),
             peerd.promoter()
         );
         info!("{}", msg);
@@ -632,43 +652,43 @@ impl Runtime {
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
         self.is_originator = false;
-        self.params = payment::channel::Params::with(channel_req)?;
-        self.remote_keys = payment::channel::Keyset::from(channel_req);
+        // self.params = payment::channel::Params::with(channel_req)?;
+        // self.remote_keys = payment::channel::Keyset::from(channel_req);
 
         let dumb_key = self.node_id();
-        let accept_channel = message::AcceptChannel {
-            temporary_channel_id: channel_req.temporary_channel_id,
-            dust_limit_satoshis: channel_req.dust_limit_satoshis,
-            max_htlc_value_in_flight_msat: channel_req
-                .max_htlc_value_in_flight_msat,
-            channel_reserve_satoshis: channel_req.channel_reserve_satoshis,
-            htlc_minimum_msat: channel_req.htlc_minimum_msat,
-            minimum_depth: 3, // TODO: take from config options
-            to_self_delay: channel_req.to_self_delay,
-            max_accepted_htlcs: channel_req.max_accepted_htlcs,
-            funding_pubkey: dumb_key,
-            revocation_basepoint: dumb_key,
-            payment_point: dumb_key,
-            delayed_payment_basepoint: dumb_key,
-            htlc_basepoint: dumb_key,
-            first_per_commitment_point: dumb_key,
-            /* shutdown_scriptpubkey: None,
-             * unknown_tlvs: none!(), */
-        };
+        // let accept_channel = message::AcceptChannel {
+        //     temporary_channel_id: channel_req.temporary_channel_id,
+        //     dust_limit_satoshis: channel_req.dust_limit_satoshis,
+        //     max_htlc_value_in_flight_msat: channel_req
+        //         .max_htlc_value_in_flight_msat,
+        //     channel_reserve_satoshis: channel_req.channel_reserve_satoshis,
+        //     htlc_minimum_msat: channel_req.htlc_minimum_msat,
+        //     minimum_depth: 3, // TODO: take from config options
+        //     to_self_delay: channel_req.to_self_delay,
+        //     max_accepted_htlcs: channel_req.max_accepted_htlcs,
+        //     funding_pubkey: dumb_key,
+        //     revocation_basepoint: dumb_key,
+        //     payment_point: dumb_key,
+        //     delayed_payment_basepoint: dumb_key,
+        //     htlc_basepoint: dumb_key,
+        //     first_per_commitment_point: dumb_key,
+        //     /* shutdown_scriptpubkey: None,
+        //      * unknown_tlvs: none!(), */
+        // };
 
-        self.params.updated(&accept_channel, None)?;
-        self.local_keys = payment::channel::Keyset::from(&accept_channel);
+        // self.params.updated(&accept_channel, None)?;
+        // self.local_keys = payment::channel::Keyset::from(&accept_channel);
 
         let msg = format!(
-            "{} channel {:#} from remote peer {}",
-            "Accepted".ended(),
-            channel_req.temporary_channel_id.ender(),
+            "{} swap {:#} from remote peer Taker {}",
+            "Making".ended(),
+            swap_id.ender(),
             peerd.ender()
         );
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
-
-        Ok(accept_channel)
+        // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
+        Ok(swap_req.clone())
     }
 
     pub fn channel_accepted(
@@ -747,7 +767,7 @@ impl Runtime {
         let msg = format!(
             "{} for channel {:#}. Awaiting for remote node signature.",
             "Funding created".ended(),
-            self.channel_id.ender()
+            self.swap_id.ender()
         );
         info!("{}", msg);
         let _ = self.report_progress_to(senders, &enquirer, msg);
@@ -785,7 +805,7 @@ impl Runtime {
 
         let signature = self.sign_funding();
         let funding_signed = message::FundingSigned {
-            channel_id: self.channel_id,
+            channel_id: self.swap_id,
             signature,
         };
         trace!("Prepared funding_signed: {:?}", funding_signed);
@@ -793,7 +813,7 @@ impl Runtime {
         let msg = format!(
             "{} for channel {:#}. Awaiting for funding tx mining.",
             "Funding signed".ended(),
-            self.channel_id.ender()
+            self.swap_id.ender()
         );
         info!("{}", msg);
         let _ = self.report_progress_to(senders, &enquirer, msg);
