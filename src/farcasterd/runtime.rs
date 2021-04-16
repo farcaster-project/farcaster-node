@@ -46,7 +46,7 @@ use farcaster_chains::{
 };
 use farcaster_core::{
     blockchain::FeePolitic,
-    bundle::BobSessionParams,
+    bundle::BobParameters,
     crypto::FromSeed,
     datum::Key,
     negotiation::PublicOffer,
@@ -549,13 +549,13 @@ impl Runtime {
                             let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
                                 .expect("Parsable address");
                             let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
-                            let params = bob.session_params(&self.seed, &self.seed, &public_offer);
+                            let params = bob.generate_parameters(&self.seed, &self.seed, &public_offer);
                         },
                         SwapRole::Alice => {
                             let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
                                 .expect("Parsable address");
                             let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePolitic::Aggressive);
-                            alice.session_params(&self.seed, &self.seed, &public_offer);
+                            alice.generate_parameters(&self.seed, &self.seed, &public_offer);
                         }
                     // request::ProtocolMessagesAlice::
                     // CommitAliceSessionParams(commit_a),

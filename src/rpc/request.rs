@@ -46,12 +46,12 @@ pub enum ProtocolMessagesAlice {
     #[api(type = 20)]
     #[display("commit_a(...)")]
     CommitAliceSessionParams(
-        protocol_message::CommitAliceSessionParams<BtcXmr>,
+        protocol_message::CommitAliceParameters<BtcXmr>,
     ),
     #[api(type = 22)]
     #[display("reveal_a(...)")]
     RevealAliceSessionParams(
-        protocol_message::RevealAliceSessionParams<BtcXmr>,
+        protocol_message::RevealAliceParameters<BtcXmr>,
     ),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
@@ -70,12 +70,12 @@ pub enum ProtocolMessagesBob {
     #[api(type = 21)]
     #[display("commit_b(...)")]
     CommitBobSessionParams(
-        protocol_message::CommitBobSessionParams<BtcXmr>,
+        protocol_message::CommitBobParameters<BtcXmr>,
     ),
     #[api(type = 23)]
     #[display("reveal_b(...)")]
     RevealBobSessionParams(
-        protocol_message::RevealBobSessionParams<BtcXmr>,
+        protocol_message::RevealBobParameters<BtcXmr>,
     ),
     #[api(type = 24)]
     #[display("corearb_b(...)")]
