@@ -159,8 +159,7 @@ impl KeyOpts {
             let ephemeral_private_key = SecretKey::new(&mut rng);
             let local_node =
                 LocalNode::from_keys(private_key, ephemeral_private_key);
-            let seed_key = SecretKey::new(&mut rng);
-            let wallet_seed: [u8; 32] = thread_rng().gen();
+            let wallet_seed: [u8; 32] = rng.gen();
             let node_wallet = NodeSecrets {
                 local_node,
                 wallet_seed,
