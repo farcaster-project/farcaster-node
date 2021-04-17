@@ -236,7 +236,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
-                        Request::InitSwap(swap_params.clone()),
+                        Request::TakeSwap(swap_params.clone()),
                     )?;
                     self.making_swaps.remove(&source);
                 } else if let Some(swap_params) =
@@ -253,7 +253,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
-                        Request::InitSwap(swap_params.clone()),
+                        Request::TakeSwap(swap_params.clone()),
                     )?;
                     self.taking_swaps.remove(&source);
                 } else if let Some(enquirer) =
@@ -594,7 +594,7 @@ impl Runtime {
             Request::ProtocolMessages(_) => {}
             Request::ListTasks => {}
             Request::PingPeer => {}
-            Request::InitSwap(_) => {}
+            Request::TakeSwap(_) => {}
             Request::FundSwap(_) => {}
             Request::Progress(_) => {}
             Request::Success(_) => {}
@@ -692,7 +692,7 @@ impl Runtime {
                 swap_id.into_inner(),
             )),
             request::InitSwap {
-                swap_req,
+                commitment: swap_req,
                 peerd,
                 report_to,
                 offer,

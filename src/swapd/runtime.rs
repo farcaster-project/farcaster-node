@@ -34,7 +34,7 @@ use lnp::{
 };
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
-use request::Parameters;
+use request::{InitSwap, Parameters};
 use wallet::{HashPreimage, PubkeyScript};
 
 use super::storage::{self, Driver};
@@ -90,7 +90,10 @@ pub fn run(
 
 trait AssetUnit {}
 
-use farcaster_chains::{bitcoin::{fee::SatPerVByte, Amount, CSVTimelock}, pairs::btcxmr::BtcXmr};
+use farcaster_chains::{
+    bitcoin::{fee::SatPerVByte, Amount, CSVTimelock},
+    pairs::btcxmr::BtcXmr,
+};
 
 pub enum AliceLifecycle {
     StartA,
@@ -411,13 +414,13 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::InitSwap(request::InitSwap {
-                swap_req,
+            Request::TakeSwap(InitSwap {
+                commitment,
                 peerd,
                 report_to,
                 offer,
                 params,
-                swap_id
+                swap_id,
             }) => {
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
@@ -426,24 +429,25 @@ impl Runtime {
                     self.remote_peer = Some(addr.clone());
                 }
 
-                self.take_swap(senders, &swap_req, offer, swap_id, params).map_err(|err| {
-                    self.report_failure_to(
-                        senders,
-                        &report_to,
-                        microservices::rpc::Failure {
-                            code: 0, // TODO: Create error type system
-                            info: err.to_string(),
-                        },
-                    )
-                })?;
+                let commitment = self
+                    .take_swap(senders, &commitment, offer, swap_id, params)
+                    .map_err(|err| {
+                        self.report_failure_to(
+                            senders,
+                            &report_to,
+                            microservices::rpc::Failure {
+                                code: 0, // TODO: Create error type system
+                                info: err.to_string(),
+                            },
+                        )
+                    })?;
 
-                self.send_peer(senders, ProtocolMessages::Commit(swap_req))?;
-
+                self.send_peer(senders, ProtocolMessages::Commit(commitment))?;
                 self.state = Lifecycle::Proposed;
             }
 
-            Request::InitSwap(request::InitSwap {
-                swap_req,
+            Request::MakeSwap(InitSwap {
+                commitment,
                 peerd,
                 report_to,
                 offer,
@@ -458,7 +462,14 @@ impl Runtime {
                 }
 
                 let commitment = self
-                    .make_swap(senders, &swap_req, &peerd, offer, swap_id, params)
+                    .make_swap(
+                        senders,
+                        &commitment,
+                        &peerd,
+                        offer,
+                        swap_id,
+                        params,
+                    )
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -470,11 +481,7 @@ impl Runtime {
                         )
                     })?;
 
-                self.send_peer(
-                    senders,
-                    ProtocolMessages::Commit(commitment),
-                )?;
-
+                self.send_peer(senders, ProtocolMessages::Commit(commitment))?;
                 self.state = Lifecycle::Accepted;
             }
 
@@ -482,7 +489,7 @@ impl Runtime {
                 self.enquirer = source.into();
 
                 let funding_created =
-                    self.fund_channel(senders, funding_outpoint)?;
+                    self.fund_swap(senders, funding_outpoint)?;
 
                 self.state = Lifecycle::Funding;
                 // self.send_peer(
@@ -583,11 +590,8 @@ impl Runtime {
             Request::UpdateSwapId(self.swap_id),
         )?;
         // self.identity = self.channel_id.into();
-        let msg = format!(
-            "{} set to {}",
-            "Channel ID".ended(),
-            self.swap_id.ender()
-        );
+        let msg =
+            format!("{} set to {}", "Channel ID".ended(), self.swap_id.ender());
         info!("{}", msg);
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
@@ -597,47 +601,49 @@ impl Runtime {
     pub fn take_swap(
         &mut self,
         senders: &mut Senders,
-        swap_req: &request::Commit,
+        commitment: &request::Commit,
         offer: PublicOffer<BtcXmr>,
         swap_id: SwapId,
         params: Parameters,
-    ) -> Result<(), payment::channel::NegotiationError> {
+    ) -> Result<request::Commit, payment::channel::NegotiationError> {
         info!(
             "{} {} with temp id {:#}",
             "Proposing to the Maker".promo(),
             "that I take the swap offer".promo(),
             swap_id.promoter()
         );
+        match params.clone() {
+            Parameters::Bob(params) => {}
+            Parameters::Alice(params) => {}
+        }
         // Ignoring possible reporting errors here and after: do not want to
         // halt the channel just because the client disconnected
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(
             senders,
             &enquirer,
-            format!("Proposing to the Maker remote peer that I take the swap offer"),
+            format!(
+                "Proposing to the Maker remote peer that I take the swap offer"
+            ),
         );
 
         self.is_originator = true;
         self.parameters = Some(params);
-        // self.local_keys = match params {
-        //     Parameters::Bob(bob) => bob.
-        // };
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
 
-        Ok(())
+        Ok(commitment.clone())
     }
 
     pub fn make_swap(
         &mut self,
         senders: &mut Senders,
-        swap_req: &request::Commit,
+        commitment: &request::Commit,
         peerd: &ServiceId,
         offer: PublicOffer<BtcXmr>,
         swap_id: SwapId,
         params: Parameters,
-    ) -> Result<request::Commit, Error>
-    {
+    ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} with temp id {:#} from remote peer {}",
             "Accepting channel".promo(),
@@ -688,7 +694,7 @@ impl Runtime {
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
         // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
-        Ok(swap_req.clone())
+        Ok(commitment.clone())
     }
 
     pub fn channel_accepted(
@@ -734,7 +740,7 @@ impl Runtime {
         Ok(())
     }
 
-    pub fn fund_channel(
+    pub fn fund_swap(
         &mut self,
         senders: &mut Senders,
         funding_outpoint: OutPoint,

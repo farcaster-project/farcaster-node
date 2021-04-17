@@ -13,9 +13,9 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, ArgGroup, Clap, ValueHint};
-use std::{fs, io::Read};
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::{fs, io::Read};
 
 use internet2::{FramingProtocol, LocalNode, RemoteNodeAddr};
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
@@ -116,7 +116,7 @@ pub struct KeyOpts {
 }
 
 use bitcoin::secp256k1::{
-    rand::{thread_rng, Rng},
+    rand::{rngs::ThreadRng, thread_rng},
     SecretKey,
 };
 use lnpbp::strict_encoding;
@@ -143,6 +143,26 @@ impl KeyOpts {
         self.node_secrets().wallet_seed
     }
 
+    fn create_seed(rng: &mut ThreadRng) -> [u8; 32] {
+        let mut seed_buf = [0u8; 32];
+        let key = SecretKey::new(rng);
+        let mut key_iter = key[..].iter();
+        let mut reader = std::io::Cursor::new(&mut key_iter);
+        reader
+            .read_exact(&mut seed_buf)
+            .expect("wallet_key has 32 bytes");
+        {
+            // validate that we can convert the seed back into the secret key
+            let expected_key = SecretKey::from_slice(&seed_buf)
+                .expect("wallet_seed has 32 bytes");
+            assert_eq!(
+                expected_key, key,
+                "Cannot go back and forward from bytes to secret key"
+            );
+        }
+        seed_buf
+    }
+
     pub fn node_secrets(&self) -> NodeSecrets {
         if PathBuf::from(self.key_file.clone()).exists() {
             NodeSecrets::strict_decode(fs::File::open(&self.key_file).expect(
@@ -159,12 +179,8 @@ impl KeyOpts {
             let ephemeral_private_key = SecretKey::new(&mut rng);
             let local_node =
                 LocalNode::from_keys(private_key, ephemeral_private_key);
-            let mut wallet_seed = [0u8; 32];
-            let wallet_key = SecretKey::new(&mut rng);
-            let mut wallet_key = wallet_key[..].iter();
-            let mut reader = std::io::Cursor::new(&mut wallet_key);
-            reader.read_exact(&mut wallet_seed).unwrap();
-            let node_wallet = NodeSecrets {
+            let wallet_seed = Self::create_seed(&mut rng);
+            let node_secrets = NodeSecrets {
                 local_node,
                 wallet_seed,
             };
@@ -173,10 +189,10 @@ impl KeyOpts {
                 "Unable to create key file '{}'; please check that the path exists",
                 self.key_file
             ));
-            node_wallet
+            node_secrets
                 .strict_encode(key_file)
-                .expect("Unable to save generated node key");
-            node_wallet
+                .expect("Unable to save generated node secrets");
+            node_secrets
         }
     }
 }

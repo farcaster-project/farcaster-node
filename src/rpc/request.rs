@@ -181,7 +181,12 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
     #[display("take_swap(...)")]
-    InitSwap(InitSwap),
+    TakeSwap(InitSwap),
+
+    // Can be issued from `cli` to `lnpd`
+    #[api(type = 204)]
+    #[display("make_swap(...)")]
+    MakeSwap(InitSwap),
 
     #[api(type = 199)]
     #[display("public_offer({0:#}))")]
@@ -270,9 +275,9 @@ use farcaster_core::protocol_message::{
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("{peerd}, {swap_req}")]
+#[display("{peerd}, {swap_id}")]
 pub struct InitSwap {
-    pub swap_req: Commit,
+    pub commitment: Commit,
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
     pub offer: PublicOffer<BtcXmr>,
