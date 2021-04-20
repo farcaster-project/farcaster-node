@@ -1,6 +1,7 @@
-#![allow(dead_code, unused_must_use, path_statements)]
+#![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
 
 use std::marker::{Sized, Send};
+use std::convert::TryInto;
 use std::io;
 use std::collections::{HashSet, HashMap};
 
@@ -8,7 +9,10 @@ use async_trait::async_trait;
 use hex;
 
 use farcaster_core::tasks::*;
+use farcaster_core::events::*;
 use farcaster_core::interactions::syncer::Syncer;
+
+use farcaster_chains::bitcoin::tasks::BtcAddressAddendum;
 
 struct WatchedTransaction {
     hash: Vec<u8>,
@@ -18,15 +22,26 @@ struct WatchedTransaction {
 #[async_trait]
 pub trait BitcoinRpc: Sized + Send {
     // getblockcount
-    async fn get_height(&mut self) -> u64;
+    async fn get_height(&mut self) -> io::Result<u64>;
+
+    // getblockhash
+    async fn get_block_hash(&mut self, height: u64) -> io::Result<String>;
+
+    // importaddress
+    async fn import_address(&mut self, address: String) -> io::Result<()>;
+    
+    // listsinceblock
+    // Must ensure valid schema for transactions/lastblock
+    async fn list_since_block(&mut self, block: String, confirmations: u64, include_watch_only: bool) -> io::Result<serde_json::Value>;
 
     // sendrawtransaction
-    async fn send_raw_transaction(&mut self, tx: Vec<u8>);
+    async fn send_raw_transaction(&mut self, tx: Vec<u8>) -> io::Result<String>;
 }
 
 pub struct BitcoinSyncer<R: BitcoinRpc> {
     rpc: R,
     current_block: u64,
+    current_block_hash: String,
 
     tasks: HashMap<i32, Task>,
     watch_height_count: u32,
@@ -36,9 +51,9 @@ pub struct BitcoinSyncer<R: BitcoinRpc> {
 }
 
 impl<R: BitcoinRpc> BitcoinSyncer<R> {
-    fn add_lifetime(&mut self, lifetime: u64, id: i32) -> bool {
+    fn add_lifetime(&mut self, lifetime: u64, id: i32) -> io::Result<()> {
         if lifetime < self.current_block {
-          return false;
+            Err(io::Error::new(io::ErrorKind::Other, "Lifetime has already expired"))?;
         }
 
         if let Some(lifetimes) = self.lifetimes.get_mut(&lifetime) {
@@ -48,7 +63,7 @@ impl<R: BitcoinRpc> BitcoinSyncer<R> {
             lifetimes.insert(id);
             self.lifetimes.insert(lifetime, lifetimes);
         }
-        true
+        Ok(())
     }
 
     fn remove_lifetime(&mut self, lifetime: u64, id: i32) {
@@ -64,12 +79,16 @@ impl<R: BitcoinRpc> BitcoinSyncer<R> {
             self.transactions.remove(task);
         }
     }
+}
 
-    pub async fn poll(&mut self) {
+#[async_trait]
+impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
+    async fn poll(&mut self) -> io::Result<Vec<Event>> {
         // If we're booting...
         if self.current_block == 0 {
             // Get the current block
-            self.current_block = self.rpc.get_height().await;
+            self.current_block = self.rpc.get_height().await?;
+            self.current_block_hash = self.rpc.get_block_hash(self.current_block).await?;
 
             // Drop all tasks past their lifetime at boot
             let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
@@ -81,16 +100,30 @@ impl<R: BitcoinRpc> BitcoinSyncer<R> {
         }
 
         // Poll for new blocks
-        while self.current_block < self.rpc.get_height().await {
+        let mut events: Vec<Event> = vec![];
+        while self.current_block < self.rpc.get_height().await? {
             // Increment the current_block to match the new height
             self.current_block += 1;
 
             // Emit a height_changed event
-            todo!();
+            for _ in 0 .. self.watch_height_count {
+                events.push(Event::HeightChanged(HeightChanged {
+                    // Watch height count doesn't work out due to the unique IDs of each task
+                    id: todo!(),
+                    block: hex::decode(self.rpc.get_block_hash(self.current_block).await?).map_err(
+                        |_| io::Error::new(io::ErrorKind::Other, "Bitcoin returned a non-hex block hash")
+                    )?,
+                    height: self.current_block
+                }))
+            }
 
             // Look for interactions with the addresses we're tracking
-            // Usage of listsinceblock may be optimal for this due to BTC indexing rules
-            todo!();
+            // Usage of listsinceblock is optimal for this due to BTC indexing rules
+            let transactions = self.rpc.list_since_block(self.current_block_hash, 6, true).await?;
+            self.current_block_hash = transactions["lastblock"].as_str().expect("listsinceblock didn't have the lastblock field").to_owned();
+            for tx in transactions["transactions"].as_array().expect("listsinceblock didn't have the transactions array") {
+                todo!();
+            }
 
             // Update transaction confirmations
             todo!();
@@ -98,11 +131,10 @@ impl<R: BitcoinRpc> BitcoinSyncer<R> {
             // Drop taks whose lifetime has expired
             self.drop_lifetimes(&self.current_block);
         }
-    }
-}
 
-#[async_trait]
-impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
+        Ok(events)
+    }
+
     async fn abort(&mut self, task: Abort) {
         let mut status = 0;
         match self.tasks.remove(&task.id) {
@@ -138,26 +170,30 @@ impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
     }
 
     async fn watch_height(&mut self, task: WatchHeight) {
-        if !self.add_lifetime(task.lifetime, task.id) {
-            return
+        // This is technically valid behavior; immediately pruning the task for being past its lifetime by never inserting it
+        if !self.add_lifetime(task.lifetime, task.id).is_ok() {
+            return;
         }
         self.tasks.insert(task.id, task.into());
         self.watch_height_count += 1;
     }
 
-    async fn watch_address(&mut self, task: WatchAddress) {
-        if !self.add_lifetime(task.lifetime, task.id) {
-            return
-        }
+    async fn watch_address(&mut self, task: WatchAddress) -> io::Result<()> {
+        let addendum = BtcAddressAddendum::deserialize(task.addendum)?;
+        self.rpc.import_address(addendum.address);
+
+        // This differs from the above and should potentially be changed to match
+        // TODO: decide
+        self.add_lifetime(task.lifetime, task.id)?;
         self.tasks.insert(task.id, task.into());
 
-        todo!()
+        todo!();
+
+        Ok(())
     }
 
-    async fn watch_transaction(&mut self, task: WatchTransaction) {
-        if !self.add_lifetime(task.lifetime, task.id) {
-            return
-        }
+    async fn watch_transaction(&mut self, task: WatchTransaction) -> io::Result<()> {
+        self.add_lifetime(task.lifetime, task.id)?;
         self.transactions.insert(
             task.id,
             WatchedTransaction{
@@ -166,9 +202,12 @@ impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
             }
         );
         self.tasks.insert(task.id, task.into());
+
+        Ok(())
     }
 
-    async fn broadcast_transaction(&mut self, task: BroadcastTransaction) {
-        self.rpc.send_raw_transaction(task.tx).await;
+    async fn broadcast_transaction(&mut self, task: BroadcastTransaction) -> io::Result<()> {
+        self.rpc.send_raw_transaction(task.tx).await?;
+        Ok(())
     }
 }
