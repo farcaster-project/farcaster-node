@@ -28,9 +28,9 @@ dependencies = [
 
 [[package]]
 name = "amplify"
-version = "3.0.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58a0bd5c3d6605f6f0cbf90d7af2cdd37215b1db193282753fd6bd1dce4b75b3"
+checksum = "6cd7d8887f771c295502e7d5c5c7ee130b794f65af92f3176f22a762587b03d3"
 dependencies = [
  "amplify_derive",
  "parse_arg",
@@ -43,9 +43,9 @@ dependencies = [
 
 [[package]]
 name = "amplify_derive"
-version = "2.4.4"
+version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9cc50fd13f783af1129d1c7bdaa9a54a56cf9bd7697ee3609497bf7968daff3"
+checksum = "26572344cf2e4e2e14e7c2d215074c106214f9ac38b6bbe077a90024579ed6bb"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.8",

@@ -16,16 +16,21 @@ use amplify::{ToYamlString, Wrapper};
 use internet2::addr::InetSocketAddr;
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds, Same};
-use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 use std::time::Duration;
+use std::{collections::BTreeMap, convert::TryInto};
 
 use bitcoin::{secp256k1, OutPoint};
 use farcaster_chains::{
     bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr,
 };
-use farcaster_core::{bundle::{AliceParameters, BobParameters}, negotiation::{Offer, PublicOffer}, protocol_message};
+use farcaster_core::{
+    blockchain::FeePolitic,
+    bundle::{AliceParameters, BobParameters},
+    negotiation::{Offer, PublicOffer},
+    protocol_message::{self, RevealAliceParameters, RevealBobParameters},
+};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
@@ -44,13 +49,14 @@ use wallet::PubkeyScript;
 pub enum ProtocolMessages {
     // #[api(type = 20)]
     // #[display("commit_a(...)")]
-    // CommitAliceSessionParams(protocol_message::CommitAliceParameters<BtcXmr>),
+    // CommitAliceSessionParams(protocol_message::
+    // CommitAliceParameters<BtcXmr>),
     #[api(type = 20)]
-    #[display("reveal_a(...)")]
+    #[display("commit(...)")]
     Commit(Commit),
     #[api(type = 22)]
-    #[display("reveal_a(...)")]
-    RevealAliceSessionParams(protocol_message::RevealAliceParameters<BtcXmr>),
+    #[display("reveal(...)")]
+    Reveal(Reveal),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
     RefundProcedureSignatures(
@@ -81,16 +87,23 @@ pub enum Commit {
     Bob(CommitBobParameters<BtcXmr>),
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, )]
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("reveal")]
+pub enum Reveal {
+    Bob(RevealBobParameters<BtcXmr>),
+    Alice(RevealAliceParameters<BtcXmr>),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("params")]
-pub enum Parameters {
+pub enum Params {
     Alice(AliceParameters<BtcXmr>),
     Bob(BobParameters<BtcXmr>),
 }
 
-
-use crate::ServiceId;
+use crate::{Error, ServiceId};
 
 #[derive(Clone, Debug, Display, From, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -197,7 +210,7 @@ pub enum Request {
     MakeOffer(ProtoPublicOffer),
 
     #[api(type = 205)]
-    #[display("fund_channel({0})")]
+    #[display("fund_swap({0})")]
     FundSwap(OutPoint),
 
     // Responses to CLI
@@ -272,7 +285,6 @@ use farcaster_core::protocol_message::{
 };
 // use farcaster_chains::pairs::btcxmr::BtcXmr;
 
-
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{peerd}, {swap_id}")]
@@ -281,7 +293,7 @@ pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
     pub offer: PublicOffer<BtcXmr>,
-    pub params: Parameters,
+    pub params: Params,
     pub swap_id: SwapId,
 }
 
@@ -550,6 +562,40 @@ impl IntoSuccessOrFalure for Result<(), crate::Error> {
         match self {
             Ok(_) => Request::Success(OptionDetails::new()),
             Err(err) => Request::from(err),
+        }
+    }
+}
+
+impl From<Params> for Commit {
+    fn from(params: Params) -> Self {
+        match params {
+            Params::Alice(params) => {
+                let params: CommitAliceParameters<BtcXmr> = params.into();
+                Commit::Alice(params)
+            }
+            Params::Bob(params) => {
+                let params: CommitBobParameters<BtcXmr> = params.into();
+                Commit::Bob(params)
+            }
+        }
+    }
+}
+
+impl TryInto<Reveal> for Params {
+    type Error = farcaster_core::consensus::Error;
+
+    fn try_into(self) -> Result<Reveal, Self::Error> {
+        match self {
+            Params::Alice(params) => {
+                let params: RevealAliceParameters<BtcXmr> =
+                    params.try_into()?;
+                Ok(Reveal::Alice(params))
+            }
+
+            Params::Bob(params) => {
+                let params: RevealBobParameters<BtcXmr> = params.try_into()?;
+                Ok(Reveal::Bob(params))
+            }
         }
     }
 }

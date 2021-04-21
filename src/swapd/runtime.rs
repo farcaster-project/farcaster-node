@@ -34,7 +34,7 @@ use lnp::{
 };
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
-use request::{InitSwap, Parameters};
+use request::{InitSwap, Params};
 use wallet::{HashPreimage, PubkeyScript};
 
 use super::storage::{self, Driver};
@@ -149,7 +149,7 @@ pub struct Runtime {
     total_payments: u64,
     pending_payments: u16,
     params: payment::channel::Params,
-    parameters: Option<Parameters>,
+    parameters: Option<Params>,
     local_keys: payment::channel::Keyset,
     remote_keys: payment::channel::Keyset,
 
@@ -604,7 +604,7 @@ impl Runtime {
         commitment: &request::Commit,
         offer: PublicOffer<BtcXmr>,
         swap_id: SwapId,
-        params: Parameters,
+        params: Params,
     ) -> Result<request::Commit, payment::channel::NegotiationError> {
         info!(
             "{} {} with temp id {:#}",
@@ -613,8 +613,8 @@ impl Runtime {
             swap_id.promoter()
         );
         match params.clone() {
-            Parameters::Bob(params) => {}
-            Parameters::Alice(params) => {}
+            Params::Bob(params) => {}
+            Params::Alice(params) => {}
         }
         // Ignoring possible reporting errors here and after: do not want to
         // halt the channel just because the client disconnected
@@ -642,7 +642,7 @@ impl Runtime {
         peerd: &ServiceId,
         offer: PublicOffer<BtcXmr>,
         swap_id: SwapId,
-        params: Parameters,
+        params: Params,
     ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} with temp id {:#} from remote peer {}",

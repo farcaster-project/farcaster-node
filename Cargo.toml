@@ -49,6 +49,8 @@ lnpbp = {version = "0.4", features = ["all"]}
 descriptor-wallet = { version = "0.4", features = ["electrum"] }
 slip132 = "0.3"
 lnp-core = "0.3.1"
+# internet2 = { path = "../alt/rust-internet2" }
+# microservices = { path = "../alt/rust-internet2/microservices", default-features = false, features = ["peer"] } 
 internet2 = { version = "0.3.10" }
 microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 # Bitcoin
@@ -85,10 +87,12 @@ farcaster_chains = { path = "../core/chains"}
 # farcaster_chains = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 amplify = "3"
 amplify_derive = "2.4.3"
-lnpbp = {version = "0.4", features = ["all"]}
+lnpbp = { version = "0.4", features = ["all"] }
 lightning_encoding = "0.4.0-beta.1"
 bitcoin = "0.26"
 lnp-core =  "0.3"
+# internet2 = { path = "../alt/rust-internet2" }
+# microservices = { path = "../alt/rust-internet2/microservices", default-features = false, features = ["peer"] } 
 internet2 = { version = "0.3.10" }
 microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 lazy_static = "1.4"

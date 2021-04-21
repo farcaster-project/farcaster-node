@@ -14,7 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use amplify::Wrapper;
-use request::Parameters;
+use request::Params;
 use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::hash::Hash;
@@ -572,7 +572,7 @@ impl Runtime {
                             let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                             let params = bob.generate_parameters(&self.seed, &self.seed, &public_offer);
                             let commit_b = request::Commit::Bob(params.clone().into());
-                            self.create_swap(commit_b, peer.into(), Some(source), maker, public_offer, Parameters::Bob(params))?;
+                            self.create_swap(commit_b, peer.into(), Some(source), maker, public_offer, Params::Bob(params))?;
                         },
                         SwapRole::Alice => {
                             let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
@@ -580,7 +580,7 @@ impl Runtime {
                             let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePolitic::Aggressive);
                             let params = alice.generate_parameters(&self.seed, &self.seed, &public_offer);
                             let commit_a = request::Commit::Alice(params.clone().into());
-                            self.create_swap(commit_a, peer.into(), Some(source), maker, public_offer, Parameters::Alice(params))?;
+                            self.create_swap(commit_a, peer.into(), Some(source), maker, public_offer, Params::Alice(params))?;
                         }
                     };
                 }
@@ -662,7 +662,7 @@ impl Runtime {
         report_to: Option<ServiceId>,
         maker: bool,
         offer: PublicOffer<BtcXmr>,
-        params: Parameters,
+        params: Params,
     ) -> Result<String, Error> {
         debug!("Instantiating swapd...");
 
