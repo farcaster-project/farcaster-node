@@ -14,6 +14,31 @@ use farcaster_core::interactions::syncer::Syncer;
 
 use farcaster_chains::bitcoin::tasks::BtcAddressAddendum;
 
+fn scan_transactions(transactions: serde_json::Value, addresses: HashMap<i32, String>) -> Vec<Event> {
+    // Generate a reverse lookup of String -> i32
+    // TODO: Optimize by being passed it in the first place
+    // Do we have to maintain both or does Rust have bidirectional maps?
+    let mut reverse_lookup: HashMap<String, i32> = HashMap::new();
+    todo!();
+
+    let mut relevant = vec![];
+    for tx in transactions["transactions"].as_array().expect("listsinceblock didn't have the transactions array") {
+        let looked_up = reverse_lookup.get(tx["address"].as_str().expect("Address wasn't a string"));
+        if (tx["category"].as_str().expect("Category wasn't a string") != "receive") ||
+           (looked_up.is_none()) {
+            continue
+        }
+
+        relevant.push(Event(AddressTransaction {
+            id: looked_up.unwrap(),
+            hash: hex::decode(tx["txid"].as_str().expect("Txid wasn't a string")).expect("Txid wasn't hex"),
+            amount: tx["amount"].as_u64().expect("Received negative/non-numeric funds"),
+        }))
+    }
+
+    return relevant
+}
+
 struct WatchedTransaction {
     hash: Vec<u8>,
     confirmation_bound: u16,
@@ -32,7 +57,7 @@ pub trait BitcoinRpc: Sized + Send {
     
     // listsinceblock
     // Must ensure valid schema for transactions/lastblock
-    async fn list_since_block(&mut self, block: String, confirmations: u64, include_watch_only: bool) -> io::Result<serde_json::Value>;
+    async fn list_since_block(&mut self, block: String, confirmations: u64) -> io::Result<serde_json::Value>;
 
     // sendrawtransaction
     async fn send_raw_transaction(&mut self, tx: Vec<u8>) -> io::Result<String>;
@@ -48,6 +73,7 @@ pub struct BitcoinSyncer<R: BitcoinRpc> {
     lifetimes: HashMap<u64, HashSet<i32>>,
     addresses: HashMap<i32, String>,
     transactions: HashMap<i32, WatchedTransaction>,
+    events: Vec<Event>,
 }
 
 impl<R: BitcoinRpc> BitcoinSyncer<R> {
@@ -99,8 +125,11 @@ impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
             }
         }
 
+        // Create an events vector to append to, starting with the pending events
+        let mut events: Vec<Event> = self.events;
+        self.events = vec![];
+
         // Poll for new blocks
-        let mut events: Vec<Event> = vec![];
         while self.current_block < self.rpc.get_height().await? {
             // Increment the current_block to match the new height
             self.current_block += 1;
@@ -119,11 +148,9 @@ impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
 
             // Look for interactions with the addresses we're tracking
             // Usage of listsinceblock is optimal for this due to BTC indexing rules
-            let transactions = self.rpc.list_since_block(self.current_block_hash, 6, true).await?;
+            let transactions = self.rpc.list_since_block(self.current_block_hash, 1).await?;
             self.current_block_hash = transactions["lastblock"].as_str().expect("listsinceblock didn't have the lastblock field").to_owned();
-            for tx in transactions["transactions"].as_array().expect("listsinceblock didn't have the transactions array") {
-                todo!();
-            }
+            events.extend(scan_transactions(transactions, self.addresses));
 
             // Update transaction confirmations
             todo!();
@@ -164,9 +191,10 @@ impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
         }
 
         // Emit the task_aborted event
-        task.id;
-        status;
-        todo!()
+        self.events.push(Event(TaskAborted {
+            id: task.id,
+            status
+        }));
     }
 
     async fn watch_height(&mut self, task: WatchHeight) {
@@ -180,20 +208,28 @@ impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
 
     async fn watch_address(&mut self, task: WatchAddress) -> io::Result<()> {
         let addendum = BtcAddressAddendum::deserialize(task.addendum)?;
-        self.rpc.import_address(addendum.address);
 
-        // This differs from the above and should potentially be changed to match
-        // TODO: decide
-        self.add_lifetime(task.lifetime, task.id)?;
+        if self.add_lifetime(task.lifetime, task.id).is_err() {
+            return Ok(());
+        };
         self.tasks.insert(task.id, task.into());
 
-        todo!();
+        // Add the address to our set
+        self.addresses.insert(task.id, addendum.address);
+
+        // Scan for old events to emit
+        // Uses a map of just this new address
+        let mut address_map = HashMap::new();
+        address_map.insert(task.id, addendum.address);
+        self.events.extend(scan_transactions(self.rpc.list_since_block(self.rpc.get_block_hash(addendum.from_height).await?, 0).await?, address_map));
 
         Ok(())
     }
 
     async fn watch_transaction(&mut self, task: WatchTransaction) -> io::Result<()> {
-        self.add_lifetime(task.lifetime, task.id)?;
+        if self.add_lifetime(task.lifetime, task.id).is_err() {
+            return Ok(());
+        };
         self.transactions.insert(
             task.id,
             WatchedTransaction{
