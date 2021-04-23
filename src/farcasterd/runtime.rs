@@ -571,14 +571,14 @@ impl Runtime {
                                 .expect("Parsable address");
                             let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                             let params = bob.generate_parameters(&self.seed, &self.seed, &public_offer);
-                            self.init_swap(peer.into(), Some(source), maker, public_offer, Params::Bob(params))?;
+                            self.make_swap(peer.into(), Some(source), maker, public_offer, Params::Bob(params))?;
                         },
                         SwapRole::Alice => {
                             let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
                                 .expect("Parsable address");
                             let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePolitic::Aggressive);
                             let params = alice.generate_parameters(&self.seed, &self.seed, &public_offer);
-                            self.init_swap(peer.into(), Some(source), maker, public_offer, Params::Alice(params))?;
+                            self.make_swap(peer.into(), Some(source), maker, public_offer, Params::Alice(params))?;
                         }
                     };
                 }
@@ -653,7 +653,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn init_swap(
+    fn make_swap(
         &mut self,
         peerd: ServiceId,
         report_to: Option<ServiceId>,
