@@ -295,7 +295,6 @@ use farcaster_core::protocol_message::{
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{peerd}, {swap_id}")]
 pub struct InitSwap {
-    pub commitment: Commit,
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
     pub offer: PublicOffer<BtcXmr>,

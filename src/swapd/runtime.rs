@@ -401,7 +401,6 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             Request::TakeSwap(InitSwap {
-                commitment,
                 peerd,
                 report_to,
                 offer,
@@ -416,7 +415,7 @@ impl Runtime {
                 }
 
                 let commitment = self
-                    .take_swap(senders, &commitment, offer, swap_id, params)
+                    .take_swap(senders, offer, swap_id, params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -433,7 +432,6 @@ impl Runtime {
             }
 
             Request::MakeSwap(InitSwap {
-                commitment,
                 peerd,
                 report_to,
                 offer,
@@ -450,7 +448,6 @@ impl Runtime {
                 let commitment = self
                     .make_swap(
                         senders,
-                        &commitment,
                         &peerd,
                         offer,
                         swap_id,
@@ -574,7 +571,6 @@ impl Runtime {
     pub fn take_swap(
         &mut self,
         senders: &mut Senders,
-        commitment: &request::Commit,
         offer: PublicOffer<BtcXmr>,
         swap_id: SwapId,
         params: Params,
@@ -585,10 +581,14 @@ impl Runtime {
             "that I take the swap offer".promo(),
             swap_id.promoter()
         );
-        match params.clone() {
-            Params::Bob(params) => {}
-            Params::Alice(params) => {}
-        }
+        let commitment = match params.clone() {
+            Params::Bob(params) => {
+                request::Commit::Bob(params.into())
+            }
+            Params::Alice(params) => {
+                request::Commit::Alice(params.into())
+            }
+        };
         // Ignoring possible reporting errors here and after: do not want to
         // halt the channel just because the client disconnected
         let enquirer = self.enquirer.clone();
@@ -605,13 +605,12 @@ impl Runtime {
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
 
-        Ok(commitment.clone())
+        Ok(commitment)
     }
 
     pub fn make_swap(
         &mut self,
         senders: &mut Senders,
-        commitment: &request::Commit,
         peerd: &ServiceId,
         offer: PublicOffer<BtcXmr>,
         swap_id: SwapId,
@@ -635,6 +634,15 @@ impl Runtime {
         // self.remote_keys = payment::channel::Keyset::from(channel_req);
 
         let dumb_key = self.node_id();
+
+        let commitment = match params.clone() {
+            Params::Bob(params) => {
+                request::Commit::Bob(params.into())
+            }
+            Params::Alice(params) => {
+                request::Commit::Alice(params.into())
+            }
+        };
         // let accept_channel = message::AcceptChannel {
         //     temporary_channel_id: channel_req.temporary_channel_id,
         //     dust_limit_satoshis: channel_req.dust_limit_satoshis,

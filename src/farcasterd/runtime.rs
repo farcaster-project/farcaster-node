@@ -571,16 +571,14 @@ impl Runtime {
                                 .expect("Parsable address");
                             let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                             let params = bob.generate_parameters(&self.seed, &self.seed, &public_offer);
-                            let commit_b = request::Commit::Bob(params.clone().into());
-                            self.create_swap(commit_b, peer.into(), Some(source), maker, public_offer, Params::Bob(params))?;
+                            self.init_swap(peer.into(), Some(source), maker, public_offer, Params::Bob(params))?;
                         },
                         SwapRole::Alice => {
                             let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
                                 .expect("Parsable address");
                             let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePolitic::Aggressive);
                             let params = alice.generate_parameters(&self.seed, &self.seed, &public_offer);
-                            let commit_a = request::Commit::Alice(params.clone().into());
-                            self.create_swap(commit_a, peer.into(), Some(source), maker, public_offer, Params::Alice(params))?;
+                            self.init_swap(peer.into(), Some(source), maker, public_offer, Params::Alice(params))?;
                         }
                     };
                 }
@@ -654,10 +652,9 @@ impl Runtime {
         info!("{}", msg);
         Ok(())
     }
-    // FIXME: swapify
-    fn create_swap(
+
+    fn init_swap(
         &mut self,
-        swap_req: request::Commit,
         peerd: ServiceId,
         report_to: Option<ServiceId>,
         maker: bool,
@@ -666,7 +663,7 @@ impl Runtime {
     ) -> Result<String, Error> {
         debug!("Instantiating swapd...");
 
-        let swap_id = TempSwapId::random();
+        let tmp_swap_id = TempSwapId::random();
         // // We need to initialize temporary channel id here
         // if !maker {
         //     swap_id = TempSwapId::random();
@@ -677,7 +674,7 @@ impl Runtime {
         // }
 
         // Start swapd
-        let child = launch("swapd", &[swap_id.to_hex()])?;
+        let child = launch("swapd", &[tmp_swap_id.to_hex()])?;
         let msg =
             format!("New instance of swapd launched with PID {}", child.id());
         info!("{}", msg);
@@ -689,15 +686,14 @@ impl Runtime {
         };
         list.insert(
             ServiceId::Swap(SwapId::from_inner(
-                swap_id.into_inner(),
+                tmp_swap_id.into_inner(),
             )),
             request::InitSwap {
-                commitment: swap_req,
                 peerd,
                 report_to,
                 offer,
                 params,
-                swap_id: swap_id.into(),
+                swap_id: tmp_swap_id.into(),
             },
         );
         debug!("Awaiting for swapd to connect...");
