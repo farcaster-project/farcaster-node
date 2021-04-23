@@ -388,7 +388,7 @@ serde(crate = "serde_crate")
 pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub swap_id: Option<SwapId>,
-    pub state: Lifecycle,
+    // pub state: crate::swapd::State,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub assets: Vec<AssetId>,
     // #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
@@ -398,8 +398,6 @@ pub struct SwapInfo {
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    pub total_payments: u64,
-    pub pending_payments: u16,
     pub is_originator: bool,
     //// FIXME serde::Serialize/Deserialize missing
     // #[serde_as(as = "Option<DisplayFromStr)>")]
