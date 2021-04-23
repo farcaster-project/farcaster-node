@@ -34,7 +34,7 @@ use lnp::{
 };
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
-use request::{InitSwap, Params};
+use request::{InitSwap, Params, TakeCommit};
 use wallet::{HashPreimage, PubkeyScript};
 
 use super::storage::{self, Driver};
@@ -296,7 +296,7 @@ impl Runtime {
                 }
 
                 let commitment = self
-                    .take_swap(senders, offer, swap_id, params)
+                    .take_swap(senders, offer.clone(), swap_id, params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -307,8 +307,9 @@ impl Runtime {
                             },
                         )
                     })?;
-
-                self.send_peer(senders, ProtocolMessages::Commit(commitment))?;
+                let offer_hex = offer.to_string();
+                let take_swap = TakeCommit { commitment, offer_hex };
+                self.send_peer(senders, ProtocolMessages::TakerCommit(take_swap))?;
                 // self.state = Lifecycle::Proposed;
             }
 
@@ -330,7 +331,7 @@ impl Runtime {
                     .make_swap(
                         senders,
                         &peerd,
-                        offer,
+                        offer.clone(),
                         swap_id,
                         params,
                     )
@@ -345,7 +346,8 @@ impl Runtime {
                         )
                     })?;
 
-                self.send_peer(senders, ProtocolMessages::Commit(commitment))?;
+
+                self.send_peer(senders, ProtocolMessages::MakerCommit(commitment))?;
                 // self.state = Lifecycle::Accepted;
             }
 

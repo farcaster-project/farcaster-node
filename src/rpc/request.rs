@@ -43,6 +43,13 @@ use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
 
+#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+pub struct TakeCommit {
+    pub commitment: Commit,
+    pub offer_hex: String,
+}
+
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
@@ -51,9 +58,12 @@ pub enum ProtocolMessages {
     // #[display("commit_a(...)")]
     // CommitAliceSessionParams(protocol_message::
     // CommitAliceParameters<BtcXmr>),
+    #[api(type = 27)]
+    #[display("maker_commit(...)")]
+    MakerCommit(Commit),
     #[api(type = 20)]
-    #[display("commit(...)")]
-    Commit(Commit),
+    #[display("taker_commit(...)")]
+    TakerCommit(TakeCommit),
     #[api(type = 22)]
     #[display("reveal(...)")]
     Reveal(Reveal),
@@ -379,9 +389,9 @@ pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
 #[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
 #[cfg_attr(
-feature = "serde",
-derive(Serialize, Deserialize),
-serde(crate = "serde_crate")
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
 )]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(SwapInfo::to_yaml_string)]

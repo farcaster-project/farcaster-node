@@ -38,7 +38,7 @@ use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails};
+use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails, ProtocolMessages};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
@@ -143,6 +143,9 @@ impl Runtime {
             //     info!("Creating swap by peer request from {}", source);
             //     self.create_swap(source, None, open_swap, true)?;
             // }
+            Request::ProtocolMessages(ProtocolMessages::TakerCommit(commitment)) => {
+                // FIXME needs offer id
+            }
             Request::PeerMessage(_) => {
                 // Ignore the rest of LN peer messages
             }
