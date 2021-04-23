@@ -91,10 +91,16 @@ pub enum Commit {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("reveal")]
 pub enum Reveal {
-    Bob(RevealBobParameters<BtcXmr>),
     Alice(RevealAliceParameters<BtcXmr>),
+    Bob(RevealBobParameters<BtcXmr>),
 }
 
+// #[cfg_attr(feature = "serde", serde_as)]
+// #[cfg_attr(
+//     feature = "serde",
+//     derive(Serialize, Deserialize),
+//     serde(crate = "serde_crate")
+// )]
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("params")]
@@ -370,47 +376,35 @@ pub struct PeerInfo {
     pub connected: bool,
     pub awaits_pong: bool,
 }
-
 pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
-
-//#[serde_as]
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
 #[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
+feature = "serde",
+derive(Serialize, Deserialize),
+serde(crate = "serde_crate")
 )]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(SwapInfo::to_yaml_string)]
 pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub swap_id: Option<SwapId>,
-    #[serde_as(as = "DisplayFromStr")]
-    pub temporary_channel_id: TempSwapId,
     pub state: Lifecycle,
-    pub local_capacity: u64,
-    #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
-    pub remote_capacities: RemotePeerMap<u64>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub assets: Vec<AssetId>,
-    #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
-    pub local_balances: AssetsBalance,
-    #[serde_as(
-        as = "BTreeMap<DisplayFromStr, BTreeMap<DisplayFromStr, Same>>"
-    )]
-    pub remote_balances: RemotePeerMap<AssetsBalance>,
-    pub funding_outpoint: OutPoint,
+    // #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
+    // pub funding_outpoint: OutPoint,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub remote_peers: Vec<NodeAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    pub commitment_updates: u64,
     pub total_payments: u64,
     pub pending_payments: u16,
     pub is_originator: bool,
-    pub params: payment::channel::Params,
+    //// FIXME serde::Serialize/Deserialize missing
+    // #[serde_as(as = "Option<DisplayFromStr)>")]
+    // pub params: Option<Params>,
     pub local_keys: payment::channel::Keyset,
     #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
     pub remote_keys: BTreeMap<NodeAddr, payment::channel::Keyset>,
