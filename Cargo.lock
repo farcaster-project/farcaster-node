@@ -667,6 +667,7 @@ dependencies = [
 name = "farcaster_core"
 version = "0.1.0"
 source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#7ca390880fedd16df47090ccb8a98a950432c88e"
+
 dependencies = [
  "hex",
  "internet2",
