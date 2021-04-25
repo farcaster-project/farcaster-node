@@ -308,7 +308,7 @@ impl Runtime {
                         )
                     })?;
                 let offer_hex = offer.to_string();
-                let take_swap = TakeCommit { commitment, offer_hex };
+                let take_swap = TakeCommit { commitment, offer_hex, swap_id };
                 self.send_peer(senders, ProtocolMessages::TakerCommit(take_swap))?;
                 // self.state = Lifecycle::Proposed;
             }
