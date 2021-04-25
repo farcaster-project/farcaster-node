@@ -115,19 +115,19 @@ pub enum Command {
 
         /// The chosen arbitrating blockchain
         #[clap(default_value = "Bitcoin")]
-        arbitrating: Bitcoin,
+        arbitrating_blockchain: Bitcoin,
 
         /// The chosen accordant blockchain
         #[clap(default_value = "Monero")]
-        accordant: Monero,
+        accordant_blockchain: Monero,
 
         /// Amount of arbitrating assets to exchanged
         #[clap(default_value = "100")]
-        arbitrating_assets: Amount,
+        arbitrating_amount: Amount,
 
         /// Amount of accordant assets to exchanged
         #[clap(default_value = "100")]
-        accordant_assets: u64,
+        accordant_amount: u64,
 
         /// The cancel timelock parameter of the arbitrating blockchain
         #[clap(default_value = "10")]

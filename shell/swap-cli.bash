@@ -402,7 +402,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__make)
-            opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <network> <arbitrating> <accordant> <arbitrating-assets> <accordant-assets> <cancel-timelock> <punish-timelock> <fee-strategy> <maker-role> <ip-addr> <port> <overlay> "
+            opts=" -d -c -v -T -m -x -n -h -V  --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <network> <arbitrating-blockchain> <accordant-blockchain> <arbitrating-amount> <accordant-amount> <cancel-timelock> <punish-timelock> <fee-strategy> <maker-role> <ip-addr> <port> <overlay> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

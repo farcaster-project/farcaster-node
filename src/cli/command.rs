@@ -115,10 +115,10 @@ impl Exec for Command {
             }
             Command::Make {
                 network,
-                arbitrating,
-                accordant,
-                arbitrating_assets,
-                accordant_assets,
+                arbitrating_blockchain,
+                accordant_blockchain,
+                arbitrating_amount,
+                accordant_amount,
                 cancel_timelock,
                 punish_timelock,
                 fee_strategy,
@@ -129,10 +129,10 @@ impl Exec for Command {
             } => {
                 let offer = farcaster_core::negotiation::Offer {
                     network,
-                    arbitrating,
-                    accordant,
-                    arbitrating_assets,
-                    accordant_assets,
+                    arbitrating_blockchain,
+                    accordant_blockchain,
+                    arbitrating_amount,
+                    accordant_amount,
                     cancel_timelock,
                     punish_timelock,
                     fee_strategy,
