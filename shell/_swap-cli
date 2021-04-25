@@ -204,10 +204,10 @@ _arguments "${_arguments_options[@]}" \
 '-V[Prints version information]' \
 '--version[Prints version information]' \
 '::network -- Type of offer and network to use:' \
-'::arbitrating -- The chosen arbitrating blockchain:' \
-'::accordant -- The chosen accordant blockchain:' \
-'::arbitrating-assets -- Amount of arbitrating assets to exchanged:' \
-'::accordant-assets -- Amount of accordant assets to exchanged:' \
+'::arbitrating-blockchain -- The chosen arbitrating blockchain:' \
+'::accordant-blockchain -- The chosen accordant blockchain:' \
+'::arbitrating-amount -- Amount of arbitrating assets to exchanged:' \
+'::accordant-amount -- Amount of accordant assets to exchanged:' \
 '::cancel-timelock -- The cancel timelock parameter of the arbitrating blockchain:' \
 '::punish-timelock -- The punish timelock parameter of the arbitrating blockchain:' \
 '::fee-strategy -- The chosen fee strategy for the arbitrating transactions:' \

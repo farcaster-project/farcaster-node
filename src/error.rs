@@ -28,6 +28,8 @@ use crate::rpc::ServiceBus;
 #[display(doc_comments)]
 #[non_exhaustive]
 pub enum Error {
+    /// Farcaster core errors
+    Farcaster(String), // FIXME farcaster errors don't impl Clone, needed by microservices::Error
     /// I/O error: {0:?}
     #[from(io::Error)]
     Io(IoError),
@@ -93,5 +95,11 @@ impl From<Error> for rpc::Error {
                 info: err.to_string(),
             }),
         }
+    }
+}
+
+impl From<farcaster_core::Error> for Error {
+    fn from(err: farcaster_core::Error) -> Self {
+        Error::Farcaster(err.to_string())
     }
 }

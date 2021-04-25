@@ -58,7 +58,7 @@ pub enum ProtocolMessages {
     // #[display("commit_a(...)")]
     // CommitAliceSessionParams(protocol_message::
     // CommitAliceParameters<BtcXmr>),
-    #[api(type = 27)]
+    #[api(type = 28)]
     #[display("maker_commit(...)")]
     MakerCommit(Commit),
     #[api(type = 20)]
@@ -583,7 +583,7 @@ impl From<Params> for Commit {
 }
 
 impl TryInto<Reveal> for Params {
-    type Error = farcaster_core::consensus::Error;
+    type Error = farcaster_core::Error;
 
     fn try_into(self) -> Result<Reveal, Self::Error> {
         match self {

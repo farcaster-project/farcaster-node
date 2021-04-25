@@ -38,7 +38,9 @@ use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails, ProtocolMessages};
+use crate::rpc::request::{
+    IntoProgressOrFalure, NodeInfo, OptionDetails, ProtocolMessages,
+};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
@@ -73,7 +75,7 @@ pub fn run(
         spawning_services: none!(),
         making_swaps: none!(),
         taking_swaps: none!(),
-        offers: none!(),
+        making_offers: none!(),
         seed,
     };
 
@@ -91,7 +93,7 @@ pub struct Runtime {
     spawning_services: HashMap<ServiceId, ServiceId>,
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
-    offers: HashSet<PublicOffer<BtcXmr>>,
+    making_offers: HashSet<PublicOffer<BtcXmr>>,
     seed: [u8; 32],
 }
 
@@ -143,8 +145,33 @@ impl Runtime {
             //     info!("Creating swap by peer request from {}", source);
             //     self.create_swap(source, None, open_swap, true)?;
             // }
-            Request::ProtocolMessages(ProtocolMessages::TakerCommit(commitment)) => {
-                // FIXME needs offer id
+
+            // 1st protocol message received through peer connection, and last
+            // handled by farcasterd
+            Request::ProtocolMessages(ProtocolMessages::TakerCommit(
+                request::TakeCommit {
+                    commitment,
+                    offer_hex,
+                },
+            )) => {
+                let offer: PublicOffer<BtcXmr> = FromStr::from_str(&offer_hex)
+                    .map_err(|_| {
+                        Error::Other(
+                            "The offer received on peer conection is not parsable"
+                                .to_string(),
+                        )
+                    })?;
+                if self.making_offers.contains(&offer) {
+                    trace!(
+                        "Offer {} is known, you created it previously, initiating swap with taker",
+                        &offer
+                    );
+                } else {
+                    error!(
+                        "Unknow offer {}, you are not the maker of that offer, ignoring it",
+                        &offer
+                    );
+                }
             }
             Request::PeerMessage(_) => {
                 // Ignore the rest of LN peer messages
@@ -242,8 +269,7 @@ impl Runtime {
                         Request::TakeSwap(swap_params.clone()),
                     )?;
                     self.making_swaps.remove(&source);
-                } else if let Some(swap_params) =
-                    self.taking_swaps.get(&source)
+                } else if let Some(swap_params) = self.taking_swaps.get(&source)
                 {
                     // Tell swapd swap options and link it with the
                     // connection daemon
@@ -315,7 +341,7 @@ impl Runtime {
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
                         swaps: self.running_swaps.iter().cloned().collect(),
-                        offers: self.offers.iter().cloned().collect(),
+                        offers: self.making_offers.iter().cloned().collect(),
                     }),
                 )?;
             }
@@ -457,7 +483,7 @@ impl Runtime {
                 };
                 let public_offer = offer.to_public_v1(peer);
                 let hex_public_offer = public_offer.to_string();
-                if self.offers.insert(public_offer) {
+                if self.making_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
                         "Pubic offer registered, please share with taker: "
@@ -493,7 +519,7 @@ impl Runtime {
             }
 
             Request::TakeOffer(public_offer) => {
-                if self.offers.contains(&public_offer) {
+                if self.making_offers.contains(&public_offer) {
                     let msg = format!(
                         "Offer {} already exists, ignoring request",
                         &public_offer.to_string()
@@ -554,7 +580,7 @@ impl Runtime {
                             &public_offer.amount()
                         );
                         // not yet in the set
-                        self.offers.insert(public_offer.clone());
+                        self.making_offers.insert(public_offer.clone());
                         info!("{}", offer_registered.amount());
 
                         notify_cli.push((
@@ -570,18 +596,48 @@ impl Runtime {
                     let taker_role = offer.maker_role.other();
                     match taker_role {
                         SwapRole::Bob => {
-                            let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
-                                .expect("Parsable address");
-                            let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
-                            let params = bob.generate_parameters(&self.seed, &self.seed, &public_offer);
-                            self.make_swap(peer.into(), Some(source), maker, public_offer, Params::Bob(params))?;
-                        },
+                            let address = bitcoin::Address::from_str(
+                                "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
+                            )
+                            .expect("Parsable address");
+                            let bob: Bob<BtcXmr> = Bob::new(
+                                address.into(),
+                                FeePolitic::Aggressive,
+                            );
+                            let params = bob.generate_parameters(
+                                &self.seed,
+                                &self.seed,
+                                &public_offer,
+                            )?;
+                            self.launch_swapd(
+                                peer.into(),
+                                Some(source),
+                                maker,
+                                public_offer,
+                                Params::Bob(params),
+                            )?;
+                        }
                         SwapRole::Alice => {
-                            let address = bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
-                                .expect("Parsable address");
-                            let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePolitic::Aggressive);
-                            let params = alice.generate_parameters(&self.seed, &self.seed, &public_offer);
-                            self.make_swap(peer.into(), Some(source), maker, public_offer, Params::Alice(params))?;
+                            let address = bitcoin::Address::from_str(
+                                "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
+                            )
+                            .expect("Parsable address");
+                            let alice: Alice<BtcXmr> = Alice::new(
+                                address.into(),
+                                FeePolitic::Aggressive,
+                            );
+                            let params = alice.generate_parameters(
+                                &self.seed,
+                                &self.seed,
+                                &public_offer,
+                            )?;
+                            self.launch_swapd(
+                                peer.into(),
+                                Some(source),
+                                maker,
+                                public_offer,
+                                Params::Alice(params),
+                            )?;
                         }
                     };
                 }
@@ -656,7 +712,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn make_swap(
+    fn launch_swapd(
         &mut self,
         peerd: ServiceId,
         report_to: Option<ServiceId>,
@@ -688,9 +744,7 @@ impl Runtime {
             &mut self.making_swaps
         };
         list.insert(
-            ServiceId::Swap(SwapId::from_inner(
-                tmp_swap_id.into_inner(),
-            )),
+            ServiceId::Swap(SwapId::from_inner(tmp_swap_id.into_inner())),
             request::InitSwap {
                 peerd,
                 report_to,

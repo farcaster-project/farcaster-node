@@ -346,7 +346,6 @@ impl Runtime {
                         )
                     })?;
 
-
                 self.send_peer(senders, ProtocolMessages::MakerCommit(commitment))?;
                 // self.state = Lifecycle::Accepted;
             }
