@@ -48,6 +48,7 @@ use wallet::PubkeyScript;
 pub struct TakeCommit {
     pub commitment: Commit,
     pub offer_hex: String,
+    pub swap_id: SwapId,
 }
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]

@@ -152,25 +152,88 @@ impl Runtime {
                 request::TakeCommit {
                     commitment,
                     offer_hex,
+                    swap_id,
                 },
             )) => {
-                let offer: PublicOffer<BtcXmr> = FromStr::from_str(&offer_hex)
+                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&offer_hex)
                     .map_err(|_| {
                         Error::Other(
                             "The offer received on peer conection is not parsable"
                                 .to_string(),
                         )
                     })?;
-                if self.making_offers.contains(&offer) {
-                    trace!(
-                        "Offer {} is known, you created it previously, initiating swap with taker",
-                        &offer
-                    );
-                } else {
+                if !self.making_offers.contains(&public_offer) {
                     error!(
                         "Unknow offer {}, you are not the maker of that offer, ignoring it",
-                        &offer
+                        &public_offer
                     );
+                } else {
+                    trace!(
+                        "Offer {} is known, you created it previously, initiating swap with taker",
+                        &public_offer
+                    );
+                    let PublicOffer {
+                        version,
+                        offer,
+                        daemon_service,
+                    } = public_offer.clone();
+                    let peer = daemon_service
+                        .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
+                        .ok_or_else(|| {
+                            internet2::presentation::Error::InvalidEndpoint
+                        })?;
+                    // we are maker
+                    let maker = true;
+                    match offer.maker_role {
+                        SwapRole::Bob => {
+                            let address = bitcoin::Address::from_str(
+                                "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
+                            )
+                            .expect("Parsable address");
+                            let bob: Bob<BtcXmr> = Bob::new(
+                                address.into(),
+                                FeePolitic::Aggressive,
+                            );
+                            let params = bob.generate_parameters(
+                                &self.seed,
+                                &self.seed,
+                                &public_offer,
+                            )?;
+                            launch_swapd(
+                                self,
+                                peer.into(),
+                                Some(source),
+                                maker,
+                                public_offer,
+                                Params::Bob(params),
+                                swap_id,
+                            )?;
+                        }
+                        SwapRole::Alice => {
+                            let address = bitcoin::Address::from_str(
+                                "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
+                            )
+                            .expect("Parsable address");
+                            let alice: Alice<BtcXmr> = Alice::new(
+                                address.into(),
+                                FeePolitic::Aggressive,
+                            );
+                            let params = alice.generate_parameters(
+                                &self.seed,
+                                &self.seed,
+                                &public_offer,
+                            )?;
+                            launch_swapd(
+                                self,
+                                peer.into(),
+                                Some(source),
+                                maker,
+                                public_offer,
+                                Params::Alice(params),
+                                swap_id,
+                            )?;
+                        }
+                    };
                 }
             }
             Request::PeerMessage(_) => {
@@ -266,7 +329,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
-                        Request::TakeSwap(swap_params.clone()),
+                        Request::MakeSwap(swap_params.clone()),
                     )?;
                     self.making_swaps.remove(&source);
                 } else if let Some(swap_params) = self.taking_swaps.get(&source)
@@ -301,25 +364,6 @@ impl Runtime {
                         ))),
                     ));
                     self.spawning_services.remove(&source);
-                }
-            }
-
-            Request::UpdateSwapId(new_id) => {
-                debug!(
-                    "Requested to update channel id {} on {}",
-                    source, new_id
-                );
-                if let ServiceId::Swap(old_id) = source {
-                    if !self.running_swaps.remove(&old_id) {
-                        warn!("Swap daemon {} was unknown", source);
-                    }
-                    self.running_swaps.insert(new_id);
-                    debug!("Registered swap daemon id {}", new_id);
-                } else {
-                    error!(
-                        "Swap id update may be requested only by a swapd, not {}",
-                        source
-                    );
                 }
             }
 
@@ -591,6 +635,7 @@ impl Runtime {
                         ));
                     }
 
+                    let swap_id: SwapId = TempSwapId::random().into();
                     let maker = false;
                     // since we're takers, we are on the other side
                     let taker_role = offer.maker_role.other();
@@ -609,12 +654,14 @@ impl Runtime {
                                 &self.seed,
                                 &public_offer,
                             )?;
-                            self.launch_swapd(
+                            launch_swapd(
+                                self,
                                 peer.into(),
                                 Some(source),
                                 maker,
                                 public_offer,
                                 Params::Bob(params),
+                                swap_id,
                             )?;
                         }
                         SwapRole::Alice => {
@@ -631,12 +678,14 @@ impl Runtime {
                                 &self.seed,
                                 &public_offer,
                             )?;
-                            self.launch_swapd(
+                            launch_swapd(
+                                self,
                                 peer.into(),
                                 Some(source),
                                 maker,
                                 public_offer,
                                 Params::Alice(params),
+                                swap_id,
                             )?;
                         }
                     };
@@ -711,52 +760,6 @@ impl Runtime {
         info!("{}", msg);
         Ok(())
     }
-
-    fn launch_swapd(
-        &mut self,
-        peerd: ServiceId,
-        report_to: Option<ServiceId>,
-        maker: bool,
-        offer: PublicOffer<BtcXmr>,
-        params: Params,
-    ) -> Result<String, Error> {
-        debug!("Instantiating swapd...");
-
-        let tmp_swap_id = TempSwapId::random();
-        // // We need to initialize temporary channel id here
-        // if !maker {
-        //     swap_id = TempSwapId::random();
-        //     debug!(
-        //         "Generated {} as a temporary channel id",
-        //         swap_id
-        //     );
-        // }
-
-        // Start swapd
-        let child = launch("swapd", &[tmp_swap_id.to_hex()])?;
-        let msg =
-            format!("New instance of swapd launched with PID {}", child.id());
-        info!("{}", msg);
-
-        let list = if !maker {
-            &mut self.taking_swaps
-        } else {
-            &mut self.making_swaps
-        };
-        list.insert(
-            ServiceId::Swap(SwapId::from_inner(tmp_swap_id.into_inner())),
-            request::InitSwap {
-                peerd,
-                report_to,
-                offer,
-                params,
-                swap_id: tmp_swap_id.into(),
-            },
-        );
-        debug!("Awaiting for swapd to connect...");
-
-        Ok(msg)
-    }
     fn listen(&mut self, addr: RemoteSocketAddr) -> Result<String, Error> {
         if let RemoteSocketAddr::Ftcp(inet) = addr {
             let socket_addr = SocketAddr::try_from(inet)?;
@@ -821,6 +824,40 @@ impl Runtime {
 
         Ok(msg)
     }
+}
+
+fn launch_swapd(
+    runtime: &mut Runtime,
+    peerd: ServiceId,
+    report_to: Option<ServiceId>,
+    maker: bool,
+    offer: PublicOffer<BtcXmr>,
+    params: Params,
+    swap_id: SwapId,
+) -> Result<String, Error> {
+    debug!("Instantiating swapd...");
+    let child = launch("swapd", &[swap_id.to_hex()])?;
+    let msg = format!("New instance of swapd launched with PID {}", child.id());
+    info!("{}", msg);
+
+    let list = if !maker {
+        &mut runtime.taking_swaps
+    } else {
+        &mut runtime.making_swaps
+    };
+    list.insert(
+        ServiceId::Swap(SwapId::from_inner(swap_id.into_inner())),
+        request::InitSwap {
+            peerd,
+            report_to,
+            offer,
+            params,
+            swap_id,
+        },
+    );
+    debug!("Awaiting for swapd to connect...");
+
+    Ok(msg)
 }
 
 fn launch(
