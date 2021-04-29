@@ -5,6 +5,7 @@
 //
 // To the extent possible under law, the author(s) have dedicated all
 // copyright and related and neighboring rights to this software to
+
 // the public domain worldwide. This software is distributed without
 // any warranty.
 //
@@ -20,7 +21,7 @@ use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
-use farcaster_core::negotiation::PublicOffer;
+use farcaster_core::{negotiation::{Offer, PublicOffer}, role::Arbitrating};
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
@@ -34,7 +35,7 @@ use lnp::{
 };
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
-use request::{InitSwap, Params, TakeCommit};
+use request::{Commit, InitSwap, Params, TakeCommit};
 use wallet::{HashPreimage, PubkeyScript};
 
 use super::storage::{self, Driver};
@@ -59,10 +60,21 @@ pub fn run(
         state: None,
         funding_outpoint: default!(),
         remote_peer: None,
+        commit_remote: None,
+        commit_local: None,
+        local_role: None,
         started: SystemTime::now(),
         params: default!(),
         is_originator: false,
         obscuring_factor: 0,
+        accordant_amount: None,
+        arbitrating_amount: None,
+        cancel_timelock: None,
+        punish_timelock: None,
+        fee_strategy: None,
+        accordant_blockchain: None,
+        arbitrating_blockchain: None,
+        network: None,
         enquirer: None,
         storage: Box::new(storage::DiskDriver::init(
             swap_id,
@@ -87,16 +99,23 @@ pub struct Runtime {
     params: Option<Params>,
     is_originator: bool,
     obscuring_factor: u64,
+    commit_remote: Option<Commit>,
+    commit_local: Option<Commit>,
+    local_role: Option<farcaster_core::role::SwapRole>,
+    accordant_amount: Option<u64>,
+    arbitrating_amount: Option<Amount>,
+    cancel_timelock: Option<CSVTimelock>,
+    punish_timelock: Option<CSVTimelock>,
+    fee_strategy: Option<farcaster_core::blockchain::FeeStrategy<SatPerVByte>>,
+    network: Option<farcaster_core::blockchain::Network>,
+    arbitrating_blockchain: Option<Bitcoin>,
+    accordant_blockchain: Option<Monero>,
     enquirer: Option<ServiceId>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
 
-
-use farcaster_chains::{
-    bitcoin::{fee::SatPerVByte, Amount, CSVTimelock},
-    pairs::btcxmr::BtcXmr,
-};
+use farcaster_chains::{bitcoin::{Amount, Bitcoin, CSVTimelock, fee::SatPerVByte}, monero::Monero, pairs::btcxmr::BtcXmr};
 
 pub enum AliceState {
     StartA,
@@ -130,13 +149,11 @@ pub struct RuntimeSwapd {
     arbitrating_amount: u64,
     cancel_timelock: CSVTimelock,
     punish_timelock: CSVTimelock,
-    swap_role: farcaster_core::role::SwapRole,
     fee_strategy: SatPerVByte,
     enquirer: Option<ServiceId>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
-
 
 impl CtlServer for Runtime {}
 
@@ -207,8 +224,8 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            // Request::PeerMessage(Messages::FundingCreated(funding_created)) => {
-            //     let enquirer = self.enquirer.clone();
+            // Request::PeerMessage(Messages::FundingCreated(funding_created))
+            // => {     let enquirer = self.enquirer.clone();
 
             //     let funding_signed =
             //         self.funding_created(senders, funding_created)?;
@@ -217,7 +234,6 @@ impl Runtime {
             //     //     senders,
             //     //     Messages::FundingSigned(funding_signed),
             //     // )?;
-
 
             //     // Ignoring possible error here: do not want to
             //     // halt the channel just because the client disconnected
@@ -228,7 +244,6 @@ impl Runtime {
             //     info!("{}", msg);
             //     let _ = self.report_progress_to(senders, &enquirer, msg);
             // }
-
             Request::PeerMessage(Messages::FundingLocked(_funding_locked)) => {
                 let enquirer = self.enquirer.clone();
 
@@ -284,7 +299,7 @@ impl Runtime {
             Request::TakeSwap(InitSwap {
                 peerd,
                 report_to,
-                offer,
+                public_offer,
                 params,
                 swap_id,
             }) => {
@@ -296,7 +311,7 @@ impl Runtime {
                 }
 
                 let commitment = self
-                    .take_swap(senders, offer.clone(), swap_id, params)
+                    .take_swap(senders, public_offer.clone(), swap_id, params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -307,16 +322,24 @@ impl Runtime {
                             },
                         )
                     })?;
-                let offer_hex = offer.to_string();
-                let take_swap = TakeCommit { commitment, offer_hex, swap_id };
-                self.send_peer(senders, ProtocolMessages::TakerCommit(take_swap))?;
+                self.update_from_offer(public_offer.offer.clone());
+                let offer_hex = public_offer.to_string();
+                let take_swap = TakeCommit {
+                    commitment,
+                    offer_hex,
+                    swap_id,
+                };
+                self.send_peer(
+                    senders,
+                    ProtocolMessages::TakerCommit(take_swap),
+                )?;
                 // self.state = Lifecycle::Proposed;
             }
 
             Request::MakeSwap(InitSwap {
                 peerd,
                 report_to,
-                offer,
+                public_offer,
                 params,
                 swap_id,
             }) => {
@@ -326,12 +349,12 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.remote_peer = Some(addr.clone());
                 }
-
+                self.update_from_offer(public_offer.offer.clone());
                 let commitment = self
                     .make_swap(
                         senders,
                         &peerd,
-                        offer.clone(),
+                        public_offer.clone(),
                         swap_id,
                         params,
                     )
@@ -345,11 +368,41 @@ impl Runtime {
                             },
                         )
                     })?;
-
-                self.send_peer(senders, ProtocolMessages::MakerCommit(commitment))?;
+                self.commit_local = Some(commitment.clone());
+                self.send_peer(
+                    senders,
+                    ProtocolMessages::MakerCommit(commitment),
+                )?;
+                self.state = match public_offer.offer.maker_role {
+                    farcaster_core::role::SwapRole::Bob => {
+                        Some(State::Bob(BobState::CommitB))
+                    }
+                    farcaster_core::role::SwapRole::Alice => {
+                        Some(State::Alice(AliceState::CommitA))
+                    }
+                    _ => None,
+                };
                 // self.state = Lifecycle::Accepted;
             }
-
+            Request::ProtocolMessages(msg) => match msg {
+                ProtocolMessages::MakerCommit(commitment) => {
+                    self.commit_remote = Some(commitment);
+                    todo!();
+                }
+                ProtocolMessages::TakerCommit(TakeCommit {
+                    commitment,
+                    ..
+                }) => {
+                    self.commit_remote = Some(commitment);
+                    todo!();
+                }
+                ProtocolMessages::Reveal(_) => {}
+                ProtocolMessages::RefundProcedureSignatures(_) => {}
+                ProtocolMessages::Abort(_) => {}
+                ProtocolMessages::RevealBobSessionParams(_) => {}
+                ProtocolMessages::CoreArbitratingSetup(_) => {}
+                ProtocolMessages::BuyProcedureSignature(_) => {}
+            },
             // Request::FundSwap(funding_outpoint) => {
             //     self.enquirer = source.into();
 
@@ -362,7 +415,6 @@ impl Runtime {
             //     //     Messages::FundingCreated(funding_created),
             //     // )?;
             // }
-
             Request::GetInfo => {
                 fn bmap<T>(
                     remote_peer: &Option<NodeAddr>,
@@ -400,7 +452,8 @@ impl Runtime {
                         .unwrap_or(Duration::from_secs(0))
                         .as_secs(),
                     is_originator: self.is_originator,
-                    // params: self.params, // FIXME serde::Serialize/Deserialize missing
+                    // params: self.params, // FIXME
+                    // serde::Serialize/Deserialize missing
                     local_keys: dumb!(),
                     remote_keys: bmap(&self.remote_peer, &dumb!()),
                 };
@@ -420,6 +473,28 @@ impl Runtime {
 }
 
 impl Runtime {
+    fn update_from_offer(&mut self, offer: Offer<BtcXmr>) {
+        let Offer {
+            network,
+            arbitrating_blockchain,
+            accordant_blockchain,
+            arbitrating_amount,
+            accordant_amount,
+            cancel_timelock,
+            punish_timelock,
+            fee_strategy,
+            maker_role,
+        } = offer;
+        self.network = Some(network);
+        self.arbitrating_blockchain = Some(arbitrating_blockchain);
+        self.accordant_blockchain = Some(accordant_blockchain);
+        self.accordant_amount = Some(accordant_amount);
+        self.arbitrating_amount = Some(arbitrating_amount);
+        self.cancel_timelock = Some(cancel_timelock);
+        self.punish_timelock = Some(punish_timelock);
+        self.fee_strategy = Some(fee_strategy);
+        self.local_role = Some(maker_role);
+    }
 
     pub fn take_swap(
         &mut self,
@@ -428,30 +503,21 @@ impl Runtime {
         swap_id: SwapId,
         params: Params,
     ) -> Result<request::Commit, payment::channel::NegotiationError> {
-        info!(
-            "{} {} with temp id {:#}",
+        let msg = format!(
+            "{} {} with id {:#}",
             "Proposing to the Maker".promo(),
             "that I take the swap offer".promo(),
             swap_id.promoter()
         );
+        info!("{}", &msg);
         let commitment = match params.clone() {
-            Params::Bob(params) => {
-                request::Commit::Bob(params.into())
-            }
-            Params::Alice(params) => {
-                request::Commit::Alice(params.into())
-            }
+            Params::Bob(params) => request::Commit::Bob(params.into()),
+            Params::Alice(params) => request::Commit::Alice(params.into()),
         };
         // Ignoring possible reporting errors here and after: do not want to
-        // halt the channel just because the client disconnected
+        // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(
-            senders,
-            &enquirer,
-            format!(
-                "Proposing to the Maker remote peer that I take the swap"
-            ),
-        );
+        let _ = self.report_progress_to(senders, &enquirer, msg);
 
         self.is_originator = true;
         self.params = Some(params);
@@ -489,12 +555,8 @@ impl Runtime {
         let dumb_key = self.node_id();
 
         let commitment = match params.clone() {
-            Params::Bob(params) => {
-                request::Commit::Bob(params.into())
-            }
-            Params::Alice(params) => {
-                request::Commit::Alice(params.into())
-            }
+            Params::Bob(params) => request::Commit::Bob(params.into()),
+            Params::Alice(params) => request::Commit::Alice(params.into()),
         };
         // let accept_channel = message::AcceptChannel {
         //     temporary_channel_id: channel_req.temporary_channel_id,

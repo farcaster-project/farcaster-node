@@ -832,7 +832,7 @@ fn launch_swapd(
     peerd: ServiceId,
     report_to: Option<ServiceId>,
     maker: bool,
-    offer: PublicOffer<BtcXmr>,
+    public_offer: PublicOffer<BtcXmr>,
     params: Params,
     swap_id: SwapId,
 ) -> Result<String, Error> {
@@ -851,7 +851,7 @@ fn launch_swapd(
         request::InitSwap {
             peerd,
             report_to,
-            offer,
+            public_offer,
             params,
             swap_id,
         },

@@ -308,7 +308,7 @@ use farcaster_core::protocol_message::{
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
-    pub offer: PublicOffer<BtcXmr>,
+    pub public_offer: PublicOffer<BtcXmr>,
     pub params: Params,
     pub swap_id: SwapId,
 }
