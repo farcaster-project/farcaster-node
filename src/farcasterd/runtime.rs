@@ -331,8 +331,9 @@ impl Runtime {
                         source.clone(),
                         Request::MakeSwap(swap_params.clone()),
                     )?;
+                    self.running_swaps.insert(swap_params.swap_id);
                     self.making_swaps.remove(&source);
-                    self.running_swaps.insert(&source);
+
                 } else if let Some(swap_params) = self.taking_swaps.get(&source)
                 {
                     // Tell swapd swap options and link it with the
