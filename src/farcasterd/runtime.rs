@@ -847,7 +847,7 @@ fn launch_swapd(
         &mut runtime.making_swaps
     };
     list.insert(
-        ServiceId::Swap(SwapId::from_inner(swap_id.into_inner())),
+        ServiceId::Swap(swap_id),
         request::InitSwap {
             peerd,
             report_to,

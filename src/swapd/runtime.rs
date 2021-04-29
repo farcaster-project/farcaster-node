@@ -21,7 +21,7 @@ use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
-use farcaster_core::{negotiation::{Offer, PublicOffer}, role::Arbitrating};
+use farcaster_core::{blockchain::{self, FeeStrategy}, negotiation::{Offer, PublicOffer}, role::{Arbitrating, SwapRole}};
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
@@ -59,7 +59,7 @@ pub fn run(
         swap_id: zero!(),
         state: None,
         funding_outpoint: default!(),
-        remote_peer: None,
+        maker_peer: None,
         commit_remote: None,
         commit_local: None,
         local_role: None,
@@ -94,20 +94,20 @@ pub struct Runtime {
     swap_id: SwapId,
     state: Option<State>,
     funding_outpoint: OutPoint,
-    remote_peer: Option<NodeAddr>,
+    maker_peer: Option<NodeAddr>,
     started: SystemTime,
     params: Option<Params>,
     is_originator: bool,
     obscuring_factor: u64,
     commit_remote: Option<Commit>,
     commit_local: Option<Commit>,
-    local_role: Option<farcaster_core::role::SwapRole>,
+    local_role: Option<SwapRole>,
     accordant_amount: Option<u64>,
     arbitrating_amount: Option<Amount>,
     cancel_timelock: Option<CSVTimelock>,
     punish_timelock: Option<CSVTimelock>,
-    fee_strategy: Option<farcaster_core::blockchain::FeeStrategy<SatPerVByte>>,
-    network: Option<farcaster_core::blockchain::Network>,
+    fee_strategy: Option<FeeStrategy<SatPerVByte>>,
+    network: Option<blockchain::Network>,
     arbitrating_blockchain: Option<Bitcoin>,
     accordant_blockchain: Option<Monero>,
     enquirer: Option<ServiceId>,
@@ -115,7 +115,11 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
-use farcaster_chains::{bitcoin::{Amount, Bitcoin, CSVTimelock, fee::SatPerVByte}, monero::Monero, pairs::btcxmr::BtcXmr};
+use farcaster_chains::{
+    bitcoin::{fee::SatPerVByte, Amount, Bitcoin, CSVTimelock},
+    monero::Monero,
+    pairs::btcxmr::BtcXmr,
+};
 
 pub enum AliceState {
     StartA,
@@ -224,6 +228,25 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
+            Request::ProtocolMessages(msg) => match msg {
+                ProtocolMessages::MakerCommit(commitment) => {
+                    self.commit_remote = Some(commitment);
+                    todo!();
+                }
+                ProtocolMessages::TakerCommit(TakeCommit {
+                    commitment,
+                    ..
+                }) => {
+                    self.commit_remote = Some(commitment);
+                    todo!();
+                }
+                ProtocolMessages::Reveal(_) => {}
+                ProtocolMessages::RefundProcedureSignatures(_) => {}
+                ProtocolMessages::Abort(_) => {}
+                ProtocolMessages::RevealBobSessionParams(_) => {}
+                ProtocolMessages::CoreArbitratingSetup(_) => {}
+                ProtocolMessages::BuyProcedureSignature(_) => {}
+            },
             // Request::PeerMessage(Messages::FundingCreated(funding_created))
             // => {     let enquirer = self.enquirer.clone();
 
@@ -303,13 +326,20 @@ impl Runtime {
                 params,
                 swap_id,
             }) => {
+                if ServiceId::Swap(swap_id) != self.identity {
+                    error!(
+                        "{}: {}",
+                        "This swapd instance is not reponsible for swap_id",
+                        swap_id
+                    )
+                };
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
+                self.params = Some(params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
-                    self.remote_peer = Some(addr.clone());
+                    self.maker_peer = Some(addr.clone());
                 }
-
                 let commitment = self
                     .take_swap(senders, public_offer.clone(), swap_id, params)
                     .map_err(|err| {
@@ -347,7 +377,7 @@ impl Runtime {
                 // self.state = Lifecycle::Proposed;
 
                 if let ServiceId::Peer(ref addr) = peerd {
-                    self.remote_peer = Some(addr.clone());
+                    self.maker_peer = Some(addr.clone());
                 }
                 self.update_from_offer(public_offer.offer.clone());
                 let commitment = self
@@ -374,35 +404,16 @@ impl Runtime {
                     ProtocolMessages::MakerCommit(commitment),
                 )?;
                 self.state = match public_offer.offer.maker_role {
-                    farcaster_core::role::SwapRole::Bob => {
+                    SwapRole::Bob => {
                         Some(State::Bob(BobState::CommitB))
                     }
-                    farcaster_core::role::SwapRole::Alice => {
+                    SwapRole::Alice => {
                         Some(State::Alice(AliceState::CommitA))
                     }
                     _ => None,
                 };
                 // self.state = Lifecycle::Accepted;
             }
-            Request::ProtocolMessages(msg) => match msg {
-                ProtocolMessages::MakerCommit(commitment) => {
-                    self.commit_remote = Some(commitment);
-                    todo!();
-                }
-                ProtocolMessages::TakerCommit(TakeCommit {
-                    commitment,
-                    ..
-                }) => {
-                    self.commit_remote = Some(commitment);
-                    todo!();
-                }
-                ProtocolMessages::Reveal(_) => {}
-                ProtocolMessages::RefundProcedureSignatures(_) => {}
-                ProtocolMessages::Abort(_) => {}
-                ProtocolMessages::RevealBobSessionParams(_) => {}
-                ProtocolMessages::CoreArbitratingSetup(_) => {}
-                ProtocolMessages::BuyProcedureSignature(_) => {}
-            },
             // Request::FundSwap(funding_outpoint) => {
             //     self.enquirer = source.into();
 
@@ -439,7 +450,7 @@ impl Runtime {
                     // state: self.state, // FIXME serde missing
                     assets: none!(),
                     remote_peers: self
-                        .remote_peer
+                        .maker_peer
                         .clone()
                         .map(|p| vec![p])
                         .unwrap_or_default(),
@@ -455,7 +466,7 @@ impl Runtime {
                     // params: self.params, // FIXME
                     // serde::Serialize/Deserialize missing
                     local_keys: dumb!(),
-                    remote_keys: bmap(&self.remote_peer, &dumb!()),
+                    remote_keys: bmap(&self.maker_peer, &dumb!()),
                 };
                 self.send_ctl(senders, source, Request::SwapInfo(info))?;
             }
