@@ -64,7 +64,7 @@ pub fn run(
         punish_timelock,
         fee_strategy,
         maker_role,
-    } = public_offer.offer;
+    } = public_offer.offer.clone();
 
     let local_role = match negotiation_role {
         NegotiationRole::Maker => maker_role,
@@ -95,6 +95,7 @@ pub fn run(
         accordant_blockchain,
         arbitrating_blockchain,
         network,
+        public_offer,
         enquirer: None,
         storage: Box::new(storage::DiskDriver::init(
             swap_id,
@@ -130,6 +131,7 @@ pub struct Runtime {
     network: blockchain::Network,
     arbitrating_blockchain: Bitcoin,
     accordant_blockchain: Monero,
+    public_offer: PublicOffer<BtcXmr>, // TODO: replace by pub offer id
     enquirer: Option<ServiceId>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
@@ -342,7 +344,6 @@ impl Runtime {
             Request::TakeSwap(InitSwap {
                 peerd,
                 report_to,
-                public_offer,
                 params,
                 swap_id,
             }) => {
@@ -361,7 +362,7 @@ impl Runtime {
                     self.maker_peer = Some(addr.clone());
                 }
                 let commitment = self
-                    .take_swap(senders, public_offer.clone(), swap_id, params)
+                    .take_swap(senders, params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -372,12 +373,11 @@ impl Runtime {
                             },
                         )
                     })?;
-                // let _ = self.update_from_offer(public_offer.offer.clone());
-                let offer_hex = public_offer.to_string();
+                let public_offer_hex = self.public_offer.to_string();
                 let take_swap = TakeCommit {
                     commitment,
-                    offer_hex,
-                    swap_id,
+                    public_offer_hex,
+                    swap_id: self.swap_id,
                 };
                 self.send_peer(
                     senders,
@@ -392,7 +392,6 @@ impl Runtime {
             Request::MakeSwap(InitSwap {
                 peerd,
                 report_to,
-                public_offer,
                 params,
                 swap_id,
             }) => {
@@ -406,8 +405,7 @@ impl Runtime {
                     .make_swap(
                         senders,
                         &peerd,
-                        public_offer.clone(),
-                        swap_id,
+                        self.swap_id,
                         params,
                     )
                     .map_err(|err| {
@@ -503,15 +501,13 @@ impl Runtime {
     pub fn take_swap(
         &mut self,
         senders: &mut Senders,
-        offer: PublicOffer<BtcXmr>,
-        swap_id: SwapId,
         params: Params,
     ) -> Result<request::Commit, payment::channel::NegotiationError> {
         let msg = format!(
             "{} {} with id {:#}",
             "Proposing to the Maker".promo(),
             "that I take the swap offer".promo(),
-            swap_id.promoter()
+            self.swap_id.promoter()
         );
         info!("{}", &msg);
         let commitment = match params.clone() {
@@ -535,7 +531,6 @@ impl Runtime {
         &mut self,
         senders: &mut Senders,
         peerd: &ServiceId,
-        offer: PublicOffer<BtcXmr>,
         swap_id: SwapId,
         params: Params,
     ) -> Result<request::Commit, Error> {

@@ -47,7 +47,7 @@ use wallet::PubkeyScript;
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct TakeCommit {
     pub commitment: Commit,
-    pub offer_hex: String,
+    pub public_offer_hex: String, // TODO: replace by public offer id
     pub swap_id: SwapId,
 }
 
@@ -308,7 +308,6 @@ use farcaster_core::protocol_message::{
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
-    pub public_offer: PublicOffer<BtcXmr>,
     pub params: Params,
     pub swap_id: SwapId,
 }

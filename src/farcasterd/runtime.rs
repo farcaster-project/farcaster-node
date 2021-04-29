@@ -151,12 +151,12 @@ impl Runtime {
             Request::ProtocolMessages(ProtocolMessages::TakerCommit(
                 request::TakeCommit {
                     commitment,
-                    offer_hex,
+                    public_offer_hex,
                     swap_id,
                 },
             )) => {
                 let public_offer: PublicOffer<BtcXmr> =
-                    FromStr::from_str(&offer_hex).map_err(|_| {
+                    FromStr::from_str(&public_offer_hex).map_err(|_| {
                         Error::Other(
                         "The offer received on peer conection is not parsable"
                             .to_string(),
@@ -183,7 +183,7 @@ impl Runtime {
                             internet2::presentation::Error::InvalidEndpoint
                         })?;
                     // we are maker
-                    let negotiation_role = NegotiationRole::Maker;
+                    let maker = NegotiationRole::Maker;
                     match offer.maker_role {
                         SwapRole::Bob => {
                             let address = bitcoin::Address::from_str(
@@ -203,7 +203,7 @@ impl Runtime {
                                 self,
                                 peer.into(),
                                 Some(source),
-                                negotiation_role,
+                                maker,
                                 public_offer,
                                 Params::Bob(params),
                                 swap_id,
@@ -227,7 +227,7 @@ impl Runtime {
                                 self,
                                 peer.into(),
                                 Some(source),
-                                negotiation_role,
+                                maker,
                                 public_offer,
                                 Params::Alice(params),
                                 swap_id,
@@ -636,9 +636,9 @@ impl Runtime {
                         ));
                     }
 
-                    let swap_id: SwapId = TempSwapId::random().into();
+                    let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
                     // since we're takers, we are on the other side
-                    let negotiation_role = NegotiationRole::Taker;
+                    let taker = NegotiationRole::Taker;
                     let taker_role = offer.maker_role.other();
                     match taker_role {
                         SwapRole::Bob => {
@@ -659,7 +659,7 @@ impl Runtime {
                                 self,
                                 peer.into(),
                                 Some(source),
-                                negotiation_role,
+                                taker,
                                 public_offer,
                                 Params::Bob(params),
                                 swap_id,
@@ -683,7 +683,7 @@ impl Runtime {
                                 self,
                                 peer.into(),
                                 Some(source),
-                                negotiation_role,
+                                taker,
                                 public_offer,
                                 Params::Alice(params),
                                 swap_id,
@@ -857,7 +857,6 @@ fn launch_swapd(
         request::InitSwap {
             peerd,
             report_to,
-            public_offer,
             params,
             swap_id,
         },
