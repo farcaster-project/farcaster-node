@@ -21,11 +21,7 @@ use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
-use farcaster_core::{
-    blockchain::{self, FeeStrategy},
-    negotiation::{Offer, PublicOffer},
-    role::{Arbitrating, SwapRole},
-};
+use farcaster_core::{blockchain::{self, FeeStrategy}, negotiation::{Offer, PublicOffer}, role::{Arbitrating, NegotiationRole, SwapRole}};
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
@@ -55,7 +51,9 @@ pub fn run(
     swap_id: SwapId,
     chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
+    negotiation_role: NegotiationRole,
 ) -> Result<(), Error> {
+
     let Offer {
         network,
         arbitrating_blockchain,
@@ -67,6 +65,12 @@ pub fn run(
         fee_strategy,
         maker_role,
     } = public_offer.offer;
+
+    let local_role = match negotiation_role {
+        NegotiationRole::Maker => maker_role,
+        NegotiationRole::Taker => maker_role.other(),
+    };
+
     let runtime = Runtime {
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
@@ -78,7 +82,7 @@ pub fn run(
         maker_peer: None,
         commit_remote: None,
         commit_local: None,
-        local_role: maker_role,
+        local_role,
         started: SystemTime::now(),
         params: default!(),
         is_originator: false,
@@ -379,9 +383,7 @@ impl Runtime {
                     senders,
                     ProtocolMessages::TakerCommit(take_swap),
                 )?;
-                self.state = match self
-                    .local_role
-                {
+                self.state = match self.local_role {
                     SwapRole::Bob => Some(State::Bob(BobState::CommitB)),
                     SwapRole::Alice => Some(State::Alice(AliceState::CommitA)),
                 };
@@ -423,9 +425,7 @@ impl Runtime {
                     senders,
                     ProtocolMessages::MakerCommit(commitment),
                 )?;
-                self.state = match self
-                    .local_role
-                {
+                self.state = match self.local_role {
                     SwapRole::Bob => Some(State::Bob(BobState::CommitB)),
                     SwapRole::Alice => Some(State::Alice(AliceState::CommitA)),
                 };

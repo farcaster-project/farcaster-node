@@ -16,7 +16,7 @@ use clap::{AppSettings, Clap, ValueHint};
 
 use bitcoin::hashes::hex::FromHex;
 use farcaster_chains::pairs::btcxmr::BtcXmr;
-use farcaster_core::negotiation::PublicOffer;
+use farcaster_core::{negotiation::PublicOffer, role::NegotiationRole};
 use internet2::PartialNodeAddr;
 use lnp::ChannelId as SwapId;
 use std::str::FromStr;
@@ -43,12 +43,16 @@ pub struct Opts {
     #[clap(parse(try_from_str = SwapId::from_hex))]
     pub channel_id: SwapId,
 
-    /// public offer to initiate swapd runtime
+    /// Public offer to initiate swapd runtime
     #[clap(parse(try_from_str = FromStr::from_str))]
     pub public_offer: PublicOffer<BtcXmr>,
 
+    /// Role of participant
+    #[clap(parse(try_from_str = FromStr::from_str))]
+    pub negotiation_role: NegotiationRole,
+
     /// These params can be read also from the configuration file, not just
-    /// command-line args or environment variables
+    /// Command-line args or environment variables
     #[clap(flatten)]
     pub shared: crate::opts::Opts,
 }
