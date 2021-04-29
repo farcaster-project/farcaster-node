@@ -21,7 +21,11 @@ use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
-use farcaster_core::{blockchain::{self, FeeStrategy}, negotiation::{Offer, PublicOffer}, role::{Arbitrating, SwapRole}};
+use farcaster_core::{
+    blockchain::{self, FeeStrategy},
+    negotiation::{Offer, PublicOffer},
+    role::{Arbitrating, SwapRole},
+};
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
@@ -50,31 +54,43 @@ pub fn run(
     local_node: LocalNode,
     swap_id: SwapId,
     chain: Chain,
+    public_offer: PublicOffer<BtcXmr>,
 ) -> Result<(), Error> {
+    let Offer {
+        network,
+        arbitrating_blockchain,
+        accordant_blockchain,
+        arbitrating_amount,
+        accordant_amount,
+        cancel_timelock,
+        punish_timelock,
+        fee_strategy,
+        maker_role,
+    } = public_offer.offer;
     let runtime = Runtime {
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
         local_node,
         chain,
-        swap_id: zero!(),
+        swap_id,
         state: None,
         funding_outpoint: default!(),
         maker_peer: None,
         commit_remote: None,
         commit_local: None,
-        local_role: None,
+        local_role: maker_role,
         started: SystemTime::now(),
         params: default!(),
         is_originator: false,
         obscuring_factor: 0,
-        accordant_amount: None,
-        arbitrating_amount: None,
-        cancel_timelock: None,
-        punish_timelock: None,
-        fee_strategy: None,
-        accordant_blockchain: None,
-        arbitrating_blockchain: None,
-        network: None,
+        accordant_amount,
+        arbitrating_amount,
+        cancel_timelock,
+        punish_timelock,
+        fee_strategy,
+        accordant_blockchain,
+        arbitrating_blockchain,
+        network,
         enquirer: None,
         storage: Box::new(storage::DiskDriver::init(
             swap_id,
@@ -101,15 +117,15 @@ pub struct Runtime {
     obscuring_factor: u64,
     commit_remote: Option<Commit>,
     commit_local: Option<Commit>,
-    local_role: Option<SwapRole>,
-    accordant_amount: Option<u64>,
-    arbitrating_amount: Option<Amount>,
-    cancel_timelock: Option<CSVTimelock>,
-    punish_timelock: Option<CSVTimelock>,
-    fee_strategy: Option<FeeStrategy<SatPerVByte>>,
-    network: Option<blockchain::Network>,
-    arbitrating_blockchain: Option<Bitcoin>,
-    accordant_blockchain: Option<Monero>,
+    local_role: SwapRole,
+    accordant_amount: u64,
+    arbitrating_amount: Amount,
+    cancel_timelock: CSVTimelock,
+    punish_timelock: CSVTimelock,
+    fee_strategy: FeeStrategy<SatPerVByte>,
+    network: blockchain::Network,
+    arbitrating_blockchain: Bitcoin,
+    accordant_blockchain: Monero,
     enquirer: Option<ServiceId>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
@@ -352,7 +368,7 @@ impl Runtime {
                             },
                         )
                     })?;
-                self.update_from_offer(public_offer.offer.clone());
+                // let _ = self.update_from_offer(public_offer.offer.clone());
                 let offer_hex = public_offer.to_string();
                 let take_swap = TakeCommit {
                     commitment,
@@ -363,7 +379,12 @@ impl Runtime {
                     senders,
                     ProtocolMessages::TakerCommit(take_swap),
                 )?;
-                // self.state = Lifecycle::Proposed;
+                self.state = match self
+                    .local_role
+                {
+                    SwapRole::Bob => Some(State::Bob(BobState::CommitB)),
+                    SwapRole::Alice => Some(State::Alice(AliceState::CommitA)),
+                };
             }
 
             Request::MakeSwap(InitSwap {
@@ -379,7 +400,6 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                self.update_from_offer(public_offer.offer.clone());
                 let commitment = self
                     .make_swap(
                         senders,
@@ -403,16 +423,12 @@ impl Runtime {
                     senders,
                     ProtocolMessages::MakerCommit(commitment),
                 )?;
-                self.state = match public_offer.offer.maker_role {
-                    SwapRole::Bob => {
-                        Some(State::Bob(BobState::CommitB))
-                    }
-                    SwapRole::Alice => {
-                        Some(State::Alice(AliceState::CommitA))
-                    }
-                    _ => None,
+                self.state = match self
+                    .local_role
+                {
+                    SwapRole::Bob => Some(State::Bob(BobState::CommitB)),
+                    SwapRole::Alice => Some(State::Alice(AliceState::CommitA)),
                 };
-                // self.state = Lifecycle::Accepted;
             }
             // Request::FundSwap(funding_outpoint) => {
             //     self.enquirer = source.into();
@@ -484,29 +500,6 @@ impl Runtime {
 }
 
 impl Runtime {
-    fn update_from_offer(&mut self, offer: Offer<BtcXmr>) {
-        let Offer {
-            network,
-            arbitrating_blockchain,
-            accordant_blockchain,
-            arbitrating_amount,
-            accordant_amount,
-            cancel_timelock,
-            punish_timelock,
-            fee_strategy,
-            maker_role,
-        } = offer;
-        self.network = Some(network);
-        self.arbitrating_blockchain = Some(arbitrating_blockchain);
-        self.accordant_blockchain = Some(accordant_blockchain);
-        self.accordant_amount = Some(accordant_amount);
-        self.arbitrating_amount = Some(arbitrating_amount);
-        self.cancel_timelock = Some(cancel_timelock);
-        self.punish_timelock = Some(punish_timelock);
-        self.fee_strategy = Some(fee_strategy);
-        self.local_role = Some(maker_role);
-    }
-
     pub fn take_swap(
         &mut self,
         senders: &mut Senders,

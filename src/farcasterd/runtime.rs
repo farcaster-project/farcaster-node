@@ -155,12 +155,12 @@ impl Runtime {
                     swap_id,
                 },
             )) => {
-                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&offer_hex)
-                    .map_err(|_| {
+                let public_offer: PublicOffer<BtcXmr> =
+                    FromStr::from_str(&offer_hex).map_err(|_| {
                         Error::Other(
-                            "The offer received on peer conection is not parsable"
-                                .to_string(),
-                        )
+                        "The offer received on peer conection is not parsable"
+                            .to_string(),
+                    )
                     })?;
                 if !self.making_offers.contains(&public_offer) {
                     error!(
@@ -333,7 +333,6 @@ impl Runtime {
                     )?;
                     self.running_swaps.insert(swap_params.swap_id);
                     self.making_swaps.remove(&source);
-
                 } else if let Some(swap_params) = self.taking_swaps.get(&source)
                 {
                     // Tell swapd swap options and link it with the
@@ -838,7 +837,7 @@ fn launch_swapd(
     swap_id: SwapId,
 ) -> Result<String, Error> {
     debug!("Instantiating swapd...");
-    let child = launch("swapd", &[swap_id.to_hex()])?;
+    let child = launch("swapd", &[swap_id.to_hex(), public_offer.to_string()])?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
     info!("{}", msg);
 

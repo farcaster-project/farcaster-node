@@ -65,6 +65,7 @@ fn main() {
         opts.key_opts.local_node(),
         opts.channel_id,
         opts.shared.chain,
+        opts.public_offer,
     )
     .expect("Error running swapd runtime");
 
