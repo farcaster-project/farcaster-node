@@ -43,14 +43,6 @@ use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use wallet::PubkeyScript;
 
-#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-pub struct TakeCommit {
-    pub commitment: Commit,
-    pub public_offer_hex: String, // TODO: replace by public offer id
-    pub swap_id: SwapId,
-}
-
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
@@ -97,6 +89,15 @@ pub enum Commit {
     Alice(CommitAliceParameters<BtcXmr>),
     Bob(CommitBobParameters<BtcXmr>),
 }
+
+#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+pub struct TakeCommit {
+    pub commitment: Commit,
+    pub public_offer_hex: String, // TODO: replace by public offer id
+    pub swap_id: SwapId,
+}
+
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
