@@ -36,17 +36,16 @@ required-features = ["cli"]
 
 [dependencies]
 # Farcaster crates
-farcaster_core = { path = "../core/core"}
-farcaster_chains = { path = "../core/chains"}
-# farcaster_core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
-# farcaster_chains = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+# farcaster_core = { path = "../core/core"}
+# farcaster_chains = { path = "../core/chains"}
+farcaster_core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster_chains = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 
 # LNP/BP crates
 amplify = "3"
 amplify_derive = "2.4.3"
 lightning_encoding = "0.4.0-beta.1"
 lnpbp = {version = "0.4", features = ["all"]}
-descriptor-wallet = { version = "0.4", features = ["electrum"] }
 slip132 = "0.3"
 lnp-core = "0.3.1"
 # internet2 = { path = "../alt/rust-internet2" }
@@ -55,7 +54,6 @@ internet2 = { version = "0.3.10" }
 microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 # Bitcoin
 bitcoin = "0.26"
-electrum-client = { version = "0.6", optional = true }
 # Rust language
 lazy_static = "1.4"
 chrono = "0.4"
@@ -81,10 +79,10 @@ shellexpand = { version = "2", optional = true }
 zmq = "0.9"
 
 [build-dependencies]
-farcaster_core = { path = "../core/core"}
-farcaster_chains = { path = "../core/chains"}
-# farcaster_core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
-# farcaster_chains = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+# farcaster_core = { path = "../core/core"}
+# farcaster_chains = { path = "../core/chains"}
+farcaster_core = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster_chains = { version = "0.1.0", git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 amplify = "3"
 amplify_derive = "2.4.3"
 lnpbp = { version = "0.4", features = ["all"] }
@@ -124,12 +122,12 @@ embedded = ["client", "node", "microservices/embedded"]
 # thus `server` != `node`.
 # This feature results in building with features not required for command-line
 node = ["serde", "internet2/keygen", "bitcoin/rand", "internet2/zmq", "microservices/node",
-    "internet2/url", "electrum-client", "base64",
+    "internet2/url", "base64",
     # Required for storing config and cache
     "_config", "_rpc"]
 # Feature is required for any applications that talks to daemon processes
 client = ["internet2/zmq", "microservices/client", "microservices/node", "bitcoin/rand",
-    "electrum-client", "base64",
+    "base64",
     "internet2/url", "clap", "_rpc"]
 # Required for all apps that can be launched from command-line shell as binaries
 # (i.e. both servers and cli)
@@ -145,7 +143,7 @@ _rpc = []
 serde = ["serde_crate", "serde_with", "serde_yaml", "serde_json", "toml",
     "chrono/serde", "bitcoin/use-serde", "slip132/serde",
     "amplify/serde", "internet2/serde", "microservices/serde",
-    "lnpbp/serde", "descriptor-wallet/serde", "lnp-core/serde" ]
+    "lnpbp/serde", "lnp-core/serde" ]
 tor = ["microservices/tor", "internet2/tor"]
 vendored_openssl = ["microservices/vendored_openssl", "internet2/vendored_openssl"]
 

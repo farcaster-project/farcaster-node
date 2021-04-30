@@ -10,9 +10,6 @@ use bitcoin::{Script, Txid};
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lightning_encoding::{self, LightningDecode, LightningEncode};
 use lnpbp::chain::AssetId;
-use wallet::SECP256K1_PUBKEY_DUMB;
-use wallet::{HashLock, HashPreimage};
-
 use lnpbp::strict_encoding::{self, StrictDecode, StrictEncode};
 
 /// Some features don't make sense on a per-channels or per-node basis, so each

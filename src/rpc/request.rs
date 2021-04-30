@@ -41,8 +41,6 @@ use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
-use wallet::PubkeyScript;
-
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
@@ -285,10 +283,10 @@ pub enum Request {
     #[from]
     TaskList(List<u64>), // FIXME
 
-    #[api(type = 1203)]
-    #[display("channel_funding({0})", alt = "{0:#}")]
-    #[from]
-    SwapFunding(PubkeyScript),
+    // #[api(type = 1203)]
+    // #[display("channel_funding({0})", alt = "{0:#}")]
+    // #[from]
+    // SwapFunding(PubkeyScript),
 
     #[api(type = 1300)]
     #[display("task({0})", alt = "{0:#}")]

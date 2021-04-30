@@ -711,7 +711,7 @@ impl Runtime {
             Request::PeerInfo(_) => {}
             Request::SwapInfo(_) => {}
             Request::TaskList(_) => {}
-            Request::SwapFunding(_) => {}
+            // Request::SwapFunding(_) => {}
             Request::CreateTask(_) => {}
             _ => unimplemented!(),
         }

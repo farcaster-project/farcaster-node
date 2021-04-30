@@ -40,8 +40,6 @@ use lnp::{
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
-use wallet::{HashPreimage, PubkeyScript};
-
 use super::storage::{self, Driver};
 use crate::rpc::{
     request::{self, ProtocolMessages},
