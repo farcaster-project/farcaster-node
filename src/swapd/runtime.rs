@@ -13,15 +13,19 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::time::{Duration, SystemTime};
+use std::{collections::BTreeMap, convert::TryInto};
 
 use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
-use farcaster_core::{blockchain::{self, FeeStrategy}, negotiation::{Offer, PublicOffer}, role::{Arbitrating, NegotiationRole, SwapRole}};
+use farcaster_core::{
+    blockchain::{self, FeeStrategy},
+    negotiation::{Offer, PublicOffer},
+    role::{Arbitrating, NegotiationRole, SwapRole},
+};
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
@@ -35,7 +39,7 @@ use lnp::{
 };
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
-use request::{Commit, InitSwap, Params, TakeCommit};
+use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
 use wallet::{HashPreimage, PubkeyScript};
 
 use super::storage::{self, Driver};
@@ -53,7 +57,6 @@ pub fn run(
     public_offer: PublicOffer<BtcXmr>,
     negotiation_role: NegotiationRole,
 ) -> Result<(), Error> {
-
     let Offer {
         network,
         arbitrating_blockchain,
@@ -71,13 +74,17 @@ pub fn run(
         NegotiationRole::Taker => maker_role.other(),
     };
 
+    let state = match maker_role {
+        SwapRole::Alice => State::Alice(AliceState::StartA),
+        SwapRole::Bob => State::Bob(BobState::StartB),
+    };
+
     let runtime = Runtime {
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
         local_node,
         chain,
-        swap_id,
-        state: None,
+        state,
         funding_outpoint: default!(),
         maker_peer: None,
         commit_remote: None,
@@ -112,8 +119,7 @@ pub struct Runtime {
     peer_service: ServiceId,
     local_node: LocalNode,
     chain: Chain,
-    swap_id: SwapId,
-    state: Option<State>,
+    state: State,
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
@@ -243,6 +249,15 @@ impl Runtime {
         Ok(())
     }
 
+    fn swap_id(&self) -> SwapId {
+        match self.identity {
+            ServiceId::Swap(swap_id) => swap_id,
+            _ => {
+                unreachable!("not ServiceId::Swap")
+            }
+        }
+    }
+
     fn handle_rpc_msg(
         &mut self,
         senders: &mut Senders,
@@ -253,16 +268,38 @@ impl Runtime {
             Request::ProtocolMessages(msg) => match msg {
                 ProtocolMessages::MakerCommit(commitment) => {
                     self.commit_remote = Some(commitment);
-                    todo!();
+                    // received commitment from counterparty, can now reveal
+                    let reveal: Reveal = self
+                        .params
+                        .clone()
+                        .map(TryInto::try_into)
+                        .ok_or_else(|| {
+                            Error::Other(
+                                "Failed to construct Reveal".to_string(),
+                            )
+                        })??;
+
+                    self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
                 }
                 ProtocolMessages::TakerCommit(TakeCommit {
                     commitment,
                     ..
                 }) => {
                     self.commit_remote = Some(commitment);
-                    todo!();
+                    // received commitment from counterparty, can now reveal
+                    let reveal: Reveal = self
+                        .params
+                        .clone()
+                        .map(TryInto::try_into)
+                        .ok_or_else(|| {
+                            Error::Other(
+                                "Failed to construct Reveal".to_string(),
+                            )
+                        })??;
+
+                    self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
                 }
-                ProtocolMessages::Reveal(_) => {}
+                ProtocolMessages::Reveal(reveal) => {}
                 ProtocolMessages::RefundProcedureSignatures(_) => {}
                 ProtocolMessages::Abort(_) => {}
                 ProtocolMessages::RevealBobSessionParams(_) => {}
@@ -361,9 +398,8 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment = self
-                    .take_swap(senders, params)
-                    .map_err(|err| {
+                let commitment =
+                    self.take_swap(senders, params).map_err(|err| {
                         self.report_failure_to(
                             senders,
                             &report_to,
@@ -377,15 +413,15 @@ impl Runtime {
                 let take_swap = TakeCommit {
                     commitment,
                     public_offer_hex,
-                    swap_id: self.swap_id,
+                    swap_id,
                 };
                 self.send_peer(
                     senders,
                     ProtocolMessages::TakerCommit(take_swap),
                 )?;
                 self.state = match self.local_role {
-                    SwapRole::Bob => Some(State::Bob(BobState::CommitB)),
-                    SwapRole::Alice => Some(State::Alice(AliceState::CommitA)),
+                    SwapRole::Bob => State::Bob(BobState::CommitB),
+                    SwapRole::Alice => State::Alice(AliceState::CommitA),
                 };
             }
 
@@ -402,12 +438,7 @@ impl Runtime {
                     self.maker_peer = Some(addr.clone());
                 }
                 let commitment = self
-                    .make_swap(
-                        senders,
-                        &peerd,
-                        self.swap_id,
-                        params,
-                    )
+                    .make_swap(senders, &peerd, swap_id, params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -424,8 +455,8 @@ impl Runtime {
                     ProtocolMessages::MakerCommit(commitment),
                 )?;
                 self.state = match self.local_role {
-                    SwapRole::Bob => Some(State::Bob(BobState::CommitB)),
-                    SwapRole::Alice => Some(State::Alice(AliceState::CommitA)),
+                    SwapRole::Bob => State::Bob(BobState::CommitB),
+                    SwapRole::Alice => State::Alice(AliceState::CommitA),
                 };
             }
             // Request::FundSwap(funding_outpoint) => {
@@ -454,10 +485,10 @@ impl Runtime {
                         .unwrap_or_default()
                 }
 
-                let swap_id = if self.swap_id == zero!() {
+                let swap_id = if self.swap_id() == zero!() {
                     None
                 } else {
-                    Some(self.swap_id)
+                    Some(self.swap_id())
                 };
                 let info = request::SwapInfo {
                     swap_id,
@@ -507,7 +538,7 @@ impl Runtime {
             "{} {} with id {:#}",
             "Proposing to the Maker".promo(),
             "that I take the swap offer".promo(),
-            self.swap_id.promoter()
+            self.swap_id().promoter()
         );
         info!("{}", &msg);
         let commitment = match params.clone() {
