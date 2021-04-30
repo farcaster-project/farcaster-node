@@ -54,7 +54,7 @@ use farcaster_core::{
     datum::Key,
     negotiation::PublicOffer,
     protocol_message::{CommitAliceParameters, CommitBobParameters},
-    role::{Alice, Bob, SwapRole},
+    role::{Alice, Bob, NegotiationRole, SwapRole},
 };
 
 use std::str::FromStr;
@@ -151,16 +151,16 @@ impl Runtime {
             Request::ProtocolMessages(ProtocolMessages::TakerCommit(
                 request::TakeCommit {
                     commitment,
-                    offer_hex,
+                    public_offer_hex,
                     swap_id,
                 },
             )) => {
-                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&offer_hex)
-                    .map_err(|_| {
+                let public_offer: PublicOffer<BtcXmr> =
+                    FromStr::from_str(&public_offer_hex).map_err(|_| {
                         Error::Other(
-                            "The offer received on peer conection is not parsable"
-                                .to_string(),
-                        )
+                        "The offer received on peer conection is not parsable"
+                            .to_string(),
+                    )
                     })?;
                 if !self.making_offers.contains(&public_offer) {
                     error!(
@@ -183,7 +183,7 @@ impl Runtime {
                             internet2::presentation::Error::InvalidEndpoint
                         })?;
                     // we are maker
-                    let maker = true;
+                    let maker = NegotiationRole::Maker;
                     match offer.maker_role {
                         SwapRole::Bob => {
                             let address = bitcoin::Address::from_str(
@@ -331,8 +331,8 @@ impl Runtime {
                         source.clone(),
                         Request::MakeSwap(swap_params.clone()),
                     )?;
+                    self.running_swaps.insert(swap_params.swap_id);
                     self.making_swaps.remove(&source);
-                    self.running_swaps.insert(&source);
                 } else if let Some(swap_params) = self.taking_swaps.get(&source)
                 {
                     // Tell swapd swap options and link it with the
@@ -636,9 +636,9 @@ impl Runtime {
                         ));
                     }
 
-                    let swap_id: SwapId = TempSwapId::random().into();
-                    let maker = false;
+                    let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
                     // since we're takers, we are on the other side
+                    let taker = NegotiationRole::Taker;
                     let taker_role = offer.maker_role.other();
                     match taker_role {
                         SwapRole::Bob => {
@@ -659,7 +659,7 @@ impl Runtime {
                                 self,
                                 peer.into(),
                                 Some(source),
-                                maker,
+                                taker,
                                 public_offer,
                                 Params::Bob(params),
                                 swap_id,
@@ -683,7 +683,7 @@ impl Runtime {
                                 self,
                                 peer.into(),
                                 Some(source),
-                                maker,
+                                taker,
                                 public_offer,
                                 Params::Alice(params),
                                 swap_id,
@@ -711,7 +711,7 @@ impl Runtime {
             Request::PeerInfo(_) => {}
             Request::SwapInfo(_) => {}
             Request::TaskList(_) => {}
-            Request::SwapFunding(_) => {}
+            // Request::SwapFunding(_) => {}
             Request::CreateTask(_) => {}
             _ => unimplemented!(),
         }
@@ -831,27 +831,32 @@ fn launch_swapd(
     runtime: &mut Runtime,
     peerd: ServiceId,
     report_to: Option<ServiceId>,
-    maker: bool,
+    negotiation_role: NegotiationRole,
     public_offer: PublicOffer<BtcXmr>,
     params: Params,
     swap_id: SwapId,
 ) -> Result<String, Error> {
     debug!("Instantiating swapd...");
-    let child = launch("swapd", &[swap_id.to_hex()])?;
+    let child = launch(
+        "swapd",
+        &[
+            swap_id.to_hex(),
+            public_offer.to_string(),
+            negotiation_role.to_string(),
+        ],
+    )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
     info!("{}", msg);
 
-    let list = if !maker {
-        &mut runtime.taking_swaps
-    } else {
-        &mut runtime.making_swaps
+    let list = match negotiation_role {
+        NegotiationRole::Taker => &mut runtime.taking_swaps,
+        NegotiationRole::Maker => &mut runtime.making_swaps,
     };
     list.insert(
-        ServiceId::Swap(SwapId::from_inner(swap_id.into_inner())),
+        ServiceId::Swap(swap_id),
         request::InitSwap {
             peerd,
             report_to,
-            public_offer,
             params,
             swap_id,
         },

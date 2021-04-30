@@ -20,7 +20,7 @@ _swapd() {
 
     case "${cmd}" in
         swapd)
-            opts=" -k -d -c -v -T -m -x -n -h -V  --key-file --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <channel-id> "
+            opts=" -k -d -c -v -T -m -x -n -h -V  --key-file --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --help --version  <channel-id> <public-offer> <negotiation-role> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

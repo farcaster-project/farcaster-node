@@ -41,16 +41,6 @@ use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
-use wallet::PubkeyScript;
-
-#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-pub struct TakeCommit {
-    pub commitment: Commit,
-    pub offer_hex: String,
-    pub swap_id: SwapId,
-}
-
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
@@ -97,6 +87,15 @@ pub enum Commit {
     Alice(CommitAliceParameters<BtcXmr>),
     Bob(CommitBobParameters<BtcXmr>),
 }
+
+#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+pub struct TakeCommit {
+    pub commitment: Commit,
+    pub public_offer_hex: String, // TODO: replace by public offer id
+    pub swap_id: SwapId,
+}
+
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -284,10 +283,10 @@ pub enum Request {
     #[from]
     TaskList(List<u64>), // FIXME
 
-    #[api(type = 1203)]
-    #[display("channel_funding({0})", alt = "{0:#}")]
-    #[from]
-    SwapFunding(PubkeyScript),
+    // #[api(type = 1203)]
+    // #[display("channel_funding({0})", alt = "{0:#}")]
+    // #[from]
+    // SwapFunding(PubkeyScript),
 
     #[api(type = 1300)]
     #[display("task({0})", alt = "{0:#}")]
@@ -308,7 +307,6 @@ use farcaster_core::protocol_message::{
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
-    pub public_offer: PublicOffer<BtcXmr>,
     pub params: Params,
     pub swap_id: SwapId,
 }

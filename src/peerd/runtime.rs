@@ -72,7 +72,7 @@ pub fn run(
     spawn(move || listener.run_or_panic("peerd-listener"));
     // TODO: Use the handle returned by spawn to track the child process
 
-    debug!("Staring main service runtime");
+    debug!("Starting main service runtime");
     let runtime = Runtime {
         identity,
         local_id,
