@@ -988,7 +988,7 @@ fn launch_swapd(
     Ok(msg)
 }
 
-fn launch(
+pub fn launch(
     name: &str,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> io::Result<process::Child> {
