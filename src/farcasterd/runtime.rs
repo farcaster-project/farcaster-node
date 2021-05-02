@@ -889,7 +889,7 @@ impl Runtime {
         }
 
         // Start swapd
-        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
+        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()], true)?;
         let msg = format!("New instance of swapd launched with PID {}", child.id());
         info!("{}", msg);
         Ok(())
@@ -906,6 +906,7 @@ impl Runtime {
             let child = launch(
                 "peerd",
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
+                true,
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
             info!("{}", msg);
@@ -926,7 +927,7 @@ impl Runtime {
             )));
         }
         // Start peerd
-        let child = launch("peerd", &["--connect", &node_addr.to_string()]);
+        let child = launch("peerd", &["--connect", &node_addr.to_string()], true);
 
         // in case it can't connect wait for it to crash
         std::thread::sleep(Duration::from_secs_f32(0.5));
@@ -966,6 +967,7 @@ fn launch_swapd(
             public_offer.to_string(),
             negotiation_role.to_string(),
         ],
+        true,
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
     info!("{}", msg);
@@ -991,6 +993,7 @@ fn launch_swapd(
 pub fn launch(
     name: &str,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+    use_cmd_args: bool,
 ) -> io::Result<process::Child> {
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
@@ -1009,7 +1012,11 @@ pub fn launch(
     );
 
     let mut cmd = process::Command::new(bin_path);
-    cmd.args(std::env::args().skip(1)).args(args);
+    if use_cmd_args {
+        cmd.args(std::env::args().skip(1)).args(args);
+    } else {
+        cmd.args(args);
+    }
     trace!("Executing `{:?}`", cmd);
     cmd.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);

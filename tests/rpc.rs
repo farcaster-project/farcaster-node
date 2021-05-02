@@ -16,7 +16,7 @@ fn spawn_swap() {
     let mut client = Client::with(config.clone(), config.chain.clone())
         .expect("Error running client");
 
-    let _child = launch("../farcasterd", std::vec::Vec::<&str>::new());
+    launch("../farcasterd", std::vec::Vec::<&str>::new(), false).unwrap();
 
     Command::Ls
         .exec(&mut client)
