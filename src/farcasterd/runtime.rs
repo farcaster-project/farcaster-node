@@ -1009,7 +1009,7 @@ pub fn launch(
     );
 
     let mut cmd = process::Command::new(bin_path);
-    
+
     #[cfg(feature = "integration_test")]
     cmd.args(args);
 
@@ -1017,8 +1017,21 @@ pub fn launch(
     cmd.args(std::env::args().skip(1)).args(args);
 
     trace!("Executing `{:?}`", cmd);
-    cmd.spawn().map_err(|err| {
-        error!("Error launching {}: {}", name, err);
-        err
-    })
+    match cmd.spawn() {
+        Ok(child) => {
+            println!(
+                "Successfully launched child {:?} with PID {:?}",
+                name, child.id()
+            );
+            Ok(child)
+        }
+        Err(err) => {
+            error!("Error launching {}: {}", name, err);
+            Err(err)
+        }
+    }
+    // cmd.spawn().map_err(|err| {
+    //     error!("Error launching {}: {}", name, err);
+    //     err
+    // })
 }
