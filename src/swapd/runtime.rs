@@ -278,13 +278,20 @@ impl Runtime {
                     self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
                 }
                 ProtocolMessages::Reveal(role) => {
+                    if self.remote_params.is_some() {
+                        Err(Error::Farcaster(
+                            "remote_params already set".to_string(),
+                        ))?
+                    }
                     let remote_params = match role {
                         Reveal::Alice(reveal) => match &self.commit_remote {
                             Some(Commit::Alice(commit)) => {
                                 if self.local_role == SwapRole::Alice {
                                     return Err(Error::Farcaster("local role is Alice, and received message from Alice".to_string()));
                                 };
-                                Params::Alice(commit.verify_then_bundle(&reveal)?)
+                                Params::Alice(
+                                    commit.verify_then_bundle(&reveal)?,
+                                )
                             }
                             _ => {
                                 let err_msg =
@@ -308,8 +315,12 @@ impl Runtime {
                             }
                         },
                     };
-                    self.remote_params = Some(remote_params);
-
+                    self.remote_params = Some(remote_params.clone());
+                    self.send_ctl(
+                        senders,
+                        ServiceId::Farcasterd,
+                        Request::Params(remote_params),
+                    )?;
                 }
                 ProtocolMessages::RefundProcedureSignatures(_) => {}
                 ProtocolMessages::Abort(_) => {}

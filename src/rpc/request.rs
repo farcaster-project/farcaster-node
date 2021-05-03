@@ -225,6 +225,10 @@ pub enum Request {
     #[display("proto_puboffer({0:#})")]
     MakeOffer(ProtoPublicOffer),
 
+    #[api(type = 199)]
+    #[display("params({0:#})")]
+    Params(Params),
+
     #[api(type = 205)]
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
