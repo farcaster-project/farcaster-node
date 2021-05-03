@@ -224,10 +224,6 @@ pub enum Request {
     #[display("params({0:#})")]
     Params(Params),
 
-    #[api(type = 196)]
-    #[display("ProtoCoreArbSetup({0:#})")]
-    ProtoCoreArbSetup(ProtoCoreArbSetup),
-
     #[api(type = 205)]
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
@@ -299,15 +295,6 @@ pub enum Request {
 impl rpc_connection::Request for Request {}
 
 use farcaster_core::protocol_message::{CommitAliceParameters, CommitBobParameters};
-// use farcaster_chains::pairs::btcxmr::BtcXmr;
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("{core_arbitrating_txs}, {cosign_arbitrating_cancel}")]
-pub struct ProtoCoreArbSetup {
-    pub core_arbitrating_txs: CoreArbitratingTransactions<Bitcoin>,
-    pub cosign_arbitrating_cancel: CosignedArbitratingCancel<Bitcoin>,
-}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
