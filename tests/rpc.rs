@@ -22,7 +22,7 @@ fn spawn_swap() {
     let mut farcasterd = launch("../farcasterd", std::vec::Vec::<&str>::new()).unwrap();
 
     use std::{thread, time};
-    thread::sleep(time::Duration::from_millis(500));
+    thread::sleep(time::Duration::from_secs_f32(0.5));
 
     Command::Ls
         .exec(&mut client)
