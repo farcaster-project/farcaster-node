@@ -30,6 +30,7 @@ use bitcoin::{OutPoint, SigHashType, Transaction};
 use farcaster_core::{
     blockchain::{self, FeeStrategy},
     negotiation::{Offer, PublicOffer},
+    protocol_message::CoreArbitratingSetup,
     role::{Arbitrating, NegotiationRole, SwapRole},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
@@ -290,7 +291,10 @@ impl Runtime {
                         Reveal::Alice(reveal) => match &self.commit_remote {
                             Some(Commit::Alice(commit)) => {
                                 if self.local_role == SwapRole::Alice {
-                                    return Err(Error::Farcaster("local role is Alice, and received message from Alice".to_string()));
+                                    Err(Error::Farcaster(
+                                        "local role is Alice, and received message from Alice"
+                                            .to_string()
+                                    ))?
                                 };
                                 Params::Alice(
                                     commit.verify_then_bundle(&reveal)?,
@@ -306,7 +310,10 @@ impl Runtime {
                         Reveal::Bob(reveal) => match &self.commit_remote {
                             Some(Commit::Bob(commit)) => {
                                 if self.local_role == SwapRole::Bob {
-                                    return Err(Error::Farcaster("local role is Bob, and received message from Bob".to_string()));
+                                    Err(Error::Farcaster(
+                                        "local role is Bob, and received message from Bob"
+                                            .to_string()
+                                    ))?
                                 };
                                 Params::Bob(commit.verify_then_bundle(&reveal)?)
                             }
@@ -325,10 +332,19 @@ impl Runtime {
                         Request::Params(remote_params),
                     )?;
                 }
+                ProtocolMessages::CoreArbitratingSetup(
+                    CoreArbitratingSetup {
+                        lock,
+                        cancel,
+                        refund,
+                        cancel_sig,
+                    },
+                ) => {
+                    // if self.local_role !=
+                }
                 ProtocolMessages::RefundProcedureSignatures(_) => {}
                 ProtocolMessages::Abort(_) => {}
                 ProtocolMessages::RevealBobSessionParams(_) => {}
-                ProtocolMessages::CoreArbitratingSetup(_) => {}
                 ProtocolMessages::BuyProcedureSignature(_) => {}
             },
             // Request::PeerMessage(Messages::FundingCreated(funding_created))
