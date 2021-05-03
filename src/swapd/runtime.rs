@@ -251,7 +251,7 @@ impl Runtime {
                         .local_params
                         .clone()
                         .map(TryInto::try_into)
-                        .ok_or_else(|| Error::Other("Failed to construct Reveal".to_string()))??;
+                        .ok_or_else(|| Error::Farcaster("Failed to construct Reveal".to_string()))??;
 
                     self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
                 }
@@ -262,7 +262,7 @@ impl Runtime {
                         .local_params
                         .clone()
                         .map(TryInto::try_into)
-                        .ok_or_else(|| Error::Other("Failed to construct Reveal".to_string()))??;
+                        .ok_or_else(|| Error::Farcaster("Failed to construct Reveal".to_string()))??;
                     self.send_peer(senders, ProtocolMessages::Reveal(reveal))?
                 }
                 ProtocolMessages::Reveal(role) => {
