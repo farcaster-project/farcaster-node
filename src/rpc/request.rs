@@ -25,12 +25,7 @@ use bitcoin::{secp256k1, OutPoint};
 use farcaster_chains::{
     bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr,
 };
-use farcaster_core::{
-    blockchain::FeePolitic,
-    bundle::{AliceParameters, BobParameters},
-    negotiation::{Offer, PublicOffer},
-    protocol_message::{self, RevealAliceParameters, RevealBobParameters},
-};
+use farcaster_core::{blockchain::FeePolitic, bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel}, negotiation::{Offer, PublicOffer}, protocol_message::{self, RevealAliceParameters, RevealBobParameters}};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
@@ -225,9 +220,13 @@ pub enum Request {
     #[display("proto_puboffer({0:#})")]
     MakeOffer(ProtoPublicOffer),
 
-    #[api(type = 199)]
+    #[api(type = 197)]
     #[display("params({0:#})")]
     Params(Params),
+
+    #[api(type = 196)]
+    #[display("ProtoCoreArbSetup({0:#})")]
+    ProtoCoreArbSetup(ProtoCoreArbSetup),
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]
@@ -304,6 +303,14 @@ use farcaster_core::protocol_message::{
     CommitAliceParameters, CommitBobParameters,
 };
 // use farcaster_chains::pairs::btcxmr::BtcXmr;
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("{core_arbitrating_txs}, {cosign_arbitrating_cancel}")]
+pub struct ProtoCoreArbSetup {
+    pub core_arbitrating_txs: CoreArbitratingTransactions<Bitcoin>,
+    pub cosign_arbitrating_cancel: CosignedArbitratingCancel<Bitcoin>,
+}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]

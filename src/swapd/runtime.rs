@@ -149,6 +149,7 @@ use farcaster_chains::{
     pairs::btcxmr::BtcXmr,
 };
 
+#[derive(Eq, PartialEq)]
 pub enum AliceState {
     StartA,
     CommitA,
@@ -157,6 +158,7 @@ pub enum AliceState {
     FinishA,
 }
 
+#[derive(Eq, PartialEq)]
 pub enum BobState {
     StartB,
     CommitB,
@@ -166,6 +168,7 @@ pub enum BobState {
     FinishB,
 }
 
+#[derive(Eq, PartialEq)]
 pub enum State {
     Alice(AliceState),
     Bob(BobState),
@@ -480,6 +483,27 @@ impl Runtime {
                     SwapRole::Bob => State::Bob(BobState::CommitB),
                     SwapRole::Alice => State::Alice(AliceState::CommitA),
                 };
+            }
+            Request::ProtocolMessages(
+                ProtocolMessages::CoreArbitratingSetup(core_arb_setup),
+            ) => {
+                if source != ServiceId::Farcasterd {
+                    Err(Error::Farcaster(
+                        "Permission Error: only Farcasterd can do this"
+                            .to_string(),
+                    ))?
+                }
+                if self.local_role != SwapRole::Bob {
+                    Err(Error::Farcaster("Wrong role".to_string()))?
+                }
+                if self.state != State::Bob(BobState::RevealB) {
+                    Err(Error::Farcaster("Wrong state".to_string()))?
+                }
+                self.state = State::Bob(BobState::CorearbB);
+                self.send_peer(
+                    senders,
+                    ProtocolMessages::CoreArbitratingSetup(core_arb_setup),
+                )?
             }
             // Request::FundSwap(funding_outpoint) => {
             //     self.enquirer = source.into();

@@ -49,11 +49,13 @@ use farcaster_chains::{
 };
 use farcaster_core::{
     blockchain::FeePolitic,
-    bundle::BobParameters,
+    bundle::{AliceParameters, BobParameters, FundingTransaction},
     crypto::FromSeed,
     datum::Key,
     negotiation::PublicOffer,
-    protocol_message::{CommitAliceParameters, CommitBobParameters},
+    protocol_message::{
+        CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+    },
     role::{Alice, Bob, NegotiationRole, SwapRole},
 };
 
@@ -84,8 +86,8 @@ pub fn run(
 }
 
 pub enum Wallet {
-    Alice(Alice<BtcXmr>),
-    Bob(Bob<BtcXmr>),
+    Alice(Alice<BtcXmr>, AliceParameters<BtcXmr>, PublicOffer<BtcXmr>),
+    Bob(Bob<BtcXmr>, BobParameters<BtcXmr>, PublicOffer<BtcXmr>),
 }
 
 pub struct Runtime {
@@ -140,7 +142,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 impl Runtime {
     fn handle_rpc_msg(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -149,7 +151,54 @@ impl Runtime {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
             Request::Params(params) => match params {
-                Params::Alice(params) => {}
+                // getting paramaters from counterparty alice, thus im bob on
+                // this swap
+                Params::Alice(params) => {
+                    let swap_id = if let ServiceId::Swap(swap_id) = source {
+                        Ok(swap_id)
+                    } else {
+                        Err(Error::Farcaster("Unknown swap_id".to_string()))
+                    }?;
+                    match self.wallets.get(&swap_id) {
+                        Some(Wallet::Bob(wallet, bob_params, public_offer)) => {
+                            let funding_bundle: FundingTransaction<Bitcoin> =
+                                todo!();
+                            let core_arbitrating_txs = wallet
+                                .core_arbitrating_transactions(
+                                    &params,
+                                    bob_params,
+                                    &funding_bundle,
+                                    public_offer,
+                                )?;
+
+                            let cosign_arbitrating_cancel = wallet
+                                .cosign_arbitrating_cancel(
+                                    &self.seed,
+                                    &core_arbitrating_txs,
+                                )?;
+                            let core_arb_setup =
+                                CoreArbitratingSetup::<BtcXmr>::from_bundles(
+                                    &core_arbitrating_txs,
+                                    &cosign_arbitrating_cancel,
+                                )?;
+                            let core_arb_setup =
+                                ProtocolMessages::CoreArbitratingSetup(core_arb_setup);
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                ServiceId::Farcasterd, // source
+                                source,                // destination swapd
+                                Request::ProtocolMessages(core_arb_setup),
+                            )?;
+                            Ok(())
+                        }
+                        _ => Err(Error::Farcaster(
+                            "only Some(Wallet::Bob(wallet))".to_string(),
+                        )),
+                    }?
+                }
+
+                // getting paramaters from counterparty bob, thus im alice on
+                // this swap
                 Params::Bob(params) => {}
             },
             // Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
@@ -210,15 +259,30 @@ impl Runtime {
                                 &self.seed,
                                 &public_offer,
                             )?;
-                            launch_swapd(
-                                self,
-                                peer.into(),
-                                Some(source),
-                                maker,
-                                public_offer,
-                                Params::Bob(params),
-                                swap_id,
-                            )?;
+                            if self.wallets.get(&swap_id).is_none() {
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Bob(
+                                        bob,
+                                        params.clone(),
+                                        public_offer.clone(),
+                                    ),
+                                );
+                                launch_swapd(
+                                    self,
+                                    peer.into(),
+                                    Some(source),
+                                    maker,
+                                    public_offer,
+                                    Params::Bob(params),
+                                    swap_id,
+                                )?;
+                            } else {
+                                error!("Wallet already existed");
+                                Err(Error::Farcaster(
+                                    "Wallet already existed".to_string(),
+                                ))?
+                            }
                         }
                         SwapRole::Alice => {
                             let address = bitcoin::Address::from_str(
@@ -235,7 +299,14 @@ impl Runtime {
                                 &public_offer,
                             )?;
                             if self.wallets.get(&swap_id).is_none() {
-                                self.wallets.insert(swap_id, Wallet::Alice(alice));
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Alice(
+                                        alice,
+                                        params.clone(),
+                                        public_offer.clone(),
+                                    ),
+                                );
                                 launch_swapd(
                                     self,
                                     peer.into(),
@@ -247,7 +318,9 @@ impl Runtime {
                                 )?;
                             } else {
                                 error!("Wallet already existed");
-                                Err(Error::Farcaster("Wallet already existed".to_string()))?
+                                Err(Error::Farcaster(
+                                    "Wallet already existed".to_string(),
+                                ))?
                             }
                         }
                     };
