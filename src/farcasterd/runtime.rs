@@ -76,10 +76,16 @@ pub fn run(
         making_swaps: none!(),
         taking_swaps: none!(),
         making_offers: none!(),
+        wallets: none!(),
         seed,
     };
 
     Service::run(config, runtime, true)
+}
+
+pub enum Wallet {
+    Alice(Alice<BtcXmr>),
+    Bob(Bob<BtcXmr>),
 }
 
 pub struct Runtime {
@@ -94,6 +100,7 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
+    wallets: HashMap<SwapId, Wallet>,
     seed: [u8; 32],
 }
 
@@ -141,6 +148,10 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
+            Request::Params(params) => match params {
+                Params::Alice(params) => {}
+                Params::Bob(params) => {}
+            },
             // Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
             //     info!("Creating swap by peer request from {}", source);
             //     self.create_swap(source, None, open_swap, true)?;
@@ -223,15 +234,21 @@ impl Runtime {
                                 &self.seed,
                                 &public_offer,
                             )?;
-                            launch_swapd(
-                                self,
-                                peer.into(),
-                                Some(source),
-                                maker,
-                                public_offer,
-                                Params::Alice(params),
-                                swap_id,
-                            )?;
+                            if self.wallets.get(&swap_id).is_none() {
+                                self.wallets.insert(swap_id, Wallet::Alice(alice));
+                                launch_swapd(
+                                    self,
+                                    peer.into(),
+                                    Some(source),
+                                    maker,
+                                    public_offer,
+                                    Params::Alice(params),
+                                    swap_id,
+                                )?;
+                            } else {
+                                error!("Wallet already existed");
+                                Err(Error::Farcaster("Wallet already existed".to_string()))?
+                            }
                         }
                     };
                 }
@@ -637,7 +654,7 @@ impl Runtime {
                     }
 
                     let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
-                    // since we're takers, we are on the other side
+                                                                       // since we're takers, we are on the other side
                     let taker = NegotiationRole::Taker;
                     let taker_role = offer.maker_role.other();
                     match taker_role {
