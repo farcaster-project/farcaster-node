@@ -8,8 +8,9 @@ use microservices::shell::Exec;
 
 #[test]
 fn spawn_swap() {
-    use farcaster_node::farcasterd::{launch, Opts};
-    let mut opts = Opts::parse_from(vec![""].into_iter());
+    use farcaster_node::farcasterd::{launch};
+    use farcaster_node::cli::Opts;
+    let mut opts = Opts::parse_from(vec!["swap-cli", "make"].into_iter());
     opts.process();
     println!("{:?}", opts);
     let config: Config = opts.shared.clone().into();
@@ -22,4 +23,10 @@ fn spawn_swap() {
     Command::Ls
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+
+    println!("executing command: {:?}", opts.command);
+    opts.command
+        .exec(&mut client)
+        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+
 }
