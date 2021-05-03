@@ -17,6 +17,12 @@ use std::convert::TryFrom;
 use std::time::{Duration, SystemTime};
 use std::{collections::BTreeMap, convert::TryInto};
 
+use super::storage::{self, Driver};
+use crate::rpc::{
+    request::{self, ProtocolMessages},
+    Request, ServiceBus,
+};
+use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
@@ -40,12 +46,6 @@ use lnp::{
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
-use super::storage::{self, Driver};
-use crate::rpc::{
-    request::{self, ProtocolMessages},
-    Request, ServiceBus,
-};
-use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 
 pub fn run(
     config: Config,
@@ -64,7 +64,7 @@ pub fn run(
         cancel_timelock,
         punish_timelock,
         fee_strategy,
-        maker_role,
+        maker_role, // SwapRole of maker (Alice or Bob)
     } = public_offer.offer.clone();
 
     let local_role = match negotiation_role {
@@ -89,7 +89,8 @@ pub fn run(
         commit_local: None,
         local_role,
         started: SystemTime::now(),
-        params: default!(),
+        local_params: default!(),
+        remote_params: default!(),
         is_originator: false,
         obscuring_factor: 0,
         accordant_amount,
@@ -109,8 +110,8 @@ pub fn run(
             }),
         )?),
     };
-
-    Service::run(config, runtime, false)
+    let broker = false;
+    Service::run(config, runtime, broker)
 }
 pub struct Runtime {
     identity: ServiceId,
@@ -121,7 +122,8 @@ pub struct Runtime {
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    params: Option<Params>,
+    local_params: Option<Params>,
+    remote_params: Option<Params>,
     is_originator: bool,
     obscuring_factor: u64,
     commit_remote: Option<Commit>,
@@ -169,33 +171,12 @@ pub enum State {
     Bob(BobState),
 }
 
-pub struct RuntimeSwapd {
-    identify: ServiceId,
-    peer_service: ServiceId,
-    local_node: LocalNode,
-    swap_id: SwapId,
-    funding_outpoint: OutPoint,
-    accordant_amount: Amount,
-    arbitrating_amount: u64,
-    cancel_timelock: CSVTimelock,
-    punish_timelock: CSVTimelock,
-    fee_strategy: SatPerVByte,
-    enquirer: Option<ServiceId>,
-    #[allow(dead_code)]
-    storage: Box<dyn storage::Driver>,
-}
-
 impl CtlServer for Runtime {}
 
 impl Runtime {
     #[inline]
     pub fn node_id(&self) -> secp256k1::PublicKey {
         self.local_node.node_id()
-    }
-
-    #[inline]
-    pub fn channel_capacity(&self) -> u64 {
-        todo!()
     }
 }
 
@@ -268,7 +249,7 @@ impl Runtime {
                     self.commit_remote = Some(commitment);
                     // received commitment from counterparty, can now reveal
                     let reveal: Reveal = self
-                        .params
+                        .local_params
                         .clone()
                         .map(TryInto::try_into)
                         .ok_or_else(|| {
@@ -286,7 +267,7 @@ impl Runtime {
                     self.commit_remote = Some(commitment);
                     // received commitment from counterparty, can now reveal
                     let reveal: Reveal = self
-                        .params
+                        .local_params
                         .clone()
                         .map(TryInto::try_into)
                         .ok_or_else(|| {
@@ -294,10 +275,42 @@ impl Runtime {
                                 "Failed to construct Reveal".to_string(),
                             )
                         })??;
-
                     self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
                 }
-                ProtocolMessages::Reveal(reveal) => {}
+                ProtocolMessages::Reveal(role) => {
+                    let remote_params = match role {
+                        Reveal::Alice(reveal) => match &self.commit_remote {
+                            Some(Commit::Alice(commit)) => {
+                                if self.local_role == SwapRole::Alice {
+                                    return Err(Error::Farcaster("local role is Alice, and received message from Alice".to_string()));
+                                };
+                                Params::Alice(commit.verify_then_bundle(&reveal)?)
+                            }
+                            _ => {
+                                let err_msg =
+                                    "expected Some(Commit::Alice(commit))";
+                                error!("{}", err_msg);
+                                Err(Error::Farcaster(err_msg.to_string()))?
+                            }
+                        },
+                        Reveal::Bob(reveal) => match &self.commit_remote {
+                            Some(Commit::Bob(commit)) => {
+                                if self.local_role == SwapRole::Bob {
+                                    return Err(Error::Farcaster("local role is Bob, and received message from Bob".to_string()));
+                                };
+                                Params::Bob(commit.verify_then_bundle(&reveal)?)
+                            }
+                            _ => {
+                                let err_msg =
+                                    "expected Some(Commit::Bob(commit))";
+                                error!("{}", err_msg);
+                                Err(Error::Farcaster(err_msg.to_string()))?
+                            }
+                        },
+                    };
+                    self.remote_params = Some(remote_params);
+
+                }
                 ProtocolMessages::RefundProcedureSignatures(_) => {}
                 ProtocolMessages::Abort(_) => {}
                 ProtocolMessages::RevealBobSessionParams(_) => {}
@@ -391,7 +404,7 @@ impl Runtime {
                 };
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
-                self.params = Some(params.clone());
+                self.local_params = Some(params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
@@ -549,7 +562,7 @@ impl Runtime {
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
         self.is_originator = true;
-        self.params = Some(params);
+        self.local_params = Some(params);
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
 
