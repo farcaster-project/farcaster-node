@@ -35,15 +35,12 @@ use farcaster_core::{
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
-    session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
-    Unmarshall, Unmarshaller,
+    session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
 use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{
-    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
-};
+use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
@@ -203,9 +200,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            _ => {
-                Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))
-            }
+            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
@@ -256,36 +251,23 @@ impl Runtime {
                         .local_params
                         .clone()
                         .map(TryInto::try_into)
-                        .ok_or_else(|| {
-                            Error::Other(
-                                "Failed to construct Reveal".to_string(),
-                            )
-                        })??;
+                        .ok_or_else(|| Error::Other("Failed to construct Reveal".to_string()))??;
 
                     self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
                 }
-                ProtocolMessages::TakerCommit(TakeCommit {
-                    commitment,
-                    ..
-                }) => {
+                ProtocolMessages::TakerCommit(TakeCommit { commitment, .. }) => {
                     self.commit_remote = Some(commitment);
                     // received commitment from counterparty, can now reveal
                     let reveal: Reveal = self
                         .local_params
                         .clone()
                         .map(TryInto::try_into)
-                        .ok_or_else(|| {
-                            Error::Other(
-                                "Failed to construct Reveal".to_string(),
-                            )
-                        })??;
-                    self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
+                        .ok_or_else(|| Error::Other("Failed to construct Reveal".to_string()))??;
+                    self.send_peer(senders, ProtocolMessages::Reveal(reveal))?
                 }
                 ProtocolMessages::Reveal(role) => {
                     if self.remote_params.is_some() {
-                        Err(Error::Farcaster(
-                            "remote_params already set".to_string(),
-                        ))?
+                        Err(Error::Farcaster("remote_params already set".to_string()))?
                     }
                     let remote_params = match role {
                         Reveal::Alice(reveal) => match &self.commit_remote {
@@ -293,16 +275,13 @@ impl Runtime {
                                 if self.local_role == SwapRole::Alice {
                                     Err(Error::Farcaster(
                                         "local role is Alice, and received message from Alice"
-                                            .to_string()
+                                            .to_string(),
                                     ))?
                                 };
-                                Params::Alice(
-                                    commit.verify_then_bundle(&reveal)?,
-                                )
+                                Params::Alice(commit.verify_then_bundle(&reveal)?)
                             }
                             _ => {
-                                let err_msg =
-                                    "expected Some(Commit::Alice(commit))";
+                                let err_msg = "expected Some(Commit::Alice(commit))";
                                 error!("{}", err_msg);
                                 Err(Error::Farcaster(err_msg.to_string()))?
                             }
@@ -312,14 +291,13 @@ impl Runtime {
                                 if self.local_role == SwapRole::Bob {
                                     Err(Error::Farcaster(
                                         "local role is Bob, and received message from Bob"
-                                            .to_string()
+                                            .to_string(),
                                     ))?
                                 };
                                 Params::Bob(commit.verify_then_bundle(&reveal)?)
                             }
                             _ => {
-                                let err_msg =
-                                    "expected Some(Commit::Bob(commit))";
+                                let err_msg = "expected Some(Commit::Bob(commit))";
                                 error!("{}", err_msg);
                                 Err(Error::Farcaster(err_msg.to_string()))?
                             }
@@ -330,16 +308,14 @@ impl Runtime {
                         senders,
                         ServiceId::Farcasterd,
                         Request::Params(remote_params),
-                    )?;
+                    )?
                 }
-                ProtocolMessages::CoreArbitratingSetup(
-                    CoreArbitratingSetup {
-                        lock,
-                        cancel,
-                        refund,
-                        cancel_sig,
-                    },
-                ) => {
+                ProtocolMessages::CoreArbitratingSetup(CoreArbitratingSetup {
+                    lock,
+                    cancel,
+                    refund,
+                    cancel_sig,
+                }) => {
                     // if self.local_role !=
                 }
                 ProtocolMessages::RefundProcedureSignatures(_) => {}
@@ -381,17 +357,12 @@ impl Runtime {
 
                 // Ignoring possible error here: do not want to
                 // halt the channel just because the client disconnected
-                let msg = format!(
-                    "{} transaction confirmed",
-                    "Channel active:".ended()
-                );
+                let msg = format!("{} transaction confirmed", "Channel active:".ended());
                 info!("{}", msg);
                 let _ = self.report_success_to(senders, &enquirer, Some(msg));
             }
 
-            Request::PeerMessage(Messages::CommitmentSigned(
-                _commitment_signed,
-            )) => {}
+            Request::PeerMessage(Messages::CommitmentSigned(_commitment_signed)) => {}
 
             Request::PeerMessage(Messages::RevokeAndAck(_revoke_ack)) => {}
 
@@ -400,13 +371,8 @@ impl Runtime {
             }
 
             _ => {
-                error!(
-                    "MSG RPC can be only used for forwarding LNPWP messages"
-                );
-                return Err(Error::NotSupported(
-                    ServiceBus::Msg,
-                    request.get_type(),
-                ));
+                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
         Ok(())
@@ -428,8 +394,7 @@ impl Runtime {
                 if ServiceId::Swap(swap_id) != self.identity {
                     error!(
                         "{}: {}",
-                        "This swapd instance is not reponsible for swap_id",
-                        swap_id
+                        "This swapd instance is not reponsible for swap_id", swap_id
                     )
                 };
                 self.peer_service = peerd.clone();
@@ -439,27 +404,23 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment =
-                    self.take_swap(senders, params).map_err(|err| {
-                        self.report_failure_to(
-                            senders,
-                            &report_to,
-                            microservices::rpc::Failure {
-                                code: 0, // TODO: Create error type system
-                                info: err.to_string(),
-                            },
-                        )
-                    })?;
+                let commitment = self.take_swap(senders, params).map_err(|err| {
+                    self.report_failure_to(
+                        senders,
+                        &report_to,
+                        microservices::rpc::Failure {
+                            code: 0, // TODO: Create error type system
+                            info: err.to_string(),
+                        },
+                    )
+                })?;
                 let public_offer_hex = self.public_offer.to_string();
                 let take_swap = TakeCommit {
                     commitment,
                     public_offer_hex,
                     swap_id,
                 };
-                self.send_peer(
-                    senders,
-                    ProtocolMessages::TakerCommit(take_swap),
-                )?;
+                self.send_peer(senders, ProtocolMessages::TakerCommit(take_swap))?;
                 self.state = match self.local_role {
                     SwapRole::Bob => State::Bob(BobState::CommitB),
                     SwapRole::Alice => State::Alice(AliceState::CommitA),
@@ -478,35 +439,29 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment = self
-                    .make_swap(senders, &peerd, swap_id, params)
-                    .map_err(|err| {
-                        self.report_failure_to(
-                            senders,
-                            &report_to,
-                            microservices::rpc::Failure {
-                                code: 0, // TODO: Create error type system
-                                info: err.to_string(),
-                            },
-                        )
-                    })?;
+                let commitment =
+                    self.make_swap(senders, &peerd, swap_id, params)
+                        .map_err(|err| {
+                            self.report_failure_to(
+                                senders,
+                                &report_to,
+                                microservices::rpc::Failure {
+                                    code: 0, // TODO: Create error type system
+                                    info: err.to_string(),
+                                },
+                            )
+                        })?;
                 self.commit_local = Some(commitment.clone());
-                self.send_peer(
-                    senders,
-                    ProtocolMessages::MakerCommit(commitment),
-                )?;
+                self.send_peer(senders, ProtocolMessages::MakerCommit(commitment))?;
                 self.state = match self.local_role {
                     SwapRole::Bob => State::Bob(BobState::CommitB),
                     SwapRole::Alice => State::Alice(AliceState::CommitA),
                 };
             }
-            Request::ProtocolMessages(
-                ProtocolMessages::CoreArbitratingSetup(core_arb_setup),
-            ) => {
+            Request::ProtocolMessages(ProtocolMessages::CoreArbitratingSetup(core_arb_setup)) => {
                 if source != ServiceId::Farcasterd {
                     Err(Error::Farcaster(
-                        "Permission Error: only Farcasterd can do this"
-                            .to_string(),
+                        "Permission Error: only Farcasterd can do this".to_string(),
                     ))?
                 }
                 if self.local_role != SwapRole::Bob {
@@ -534,10 +489,7 @@ impl Runtime {
             //     // )?;
             // }
             Request::GetInfo => {
-                fn bmap<T>(
-                    remote_peer: &Option<NodeAddr>,
-                    v: &T,
-                ) -> BTreeMap<NodeAddr, T>
+                fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
                 where
                     T: Clone,
                 {
@@ -556,11 +508,7 @@ impl Runtime {
                     swap_id,
                     // state: self.state, // FIXME serde missing
                     assets: none!(),
-                    remote_peers: self
-                        .maker_peer
-                        .clone()
-                        .map(|p| vec![p])
-                        .unwrap_or_default(),
+                    remote_peers: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or(Duration::from_secs(0)),
@@ -580,10 +528,7 @@ impl Runtime {
 
             _ => {
                 error!("Request is not supported by the CTL interface");
-                return Err(Error::NotSupported(
-                    ServiceBus::Ctl,
-                    request.get_type(),
-                ));
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
         Ok(())

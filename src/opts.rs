@@ -26,20 +26,16 @@ pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/.farcaster_node";
 #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
 pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/.farcaster_node";
 #[cfg(target_os = "macos")]
-pub const FARCASTER_NODE_DATA_DIR: &'static str =
-    "~/Library/Application Support/FARCASTER Node";
+pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/Library/Application Support/FARCASTER Node";
 #[cfg(target_os = "windows")]
-pub const FARCASTER_NODE_DATA_DIR: &'static str =
-    "~\\AppData\\Local\\FARCASTER Node";
+pub const FARCASTER_NODE_DATA_DIR: &'static str = "~\\AppData\\Local\\FARCASTER Node";
 #[cfg(target_os = "ios")]
 pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/Documents";
 #[cfg(target_os = "android")]
 pub const FARCASTER_NODE_DATA_DIR: &'static str = ".";
 
-pub const FARCASTER_NODE_MSG_SOCKET_NAME: &'static str =
-    "lnpz:{data_dir}/msg.rpc?api=esb";
-pub const FARCASTER_NODE_CTL_SOCKET_NAME: &'static str =
-    "lnpz:{data_dir}/ctl.rpc?api=esb";
+pub const FARCASTER_NODE_MSG_SOCKET_NAME: &'static str = "lnpz:{data_dir}/msg.rpc?api=esb";
+pub const FARCASTER_NODE_CTL_SOCKET_NAME: &'static str = "lnpz:{data_dir}/ctl.rpc?api=esb";
 
 pub const FARCASTER_NODE_CONFIG: &'static str = "{data_dir}/farcaster.toml";
 
@@ -149,16 +145,13 @@ impl Opts {
         let mut me = self.clone();
 
         me.data_dir = PathBuf::from(
-            shellexpand::tilde(&me.data_dir.to_string_lossy().to_string())
-                .to_string(),
+            shellexpand::tilde(&me.data_dir.to_string_lossy().to_string()).to_string(),
         );
-        fs::create_dir_all(&self.data_dir)
-            .expect("Unable to access data directory");
+        fs::create_dir_all(&self.data_dir).expect("Unable to access data directory");
 
         for s in vec![&mut self.msg_socket, &mut self.ctl_socket] {
             match s {
-                PartialNodeAddr::ZmqIpc(path, ..)
-                | PartialNodeAddr::Posix(path) => {
+                PartialNodeAddr::ZmqIpc(path, ..) | PartialNodeAddr::Posix(path) => {
                     me.process_dir(path);
                 }
                 _ => {}

@@ -22,16 +22,19 @@ use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
 
 use bitcoin::{secp256k1, OutPoint};
-use farcaster_chains::{
-    bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr,
+use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
+use farcaster_core::{
+    blockchain::FeePolitic,
+    bundle::{
+        AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
+    },
+    negotiation::{Offer, PublicOffer},
+    protocol_message::{self, RevealAliceParameters, RevealBobParameters},
 };
-use farcaster_core::{blockchain::FeePolitic, bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel}, negotiation::{Offer, PublicOffer}, protocol_message::{self, RevealAliceParameters, RevealBobParameters}};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{
-    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
-};
+use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
@@ -55,9 +58,7 @@ pub enum ProtocolMessages {
     Reveal(Reveal),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
-    RefundProcedureSignatures(
-        protocol_message::RefundProcedureSignatures<BtcXmr>,
-    ),
+    RefundProcedureSignatures(protocol_message::RefundProcedureSignatures<BtcXmr>),
     #[api(type = 27)]
     #[display("abort(...)")]
     Abort(protocol_message::Abort),
@@ -90,7 +91,6 @@ pub struct TakeCommit {
     pub public_offer_hex: String, // TODO: replace by public offer id
     pub swap_id: SwapId,
 }
-
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -290,7 +290,6 @@ pub enum Request {
     // #[display("channel_funding({0})", alt = "{0:#}")]
     // #[from]
     // SwapFunding(PubkeyScript),
-
     #[api(type = 1300)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
@@ -299,9 +298,7 @@ pub enum Request {
 
 impl rpc_connection::Request for Request {}
 
-use farcaster_core::protocol_message::{
-    CommitAliceParameters, CommitBobParameters,
-};
+use farcaster_core::protocol_message::{CommitAliceParameters, CommitBobParameters};
 // use farcaster_chains::pairs::btcxmr::BtcXmr;
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -436,9 +433,7 @@ impl ToYamlString for SwapInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for SyncerInfo {}
 
-#[derive(
-    Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode,
-)]
+#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[wrapper(IndexRange)]
 pub struct List<T>(Vec<T>)
@@ -448,33 +443,16 @@ where
 #[cfg(feature = "serde")]
 impl<'a, T> Display for List<T>
 where
-    T: Clone
-        + PartialEq
-        + Eq
-        + Debug
-        + Display
-        + serde::Serialize
-        + StrictEncode
-        + StrictDecode,
+    T: Clone + PartialEq + Eq + Debug + Display + serde::Serialize + StrictEncode + StrictDecode,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(
-            &serde_yaml::to_string(self)
-                .expect("internal YAML serialization error"),
-        )
+        f.write_str(&serde_yaml::to_string(self).expect("internal YAML serialization error"))
     }
 }
 
 impl<T> FromIterator<T> for List<T>
 where
-    T: Clone
-        + PartialEq
-        + Eq
-        + Debug
-        + Display
-        + serde::Serialize
-        + StrictEncode
-        + StrictDecode,
+    T: Clone + PartialEq + Eq + Debug + Display + serde::Serialize + StrictEncode + StrictDecode,
 {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_inner(iter.into_iter().collect())
@@ -484,14 +462,7 @@ where
 #[cfg(feature = "serde")]
 impl<T> serde::Serialize for List<T>
 where
-    T: Clone
-        + PartialEq
-        + Eq
-        + Debug
-        + Display
-        + serde::Serialize
-        + StrictEncode
-        + StrictDecode,
+    T: Clone + PartialEq + Eq + Debug + Display + serde::Serialize + StrictEncode + StrictDecode,
 {
     fn serialize<S>(
         &self,
@@ -504,17 +475,7 @@ where
     }
 }
 
-#[derive(
-    Wrapper,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
-    From,
-    Default,
-    StrictEncode,
-    StrictDecode,
-)]
+#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct OptionDetails(pub Option<String>);
 
@@ -598,8 +559,7 @@ impl TryInto<Reveal> for Params {
     fn try_into(self) -> Result<Reveal, Self::Error> {
         match self {
             Params::Alice(params) => {
-                let params: RevealAliceParameters<BtcXmr> =
-                    params.try_into()?;
+                let params: RevealAliceParameters<BtcXmr> = params.try_into()?;
                 Ok(Reveal::Alice(params))
             }
 

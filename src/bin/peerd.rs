@@ -104,9 +104,7 @@ use std::time::Duration;
 use bitcoin::secp256k1::PublicKey;
 use farcaster_node::peerd::{self, Opts};
 use farcaster_node::{Config, LogStyle};
-use internet2::{
-    session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr,
-};
+use internet2::{session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr};
 use microservices::peer::PeerConnection;
 
 /*
@@ -142,21 +140,17 @@ impl From<Opts> for PeerSocket {
             Self::Connect(peer_addr)
         } else if let Some(bind_addr) = opts.listen {
             Self::Listen(match opts.overlay {
-                FramingProtocol::FramedRaw => {
-                    RemoteSocketAddr::Ftcp(InetSocketAddr {
-                        address: bind_addr
-                            .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-                            .into(),
-                        port: opts.port,
-                    })
-                }
+                FramingProtocol::FramedRaw => RemoteSocketAddr::Ftcp(InetSocketAddr {
+                    address: bind_addr
+                        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+                        .into(),
+                    port: opts.port,
+                }),
                 // TODO: (v2) implement overlay protocols
                 _ => unimplemented!(),
             })
         } else {
-            unreachable!(
-                "Either `connect` or `listen` must be present due to Clap configuration"
-            )
+            unreachable!("Either `connect` or `listen` must be present due to Clap configuration")
         }
     }
 }
@@ -207,8 +201,7 @@ fn main() {
 
             debug!("Binding TCP socket {}", inet_addr);
             let listener = TcpListener::bind(
-                SocketAddr::try_from(inet_addr)
-                    .expect("Tor is not yet supported"),
+                SocketAddr::try_from(inet_addr).expect("Tor is not yet supported"),
             )
             .expect("Unable to bind to Lightning network peer socket");
 
@@ -224,12 +217,9 @@ fn main() {
 
                 // TODO: Support multithread mode
                 debug!("Forking child process");
-                if let ForkResult::Child =
-                    unsafe { fork().expect("Unable to fork child process") }
+                if let ForkResult::Child = unsafe { fork().expect("Unable to fork child process") }
                 {
-                    trace!(
-                        "Child forked; returning into main listener event loop"
-                    );
+                    trace!("Child forked; returning into main listener event loop");
                     continue;
                 }
 
@@ -238,11 +228,8 @@ fn main() {
                     .expect("Unable to set up timeout for TCP connection");
 
                 debug!("Establishing session with the remote");
-                let session =
-                    session::Raw::with_ftcp_unencrypted(stream, inet_addr)
-                        .expect(
-                            "Unable to establish session with the remote peer",
-                        );
+                let session = session::Raw::with_ftcp_unencrypted(stream, inet_addr)
+                    .expect("Unable to establish session with the remote peer");
 
                 debug!("Session successfully established");
                 break PeerConnection::with(session);

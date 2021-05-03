@@ -12,12 +12,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::{convert::TryFrom, time::Duration};
 use std::str::FromStr;
+use std::{convert::TryFrom, time::Duration};
 
-use internet2::{
-    NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr,
-};
+use internet2::{NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
@@ -35,15 +33,9 @@ impl Exec for Command {
             Command::Info { subject } => {
                 if let Some(subj) = subject {
                     if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                        runtime.request(
-                            ServiceId::Peer(node_addr),
-                            Request::GetInfo,
-                        )?;
+                        runtime.request(ServiceId::Peer(node_addr), Request::GetInfo)?;
                     } else if let Ok(channel_id) = SwapId::from_str(&subj) {
-                        runtime.request(
-                            ServiceId::Swap(channel_id),
-                            Request::GetInfo,
-                        )?;
+                        runtime.request(ServiceId::Swap(channel_id), Request::GetInfo)?;
                     } else {
                         let err = format!(
                             "{}",
@@ -83,35 +75,26 @@ impl Exec for Command {
                 port,
                 overlay,
             } => {
-                let socket =
-                    RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
-                runtime
-                    .request(ServiceId::Farcasterd, Request::Listen(socket))?;
+                let socket = RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
+                runtime.request(ServiceId::Farcasterd, Request::Listen(socket))?;
                 runtime.report_progress()?;
             }
 
             Command::Connect { peer: node_locator } => {
                 let peer = node_locator
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| {
-                        internet2::presentation::Error::InvalidEndpoint
-                    })?;
+                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
-                runtime.request(
-                    ServiceId::Farcasterd,
-                    Request::ConnectPeer(peer),
-                )?;
+                runtime.request(ServiceId::Farcasterd, Request::ConnectPeer(peer))?;
                 runtime.report_progress()?;
             }
 
             Command::Ping { peer } => {
-                let node_addr =
-                    peer.to_node_addr(LIGHTNING_P2P_DEFAULT_PORT).ok_or_else(
-                        || internet2::presentation::Error::InvalidEndpoint,
-                    )?;
+                let node_addr = peer
+                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
+                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
-                runtime
-                    .request(ServiceId::Peer(node_addr), Request::PingPeer)?;
+                runtime.request(ServiceId::Peer(node_addr), Request::PingPeer)?;
             }
             Command::Make {
                 network,
@@ -138,13 +121,9 @@ impl Exec for Command {
                     fee_strategy,
                     maker_role,
                 };
-                let remote_addr =
-                    RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
+                let remote_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
                 let proto_offer = request::ProtoPublicOffer { offer, remote_addr };
-                runtime.request(
-                    ServiceId::Farcasterd,
-                    Request::MakeOffer(proto_offer),
-                )?;
+                runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success of failure of the request to cli
                 runtime.report_progress()?;
 
@@ -163,10 +142,7 @@ impl Exec for Command {
                 println!("{:?}", &public_offer);
 
                 // pass offer to farcasterd to initiate the swap
-                runtime.request(
-                    ServiceId::Farcasterd,
-                    Request::TakeOffer(public_offer),
-                )?;
+                runtime.request(ServiceId::Farcasterd, Request::TakeOffer(public_offer))?;
                 // report success of failure of the request to cli
                 runtime.report_progress()?;
             }

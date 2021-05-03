@@ -72,11 +72,7 @@ impl Client {
         self.chain.clone()
     }
 
-    pub fn request(
-        &mut self,
-        daemon: ServiceId,
-        req: Request,
-    ) -> Result<(), Error> {
+    pub fn request(&mut self, daemon: ServiceId, req: Request) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb.send_to(ServiceBus::Ctl, daemon, req)?;
         Ok(())
@@ -134,11 +130,7 @@ impl Client {
                     println!("{}", "Success".ended());
                 }
                 other => {
-                    eprintln!(
-                        "{}: {}",
-                        "Unexpected report".err(),
-                        other.err_details()
-                    );
+                    eprintln!("{}: {}", "Unexpected report".err(), other.err_details());
                     Err(Error::Other(s!("Unexpected server response")))?
                 }
             }

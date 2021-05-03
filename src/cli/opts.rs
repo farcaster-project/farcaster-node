@@ -27,8 +27,8 @@ use farcaster_chains::{
 };
 use farcaster_core::{
     blockchain::{FeeStrategy, Network},
-    role::SwapRole,
     negotiation::PublicOffer,
+    role::SwapRole,
 };
 
 /// Command-line tool for working with Farcaster node
@@ -161,12 +161,10 @@ pub enum Command {
     Take {
         /// Hex encoded offer
         public_offer: PublicOffer<BtcXmr>,
-    }
+    },
 }
 
-#[derive(
-    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From,
-)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
 pub enum AmountOfAssetParseError {
     /// The provided value can't be parsed as a pair of asset name/ticker and
