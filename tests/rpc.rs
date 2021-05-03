@@ -9,7 +9,7 @@ use microservices::shell::Exec;
 
 #[test]
 fn spawn_swap() {
-    use farcaster_node::farcasterd::{launch};
+    use farcaster_node::farcasterd::launch;
     use farcaster_node::cli::Opts;
     let mut opts = Opts::parse_from(vec!["swap-cli", "make"].into_iter());
     opts.process();
@@ -19,7 +19,7 @@ fn spawn_swap() {
     let mut client = Client::with(config.clone(), config.chain.clone())
         .expect("Error running client");
 
-    launch("../farcasterd", std::vec::Vec::<&str>::new()).unwrap();
+    let mut farcasterd = launch("../farcasterd", std::vec::Vec::<&str>::new()).unwrap();
 
     Command::Ls
         .exec(&mut client)
@@ -30,4 +30,5 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
+    farcasterd.kill();
 }
