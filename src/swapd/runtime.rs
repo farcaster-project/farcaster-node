@@ -17,6 +17,12 @@ use std::convert::TryFrom;
 use std::time::{Duration, SystemTime};
 use std::{collections::BTreeMap, convert::TryInto};
 
+use super::storage::{self, Driver};
+use crate::rpc::{
+    request::{self, ProtocolMessages},
+    Request, ServiceBus,
+};
+use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
@@ -24,28 +30,20 @@ use bitcoin::{OutPoint, SigHashType, Transaction};
 use farcaster_core::{
     blockchain::{self, FeeStrategy},
     negotiation::{Offer, PublicOffer},
+    protocol_message::CoreArbitratingSetup,
     role::{Arbitrating, NegotiationRole, SwapRole},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
-    session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum,
-    Unmarshall, Unmarshaller,
+    session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
 use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{
-    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
-};
+use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
-use super::storage::{self, Driver};
-use crate::rpc::{
-    request::{self, ProtocolMessages},
-    Request, ServiceBus,
-};
-use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 
 pub fn run(
     config: Config,
@@ -64,7 +62,7 @@ pub fn run(
         cancel_timelock,
         punish_timelock,
         fee_strategy,
-        maker_role,
+        maker_role, // SwapRole of maker (Alice or Bob)
     } = public_offer.offer.clone();
 
     let local_role = match negotiation_role {
@@ -89,7 +87,8 @@ pub fn run(
         commit_local: None,
         local_role,
         started: SystemTime::now(),
-        params: default!(),
+        local_params: default!(),
+        remote_params: default!(),
         is_originator: false,
         obscuring_factor: 0,
         accordant_amount,
@@ -109,8 +108,8 @@ pub fn run(
             }),
         )?),
     };
-
-    Service::run(config, runtime, false)
+    let broker = false;
+    Service::run(config, runtime, broker)
 }
 pub struct Runtime {
     identity: ServiceId,
@@ -121,7 +120,8 @@ pub struct Runtime {
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    params: Option<Params>,
+    local_params: Option<Params>,
+    remote_params: Option<Params>,
     is_originator: bool,
     obscuring_factor: u64,
     commit_remote: Option<Commit>,
@@ -147,6 +147,7 @@ use farcaster_chains::{
     pairs::btcxmr::BtcXmr,
 };
 
+#[derive(Eq, PartialEq)]
 pub enum AliceState {
     StartA,
     CommitA,
@@ -155,6 +156,7 @@ pub enum AliceState {
     FinishA,
 }
 
+#[derive(Eq, PartialEq)]
 pub enum BobState {
     StartB,
     CommitB,
@@ -164,25 +166,10 @@ pub enum BobState {
     FinishB,
 }
 
+#[derive(Eq, PartialEq)]
 pub enum State {
     Alice(AliceState),
     Bob(BobState),
-}
-
-pub struct RuntimeSwapd {
-    identify: ServiceId,
-    peer_service: ServiceId,
-    local_node: LocalNode,
-    swap_id: SwapId,
-    funding_outpoint: OutPoint,
-    accordant_amount: Amount,
-    arbitrating_amount: u64,
-    cancel_timelock: CSVTimelock,
-    punish_timelock: CSVTimelock,
-    fee_strategy: SatPerVByte,
-    enquirer: Option<ServiceId>,
-    #[allow(dead_code)]
-    storage: Box<dyn storage::Driver>,
 }
 
 impl CtlServer for Runtime {}
@@ -191,11 +178,6 @@ impl Runtime {
     #[inline]
     pub fn node_id(&self) -> secp256k1::PublicKey {
         self.local_node.node_id()
-    }
-
-    #[inline]
-    pub fn channel_capacity(&self) -> u64 {
-        todo!()
     }
 }
 
@@ -218,9 +200,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            _ => {
-                Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))
-            }
+            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
@@ -268,40 +248,79 @@ impl Runtime {
                     self.commit_remote = Some(commitment);
                     // received commitment from counterparty, can now reveal
                     let reveal: Reveal = self
-                        .params
+                        .local_params
                         .clone()
                         .map(TryInto::try_into)
-                        .ok_or_else(|| {
-                            Error::Other(
-                                "Failed to construct Reveal".to_string(),
-                            )
-                        })??;
+                        .ok_or_else(|| Error::Farcaster("Failed to construct Reveal".to_string()))??;
 
                     self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
                 }
-                ProtocolMessages::TakerCommit(TakeCommit {
-                    commitment,
-                    ..
-                }) => {
+                ProtocolMessages::TakerCommit(TakeCommit { commitment, .. }) => {
                     self.commit_remote = Some(commitment);
                     // received commitment from counterparty, can now reveal
                     let reveal: Reveal = self
-                        .params
+                        .local_params
                         .clone()
                         .map(TryInto::try_into)
-                        .ok_or_else(|| {
-                            Error::Other(
-                                "Failed to construct Reveal".to_string(),
-                            )
-                        })??;
-
-                    self.send_peer(senders, ProtocolMessages::Reveal(reveal))?;
+                        .ok_or_else(|| Error::Farcaster("Failed to construct Reveal".to_string()))??;
+                    self.send_peer(senders, ProtocolMessages::Reveal(reveal))?
                 }
-                ProtocolMessages::Reveal(reveal) => {}
+                ProtocolMessages::Reveal(role) => {
+                    if self.remote_params.is_some() {
+                        Err(Error::Farcaster("remote_params already set".to_string()))?
+                    }
+                    let remote_params = match role {
+                        Reveal::Alice(reveal) => match &self.commit_remote {
+                            Some(Commit::Alice(commit)) => {
+                                if self.local_role == SwapRole::Alice {
+                                    Err(Error::Farcaster(
+                                        "local role is Alice, and received message from Alice"
+                                            .to_string(),
+                                    ))?
+                                };
+                                Params::Alice(commit.verify_then_bundle(&reveal)?)
+                            }
+                            _ => {
+                                let err_msg = "expected Some(Commit::Alice(commit))";
+                                error!("{}", err_msg);
+                                Err(Error::Farcaster(err_msg.to_string()))?
+                            }
+                        },
+                        Reveal::Bob(reveal) => match &self.commit_remote {
+                            Some(Commit::Bob(commit)) => {
+                                if self.local_role == SwapRole::Bob {
+                                    Err(Error::Farcaster(
+                                        "local role is Bob, and received message from Bob"
+                                            .to_string(),
+                                    ))?
+                                };
+                                Params::Bob(commit.verify_then_bundle(&reveal)?)
+                            }
+                            _ => {
+                                let err_msg = "expected Some(Commit::Bob(commit))";
+                                error!("{}", err_msg);
+                                Err(Error::Farcaster(err_msg.to_string()))?
+                            }
+                        },
+                    };
+                    self.remote_params = Some(remote_params.clone());
+                    self.send_ctl(
+                        senders,
+                        ServiceId::Farcasterd,
+                        Request::Params(remote_params),
+                    )?
+                }
+                ProtocolMessages::CoreArbitratingSetup(CoreArbitratingSetup {
+                    lock,
+                    cancel,
+                    refund,
+                    cancel_sig,
+                }) => {
+                    // if self.local_role !=
+                }
                 ProtocolMessages::RefundProcedureSignatures(_) => {}
                 ProtocolMessages::Abort(_) => {}
                 ProtocolMessages::RevealBobSessionParams(_) => {}
-                ProtocolMessages::CoreArbitratingSetup(_) => {}
                 ProtocolMessages::BuyProcedureSignature(_) => {}
             },
             // Request::PeerMessage(Messages::FundingCreated(funding_created))
@@ -338,17 +357,12 @@ impl Runtime {
 
                 // Ignoring possible error here: do not want to
                 // halt the channel just because the client disconnected
-                let msg = format!(
-                    "{} transaction confirmed",
-                    "Channel active:".ended()
-                );
+                let msg = format!("{} transaction confirmed", "Channel active:".ended());
                 info!("{}", msg);
                 let _ = self.report_success_to(senders, &enquirer, Some(msg));
             }
 
-            Request::PeerMessage(Messages::CommitmentSigned(
-                _commitment_signed,
-            )) => {}
+            Request::PeerMessage(Messages::CommitmentSigned(_commitment_signed)) => {}
 
             Request::PeerMessage(Messages::RevokeAndAck(_revoke_ack)) => {}
 
@@ -357,13 +371,8 @@ impl Runtime {
             }
 
             _ => {
-                error!(
-                    "MSG RPC can be only used for forwarding LNPWP messages"
-                );
-                return Err(Error::NotSupported(
-                    ServiceBus::Msg,
-                    request.get_type(),
-                ));
+                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
         Ok(())
@@ -385,38 +394,33 @@ impl Runtime {
                 if ServiceId::Swap(swap_id) != self.identity {
                     error!(
                         "{}: {}",
-                        "This swapd instance is not reponsible for swap_id",
-                        swap_id
+                        "This swapd instance is not reponsible for swap_id", swap_id
                     )
                 };
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
-                self.params = Some(params.clone());
+                self.local_params = Some(params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment =
-                    self.take_swap(senders, params).map_err(|err| {
-                        self.report_failure_to(
-                            senders,
-                            &report_to,
-                            microservices::rpc::Failure {
-                                code: 0, // TODO: Create error type system
-                                info: err.to_string(),
-                            },
-                        )
-                    })?;
+                let commitment = self.take_swap(senders, params).map_err(|err| {
+                    self.report_failure_to(
+                        senders,
+                        &report_to,
+                        microservices::rpc::Failure {
+                            code: 0, // TODO: Create error type system
+                            info: err.to_string(),
+                        },
+                    )
+                })?;
                 let public_offer_hex = self.public_offer.to_string();
                 let take_swap = TakeCommit {
                     commitment,
                     public_offer_hex,
                     swap_id,
                 };
-                self.send_peer(
-                    senders,
-                    ProtocolMessages::TakerCommit(take_swap),
-                )?;
+                self.send_peer(senders, ProtocolMessages::TakerCommit(take_swap))?;
                 self.state = match self.local_role {
                     SwapRole::Bob => State::Bob(BobState::CommitB),
                     SwapRole::Alice => State::Alice(AliceState::CommitA),
@@ -435,27 +439,42 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment = self
-                    .make_swap(senders, &peerd, swap_id, params)
-                    .map_err(|err| {
-                        self.report_failure_to(
-                            senders,
-                            &report_to,
-                            microservices::rpc::Failure {
-                                code: 0, // TODO: Create error type system
-                                info: err.to_string(),
-                            },
-                        )
-                    })?;
+                let commitment =
+                    self.make_swap(senders, &peerd, swap_id, params)
+                        .map_err(|err| {
+                            self.report_failure_to(
+                                senders,
+                                &report_to,
+                                microservices::rpc::Failure {
+                                    code: 0, // TODO: Create error type system
+                                    info: err.to_string(),
+                                },
+                            )
+                        })?;
                 self.commit_local = Some(commitment.clone());
-                self.send_peer(
-                    senders,
-                    ProtocolMessages::MakerCommit(commitment),
-                )?;
+                self.send_peer(senders, ProtocolMessages::MakerCommit(commitment))?;
                 self.state = match self.local_role {
                     SwapRole::Bob => State::Bob(BobState::CommitB),
                     SwapRole::Alice => State::Alice(AliceState::CommitA),
                 };
+            }
+            Request::ProtocolMessages(ProtocolMessages::CoreArbitratingSetup(core_arb_setup)) => {
+                if source != ServiceId::Farcasterd {
+                    Err(Error::Farcaster(
+                        "Permission Error: only Farcasterd can do this".to_string(),
+                    ))?
+                }
+                if self.local_role != SwapRole::Bob {
+                    Err(Error::Farcaster("Wrong role".to_string()))?
+                }
+                if self.state != State::Bob(BobState::RevealB) {
+                    Err(Error::Farcaster("Wrong state".to_string()))?
+                }
+                self.state = State::Bob(BobState::CorearbB);
+                self.send_peer(
+                    senders,
+                    ProtocolMessages::CoreArbitratingSetup(core_arb_setup),
+                )?
             }
             // Request::FundSwap(funding_outpoint) => {
             //     self.enquirer = source.into();
@@ -470,10 +489,7 @@ impl Runtime {
             //     // )?;
             // }
             Request::GetInfo => {
-                fn bmap<T>(
-                    remote_peer: &Option<NodeAddr>,
-                    v: &T,
-                ) -> BTreeMap<NodeAddr, T>
+                fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
                 where
                     T: Clone,
                 {
@@ -492,11 +508,7 @@ impl Runtime {
                     swap_id,
                     // state: self.state, // FIXME serde missing
                     assets: none!(),
-                    remote_peers: self
-                        .maker_peer
-                        .clone()
-                        .map(|p| vec![p])
-                        .unwrap_or_default(),
+                    remote_peers: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or(Duration::from_secs(0)),
@@ -516,10 +528,7 @@ impl Runtime {
 
             _ => {
                 error!("Request is not supported by the CTL interface");
-                return Err(Error::NotSupported(
-                    ServiceBus::Ctl,
-                    request.get_type(),
-                ));
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
         Ok(())
@@ -549,7 +558,7 @@ impl Runtime {
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
         self.is_originator = true;
-        self.params = Some(params);
+        self.local_params = Some(params);
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
 

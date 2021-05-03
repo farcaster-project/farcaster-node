@@ -24,9 +24,7 @@ use std::time::{Duration, SystemTime};
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
-use lnp::{
-    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
-};
+use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
@@ -76,9 +74,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            _ => {
-                Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))
-            }
+            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
@@ -103,13 +99,8 @@ impl Runtime {
             }
 
             _ => {
-                error!(
-                    "MSG RPC can be only used for forwarding LNPWP messages"
-                );
-                return Err(Error::NotSupported(
-                    ServiceBus::Msg,
-                    request.get_type(),
-                ));
+                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
         Ok(())
@@ -161,34 +152,19 @@ impl Runtime {
             }
 
             _ => {
-                error!(
-                    "{}",
-                    "Request is not supported by the CTL interface".err()
-                );
-                return Err(Error::NotSupported(
-                    ServiceBus::Ctl,
-                    request.get_type(),
-                ));
+                error!("{}", "Request is not supported by the CTL interface".err());
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
 
         if let Some((Some(respond_to), resp)) = notify_cli {
-            senders.send_to(
-                ServiceBus::Ctl,
-                ServiceId::Syncer,
-                respond_to,
-                resp,
-            )?;
+            senders.send_to(ServiceBus::Ctl, ServiceId::Syncer, respond_to, resp)?;
         }
 
         Ok(())
     }
     // TODO
-    fn create_task(
-        &mut self,
-        task: &u64,
-        swapid: &SwapId,
-    ) -> Result<(), Error> {
+    fn create_task(&mut self, task: &u64, swapid: &SwapId) -> Result<(), Error> {
         Ok(())
     }
 }

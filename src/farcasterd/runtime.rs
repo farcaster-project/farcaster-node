@@ -31,39 +31,30 @@ use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{
-    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId,
-    LIGHTNING_P2P_DEFAULT_PORT,
+    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT,
 };
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use crate::rpc::request::{
-    IntoProgressOrFalure, NodeInfo, OptionDetails, ProtocolMessages,
-};
+use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails, ProtocolMessages};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
-use farcaster_chains::{
-    bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr,
-};
+use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
 use farcaster_core::{
     blockchain::FeePolitic,
-    bundle::BobParameters,
+    bundle::{AliceParameters, BobParameters, FundingTransaction},
     crypto::FromSeed,
     datum::Key,
     negotiation::PublicOffer,
-    protocol_message::{CommitAliceParameters, CommitBobParameters},
+    protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
     role::{Alice, Bob, NegotiationRole, SwapRole},
 };
 
 use std::str::FromStr;
 
-pub fn run(
-    config: Config,
-    node_id: secp256k1::PublicKey,
-    seed: [u8; 32],
-) -> Result<(), Error> {
+pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         node_id,
@@ -76,10 +67,16 @@ pub fn run(
         making_swaps: none!(),
         taking_swaps: none!(),
         making_offers: none!(),
+        wallets: none!(),
         seed,
     };
 
     Service::run(config, runtime, true)
+}
+
+pub enum Wallet {
+    Alice(Alice<BtcXmr>, AliceParameters<BtcXmr>, PublicOffer<BtcXmr>),
+    Bob(Bob<BtcXmr>, BobParameters<BtcXmr>, PublicOffer<BtcXmr>),
 }
 
 pub struct Runtime {
@@ -94,6 +91,7 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
+    wallets: HashMap<SwapId, Wallet>,
     seed: [u8; 32],
 }
 
@@ -116,9 +114,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            _ => {
-                Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))
-            }
+            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
@@ -133,7 +129,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 impl Runtime {
     fn handle_rpc_msg(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -141,6 +137,51 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
+            Request::Params(params) => match params {
+                // getting paramaters from counterparty alice, thus im bob on
+                // this swap
+                Params::Alice(params) => {
+                    let swap_id = if let ServiceId::Swap(swap_id) = source {
+                        Ok(swap_id)
+                    } else {
+                        Err(Error::Farcaster("Unknown swap_id".to_string()))
+                    }?;
+                    match self.wallets.get(&swap_id) {
+                        Some(Wallet::Bob(wallet, bob_params, public_offer)) => {
+                            let funding_bundle: FundingTransaction<Bitcoin> = todo!();
+                            let core_arbitrating_txs = wallet.core_arbitrating_transactions(
+                                &params,
+                                bob_params,
+                                &funding_bundle,
+                                public_offer,
+                            )?;
+
+                            let cosign_arbitrating_cancel = wallet
+                                .cosign_arbitrating_cancel(&self.seed, &core_arbitrating_txs)?;
+                            let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
+                                &core_arbitrating_txs,
+                                &cosign_arbitrating_cancel,
+                            )?;
+                            let core_arb_setup =
+                                ProtocolMessages::CoreArbitratingSetup(core_arb_setup);
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                ServiceId::Farcasterd, // source
+                                source,                // destination swapd
+                                Request::ProtocolMessages(core_arb_setup),
+                            )?;
+                            Ok(())
+                        }
+                        _ => Err(Error::Farcaster(
+                            "only Some(Wallet::Bob(wallet))".to_string(),
+                        )),
+                    }?
+                }
+
+                // getting paramaters from counterparty bob, thus im alice on
+                // this swap
+                Params::Bob(params) => {}
+            },
             // Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
             //     info!("Creating swap by peer request from {}", source);
             //     self.create_swap(source, None, open_swap, true)?;
@@ -148,19 +189,16 @@ impl Runtime {
 
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd
-            Request::ProtocolMessages(ProtocolMessages::TakerCommit(
-                request::TakeCommit {
-                    commitment,
-                    public_offer_hex,
-                    swap_id,
-                },
-            )) => {
-                let public_offer: PublicOffer<BtcXmr> =
-                    FromStr::from_str(&public_offer_hex).map_err(|_| {
+            Request::ProtocolMessages(ProtocolMessages::TakerCommit(request::TakeCommit {
+                commitment,
+                public_offer_hex,
+                swap_id,
+            })) => {
+                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)
+                    .map_err(|_| {
                         Error::Other(
-                        "The offer received on peer conection is not parsable"
-                            .to_string(),
-                    )
+                            "The offer received on peer conection is not parsable".to_string(),
+                        )
                     })?;
                 if !self.making_offers.contains(&public_offer) {
                     error!(
@@ -179,9 +217,7 @@ impl Runtime {
                     } = public_offer.clone();
                     let peer = daemon_service
                         .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or_else(|| {
-                            internet2::presentation::Error::InvalidEndpoint
-                        })?;
+                        .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
                     // we are maker
                     let maker = NegotiationRole::Maker;
                     match offer.maker_role {
@@ -190,48 +226,55 @@ impl Runtime {
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
-                            let bob: Bob<BtcXmr> = Bob::new(
-                                address.into(),
-                                FeePolitic::Aggressive,
-                            );
-                            let params = bob.generate_parameters(
-                                &self.seed,
-                                &self.seed,
-                                &public_offer,
-                            )?;
-                            launch_swapd(
-                                self,
-                                peer.into(),
-                                Some(source),
-                                maker,
-                                public_offer,
-                                Params::Bob(params),
-                                swap_id,
-                            )?;
+                            let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
+                            let params =
+                                bob.generate_parameters(&self.seed, &self.seed, &public_offer)?;
+                            if self.wallets.get(&swap_id).is_none() {
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Bob(bob, params.clone(), public_offer.clone()),
+                                );
+                                launch_swapd(
+                                    self,
+                                    peer.into(),
+                                    Some(source),
+                                    maker,
+                                    public_offer,
+                                    Params::Bob(params),
+                                    swap_id,
+                                )?;
+                            } else {
+                                error!("Wallet already existed");
+                                Err(Error::Farcaster("Wallet already existed".to_string()))?
+                            }
                         }
                         SwapRole::Alice => {
                             let address = bitcoin::Address::from_str(
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
-                            let alice: Alice<BtcXmr> = Alice::new(
-                                address.into(),
-                                FeePolitic::Aggressive,
-                            );
-                            let params = alice.generate_parameters(
-                                &self.seed,
-                                &self.seed,
-                                &public_offer,
-                            )?;
-                            launch_swapd(
-                                self,
-                                peer.into(),
-                                Some(source),
-                                maker,
-                                public_offer,
-                                Params::Alice(params),
-                                swap_id,
-                            )?;
+                            let alice: Alice<BtcXmr> =
+                                Alice::new(address.into(), FeePolitic::Aggressive);
+                            let params =
+                                alice.generate_parameters(&self.seed, &self.seed, &public_offer)?;
+                            if self.wallets.get(&swap_id).is_none() {
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Alice(alice, params.clone(), public_offer.clone()),
+                                );
+                                launch_swapd(
+                                    self,
+                                    peer.into(),
+                                    Some(source),
+                                    maker,
+                                    public_offer,
+                                    Params::Alice(params),
+                                    swap_id,
+                                )?;
+                            } else {
+                                error!("Wallet already existed");
+                                Err(Error::Farcaster("Wallet already existed".to_string()))?
+                            }
                         }
                     };
                 }
@@ -241,13 +284,8 @@ impl Runtime {
             }
 
             _ => {
-                error!(
-                    "MSG RPC can be only used for forwarding LNPWP messages"
-                );
-                return Err(Error::NotSupported(
-                    ServiceBus::Msg,
-                    request.get_type(),
-                ));
+                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
         Ok(())
@@ -269,8 +307,7 @@ impl Runtime {
                     ServiceId::Farcasterd => {
                         error!(
                             "{}",
-                            "Unexpected another farcasterd instance connection"
-                                .err()
+                            "Unexpected another farcasterd instance connection".err()
                         );
                     }
                     ServiceId::Peer(connection_id) => {
@@ -320,10 +357,7 @@ impl Runtime {
                     );
                     notify_cli.push((
                         swap_params.report_to.clone(),
-                        Request::Progress(format!(
-                            "Swap daemon {} operational",
-                            source
-                        )),
+                        Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -333,8 +367,7 @@ impl Runtime {
                     )?;
                     self.running_swaps.insert(swap_params.swap_id);
                     self.making_swaps.remove(&source);
-                } else if let Some(swap_params) = self.taking_swaps.get(&source)
-                {
+                } else if let Some(swap_params) = self.taking_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
@@ -349,9 +382,7 @@ impl Runtime {
                         Request::TakeSwap(swap_params.clone()),
                     )?;
                     self.taking_swaps.remove(&source);
-                } else if let Some(enquirer) =
-                    self.spawning_services.get(&source)
-                {
+                } else if let Some(enquirer) = self.spawning_services.get(&source) {
                     debug!(
                         "Daemon {} is known: we spawned it to create a new peer \
                          connection by a request from {}",
@@ -396,9 +427,7 @@ impl Runtime {
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
-                    Request::PeerList(
-                        self.connections.iter().cloned().collect(),
-                    ),
+                    Request::PeerList(self.connections.iter().cloned().collect()),
                 )?;
             }
 
@@ -407,19 +436,14 @@ impl Runtime {
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
-                    Request::SwapList(
-                        self.running_swaps.iter().cloned().collect(),
-                    ),
+                    Request::SwapList(self.running_swaps.iter().cloned().collect()),
                 )?;
             }
 
             Request::Listen(addr) => {
                 let addr_str = addr.addr();
                 if self.listens.contains(&addr) {
-                    let msg = format!(
-                        "Listener on {} already exists, ignoring request",
-                        addr
-                    );
+                    let msg = format!("Listener on {} already exists, ignoring request", addr);
                     warn!("{}", msg.err());
                     notify_cli.push((
                         Some(source.clone()),
@@ -434,9 +458,12 @@ impl Runtime {
                     );
                     let resp = self.listen(addr);
                     match resp {
-                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}", 
-                                       "listens".ended(), addr_str),
-                        Err(ref err) => error!("{}", err.err())
+                        Ok(_) => info!(
+                            "Connection daemon {} for incoming LN peer connections on {}",
+                            "listens".ended(),
+                            addr_str
+                        ),
+                        Err(ref err) => error!("{}", err.err()),
                     }
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -465,10 +492,7 @@ impl Runtime {
                     Ok(_) => {}
                     Err(ref err) => error!("{}", err.err()),
                 }
-                notify_cli.push((
-                    Some(source.clone()),
-                    resp.into_progress_or_failure(),
-                ));
+                notify_cli.push((Some(source.clone()), resp.into_progress_or_failure()));
             }
 
             // Request::OpenSwapWith(request::CreateSwap {
@@ -491,10 +515,7 @@ impl Runtime {
             //         resp.into_progress_or_failure(),
             //     ));
             // }
-            Request::MakeOffer(request::ProtoPublicOffer {
-                offer,
-                remote_addr,
-            }) => {
+            Request::MakeOffer(request::ProtoPublicOffer { offer, remote_addr }) => {
                 if !self.listens.contains(&remote_addr) {
                     self.listens.insert(remote_addr);
                     info!(
@@ -504,9 +525,12 @@ impl Runtime {
                     );
                     let resp = self.listen(remote_addr);
                     match resp {
-                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}",
-                                       "listens".ended(), remote_addr),
-                        Err(ref err) => error!("{}", err.err())
+                        Ok(_) => info!(
+                            "Connection daemon {} for incoming LN peer connections on {}",
+                            "listens".ended(),
+                            remote_addr
+                        ),
+                        Err(ref err) => error!("{}", err.err()),
                     }
                     notify_cli.push((
                         Some(source.clone()),
@@ -519,8 +543,7 @@ impl Runtime {
                 } else {
                     info!("Already listening on {}", &remote_addr);
                     let msg = format!("Already listening on {}", &remote_addr);
-                    notify_cli
-                        .push((Some(source.clone()), Request::Progress(msg)));
+                    notify_cli.push((Some(source.clone()), Request::Progress(msg)));
                 }
                 let peer = internet2::RemoteNodeAddr {
                     node_id: self.node_id,
@@ -531,8 +554,7 @@ impl Runtime {
                 if self.making_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
-                        "Pubic offer registered, please share with taker: "
-                            .promo(),
+                        "Pubic offer registered, please share with taker: ".promo(),
                         hex_public_offer.amount()
                     );
                     info!(
@@ -582,41 +604,31 @@ impl Runtime {
                     } = public_offer.clone();
                     let peer = daemon_service
                         .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or_else(|| {
-                            internet2::presentation::Error::InvalidEndpoint
-                        })?;
+                        .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
                     // Connect
-                    let peer_connected_is_ok =
-                        if !self.connections.contains(&peer) {
-                            info!(
-                                "{} to remote peer {}",
-                                "Connecting".promo(),
-                                peer.promoter()
-                            );
-                            let peer_connected =
-                                self.connect_peer(source.clone(), peer.clone());
+                    let peer_connected_is_ok = if !self.connections.contains(&peer) {
+                        info!(
+                            "{} to remote peer {}",
+                            "Connecting".promo(),
+                            peer.promoter()
+                        );
+                        let peer_connected = self.connect_peer(source.clone(), peer.clone());
 
-                            let peer_connected_is_ok = peer_connected.is_ok();
+                        let peer_connected_is_ok = peer_connected.is_ok();
 
-                            notify_cli.push((
-                                Some(source.clone()),
-                                peer_connected.into_progress_or_failure(),
-                            ));
-                            peer_connected_is_ok
-                        } else {
-                            let msg = format!(
-                                "Already connected to remote peer {}",
-                                peer.promoter()
-                            );
-                            warn!("{}", &msg);
+                        notify_cli.push((
+                            Some(source.clone()),
+                            peer_connected.into_progress_or_failure(),
+                        ));
+                        peer_connected_is_ok
+                    } else {
+                        let msg = format!("Already connected to remote peer {}", peer.promoter());
+                        warn!("{}", &msg);
 
-                            notify_cli.push((
-                                Some(source.clone()),
-                                Request::Progress(msg),
-                            ));
-                            true
-                        };
+                        notify_cli.push((Some(source.clone()), Request::Progress(msg)));
+                        true
+                    };
 
                     if peer_connected_is_ok {
                         let offer_registered = format!(
@@ -630,14 +642,12 @@ impl Runtime {
 
                         notify_cli.push((
                             Some(source.clone()),
-                            Request::Success(OptionDetails(Some(
-                                offer_registered,
-                            ))),
+                            Request::Success(OptionDetails(Some(offer_registered))),
                         ));
                     }
 
                     let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
-                    // since we're takers, we are on the other side
+                                                                       // since we're takers, we are on the other side
                     let taker = NegotiationRole::Taker;
                     let taker_role = offer.maker_role.other();
                     match taker_role {
@@ -646,15 +656,9 @@ impl Runtime {
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
-                            let bob: Bob<BtcXmr> = Bob::new(
-                                address.into(),
-                                FeePolitic::Aggressive,
-                            );
-                            let params = bob.generate_parameters(
-                                &self.seed,
-                                &self.seed,
-                                &public_offer,
-                            )?;
+                            let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
+                            let params =
+                                bob.generate_parameters(&self.seed, &self.seed, &public_offer)?;
                             launch_swapd(
                                 self,
                                 peer.into(),
@@ -670,15 +674,10 @@ impl Runtime {
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
-                            let alice: Alice<BtcXmr> = Alice::new(
-                                address.into(),
-                                FeePolitic::Aggressive,
-                            );
-                            let params = alice.generate_parameters(
-                                &self.seed,
-                                &self.seed,
-                                &public_offer,
-                            )?;
+                            let alice: Alice<BtcXmr> =
+                                Alice::new(address.into(), FeePolitic::Aggressive);
+                            let params =
+                                alice.generate_parameters(&self.seed, &self.seed, &public_offer)?;
                             launch_swapd(
                                 self,
                                 peer.into(),
@@ -725,12 +724,7 @@ impl Runtime {
                     respond_to.amount(),
                     resp.promo(),
                 );
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd,
-                    respond_to,
-                    resp,
-                )?;
+                senders.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, respond_to, resp)?;
             }
         }
 
@@ -756,8 +750,7 @@ impl Runtime {
 
         // Start swapd
         let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
-        let msg =
-            format!("New instance of swapd launched with PID {}", child.id());
+        let msg = format!("New instance of swapd launched with PID {}", child.id());
         info!("{}", msg);
         Ok(())
     }
@@ -774,10 +767,7 @@ impl Runtime {
                 "peerd",
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
             )?;
-            let msg = format!(
-                "New instance of peerd launched with PID {}",
-                child.id()
-            );
+            let msg = format!("New instance of peerd launched with PID {}", child.id());
             info!("{}", msg);
             Ok(msg)
         } else {
@@ -787,11 +777,7 @@ impl Runtime {
         }
     }
 
-    fn connect_peer(
-        &mut self,
-        source: ServiceId,
-        node_addr: NodeAddr,
-    ) -> Result<String, Error> {
+    fn connect_peer(&mut self, source: ServiceId, node_addr: NodeAddr) -> Result<String, Error> {
         debug!("Instantiating peerd...");
         if self.connections.contains(&node_addr) {
             return Err(Error::Other(format!(
@@ -806,17 +792,13 @@ impl Runtime {
         std::thread::sleep(Duration::from_secs_f32(0.5));
 
         // status is Some if peerd returns because it crashed
-        let (child, status) =
-            child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
+        let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 
         if let Some(_) = status {
-            return Err(Error::Peer(
-                internet2::presentation::Error::InvalidEndpoint,
-            ));
+            return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
         }
 
-        let msg =
-            format!("New instance of peerd launched with PID {}", child.id());
+        let msg = format!("New instance of peerd launched with PID {}", child.id());
         info!("{}", msg);
 
         self.spawning_services

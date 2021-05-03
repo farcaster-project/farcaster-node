@@ -20,10 +20,7 @@ use amplify::Bipolar;
 use bitcoin::secp256k1::rand::{self, Rng};
 use bitcoin::secp256k1::PublicKey;
 use internet2::addr::InetSocketAddr;
-use internet2::{
-    presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType,
-    ZMQ_CONTEXT,
-};
+use internet2::{presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType, ZMQ_CONTEXT};
 use lnp::{message, Messages};
 use microservices::esb::{self, Handler};
 use microservices::node::TryService;
@@ -147,9 +144,7 @@ impl peer::Handler for ListenerRuntime {
     fn handle_err(&mut self, err: Self::Error) -> Result<(), Self::Error> {
         debug!("Underlying peer interface requested to handle {}", err);
         match err {
-            Error::Peer(presentation::Error::Transport(
-                transport::Error::TimedOut,
-            )) => {
+            Error::Peer(presentation::Error::Transport(transport::Error::TimedOut)) => {
                 trace!("Time to ping the remote peer");
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
@@ -242,11 +237,12 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match &request {
-            Request::PeerMessage(Messages::FundingSigned(
-                message::FundingSigned { channel_id, .. },
-            )) => {
+            Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
+                channel_id,
+                ..
+            })) => {
                 debug!(
-                    "Renaming channeld service from temporary id {:#} to channel id #{:#}", 
+                    "Renaming channeld service from temporary id {:#} to channel id #{:#}",
                     source, channel_id
                 );
                 self.routing.remove(&source);
@@ -263,13 +259,8 @@ impl Runtime {
                 self.sender.send_message(message)?;
             }
             _ => {
-                error!(
-                    "MSG RPC can be only used for forwarding LNPWP messages"
-                );
-                return Err(Error::NotSupported(
-                    ServiceBus::Msg,
-                    request.get_type(),
-                ));
+                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
         Ok(())
@@ -294,10 +285,7 @@ impl Runtime {
             Request::GetInfo => {
                 let info = PeerInfo {
                     local_id: self.local_id,
-                    remote_id: self
-                        .remote_id
-                        .map(|id| vec![id])
-                        .unwrap_or_default(),
+                    remote_id: self.remote_id.map(|id| vec![id]).unwrap_or_default(),
                     local_socket: self.local_socket,
                     remote_socket: vec![self.remote_socket],
                     uptime: SystemTime::now()
@@ -322,10 +310,7 @@ impl Runtime {
 
             _ => {
                 error!("Request is not supported by the CTL interface");
-                return Err(Error::NotSupported(
-                    ServiceBus::Ctl,
-                    request.get_type(),
-                ));
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
         Ok(())
@@ -348,19 +333,16 @@ impl Runtime {
                 self.ping()?;
             }
 
-            Request::PeerMessage(Messages::Ping(message::Ping {
-                pong_size,
-                ..
-            })) => {
+            Request::PeerMessage(Messages::Ping(message::Ping { pong_size, .. })) => {
                 self.pong(*pong_size)?;
             }
 
             Request::PeerMessage(Messages::Pong(noise)) => {
                 match self.awaited_pong {
                     None => error!("Unexpected pong from the remote peer"),
-                    Some(len) if len as usize != noise.len() => warn!(
-                        "Pong data size does not match requested with ping"
-                    ),
+                    Some(len) if len as usize != noise.len() => {
+                        warn!("Pong data size does not match requested with ping")
+                    }
                     _ => trace!("Got pong reply, exiting pong await mode"),
                 }
                 self.awaited_pong = None;
@@ -376,23 +358,15 @@ impl Runtime {
             }
 
             Request::PeerMessage(Messages::AcceptChannel(accept_channel)) => {
-                let channeld: ServiceId =
-                    accept_channel.temporary_channel_id.into();
+                let channeld: ServiceId = accept_channel.temporary_channel_id.into();
                 self.routing.insert(channeld.clone(), channeld.clone());
-                senders.send_to(
-                    ServiceBus::Msg,
-                    self.identity(),
-                    channeld,
-                    request,
-                )?;
+                senders.send_to(ServiceBus::Msg, self.identity(), channeld, request)?;
             }
 
-            Request::PeerMessage(Messages::FundingCreated(
-                message::FundingCreated {
-                    temporary_channel_id,
-                    ..
-                },
-            )) => {
+            Request::PeerMessage(Messages::FundingCreated(message::FundingCreated {
+                temporary_channel_id,
+                ..
+            })) => {
                 senders.send_to(
                     ServiceBus::Msg,
                     self.identity(),
@@ -401,21 +375,26 @@ impl Runtime {
                 )?;
             }
 
-            Request::PeerMessage(Messages::FundingSigned(
-                message::FundingSigned { channel_id, .. },
-            ))
-            | Request::PeerMessage(Messages::FundingLocked(
-                message::FundingLocked { channel_id, .. },
-            ))
-            | Request::PeerMessage(Messages::UpdateAddHtlc(
-                message::UpdateAddHtlc { channel_id, .. },
-            ))
-            | Request::PeerMessage(Messages::UpdateFulfillHtlc(
-                message::UpdateFulfillHtlc { channel_id, .. },
-            ))
-            | Request::PeerMessage(Messages::UpdateFailHtlc(
-                message::UpdateFailHtlc { channel_id, .. },
-            ))
+            Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
+                channel_id,
+                ..
+            }))
+            | Request::PeerMessage(Messages::FundingLocked(message::FundingLocked {
+                channel_id,
+                ..
+            }))
+            | Request::PeerMessage(Messages::UpdateAddHtlc(message::UpdateAddHtlc {
+                channel_id,
+                ..
+            }))
+            | Request::PeerMessage(Messages::UpdateFulfillHtlc(message::UpdateFulfillHtlc {
+                channel_id,
+                ..
+            }))
+            | Request::PeerMessage(Messages::UpdateFailHtlc(message::UpdateFailHtlc {
+                channel_id,
+                ..
+            }))
             | Request::PeerMessage(Messages::UpdateFailMalformedHtlc(
                 message::UpdateFailMalformedHtlc { channel_id, .. },
             )) => {
@@ -437,10 +416,7 @@ impl Runtime {
             other => {
                 error!("Request is not supported by the BRIDGE interface");
                 dbg!(other);
-                return Err(Error::NotSupported(
-                    ServiceBus::Bridge,
-                    request.get_type(),
-                ))?;
+                return Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))?;
             }
         }
         Ok(())

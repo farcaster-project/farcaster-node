@@ -78,9 +78,7 @@ impl FromStr for ClientName {
 }
 
 /// Identifiers of daemons participating in LNP Node
-#[derive(
-    Clone, PartialEq, Eq, Hash, Debug, Display, From, StrictEncode, StrictDecode,
-)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, From, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 pub enum ServiceId {
     #[display("loopback")]
@@ -123,8 +121,7 @@ impl esb::ServiceAddress for ServiceId {}
 
 impl From<ServiceId> for Vec<u8> {
     fn from(daemon_id: ServiceId) -> Self {
-        strict_serialize(&daemon_id)
-            .expect("Memory-based encoding does not fail")
+        strict_serialize(&daemon_id).expect("Memory-based encoding does not fail")
     }
 }
 
@@ -154,21 +151,13 @@ where
     esb::Error: From<Runtime::Error>,
 {
     #[cfg(feature = "node")]
-    pub fn run(
-        config: Config,
-        runtime: Runtime,
-        broker: bool,
-    ) -> Result<(), Error> {
+    pub fn run(config: Config, runtime: Runtime, broker: bool) -> Result<(), Error> {
         let service = Self::with(config, runtime, broker)?;
         service.run_loop()?;
         unreachable!()
     }
 
-    fn with(
-        config: Config,
-        runtime: Runtime,
-        broker: bool,
-    ) -> Result<Self, esb::Error> {
+    fn with(config: Config, runtime: Runtime, broker: bool) -> Result<Self, esb::Error> {
         let router = if !broker {
             Some(ServiceId::router())
         } else {
@@ -197,17 +186,11 @@ where
         Ok(Self { esb, broker })
     }
 
-    pub fn broker(
-        config: Config,
-        runtime: Runtime,
-    ) -> Result<Self, esb::Error> {
+    pub fn broker(config: Config, runtime: Runtime) -> Result<Self, esb::Error> {
         Self::with(config, runtime, true)
     }
 
-    pub fn service(
-        config: Config,
-        runtime: Runtime,
-    ) -> Result<Self, esb::Error> {
+    pub fn service(config: Config, runtime: Runtime) -> Result<Self, esb::Error> {
         Self::with(config, runtime, false)
     }
 
@@ -215,10 +198,7 @@ where
         self.broker
     }
 
-    pub fn add_loopback(
-        &mut self,
-        socket: zmq::Socket,
-    ) -> Result<(), esb::Error> {
+    pub fn add_loopback(&mut self, socket: zmq::Socket) -> Result<(), esb::Error> {
         self.esb.add_service_bus(
             ServiceBus::Bridge,
             esb::BusConfig {
@@ -233,16 +213,10 @@ where
     pub fn run_loop(mut self) -> Result<(), Error> {
         if !self.is_broker() {
             std::thread::sleep(core::time::Duration::from_secs(1));
-            self.esb.send_to(
-                ServiceBus::Ctl,
-                ServiceId::Farcasterd,
-                Request::Hello,
-            )?;
-            self.esb.send_to(
-                ServiceBus::Msg,
-                ServiceId::Farcasterd,
-                Request::Hello,
-            )?;
+            self.esb
+                .send_to(ServiceBus::Ctl, ServiceId::Farcasterd, Request::Hello)?;
+            self.esb
+                .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Hello)?;
         }
 
         let identity = self.esb.handler().identity();
