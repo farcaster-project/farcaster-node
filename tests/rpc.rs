@@ -1,4 +1,5 @@
-#![cfg(feature = "integration_test")]
+// #![cfg(feature = "integration_test")]
+
 use clap::Clap;
 use farcaster_node::rpc::Client;
 use farcaster_node::{Config, LogStyle};
