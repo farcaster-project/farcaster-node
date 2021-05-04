@@ -216,11 +216,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_peer(
-        &self,
-        senders: &mut Senders,
-        message: request::Msg,
-    ) -> Result<(), Error> {
+    fn send_peer(&self, senders: &mut Senders, message: request::Msg) -> Result<(), Error> {
         senders.send_to(
             ServiceBus::Msg,
             self.identity(),
@@ -382,9 +378,7 @@ impl Runtime {
                     }
 
                     // bob and alice
-                    Msg::Abort(_) => {
-                        Err(Error::Farcaster("Abort not yet supported".to_string()))?
-                    }
+                    Msg::Abort(_) => Err(Error::Farcaster("Abort not yet supported".to_string()))?,
                 }
             }
             // Request::PeerMessage(Messages::FundingCreated(funding_created))
@@ -535,16 +529,11 @@ impl Runtime {
                 if self.local_state != State::Bob(BobState::RevealB) {
                     Err(Error::Farcaster("Wrong state".to_string()))?
                 }
-                self.send_peer(
-                    senders,
-                    Msg::CoreArbitratingSetup(core_arb_setup),
-                )?;
+                self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
                 self.local_state = State::Bob(BobState::CorearbB);
             }
 
-            Request::Protocol(Msg::RefundProcedureSignatures(
-                refund_proc_sigs,
-            )) => {
+            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 if self.local_role != SwapRole::Alice {
                     Err(Error::Farcaster("Wrong role".to_string()))?
                 }
@@ -554,10 +543,7 @@ impl Runtime {
                     Err(Error::Farcaster("Wrong state".to_string()))?
                 }
                 // if self.local_state != State::Alice(AliceState::RefundProcedureSignatures)
-                self.send_peer(
-                    senders,
-                    Msg::RefundProcedureSignatures(refund_proc_sigs),
-                )?;
+                self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 self.local_state = State::Alice(AliceState::RefundProcedureSignatures);
             }
 
@@ -565,10 +551,7 @@ impl Runtime {
                 if self.local_role == SwapRole::Bob {
                     Err(Error::Farcaster("Wrong role".to_string()))?
                 }
-                self.send_peer(
-                    senders,
-                    Msg::BuyProcedureSignature(buy_proc_sig),
-                )?;
+                self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
                 self.local_state = State::Bob(BobState::BuyProcSigB);
             }
             // Request::FundSwap(funding_outpoint) => {

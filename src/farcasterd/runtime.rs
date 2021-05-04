@@ -37,7 +37,7 @@ use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails, Msg};
+use crate::rpc::request::{IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
@@ -397,8 +397,8 @@ impl Runtime {
                                 bob,
                                 bob_params,
                                 public_offer,
-                                alice_params, // None
-                                core_arb_txs, // None
+                                alice_params,      // None
+                                core_arb_txs,      // None
                                 _refund_proc_sigs, // None
                             )) => {
                                 if alice_params.is_some() {
@@ -425,8 +425,7 @@ impl Runtime {
                                     &core_arbitrating_txs,
                                     &cosign_arbitrating_cancel,
                                 )?;
-                                let core_arb_setup =
-                                    Msg::CoreArbitratingSetup(core_arb_setup);
+                                let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     ServiceId::Farcasterd, // source
@@ -494,9 +493,7 @@ impl Runtime {
                     _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
                 }
             }
-            Request::Protocol(Msg::RefundProcedureSignatures(
-                refund_proc_sigs,
-            )) => {
+            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 let swap_id = if let ServiceId::Swap(swap_id) = source {
                     Ok(swap_id)
                 } else {
@@ -510,7 +507,7 @@ impl Runtime {
                         public_offer,
                         Some(alice_params),
                         Some(core_arbitrating_txs),
-                        refund_sigs
+                        refund_sigs,
                     )) => {
                         let signed_adaptor_buy = bob.sign_adaptor_buy(
                             &self.seed,
