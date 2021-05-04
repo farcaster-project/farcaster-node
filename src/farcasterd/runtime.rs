@@ -983,6 +983,7 @@ fn launch_swapd(
             swap_id,
         },
     );
+    
     debug!("Awaiting for swapd to connect...");
 
     Ok(msg)
