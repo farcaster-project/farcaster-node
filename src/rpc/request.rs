@@ -42,11 +42,7 @@ use microservices::rpc_connection;
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
-pub enum ProtocolMessages {
-    // #[api(type = 20)]
-    // #[display("commit_a(...)")]
-    // CommitAliceSessionParams(protocol_message::
-    // CommitAliceParameters<BtcXmr>),
+pub enum Msg {
     #[api(type = 28)]
     #[display("maker_commit(...)")]
     MakerCommit(Commit),
@@ -62,12 +58,6 @@ pub enum ProtocolMessages {
     #[api(type = 27)]
     #[display("abort(...)")]
     Abort(protocol_message::Abort),
-    // #[api(type = 21)]
-    // #[display("commit_b(...)")]
-    // CommitBobSessionParams(protocol_message::CommitBobParameters<BtcXmr>),
-    #[api(type = 23)]
-    #[display("reveal_b(...)")]
-    RevealBobSessionParams(protocol_message::RevealBobParameters<BtcXmr>),
     #[api(type = 24)]
     #[display("corearb_b(...)")]
     CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<BtcXmr>),
@@ -166,7 +156,7 @@ pub enum Request {
 
     #[api(type = 5)]
     #[display("send_message({0})")]
-    ProtocolMessages(ProtocolMessages),
+    Protocol(Msg),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
@@ -295,6 +285,7 @@ pub enum Request {
 impl rpc_connection::Request for Request {}
 
 use farcaster_core::protocol_message::{CommitAliceParameters, CommitBobParameters};
+// use farcaster_chains::pairs::btcxmr::BtcXmr;
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
