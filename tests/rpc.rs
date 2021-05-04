@@ -33,6 +33,10 @@ fn spawn_swap() {
     opts.command
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    
+    Command::Pedicide
+        .exec(&mut client)
+        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
     farcasterd.kill();
 }
