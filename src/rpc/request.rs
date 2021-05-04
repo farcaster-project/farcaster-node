@@ -42,7 +42,7 @@ use microservices::rpc_connection;
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
-pub enum ProtocolMessages {
+pub enum Msg {
     #[api(type = 28)]
     #[display("maker_commit(...)")]
     MakerCommit(Commit),
@@ -156,7 +156,7 @@ pub enum Request {
 
     #[api(type = 5)]
     #[display("send_message({0})")]
-    ProtocolMessages(ProtocolMessages),
+    Protocol(Msg),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]

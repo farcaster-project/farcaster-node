@@ -37,7 +37,7 @@ use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails, ProtocolMessages};
+use crate::rpc::request::{IntoProgressOrFalure, NodeInfo, OptionDetails, Msg};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
@@ -159,7 +159,7 @@ impl Runtime {
 
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd
-            Request::ProtocolMessages(ProtocolMessages::TakerCommit(request::TakeCommit {
+            Request::Protocol(Msg::TakerCommit(request::TakeCommit {
                 commitment,
                 public_offer_hex,
                 swap_id,
@@ -426,12 +426,12 @@ impl Runtime {
                                     &cosign_arbitrating_cancel,
                                 )?;
                                 let core_arb_setup =
-                                    ProtocolMessages::CoreArbitratingSetup(core_arb_setup);
+                                    Msg::CoreArbitratingSetup(core_arb_setup);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     ServiceId::Farcasterd, // source
                                     source,                // destination swapd
-                                    Request::ProtocolMessages(core_arb_setup),
+                                    Request::Protocol(core_arb_setup),
                                 )?
                             }
                             _ => Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?,
@@ -449,7 +449,7 @@ impl Runtime {
                 }
             }
 
-            Request::ProtocolMessages(ProtocolMessages::CoreArbitratingSetup(core_arb_setup)) => {
+            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let swap_id = if let ServiceId::Swap(swap_id) = source {
                     Ok(swap_id)
                 } else {
@@ -482,19 +482,19 @@ impl Runtime {
                             &signed_adaptor_refund,
                         )?;
                         let refund_proc_signatures =
-                            ProtocolMessages::RefundProcedureSignatures(refund_proc_signatures);
+                            Msg::RefundProcedureSignatures(refund_proc_signatures);
 
                         senders.send_to(
                             ServiceBus::Ctl,
                             ServiceId::Farcasterd,
                             source,
-                            Request::ProtocolMessages(refund_proc_signatures),
+                            Request::Protocol(refund_proc_signatures),
                         )?
                     }
                     _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
                 }
             }
-            Request::ProtocolMessages(ProtocolMessages::RefundProcedureSignatures(
+            Request::Protocol(Msg::RefundProcedureSignatures(
                 refund_proc_sigs,
             )) => {
                 let swap_id = if let ServiceId::Swap(swap_id) = source {
@@ -525,12 +525,12 @@ impl Runtime {
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
                         let buy_proc_sig =
                             BuyProcedureSignature::<BtcXmr>::from_bundle(&signed_adaptor_buy)?;
-                        let buy_proc_sig = ProtocolMessages::BuyProcedureSignature(buy_proc_sig);
+                        let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
                         senders.send_to(
                             ServiceBus::Ctl,
                             ServiceId::Farcasterd,
                             source, // destination swapd
-                            Request::ProtocolMessages(buy_proc_sig),
+                            Request::Protocol(buy_proc_sig),
                         )?
                     }
                     _ => {}
@@ -835,7 +835,7 @@ impl Runtime {
             Request::Ping(_) => {}
             Request::Pong(_) => {}
             Request::PeerMessage(_) => {}
-            Request::ProtocolMessages(_) => {}
+            Request::Protocol(_) => {}
             Request::ListTasks => {}
             Request::PingPeer => {}
             Request::TakeSwap(_) => {}
