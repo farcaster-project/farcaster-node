@@ -254,7 +254,7 @@ impl Runtime {
             Request::Protocol(msg) => {
                 match &msg {
                     // bob and alice
-                    Msg::MakerCommit(commitment) => {
+                    Msg::MakerCommit(commitment) | Msg::TakerCommit(TakeCommit { commitment, .. }) => {
                         self.commit_remote = Some(commitment.clone());
                         // received commitment from counterparty, can now reveal
                         let reveal: Reveal = self
@@ -266,19 +266,6 @@ impl Runtime {
                             })??;
 
                         self.send_peer(senders, Msg::Reveal(reveal))?;
-                    }
-                    // bob and alice
-                    Msg::TakerCommit(TakeCommit { commitment, .. }) => {
-                        self.commit_remote = Some(commitment.clone());
-                        // received commitment from counterparty, can now reveal
-                        let reveal: Reveal = self
-                            .local_params
-                            .clone()
-                            .map(TryInto::try_into)
-                            .ok_or_else(|| {
-                                Error::Farcaster("Failed to construct Reveal".to_string())
-                            })??;
-                        self.send_peer(senders, Msg::Reveal(reveal))?
                     }
                     // bob and alice
                     Msg::Reveal(role) => {

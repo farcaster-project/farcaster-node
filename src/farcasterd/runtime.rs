@@ -173,7 +173,7 @@ impl Runtime {
                             "The offer received on peer conection is not parsable".to_string(),
                         )
                     })?;
-                if !self.making_offers.contains(&public_offer) {
+                if !self.making_offers.remove(&public_offer) {
                     error!(
                         "Unknow offer {}, you are not the maker of that offer, ignoring it",
                         &public_offer
@@ -191,8 +191,6 @@ impl Runtime {
                     let peer = daemon_service
                         .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
                         .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
-                    // we are maker
-                    let maker = NegotiationRole::Maker;
                     match offer.maker_role {
                         SwapRole::Bob => {
                             let address = bitcoin::Address::from_str(
@@ -218,7 +216,7 @@ impl Runtime {
                                     self,
                                     peer.into(),
                                     Some(source),
-                                    maker,
+                                    NegotiationRole::Maker,
                                     public_offer,
                                     Params::Bob(params),
                                     swap_id,
@@ -250,7 +248,7 @@ impl Runtime {
                                     self,
                                     peer.into(),
                                     Some(source),
-                                    maker,
+                                    NegotiationRole::Maker,
                                     public_offer,
                                     Params::Alice(params),
                                     swap_id,
