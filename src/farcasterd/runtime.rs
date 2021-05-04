@@ -44,7 +44,10 @@ use crate::{Config, Error, LogStyle, Service, ServiceId};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
 use farcaster_core::{
     blockchain::FeePolitic,
-    bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
+    bundle::{
+        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
+        SignedArbitratingLock,
+    },
     crypto::FromSeed,
     datum::Key,
     negotiation::PublicOffer,
@@ -91,7 +94,6 @@ pub enum Wallet {
         Option<FundingTransaction<Bitcoin>>,
         Option<AliceParameters<BtcXmr>>,
         Option<CoreArbitratingTransactions<Bitcoin>>,
-        Option<RefundProcedureSignatures<BtcXmr>>,
     ),
 }
 
@@ -197,7 +199,7 @@ impl Runtime {
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
-                            let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
+                            let bob = Bob::<BtcXmr>::new(address.into(), FeePolitic::Aggressive);
                             let params =
                                 bob.generate_parameters(&self.seed, &self.seed, &public_offer)?;
                             if self.wallets.get(&swap_id).is_none() {
@@ -207,7 +209,6 @@ impl Runtime {
                                         bob,
                                         params.clone(),
                                         public_offer.clone(),
-                                        None,
                                         None,
                                         None,
                                         None,
@@ -223,7 +224,6 @@ impl Runtime {
                                     swap_id,
                                 )?;
                             } else {
-                                error!("Wallet already existed");
                                 Err(Error::Farcaster("Wallet already existed".to_string()))?
                             }
                         }
@@ -399,11 +399,11 @@ impl Runtime {
                                 bob,
                                 bob_params,
                                 public_offer,
-                                // TODO: set this somewhere, its now actually None, so will never hit this.
+                                // TODO: set this somewhere, its now actually None, so will never
+                                // hit this.
                                 Some(funding_bundle),
-                                alice_params,      // None
-                                core_arb_txs,      // None
-                                _refund_proc_sigs, // None
+                                alice_params, // None
+                                core_arb_txs, // None
                             )) => {
                                 if alice_params.is_some() {
                                     Err(Error::Farcaster("Alice params already set".to_string()))?
@@ -509,11 +509,11 @@ impl Runtime {
                         bob,
                         bob_params,
                         public_offer,
-                        Some(_),
+                        Some(_funding_tx),
                         Some(alice_params),
                         Some(core_arbitrating_txs),
-                        refund_sigs,
                     )) => {
+                        // *refund_sigs = Some(refund_proc_sigs);
                         let signed_adaptor_buy = bob.sign_adaptor_buy(
                             &self.seed,
                             alice_params,
@@ -521,9 +521,9 @@ impl Runtime {
                             core_arbitrating_txs,
                             public_offer,
                         )?;
-                        *refund_sigs = Some(refund_proc_sigs);
                         let signed_arb_lock =
                             bob.sign_arbitrating_lock(&self.seed, core_arbitrating_txs)?;
+
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
                         let buy_proc_sig =
                             BuyProcedureSignature::<BtcXmr>::from_bundle(&signed_adaptor_buy)?;
@@ -535,7 +535,7 @@ impl Runtime {
                             Request::Protocol(buy_proc_sig),
                         )?
                     }
-                    _ => {}
+                    _ => Err(Error::Farcaster("Unknow wallet and swap_id".to_string()))?,
                 }
             }
 
