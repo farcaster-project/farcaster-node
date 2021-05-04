@@ -34,7 +34,7 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    opts = Opts::parse_from(vec!["swap-cli", "make", "Mainnet"].into_iter());
+    opts = Opts::parse_from(vec!["swap-cli", "make", "Testnet", "Bitcoin", "Monero", "101", "100", "10", "30", "20", "Alice", "0.0.0.0", "9376"].into_iter());
     opts.command
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
