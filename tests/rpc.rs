@@ -33,6 +33,11 @@ fn spawn_swap() {
     opts.command
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+
+    opts = Opts::parse_from(vec!["swap-cli", "make", "Mainnet"].into_iter());
+    opts.command
+        .exec(&mut client)
+        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
     
     Command::Pedicide
         .exec(&mut client)
