@@ -88,6 +88,7 @@ pub enum Wallet {
         Bob<BtcXmr>,
         BobParameters<BtcXmr>,
         PublicOffer<BtcXmr>,
+        Option<FundingTransaction<Bitcoin>>,
         Option<AliceParameters<BtcXmr>>,
         Option<CoreArbitratingTransactions<Bitcoin>>,
         Option<RefundProcedureSignatures<BtcXmr>>,
@@ -206,6 +207,7 @@ impl Runtime {
                                         bob,
                                         params.clone(),
                                         public_offer.clone(),
+                                        None,
                                         None,
                                         None,
                                         None,
@@ -397,6 +399,8 @@ impl Runtime {
                                 bob,
                                 bob_params,
                                 public_offer,
+                                // TODO: set this somewhere, its now actually None, so will never hit this.
+                                Some(funding_bundle),
                                 alice_params,      // None
                                 core_arb_txs,      // None
                                 _refund_proc_sigs, // None
@@ -408,9 +412,9 @@ impl Runtime {
                                     Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
                                 }
                                 // set wallet params
-                                *alice_params = Some(params);
+                                *alice_params = Some(params.clone());
                                 // TODO figure out how to create and get funding tx here
-                                let funding_bundle: FundingTransaction<Bitcoin> = todo!();
+                                // let funding_bundle: FundingTransaction<Bitcoin> = todo!();
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
                                     &params,
                                     bob_params,
@@ -418,7 +422,7 @@ impl Runtime {
                                     public_offer,
                                 )?;
                                 // set wallet core_arb_txs
-                                *core_arb_txs = Some(core_arbitrating_txs);
+                                *core_arb_txs = Some(core_arbitrating_txs.clone());
                                 let cosign_arbitrating_cancel = bob
                                     .cosign_arbitrating_cancel(&self.seed, &core_arbitrating_txs)?;
                                 let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
@@ -505,6 +509,7 @@ impl Runtime {
                         bob,
                         bob_params,
                         public_offer,
+                        Some(_),
                         Some(alice_params),
                         Some(core_arbitrating_txs),
                         refund_sigs,
