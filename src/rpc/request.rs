@@ -43,10 +43,6 @@ use microservices::rpc_connection;
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
 pub enum ProtocolMessages {
-    // #[api(type = 20)]
-    // #[display("commit_a(...)")]
-    // CommitAliceSessionParams(protocol_message::
-    // CommitAliceParameters<BtcXmr>),
     #[api(type = 28)]
     #[display("maker_commit(...)")]
     MakerCommit(Commit),
@@ -62,12 +58,6 @@ pub enum ProtocolMessages {
     #[api(type = 27)]
     #[display("abort(...)")]
     Abort(protocol_message::Abort),
-    // #[api(type = 21)]
-    // #[display("commit_b(...)")]
-    // CommitBobSessionParams(protocol_message::CommitBobParameters<BtcXmr>),
-    #[api(type = 23)]
-    #[display("reveal_b(...)")]
-    RevealBobSessionParams(protocol_message::RevealBobParameters<BtcXmr>),
     #[api(type = 24)]
     #[display("corearb_b(...)")]
     CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<BtcXmr>),
