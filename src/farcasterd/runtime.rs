@@ -44,11 +44,14 @@ use crate::{Config, Error, LogStyle, Service, ServiceId};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
 use farcaster_core::{
     blockchain::FeePolitic,
-    bundle::{AliceParameters, BobParameters, FundingTransaction},
+    bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
     crypto::FromSeed,
     datum::Key,
     negotiation::PublicOffer,
-    protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
+    protocol_message::{
+        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+        RefundProcedureSignatures,
+    },
     role::{Alice, Bob, NegotiationRole, SwapRole},
 };
 
@@ -75,8 +78,19 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Res
 }
 
 pub enum Wallet {
-    Alice(Alice<BtcXmr>, AliceParameters<BtcXmr>, PublicOffer<BtcXmr>),
-    Bob(Bob<BtcXmr>, BobParameters<BtcXmr>, PublicOffer<BtcXmr>),
+    Alice(
+        Alice<BtcXmr>,
+        AliceParameters<BtcXmr>,
+        PublicOffer<BtcXmr>,
+        Option<BobParameters<BtcXmr>>,
+    ),
+    Bob(
+        Bob<BtcXmr>,
+        BobParameters<BtcXmr>,
+        PublicOffer<BtcXmr>,
+        Option<AliceParameters<BtcXmr>>,
+        Option<CoreArbitratingTransactions<Bitcoin>>,
+    ),
 }
 
 pub struct Runtime {
@@ -137,51 +151,6 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
-            Request::Params(params) => match params {
-                // getting paramaters from counterparty alice, thus im bob on
-                // this swap
-                Params::Alice(params) => {
-                    let swap_id = if let ServiceId::Swap(swap_id) = source {
-                        Ok(swap_id)
-                    } else {
-                        Err(Error::Farcaster("Unknown swap_id".to_string()))
-                    }?;
-                    match self.wallets.get(&swap_id) {
-                        Some(Wallet::Bob(wallet, bob_params, public_offer)) => {
-                            let funding_bundle: FundingTransaction<Bitcoin> = todo!();
-                            let core_arbitrating_txs = wallet.core_arbitrating_transactions(
-                                &params,
-                                bob_params,
-                                &funding_bundle,
-                                public_offer,
-                            )?;
-
-                            let cosign_arbitrating_cancel = wallet
-                                .cosign_arbitrating_cancel(&self.seed, &core_arbitrating_txs)?;
-                            let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
-                                &core_arbitrating_txs,
-                                &cosign_arbitrating_cancel,
-                            )?;
-                            let core_arb_setup =
-                                ProtocolMessages::CoreArbitratingSetup(core_arb_setup);
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                ServiceId::Farcasterd, // source
-                                source,                // destination swapd
-                                Request::ProtocolMessages(core_arb_setup),
-                            )?;
-                            Ok(())
-                        }
-                        _ => Err(Error::Farcaster(
-                            "only Some(Wallet::Bob(wallet))".to_string(),
-                        )),
-                    }?
-                }
-
-                // getting paramaters from counterparty bob, thus im alice on
-                // this swap
-                Params::Bob(params) => {}
-            },
             // Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
             //     info!("Creating swap by peer request from {}", source);
             //     self.create_swap(source, None, open_swap, true)?;
@@ -232,7 +201,13 @@ impl Runtime {
                             if self.wallets.get(&swap_id).is_none() {
                                 self.wallets.insert(
                                     swap_id,
-                                    Wallet::Bob(bob, params.clone(), public_offer.clone()),
+                                    Wallet::Bob(
+                                        bob,
+                                        params.clone(),
+                                        public_offer.clone(),
+                                        None,
+                                        None,
+                                    ),
                                 );
                                 launch_swapd(
                                     self,
@@ -260,7 +235,12 @@ impl Runtime {
                             if self.wallets.get(&swap_id).is_none() {
                                 self.wallets.insert(
                                     swap_id,
-                                    Wallet::Alice(alice, params.clone(), public_offer.clone()),
+                                    Wallet::Alice(
+                                        alice,
+                                        params.clone(),
+                                        public_offer.clone(),
+                                        None,
+                                    ),
                                 );
                                 launch_swapd(
                                     self,
@@ -381,6 +361,7 @@ impl Runtime {
                         source.clone(),
                         Request::TakeSwap(swap_params.clone()),
                     )?;
+                    self.running_swaps.insert(swap_params.swap_id);
                     self.taking_swaps.remove(&source);
                 } else if let Some(enquirer) = self.spawning_services.get(&source) {
                     debug!(
@@ -396,6 +377,159 @@ impl Runtime {
                         ))),
                     ));
                     self.spawning_services.remove(&source);
+                }
+            }
+
+            Request::Params(params) => {
+                let swap_id = if let ServiceId::Swap(swap_id) = source {
+                    Ok(swap_id)
+                } else {
+                    Err(Error::Farcaster("Unknown swap_id".to_string()))
+                }?;
+                match params {
+                    // getting paramaters from counterparty alice routed through
+                    // swapd, thus im bob on this swap
+                    Params::Alice(params) => {
+                        match self.wallets.get_mut(&swap_id) {
+                            Some(Wallet::Bob(
+                                bob,
+                                bob_params,
+                                public_offer,
+                                alice_params, // None
+                                core_arb_txs, // None
+                            )) => {
+                                if alice_params.is_some() {
+                                    Err(Error::Farcaster("Alice params already set".to_string()))?
+                                }
+                                if core_arb_txs.is_some() {
+                                    Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
+                                }
+                                // set wallet params
+                                *alice_params = Some(params);
+                                // TODO figure out how to create and get funding tx here
+                                let funding_bundle: FundingTransaction<Bitcoin> = todo!();
+                                let core_arbitrating_txs = bob.core_arbitrating_transactions(
+                                    &params,
+                                    bob_params,
+                                    &funding_bundle,
+                                    public_offer,
+                                )?;
+                                // set wallet core_arb_txs
+                                *core_arb_txs = Some(core_arbitrating_txs);
+                                let cosign_arbitrating_cancel = bob
+                                    .cosign_arbitrating_cancel(&self.seed, &core_arbitrating_txs)?;
+                                let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
+                                    &core_arbitrating_txs,
+                                    &cosign_arbitrating_cancel,
+                                )?;
+                                let core_arb_setup =
+                                    ProtocolMessages::CoreArbitratingSetup(core_arb_setup);
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    ServiceId::Farcasterd, // source
+                                    source,                // destination swapd
+                                    Request::ProtocolMessages(core_arb_setup),
+                                )?
+                            }
+                            _ => Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?,
+                        }
+                    }
+
+                    // getting paramaters from counterparty bob, thus im alice
+                    // on this swap
+                    Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
+                        Some(Wallet::Alice(_alice, _alice_params, _public_offer, bob_params)) => {
+                            *bob_params = Some(params);
+                        }
+                        _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
+                    },
+                }
+            }
+
+            Request::ProtocolMessages(ProtocolMessages::CoreArbitratingSetup(core_arb_setup)) => {
+                let swap_id = if let ServiceId::Swap(swap_id) = source {
+                    Ok(swap_id)
+                } else {
+                    Err(Error::Farcaster("Not swapd".to_string()))
+                }?;
+                let core_arb_txs = core_arb_setup.into_core_transactions();
+                match self.wallets.get(&swap_id) {
+                    Some(Wallet::Alice(
+                        alice,
+                        alice_params,
+                        public_offer,
+                        Some(bob_parameters),
+                    )) => {
+                        let signed_adaptor_refund = alice.sign_adaptor_refund(
+                            &self.seed,
+                            alice_params,
+                            bob_parameters,
+                            &core_arb_txs,
+                            public_offer,
+                        )?;
+                        let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
+                            &self.seed,
+                            alice_params,
+                            bob_parameters,
+                            &core_arb_txs,
+                            public_offer,
+                        )?;
+                        let refund_proc_signatures = RefundProcedureSignatures::from_bundles(
+                            &cosigned_arb_cancel,
+                            &signed_adaptor_refund,
+                        )?;
+                        let refund_proc_signatures =
+                            ProtocolMessages::RefundProcedureSignatures(refund_proc_signatures);
+
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd,
+                            source,
+                            Request::ProtocolMessages(refund_proc_signatures),
+                        )?
+                    }
+                    _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
+                }
+            }
+            Request::ProtocolMessages(ProtocolMessages::RefundProcedureSignatures(
+                refund_proc_sigs,
+            )) => {
+                let swap_id = if let ServiceId::Swap(swap_id) = source {
+                    Ok(swap_id)
+                } else {
+                    Err(Error::Farcaster("Not swapd".to_string()))
+                }?;
+
+                match self.wallets.get(&swap_id) {
+                    Some(Wallet::Bob(
+                        bob,
+                        bob_params,
+                        public_offer,
+                        Some(alice_params),
+                        Some(core_arbitrating_txs),
+                    )) => {
+                        let signed_adaptor_buy = bob.sign_adaptor_buy(
+                            &self.seed,
+                            alice_params,
+                            bob_params,
+                            core_arbitrating_txs,
+                            public_offer,
+                        )?;
+                        // FIXME: do we send a second request to swapd about this? Actually,
+                        let signed_arb_lock =
+                            bob.sign_arbitrating_lock(&self.seed, core_arbitrating_txs)?;
+                        // TODO: here subscribe to all transactions with syncerd
+                        let buy_proc_sig =
+                            BuyProcedureSignature::<BtcXmr>::from_bundle(&signed_adaptor_buy)?;
+                        let buy_proc_sig = ProtocolMessages::BuyProcedureSignature(buy_proc_sig);
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd,
+                            source, // destination swapd
+                            Request::ProtocolMessages(buy_proc_sig),
+                        )?
+                    }
+                    _ => {}
                 }
             }
 

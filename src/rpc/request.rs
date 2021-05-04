@@ -285,6 +285,7 @@ pub enum Request {
 impl rpc_connection::Request for Request {}
 
 use farcaster_core::protocol_message::{CommitAliceParameters, CommitBobParameters};
+// use farcaster_chains::pairs::btcxmr::BtcXmr;
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
