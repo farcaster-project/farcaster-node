@@ -90,6 +90,7 @@ pub enum Wallet {
         PublicOffer<BtcXmr>,
         Option<AliceParameters<BtcXmr>>,
         Option<CoreArbitratingTransactions<Bitcoin>>,
+        Option<RefundProcedureSignatures<BtcXmr>>,
     ),
 }
 
@@ -205,6 +206,7 @@ impl Runtime {
                                         bob,
                                         params.clone(),
                                         public_offer.clone(),
+                                        None,
                                         None,
                                         None,
                                     ),
@@ -397,6 +399,7 @@ impl Runtime {
                                 public_offer,
                                 alice_params, // None
                                 core_arb_txs, // None
+                                _refund_proc_sigs, // None
                             )) => {
                                 if alice_params.is_some() {
                                     Err(Error::Farcaster("Alice params already set".to_string()))?
@@ -500,13 +503,14 @@ impl Runtime {
                     Err(Error::Farcaster("Not swapd".to_string()))
                 }?;
 
-                match self.wallets.get(&swap_id) {
+                match self.wallets.get_mut(&swap_id) {
                     Some(Wallet::Bob(
                         bob,
                         bob_params,
                         public_offer,
                         Some(alice_params),
                         Some(core_arbitrating_txs),
+                        refund_sigs
                     )) => {
                         let signed_adaptor_buy = bob.sign_adaptor_buy(
                             &self.seed,
@@ -515,10 +519,10 @@ impl Runtime {
                             core_arbitrating_txs,
                             public_offer,
                         )?;
-                        // FIXME: do we send a second request to swapd about this? Actually,
+                        *refund_sigs = Some(refund_proc_sigs);
                         let signed_arb_lock =
                             bob.sign_arbitrating_lock(&self.seed, core_arbitrating_txs)?;
-                        // TODO: here subscribe to all transactions with syncerd
+                        // TODO: here subscribe to all transactions with syncerd, and publish lock
                         let buy_proc_sig =
                             BuyProcedureSignature::<BtcXmr>::from_bundle(&signed_adaptor_buy)?;
                         let buy_proc_sig = ProtocolMessages::BuyProcedureSignature(buy_proc_sig);
