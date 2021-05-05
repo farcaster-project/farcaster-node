@@ -14,7 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use amplify::Wrapper;
-use request::Params;
+use request::{Commit, Params};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::hash::Hash;
@@ -163,7 +163,7 @@ impl Runtime {
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd
             Request::Protocol(Msg::TakerCommit(request::TakeCommit {
-                commitment,
+                commit,
                 public_offer_hex,
                 swap_id,
             })) => {
@@ -220,6 +220,7 @@ impl Runtime {
                                     public_offer,
                                     Params::Bob(params),
                                     swap_id,
+                                    Some(commit),
                                 )?;
                             } else {
                                 Err(Error::Farcaster("Wallet already existed".to_string()))?
@@ -252,6 +253,7 @@ impl Runtime {
                                     public_offer,
                                     Params::Alice(params),
                                     swap_id,
+                                    Some(commit),
                                 )?;
                             } else {
                                 error!("Wallet already existed");
@@ -327,7 +329,7 @@ impl Runtime {
                     _ => {
                         // Ignoring the rest of daemon/client types
                     }
-                }
+                };
 
                 if let Some(swap_params) = self.making_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
@@ -341,6 +343,7 @@ impl Runtime {
                         swap_params.report_to.clone(),
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
+
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -397,29 +400,28 @@ impl Runtime {
                                 bob,
                                 bob_params,
                                 public_offer,
-                                // TODO: set this somewhere, its now actually None, so will never
-                                // hit this.
+                                // TODO: set funding_bundle somewhere, its now
+                                // actually None, so will never hit this.
                                 Some(funding_bundle),
                                 alice_params, // None
                                 core_arb_txs, // None
                             )) => {
+                                // set wallet params
                                 if alice_params.is_some() {
                                     Err(Error::Farcaster("Alice params already set".to_string()))?
                                 }
+                                *alice_params = Some(params.clone());
+
+                                // set wallet core_arb_txs
                                 if core_arb_txs.is_some() {
                                     Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
                                 }
-                                // set wallet params
-                                *alice_params = Some(params.clone());
-                                // TODO figure out how to create and get funding tx here
-                                // let funding_bundle: FundingTransaction<Bitcoin> = todo!();
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
                                     &params,
                                     bob_params,
                                     &funding_bundle,
                                     public_offer,
                                 )?;
-                                // set wallet core_arb_txs
                                 *core_arb_txs = Some(core_arbitrating_txs.clone());
                                 let cosign_arbitrating_cancel = bob
                                     .cosign_arbitrating_cancel(&self.seed, &core_arbitrating_txs)?;
@@ -805,6 +807,7 @@ impl Runtime {
                                 public_offer,
                                 Params::Bob(params),
                                 swap_id,
+                                None,
                             )?;
                         }
                         SwapRole::Alice => {
@@ -824,6 +827,7 @@ impl Runtime {
                                 public_offer,
                                 Params::Alice(params),
                                 swap_id,
+                                None,
                             )?;
                         }
                     };
@@ -955,6 +959,7 @@ fn launch_swapd(
     public_offer: PublicOffer<BtcXmr>,
     params: Params,
     swap_id: SwapId,
+    commit: Option<Commit>,
 ) -> Result<String, Error> {
     debug!("Instantiating swapd...");
     let child = launch(
@@ -979,6 +984,7 @@ fn launch_swapd(
             report_to,
             params,
             swap_id,
+            commit,
         },
     );
     debug!("Awaiting for swapd to connect...");
