@@ -12,7 +12,7 @@ use microservices::shell::Exec;
 #[test]
 fn spawn_swap() {
     use farcaster_node::{cli::Opts, farcasterd::launch};
-    let mut opts = Opts::parse_from(vec!["swap-cli", "make"].into_iter());
+    let mut opts = Opts::parse_from(vec!["swap-cli", "-d", "tests/.farcaster_node", "make"].into_iter());
     opts.process();
     info!("opts: {:?}", opts);
     let config: Config = opts.shared.clone().into();
@@ -21,7 +21,7 @@ fn spawn_swap() {
         .expect("Error running client");
 
     let mut farcasterd =
-        launch("../farcasterd", std::vec::Vec::<&str>::new()).unwrap();
+        launch("../farcasterd", &["-d", "tests/.farcaster_node"]).unwrap();
 
     use std::{thread, time};
     thread::sleep(time::Duration::from_secs_f32(0.5));
@@ -37,7 +37,7 @@ fn spawn_swap() {
 
     opts = Opts::parse_from(
         vec![
-            "swap-cli", "make", "Testnet", "Bitcoin", "Monero", "101", "100",
+            "swap-cli", "-d", "tests/.farcaster_node", "make", "Testnet", "Bitcoin", "Monero", "101", "100",
             "10", "30", "20", "Alice", "0.0.0.0", "9376",
         ]
         .into_iter(),
