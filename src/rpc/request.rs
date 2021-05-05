@@ -77,7 +77,7 @@ pub enum Commit {
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct TakeCommit {
-    pub commitment: Commit,
+    pub commit: Commit,
     pub public_offer_hex: String, // TODO: replace by public offer id
     pub swap_id: SwapId,
 }
@@ -295,6 +295,7 @@ pub struct InitSwap {
     pub report_to: Option<ServiceId>,
     pub params: Params,
     pub swap_id: SwapId,
+    pub commit: Option<Commit>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
