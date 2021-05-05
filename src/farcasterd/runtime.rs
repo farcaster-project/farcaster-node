@@ -833,7 +833,7 @@ impl Runtime {
 
             Request::Pedicide => {
                 let res = self.pedicide();
-                if res.iter().any(|(_, result)| result.is_err()) {
+                if res.values().any(|result| result.is_err()) {
                     let msg = format!(
                         "Failed to kill some child processes: {:?}",
                         res
@@ -974,7 +974,7 @@ impl Runtime {
         Ok(msg)
     }
 
-    pub fn pedicide(&mut self) -> Vec<(u32, io::Result<()>)> {
+    pub fn pedicide(&mut self) -> HashMap<u32, io::Result<()>> {
         self.child_processes.iter_mut().map(|child| (child.id(), child.kill())).collect()
     }
 }
