@@ -26,7 +26,10 @@ use microservices::esb::{self, Handler};
 use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 
-use crate::rpc::{request::PeerInfo, Request, ServiceBus};
+use crate::rpc::{
+    request::{Msg, PeerInfo, TakeCommit},
+    Request, ServiceBus,
+};
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceId};
 
 pub fn run(
@@ -347,7 +350,23 @@ impl Runtime {
                 }
                 self.awaited_pong = None;
             }
-
+            // swap initiation message
+            Request::Protocol(Msg::TakerCommit(_)) => {
+                senders.send_to(
+                    ServiceBus::Msg,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    request,
+                )?;
+            }
+            // Request::Protocol(_msg) => {
+            //     senders.send_to(
+            //         ServiceBus::Msg,
+            //         self.identity(),
+            //         ServiceId::Swap(),
+            //         request,
+            //     )?;
+            // }
             Request::PeerMessage(Messages::OpenChannel(_)) => {
                 senders.send_to(
                     ServiceBus::Msg,
