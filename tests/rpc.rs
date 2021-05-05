@@ -1,4 +1,6 @@
 // #![cfg(feature = "integration_test")]
+#[macro_use]
+extern crate log;
 
 use clap::Clap;
 use farcaster_node::rpc::Client;
@@ -12,7 +14,7 @@ fn spawn_swap() {
     use farcaster_node::{cli::Opts, farcasterd::launch};
     let mut opts = Opts::parse_from(vec!["swap-cli", "make"].into_iter());
     opts.process();
-    println!("{:?}", opts);
+    info!("opts: {:?}", opts);
     let config: Config = opts.shared.clone().into();
 
     let mut client = Client::with(config.clone(), config.chain.clone())
@@ -28,7 +30,7 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    println!("executing command: {:?}", opts.command);
+    info!("executing command: {:?}", opts.command);
     opts.command
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
