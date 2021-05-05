@@ -71,7 +71,7 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Res
         taking_swaps: none!(),
         making_offers: none!(),
         wallets: none!(),
-        children: none!(),
+        child_processes: none!(),
         seed,
     };
 
@@ -109,7 +109,7 @@ pub struct Runtime {
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
     wallets: HashMap<SwapId, Wallet>,
-    children: Vec<process::Child>,
+    child_processes: Vec<process::Child>,
     seed: [u8; 32],
 }
 
@@ -600,12 +600,9 @@ impl Runtime {
                     );
                     let resp = self.listen(addr);
                     match resp {
-                        Ok(_) => info!(
-                            "Connection daemon {} for incoming LN peer connections on {}",
-                            "listens".ended(),
-                            addr_str
-                        ),
-                        Err(ref err) => error!("{}", err.err()),
+                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}",
+                                       "listens".ended(), addr_str),
+                        Err(ref err) => error!("{}", err.err())
                     }
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -838,7 +835,7 @@ impl Runtime {
                 let res = self.pedicide();
                 if res.iter().any(|(_, result)| result.is_err()) {
                     let msg = format!(
-                        "Failed to kill some children: {:?}",
+                        "Failed to kill some child processes: {:?}",
                         res
                     );
                     notify_cli
@@ -846,7 +843,7 @@ impl Runtime {
                 }
                 else {
                     let msg = format!(
-                        "Killed all children: {:?}",
+                        "Successfully killed all child processes: {:?}",
                         res
                     );
                     notify_cli
@@ -914,7 +911,7 @@ impl Runtime {
         let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
         let msg =
             format!("New instance of swapd launched with PID {}", child.id());
-        self.children.push(child);
+        self.child_processes.push(child);
         info!("{}", msg);
         Ok(())
     }
@@ -935,7 +932,7 @@ impl Runtime {
                 "New instance of peerd launched with PID {}",
                 child.id()
             );
-            self.children.push(child);
+            self.child_processes.push(child);
             info!("{}", msg);
             Ok(msg)
         } else {
@@ -971,14 +968,14 @@ impl Runtime {
 
         self.spawning_services
             .insert(ServiceId::Peer(node_addr), source);
-        self.children.push(child);
+        self.child_processes.push(child);
         debug!("Awaiting for peerd to connect...");
 
         Ok(msg)
     }
 
     pub fn pedicide(&mut self) -> Vec<(u32, io::Result<()>)> {
-        self.children.iter_mut().map(|child| (child.id(), child.kill())).collect()
+        self.child_processes.iter_mut().map(|child| (child.id(), child.kill())).collect()
     }
 }
 
@@ -1001,7 +998,7 @@ fn launch_swapd(
         ],
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
-    runtime.children.push(child);
+    runtime.child_processes.push(child);
     info!("{}", msg);
 
     let list = match negotiation_role {
@@ -1017,7 +1014,7 @@ fn launch_swapd(
             swap_id,
         },
     );
-    
+
     debug!("Awaiting for swapd to connect...");
 
     Ok(msg)
@@ -1052,21 +1049,8 @@ pub fn launch(
     cmd.args(std::env::args().skip(1)).args(args);
 
     trace!("Executing `{:?}`", cmd);
-    match cmd.spawn() {
-        Ok(child) => {
-            println!(
-                "Successfully launched child {:?} with PID {:?}",
-                name, child.id()
-            );
-            Ok(child)
-        }
-        Err(err) => {
-            error!("Error launching {}: {}", name, err);
-            Err(err)
-        }
-    }
-    // cmd.spawn().map_err(|err| {
-    //     error!("Error launching {}: {}", name, err);
-    //     err
-    // })
+    cmd.spawn().map_err(|err| {
+        error!("Error launching {}: {}", name, err);
+        err
+    })
 }

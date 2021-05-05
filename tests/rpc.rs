@@ -9,8 +9,7 @@ use microservices::shell::Exec;
 
 #[test]
 fn spawn_swap() {
-    use farcaster_node::cli::Opts;
-    use farcaster_node::farcasterd::launch;
+    use farcaster_node::{cli::Opts, farcasterd::launch};
     let mut opts = Opts::parse_from(vec!["swap-cli", "make"].into_iter());
     opts.process();
     println!("{:?}", opts);
@@ -38,10 +37,10 @@ fn spawn_swap() {
     opts.command
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
-    
+
     Command::Pedicide
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    farcasterd.kill();
+    farcasterd.kill().expect("Couldn't kill farcasterd");
 }
