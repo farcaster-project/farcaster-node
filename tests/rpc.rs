@@ -33,7 +33,13 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    opts = Opts::parse_from(vec!["swap-cli", "make", "Testnet", "Bitcoin", "Monero", "101", "100", "10", "30", "20", "Alice", "0.0.0.0", "9376"].into_iter());
+    opts = Opts::parse_from(
+        vec![
+            "swap-cli", "make", "Testnet", "Bitcoin", "Monero", "101", "100",
+            "10", "30", "20", "Alice", "0.0.0.0", "9376",
+        ]
+        .into_iter(),
+    );
     opts.command
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
@@ -43,4 +49,22 @@ fn spawn_swap() {
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
     farcasterd.kill().expect("Couldn't kill farcasterd");
+    let ps_out = std::process::Command::new("ps")
+        .args(&["-e"])
+        .output()
+        .expect("failed to execute process")
+        .stdout;
+
+    let ps_out_grep = std::process::Command::new("grep")
+        .args(&[
+            "-e",
+            "'farcasterd\\|peerd'",
+            std::str::from_utf8(&ps_out).unwrap(),
+        ])
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute process: {}", e))
+        .stdout;
+
+    // fails if there are any lingering `farcasterd`s or `peerd`s, so this test is a false-negative if any are running independent of the test
+    assert_eq!("", std::str::from_utf8(&ps_out_grep).unwrap());
 }
