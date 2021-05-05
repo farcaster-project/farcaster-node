@@ -63,7 +63,7 @@ fn main() {
     swapd::run(
         config,
         opts.key_opts.local_node(),
-        opts.channel_id,
+        opts.swap_id,
         opts.shared.chain,
         opts.public_offer,
         opts.negotiation_role,

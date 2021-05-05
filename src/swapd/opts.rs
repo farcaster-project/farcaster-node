@@ -41,13 +41,13 @@ pub struct Opts {
 
     /// Channel id
     #[clap(parse(try_from_str = SwapId::from_hex))]
-    pub channel_id: SwapId,
+    pub swap_id: SwapId,
 
     /// Public offer to initiate swapd runtime
     #[clap(parse(try_from_str = FromStr::from_str))]
     pub public_offer: PublicOffer<BtcXmr>,
 
-    /// Role of participant
+    /// Negotiation role of participant (Maker or Taker)
     #[clap(parse(try_from_str = FromStr::from_str))]
     pub negotiation_role: NegotiationRole,
 

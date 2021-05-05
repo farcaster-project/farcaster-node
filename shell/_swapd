@@ -35,9 +35,9 @@ _swapd() {
 '--help[Prints help information]' \
 '-V[Prints version information]' \
 '--version[Prints version information]' \
-':channel-id -- Channel id:' \
+':swap-id -- Channel id:' \
 ':public-offer -- Public offer to initiate swapd runtime:' \
-':negotiation-role -- Role of participant:' \
+':negotiation-role -- Negotiation role of participant (Maker or Taker):' \
 && ret=0
     
 }

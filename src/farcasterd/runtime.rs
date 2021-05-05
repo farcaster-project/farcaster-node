@@ -41,7 +41,11 @@ use crate::rpc::request::{IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
-use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
+use farcaster_chains::{
+    bitcoin::{Bitcoin, Wallet as BTCWallet},
+    monero::{Monero, Wallet as XMRWallet},
+    pairs::btcxmr::BtcXmr,
+};
 use farcaster_core::{
     blockchain::FeePolitic,
     bundle::{
@@ -84,12 +88,16 @@ pub enum Wallet {
     Alice(
         Alice<BtcXmr>,
         AliceParameters<BtcXmr>,
+        BTCWallet,
+        XMRWallet,
         PublicOffer<BtcXmr>,
         Option<BobParameters<BtcXmr>>,
     ),
     Bob(
         Bob<BtcXmr>,
         BobParameters<BtcXmr>,
+        BTCWallet,
+        XMRWallet,
         PublicOffer<BtcXmr>,
         Option<FundingTransaction<Bitcoin>>,
         Option<AliceParameters<BtcXmr>>,
@@ -161,7 +169,8 @@ impl Runtime {
             // }
 
             // 1st protocol message received through peer connection, and last
-            // handled by farcasterd
+            // handled by farcasterd, receiving taker commit because we are
+            // maker
             Request::Protocol(Msg::TakerCommit(request::TakeCommit {
                 commit,
                 public_offer_hex,
@@ -198,14 +207,18 @@ impl Runtime {
                             )
                             .expect("Parsable address");
                             let bob = Bob::<BtcXmr>::new(address.into(), FeePolitic::Aggressive);
+                            let btc_wallet = BTCWallet::new(self.seed);
+                            let xmr_wallet = XMRWallet::new(self.seed);
                             let params =
-                                bob.generate_parameters(&self.seed, &self.seed, &public_offer)?;
+                                bob.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
                             if self.wallets.get(&swap_id).is_none() {
                                 self.wallets.insert(
                                     swap_id,
                                     Wallet::Bob(
                                         bob,
                                         params.clone(),
+                                        btc_wallet,
+                                        xmr_wallet,
                                         public_offer.clone(),
                                         None,
                                         None,
@@ -233,14 +246,18 @@ impl Runtime {
                             .expect("Parsable address");
                             let alice: Alice<BtcXmr> =
                                 Alice::new(address.into(), FeePolitic::Aggressive);
+                            let btc_wallet = BTCWallet::new(self.seed);
+                            let xmr_wallet = XMRWallet::new(self.seed);
                             let params =
-                                alice.generate_parameters(&self.seed, &self.seed, &public_offer)?;
+                                alice.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
                             if self.wallets.get(&swap_id).is_none() {
                                 self.wallets.insert(
                                     swap_id,
                                     Wallet::Alice(
                                         alice,
                                         params.clone(),
+                                        btc_wallet,
+                                        xmr_wallet,
                                         public_offer.clone(),
                                         None,
                                     ),
@@ -399,6 +416,8 @@ impl Runtime {
                             Some(Wallet::Bob(
                                 bob,
                                 bob_params,
+                                btc_wallet,
+                                xmr_wallet,
                                 public_offer,
                                 // TODO: set funding_bundle somewhere, its now
                                 // actually None, so will never hit this.
@@ -424,7 +443,7 @@ impl Runtime {
                                 )?;
                                 *core_arb_txs = Some(core_arbitrating_txs.clone());
                                 let cosign_arbitrating_cancel = bob
-                                    .cosign_arbitrating_cancel(&self.seed, &core_arbitrating_txs)?;
+                                    .cosign_arbitrating_cancel(&btc_wallet, bob_params, &core_arbitrating_txs)?;
                                 let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
                                     &core_arbitrating_txs,
                                     &cosign_arbitrating_cancel,
@@ -444,7 +463,7 @@ impl Runtime {
                     // getting paramaters from counterparty bob, thus im alice
                     // on this swap
                     Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
-                        Some(Wallet::Alice(_alice, _alice_params, _public_offer, bob_params)) => {
+                        Some(Wallet::Alice(_alice, _alice_params, _, _, _public_offer, bob_params)) => {
                             *bob_params = Some(params);
                         }
                         _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
@@ -463,18 +482,20 @@ impl Runtime {
                     Some(Wallet::Alice(
                         alice,
                         alice_params,
+                        btc_wallet,
+                        xmr_wallet,
                         public_offer,
                         Some(bob_parameters),
                     )) => {
                         let signed_adaptor_refund = alice.sign_adaptor_refund(
-                            &self.seed,
+                            &btc_wallet,
                             alice_params,
                             bob_parameters,
                             &core_arb_txs,
                             public_offer,
                         )?;
                         let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
-                            &self.seed,
+                            &btc_wallet,
                             alice_params,
                             bob_parameters,
                             &core_arb_txs,
@@ -508,6 +529,8 @@ impl Runtime {
                     Some(Wallet::Bob(
                         bob,
                         bob_params,
+                        btc_wallet,
+                        _xmr_wallet,
                         public_offer,
                         Some(_funding_tx),
                         Some(alice_params),
@@ -515,14 +538,14 @@ impl Runtime {
                     )) => {
                         // *refund_sigs = Some(refund_proc_sigs);
                         let signed_adaptor_buy = bob.sign_adaptor_buy(
-                            &self.seed,
+                            &btc_wallet,
                             alice_params,
                             bob_params,
                             core_arbitrating_txs,
                             public_offer,
                         )?;
                         let signed_arb_lock =
-                            bob.sign_arbitrating_lock(&self.seed, core_arbitrating_txs)?;
+                            bob.sign_arbitrating_lock(&btc_wallet, &btc_wallet, core_arbitrating_txs)?;
 
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
                         let buy_proc_sig =
@@ -788,8 +811,9 @@ impl Runtime {
 
                     let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
                                                                        // since we're takers, we are on the other side
-                    let taker = NegotiationRole::Taker;
                     let taker_role = offer.maker_role.other();
+                    let btc_wallet = BTCWallet::new(self.seed);
+                    let xmr_wallet = XMRWallet::new(self.seed);
                     match taker_role {
                         SwapRole::Bob => {
                             let address = bitcoin::Address::from_str(
@@ -798,12 +822,12 @@ impl Runtime {
                             .expect("Parsable address");
                             let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                             let params =
-                                bob.generate_parameters(&self.seed, &self.seed, &public_offer)?;
+                                bob.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
                             launch_swapd(
                                 self,
                                 peer.into(),
                                 Some(source),
-                                taker,
+                                NegotiationRole::Taker,
                                 public_offer,
                                 Params::Bob(params),
                                 swap_id,
@@ -818,12 +842,12 @@ impl Runtime {
                             let alice: Alice<BtcXmr> =
                                 Alice::new(address.into(), FeePolitic::Aggressive);
                             let params =
-                                alice.generate_parameters(&self.seed, &self.seed, &public_offer)?;
+                                alice.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
                             launch_swapd(
                                 self,
                                 peer.into(),
                                 Some(source),
-                                taker,
+                                NegotiationRole::Taker,
                                 public_offer,
                                 Params::Alice(params),
                                 swap_id,
@@ -872,30 +896,7 @@ impl Runtime {
 
         Ok(())
     }
-    fn take_offer(
-        &mut self,
-        source: ServiceId,
-        report_to: Option<ServiceId>,
-        mut swap_req: message::AcceptChannel,
-        accept: bool,
-    ) -> Result<(), Error> {
-        debug!("Instantiating swapd...");
 
-        // We need to initialize temporary channel id here
-        if !accept {
-            swap_req.temporary_channel_id = TempSwapId::random();
-            debug!(
-                "Generated {} as a temporary channel id",
-                swap_req.temporary_channel_id
-            );
-        }
-
-        // Start swapd
-        let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
-        let msg = format!("New instance of swapd launched with PID {}", child.id());
-        info!("{}", msg);
-        Ok(())
-    }
     fn listen(&mut self, addr: RemoteSocketAddr) -> Result<String, Error> {
         if let RemoteSocketAddr::Ftcp(inet) = addr {
             let socket_addr = SocketAddr::try_from(inet)?;
@@ -925,7 +926,7 @@ impl Runtime {
             return Err(Error::Other(format!(
                 "Already connected to peer {}",
                 node_addr
-            )));
+            )))?
         }
         // Start peerd
         let child = launch("peerd", &["--connect", &node_addr.to_string()]);
@@ -937,7 +938,7 @@ impl Runtime {
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 
         if let Some(_) = status {
-            return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
+            Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint))?
         }
 
         let msg = format!("New instance of peerd launched with PID {}", child.id());

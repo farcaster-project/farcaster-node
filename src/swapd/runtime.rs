@@ -254,8 +254,7 @@ impl Runtime {
             Request::Protocol(msg) => {
                 match &msg {
                     // bob and alice
-                    Msg::MakerCommit(commit)
-                    | Msg::TakerCommit(TakeCommit { commit, .. }) => {
+                    Msg::MakerCommit(commit) | Msg::TakerCommit(TakeCommit { commit, .. }) => {
                         self.commit_remote = Some(commit.clone());
                         // received commitment from counterparty, can now reveal
                         let reveal: Reveal = self
@@ -294,7 +293,8 @@ impl Runtime {
                                 Some(Commit::Bob(commit)) => {
                                     if self.local_role == SwapRole::Bob {
                                         Err(Error::Farcaster(
-                                            "local role is Bob, and received message from Bob"
+                                            "Wrong role: local role is Bob, and received \\
+                                             message from Bob"
                                                 .to_string(),
                                         ))?
                                     };
@@ -313,11 +313,6 @@ impl Runtime {
                             ServiceId::Farcasterd,
                             Request::Params(remote_params),
                         )?
-                        // self.remote_state = match self.local_role {
-                        //     SwapRole::Bob => State::Bob(BobState::RevealB),
-                        //     SwapRole::Alice =>
-                        // State::Alice(AliceState::RevealA),
-                        // };
                     }
                     // alice receives, bob sends from ctl
                     Msg::CoreArbitratingSetup(_) => {
@@ -328,12 +323,7 @@ impl Runtime {
                                     .to_string(),
                             ))?
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            request.clone(),
-                        )?
+                        self.send_ctl(senders, ServiceId::Farcasterd, request.clone())?
                     }
                     // bob receives, alice sends from ctl
                     Msg::RefundProcedureSignatures(_) => {
@@ -344,12 +334,7 @@ impl Runtime {
                                     .to_string(),
                             ))?
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            request.clone(),
-                        )?
+                        self.send_ctl(senders, ServiceId::Farcasterd, request.clone())?
                     }
                     // alice receives, bob sends
                     // ProtocolMessages::BuyProcedureSignature(_) => {}
@@ -357,12 +342,7 @@ impl Runtime {
                         if self.local_role != SwapRole::Alice {
                             Err(Error::Farcaster("Wrong role".to_string()))?
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            request.clone(),
-                        )?
+                        self.send_ctl(senders, ServiceId::Farcasterd, request.clone())?
                     }
 
                     // bob and alice
