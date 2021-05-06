@@ -91,6 +91,22 @@ Example of taking the offer above produced by maker.
 swap1-cli take 464353574150010002000000808000008008e80300000000000008c900000000000000040a000000040a0000000108150000000000000002026981c0e141351c1aae13014379d629dfddb3b5375c1265c34203b5d13c69cd270000000000000000000000000000000000000000000000000000000000000000000000260700
 ```
 
+## Remote client use
+Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication. 
+
+### Farcasterd (Server)
+Here the node public key of farcasterd is derived from its secretkey included in `key.dat` file. You can launch the node first WITHOUT `-x` and `-m` to retrieve the printed pubkey, and later again on the same `-d data_dir` passing `-x` and `-m`:
+``` sh
+./target/debug/farcasterd -vvvv -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" -d .data_dir_1
+```
+
+
+### Client
+And this is the client can instruct the above `farcasterd` to make a offer with:
+``` sh
+./target/debug/swap-cli -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" make
+```
+
 ## Listening and connecting
 
 `make` and `take` take care of listening and connecting, but if you would like to do it manually, read on.
