@@ -600,9 +600,12 @@ impl Runtime {
                     );
                     let resp = self.listen(addr);
                     match resp {
-                        Ok(_) => info!("Connection daemon {} for incoming LN peer connections on {}",
-                                       "listens".ended(), addr_str),
-                        Err(ref err) => error!("{}", err.err())
+                        Ok(_) => info!(
+                            "Connection daemon {} for incoming LN peer connections on {}",
+                            "listens".ended(),
+                            addr_str
+                        ),
+                        Err(ref err) => error!("{}", err.err()),
                     }
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -834,20 +837,17 @@ impl Runtime {
             Request::Pedicide => {
                 let res = self.pedicide();
                 if res.values().any(|result| result.is_err()) {
-                    let msg = format!(
-                        "Failed to kill some child processes: {:?}",
-                        res
-                    );
-                    notify_cli
-                        .push((Some(source.clone()), Request::Failure(Failure {code: 1, info: msg})));
-                }
-                else {
-                    let msg = format!(
-                        "Successfully killed all child processes: {:?}",
-                        res
-                    );
-                    notify_cli
-                        .push((Some(source.clone()), Request::Success(OptionDetails(Some(msg)))));
+                    let msg = format!("Failed to kill some child processes: {:?}", res);
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Failure(Failure { code: 1, info: msg }),
+                    ));
+                } else {
+                    let msg = format!("Successfully killed all child processes: {:?}", res);
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Success(OptionDetails(Some(msg))),
+                    ));
                 }
             }
 
@@ -909,8 +909,7 @@ impl Runtime {
 
         // Start swapd
         let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
-        let msg =
-            format!("New instance of swapd launched with PID {}", child.id());
+        let msg = format!("New instance of swapd launched with PID {}", child.id());
         self.child_processes.push(child);
         info!("{}", msg);
         Ok(())
@@ -928,10 +927,7 @@ impl Runtime {
                 "peerd",
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
             )?;
-            let msg = format!(
-                "New instance of peerd launched with PID {}",
-                child.id()
-            );
+            let msg = format!("New instance of peerd launched with PID {}", child.id());
             self.child_processes.push(child);
             info!("{}", msg);
             Ok(msg)
@@ -975,7 +971,10 @@ impl Runtime {
     }
 
     pub fn pedicide(&mut self) -> HashMap<u32, io::Result<()>> {
-        self.child_processes.iter_mut().map(|child| (child.id(), child.kill())).collect()
+        self.child_processes
+            .iter_mut()
+            .map(|child| (child.id(), child.kill()))
+            .collect()
     }
 }
 
