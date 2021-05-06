@@ -877,7 +877,7 @@ impl Runtime {
         for (respond_to, resp) in notify_cli.into_iter() {
             if let Some(respond_to) = respond_to {
                 len += 1;
-                println!("{}", len);
+                debug!("notifications to cli: {}", len);
                 info!(
                     "Respond to {} -> Response {}",
                     respond_to.amount(),
@@ -885,6 +885,7 @@ impl Runtime {
                 );
                 senders.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, respond_to, resp)?;
             }
+            debug!("processed all cli notifications");
         }
 
         Ok(())
