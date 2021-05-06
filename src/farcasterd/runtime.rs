@@ -81,7 +81,8 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Res
         seed,
     };
 
-    Service::run(config, runtime, true)
+    let broker = true;
+    Service::run(config, runtime, broker)
 }
 
 pub enum Wallet {
@@ -248,8 +249,11 @@ impl Runtime {
                                 Alice::new(address.into(), FeePolitic::Aggressive);
                             let btc_wallet = BTCWallet::new(self.seed);
                             let xmr_wallet = XMRWallet::new(self.seed);
-                            let params =
-                                alice.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
+                            let params = alice.generate_parameters(
+                                &btc_wallet,
+                                &xmr_wallet,
+                                &public_offer,
+                            )?;
                             if self.wallets.get(&swap_id).is_none() {
                                 self.wallets.insert(
                                     swap_id,
@@ -442,8 +446,11 @@ impl Runtime {
                                     public_offer,
                                 )?;
                                 *core_arb_txs = Some(core_arbitrating_txs.clone());
-                                let cosign_arbitrating_cancel = bob
-                                    .cosign_arbitrating_cancel(&btc_wallet, bob_params, &core_arbitrating_txs)?;
+                                let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
+                                    &btc_wallet,
+                                    bob_params,
+                                    &core_arbitrating_txs,
+                                )?;
                                 let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
                                     &core_arbitrating_txs,
                                     &cosign_arbitrating_cancel,
@@ -463,7 +470,14 @@ impl Runtime {
                     // getting paramaters from counterparty bob, thus im alice
                     // on this swap
                     Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
-                        Some(Wallet::Alice(_alice, _alice_params, _, _, _public_offer, bob_params)) => {
+                        Some(Wallet::Alice(
+                            _alice,
+                            _alice_params,
+                            _,
+                            _,
+                            _public_offer,
+                            bob_params,
+                        )) => {
                             *bob_params = Some(params);
                         }
                         _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
@@ -544,8 +558,11 @@ impl Runtime {
                             core_arbitrating_txs,
                             public_offer,
                         )?;
-                        let signed_arb_lock =
-                            bob.sign_arbitrating_lock(&btc_wallet, &btc_wallet, core_arbitrating_txs)?;
+                        let signed_arb_lock = bob.sign_arbitrating_lock(
+                            &btc_wallet,
+                            &btc_wallet,
+                            core_arbitrating_txs,
+                        )?;
 
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
                         let buy_proc_sig =
@@ -841,8 +858,11 @@ impl Runtime {
                             .expect("Parsable address");
                             let alice: Alice<BtcXmr> =
                                 Alice::new(address.into(), FeePolitic::Aggressive);
-                            let params =
-                                alice.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
+                            let params = alice.generate_parameters(
+                                &btc_wallet,
+                                &xmr_wallet,
+                                &public_offer,
+                            )?;
                             launch_swapd(
                                 self,
                                 peer.into(),
@@ -926,7 +946,7 @@ impl Runtime {
             return Err(Error::Other(format!(
                 "Already connected to peer {}",
                 node_addr
-            )))?
+            )))?;
         }
         // Start peerd
         let child = launch("peerd", &["--connect", &node_addr.to_string()]);
