@@ -147,5 +147,7 @@ serde = ["serde_crate", "serde_with", "serde_yaml", "serde_json", "toml",
 tor = ["microservices/tor", "internet2/tor"]
 vendored_openssl = ["microservices/vendored_openssl", "internet2/vendored_openssl"]
 
+integration_test = []
+
 [package.metadata.configure_me]
 spec = "config_spec.toml"

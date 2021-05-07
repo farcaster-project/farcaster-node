@@ -983,12 +983,13 @@ fn launch_swapd(
             swap_id,
         },
     );
+    
     debug!("Awaiting for swapd to connect...");
 
     Ok(msg)
 }
 
-fn launch(
+pub fn launch(
     name: &str,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> io::Result<process::Child> {
@@ -1009,10 +1010,29 @@ fn launch(
     );
 
     let mut cmd = process::Command::new(bin_path);
+
+    #[cfg(feature = "integration_test")]
+    cmd.args(args);
+
+    #[cfg(not(feature = "integration_test"))]
     cmd.args(std::env::args().skip(1)).args(args);
+
     trace!("Executing `{:?}`", cmd);
-    cmd.spawn().map_err(|err| {
-        error!("Error launching {}: {}", name, err);
-        err
-    })
+    match cmd.spawn() {
+        Ok(child) => {
+            println!(
+                "Successfully launched child {:?} with PID {:?}",
+                name, child.id()
+            );
+            Ok(child)
+        }
+        Err(err) => {
+            error!("Error launching {}: {}", name, err);
+            Err(err)
+        }
+    }
+    // cmd.spawn().map_err(|err| {
+    //     error!("Error launching {}: {}", name, err);
+    //     err
+    // })
 }
