@@ -218,6 +218,11 @@ pub enum Request {
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
 
+    // Can be issued from `cli` to `lnpd`
+    #[api(type = 206)]
+    #[display("pedicide()")]
+    Pedicide,
+
     // Responses to CLI
     // ----------------
     #[api(type = 1002)]

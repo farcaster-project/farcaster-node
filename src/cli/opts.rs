@@ -103,6 +103,9 @@ pub enum Command {
     /// Lists running swaps
     Ls,
 
+    /// Terminate children of farcasterd
+    Pedicide,
+
     /// Maker creates offer and start listening. Command used to to print a hex
     /// representation of the offer that shall be shared with Taker.
     /// Additionally it spins up the listener awaiting for connection related to

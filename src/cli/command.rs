@@ -70,6 +70,11 @@ impl Exec for Command {
                 runtime.report_response()?;
             }
 
+            Command::Pedicide => {
+                runtime.request(ServiceId::Farcasterd, Request::Pedicide)?;
+                runtime.report_response()?;
+            }
+
             Command::Listen {
                 ip_addr,
                 port,
