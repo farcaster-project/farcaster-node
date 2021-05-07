@@ -71,7 +71,7 @@ pub fn run(
         NegotiationRole::Taker => maker_role.other(),
     };
 
-    let init_state = |role| match role {
+    let init_state = |&role| match role {
         SwapRole::Alice => State::Alice(AliceState::StartA),
         SwapRole::Bob => State::Bob(BobState::StartB),
     };
@@ -81,7 +81,7 @@ pub fn run(
         peer_service: ServiceId::Loopback,
         local_node,
         chain,
-        local_state: init_state(local_role),
+        local_state: init_state(&local_role),
         // remote_state: init_state(local_role.other()),
         funding_outpoint: default!(),
         maker_peer: None,
@@ -254,8 +254,8 @@ impl Runtime {
             Request::Protocol(msg) => {
                 match &msg {
                     // bob and alice
-                    Msg::MakerCommit(commitment) => {
-                        self.commit_remote = Some(commitment.clone());
+                    Msg::MakerCommit(commit) | Msg::TakerCommit(TakeCommit { commit, .. }) => {
+                        self.commit_remote = Some(commit.clone());
                         // received commitment from counterparty, can now reveal
                         let reveal: Reveal = self
                             .local_params
@@ -268,19 +268,6 @@ impl Runtime {
                         self.send_peer(senders, Msg::Reveal(reveal))?;
                     }
                     // bob and alice
-                    Msg::TakerCommit(TakeCommit { commitment, .. }) => {
-                        self.commit_remote = Some(commitment.clone());
-                        // received commitment from counterparty, can now reveal
-                        let reveal: Reveal = self
-                            .local_params
-                            .clone()
-                            .map(TryInto::try_into)
-                            .ok_or_else(|| {
-                                Error::Farcaster("Failed to construct Reveal".to_string())
-                            })??;
-                        self.send_peer(senders, Msg::Reveal(reveal))?
-                    }
-                    // bob and alice
                     Msg::Reveal(role) => {
                         if self.remote_params.is_some() {
                             Err(Error::Farcaster("remote_params already set".to_string()))?
@@ -290,7 +277,7 @@ impl Runtime {
                                 Some(Commit::Alice(commit)) => {
                                     if self.local_role == SwapRole::Alice {
                                         Err(Error::Farcaster(
-                                            "local role is Alice, and received message from Alice"
+                                            "Wrong role: local role is Alice, and received message from Alice"
                                                 .to_string(),
                                         ))?
                                     };
@@ -306,7 +293,8 @@ impl Runtime {
                                 Some(Commit::Bob(commit)) => {
                                     if self.local_role == SwapRole::Bob {
                                         Err(Error::Farcaster(
-                                            "local role is Bob, and received message from Bob"
+                                            "Wrong role: local role is Bob, and received \\
+                                             message from Bob"
                                                 .to_string(),
                                         ))?
                                     };
@@ -325,11 +313,6 @@ impl Runtime {
                             ServiceId::Farcasterd,
                             Request::Params(remote_params),
                         )?
-                        // self.remote_state = match self.local_role {
-                        //     SwapRole::Bob => State::Bob(BobState::RevealB),
-                        //     SwapRole::Alice =>
-                        // State::Alice(AliceState::RevealA),
-                        // };
                     }
                     // alice receives, bob sends from ctl
                     Msg::CoreArbitratingSetup(_) => {
@@ -340,12 +323,7 @@ impl Runtime {
                                     .to_string(),
                             ))?
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            request.clone(),
-                        )?
+                        self.send_ctl(senders, ServiceId::Farcasterd, request.clone())?
                     }
                     // bob receives, alice sends from ctl
                     Msg::RefundProcedureSignatures(_) => {
@@ -356,12 +334,7 @@ impl Runtime {
                                     .to_string(),
                             ))?
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            request.clone(),
-                        )?
+                        self.send_ctl(senders, ServiceId::Farcasterd, request.clone())?
                     }
                     // alice receives, bob sends
                     // ProtocolMessages::BuyProcedureSignature(_) => {}
@@ -369,12 +342,7 @@ impl Runtime {
                         if self.local_role != SwapRole::Alice {
                             Err(Error::Farcaster("Wrong role".to_string()))?
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            request.clone(),
-                        )?
+                        self.send_ctl(senders, ServiceId::Farcasterd, request.clone())?
                     }
 
                     // bob and alice
@@ -453,6 +421,7 @@ impl Runtime {
                 report_to,
                 params,
                 swap_id,
+                commit: None,
             }) => {
                 if &ServiceId::Swap(swap_id) != &self.identity {
                     error!(
@@ -479,7 +448,7 @@ impl Runtime {
                 })?;
                 let public_offer_hex = self.public_offer.to_string();
                 let take_swap = TakeCommit {
-                    commitment,
+                    commit: commitment,
                     public_offer_hex,
                     swap_id,
                 };
@@ -495,14 +464,17 @@ impl Runtime {
                 report_to,
                 params,
                 swap_id,
+                commit: Some(remote_commit),
             }) => {
+                if self.commit_remote.is_some() {
+                    Err(Error::Farcaster("remote commit already set".to_string()))?
+                }
                 self.peer_service = peerd.clone();
-                // self.state = Lifecycle::Proposed;
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment =
+                let local_commit =
                     self.make_swap(senders, &peerd, swap_id, params)
                         .map_err(|err| {
                             self.report_failure_to(
@@ -514,8 +486,10 @@ impl Runtime {
                                 },
                             )
                         })?;
-                self.commit_local = Some(commitment.clone());
-                self.send_peer(senders, Msg::MakerCommit(commitment))?;
+
+                self.commit_remote = Some(remote_commit);
+                self.commit_local = Some(local_commit.clone());
+                self.send_peer(senders, Msg::MakerCommit(local_commit))?;
                 self.local_state = match self.local_role {
                     SwapRole::Bob => State::Bob(BobState::CommitB),
                     SwapRole::Alice => State::Alice(AliceState::CommitA),
@@ -542,13 +516,12 @@ impl Runtime {
                 {
                     Err(Error::Farcaster("Wrong state".to_string()))?
                 }
-                // if self.local_state != State::Alice(AliceState::RefundProcedureSignatures)
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 self.local_state = State::Alice(AliceState::RefundProcedureSignatures);
             }
 
             Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
-                if self.local_role == SwapRole::Bob {
+                if self.local_role != SwapRole::Alice {
                     Err(Error::Farcaster("Wrong role".to_string()))?
                 }
                 self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
@@ -618,7 +591,7 @@ impl Runtime {
         &mut self,
         senders: &mut Senders,
         params: Params,
-    ) -> Result<request::Commit, payment::channel::NegotiationError> {
+    ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} {} with id {:#}",
             "Proposing to the Maker".promo(),
@@ -633,7 +606,7 @@ impl Runtime {
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(senders, &enquirer, msg);
+        let _ = self.report_progress_to(senders, &enquirer, msg)?;
 
         self.is_originator = true;
         self.local_params = Some(params);
@@ -651,7 +624,7 @@ impl Runtime {
         params: Params,
     ) -> Result<request::Commit, Error> {
         let msg = format!(
-            "{} with temp id {:#} from remote peer {}",
+            "{} with swap id {:#} from remote peer {}",
             "Accepting channel".promo(),
             swap_id.promoter(),
             peerd.promoter()

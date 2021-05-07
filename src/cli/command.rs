@@ -34,8 +34,8 @@ impl Exec for Command {
                 if let Some(subj) = subject {
                     if let Ok(node_addr) = NodeAddr::from_str(&subj) {
                         runtime.request(ServiceId::Peer(node_addr), Request::GetInfo)?;
-                    } else if let Ok(channel_id) = SwapId::from_str(&subj) {
-                        runtime.request(ServiceId::Swap(channel_id), Request::GetInfo)?;
+                    } else if let Ok(swap_id) = SwapId::from_str(&subj) {
+                        runtime.request(ServiceId::Swap(swap_id), Request::GetInfo)?;
                     } else {
                         let err = format!(
                             "{}",
@@ -143,8 +143,8 @@ impl Exec for Command {
 
             Command::Take { public_offer } => {
                 let msg = "\nAccepting following offer without verification:\n";
-                println!("{}", msg.err());
-                println!("{:?}", &public_offer);
+                info!("{}", msg.err());
+                info!("{:?}", &public_offer);
 
                 // pass offer to farcasterd to initiate the swap
                 runtime.request(ServiceId::Farcasterd, Request::TakeOffer(public_offer))?;
