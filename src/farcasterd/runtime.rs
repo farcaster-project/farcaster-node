@@ -71,6 +71,7 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Res
         taking_swaps: none!(),
         making_offers: none!(),
         wallets: none!(),
+        child_processes: none!(),
         seed,
     };
 
@@ -108,6 +109,7 @@ pub struct Runtime {
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
     wallets: HashMap<SwapId, Wallet>,
+    child_processes: Vec<process::Child>,
     seed: [u8; 32],
 }
 
@@ -832,6 +834,23 @@ impl Runtime {
                 }
             }
 
+            Request::Pedicide => {
+                let res = self.pedicide();
+                if res.values().any(|result| result.is_err()) {
+                    let msg = format!("Failed to kill some child processes: {:?}", res);
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Failure(Failure { code: 1, info: msg }),
+                    ));
+                } else {
+                    let msg = format!("Successfully killed all child processes: {:?}", res);
+                    notify_cli.push((
+                        Some(source.clone()),
+                        Request::Success(OptionDetails(Some(msg))),
+                    ));
+                }
+            }
+
             Request::Init(_) => {}
             Request::Error(_) => {}
             Request::Ping(_) => {}
@@ -858,7 +877,7 @@ impl Runtime {
         for (respond_to, resp) in notify_cli.into_iter() {
             if let Some(respond_to) = respond_to {
                 len += 1;
-                println!("{}", len);
+                debug!("notifications to cli: {}", len);
                 info!(
                     "Respond to {} -> Response {}",
                     respond_to.amount(),
@@ -866,6 +885,7 @@ impl Runtime {
                 );
                 senders.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, respond_to, resp)?;
             }
+            debug!("processed all cli notifications");
         }
 
         Ok(())
@@ -891,6 +911,7 @@ impl Runtime {
         // Start swapd
         let child = launch("swapd", &[swap_req.temporary_channel_id.to_hex()])?;
         let msg = format!("New instance of swapd launched with PID {}", child.id());
+        self.child_processes.push(child);
         info!("{}", msg);
         Ok(())
     }
@@ -908,6 +929,7 @@ impl Runtime {
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
+            self.child_processes.push(child);
             info!("{}", msg);
             Ok(msg)
         } else {
@@ -943,9 +965,17 @@ impl Runtime {
 
         self.spawning_services
             .insert(ServiceId::Peer(node_addr), source);
+        self.child_processes.push(child);
         debug!("Awaiting for peerd to connect...");
 
         Ok(msg)
+    }
+
+    pub fn pedicide(&mut self) -> HashMap<u32, io::Result<()>> {
+        self.child_processes
+            .iter_mut()
+            .map(|child| (child.id(), child.kill()))
+            .collect()
     }
 }
 
@@ -968,6 +998,7 @@ fn launch_swapd(
         ],
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
+    runtime.child_processes.push(child);
     info!("{}", msg);
 
     let list = match negotiation_role {
@@ -983,7 +1014,7 @@ fn launch_swapd(
             swap_id,
         },
     );
-    
+
     debug!("Awaiting for swapd to connect...");
 
     Ok(msg)
@@ -1018,21 +1049,8 @@ pub fn launch(
     cmd.args(std::env::args().skip(1)).args(args);
 
     trace!("Executing `{:?}`", cmd);
-    match cmd.spawn() {
-        Ok(child) => {
-            println!(
-                "Successfully launched child {:?} with PID {:?}",
-                name, child.id()
-            );
-            Ok(child)
-        }
-        Err(err) => {
-            error!("Error launching {}: {}", name, err);
-            Err(err)
-        }
-    }
-    // cmd.spawn().map_err(|err| {
-    //     error!("Error launching {}: {}", name, err);
-    //     err
-    // })
+    cmd.spawn().map_err(|err| {
+        error!("Error launching {}: {}", name, err);
+        err
+    })
 }
