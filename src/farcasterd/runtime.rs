@@ -1066,10 +1066,6 @@ pub fn launch(
 
     let mut cmd = process::Command::new(bin_path);
 
-    #[cfg(feature = "integration_test")]
-    cmd.args(args);
-
-    #[cfg(not(feature = "integration_test"))]
     cmd.args(std::env::args().skip(1)).args(args);
 
     trace!("Executing `{:?}`", cmd);
