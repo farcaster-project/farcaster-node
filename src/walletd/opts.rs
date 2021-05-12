@@ -33,6 +33,11 @@ pub struct Opts {
     #[clap(flatten)]
     pub key_opts: KeyOpts,
 
+    /// Walletd token
+    #[clap(flatten)]
+    pub walletd_token: WalletdToken,
+
+
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
     #[clap(flatten)]
@@ -63,6 +68,12 @@ pub struct KeyOpts {
     pub key_file: String,
 }
 
+#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+pub struct WalletdToken {
+    #[clap(short, long, env = "FARCASTER_WALLETD_TOKEN", default_value = "")]
+    pub walletd_token: String,
+}
+
 use bitcoin::secp256k1::{
     rand::{rngs::ThreadRng, thread_rng},
     SecretKey,
@@ -72,13 +83,19 @@ use lnpbp::strict_encoding;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 
 /// Hold secret keys and seeds
-#[derive(StrictEncode, StrictDecode)]
+#[derive(StrictEncode, StrictDecode, Clone, PartialEq, Eq, Debug)]
 pub struct NodeSecrets {
     /// local node private information
-    local_node: LocalNode,
+    pub local_node: LocalNode,
     /// seed used for deriving addresses
-    wallet_seed: [u8; 32],
+    pub wallet_seed: [u8; 32],
 }
+
+// impl WalletdToken {
+//     pub fn walletd_token(&self) -> String {
+//         self.walletd_token
+//     }
+// }
 
 impl KeyOpts {
     pub fn process(&mut self, shared: &crate::opts::Opts) {

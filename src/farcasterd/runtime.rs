@@ -27,7 +27,7 @@ use std::{
     io::Read,
 };
 
-use bitcoin::hashes::hex::ToHex;
+use bitcoin::hashes::hex::{FromHex, ToHex};
 use bitcoin::secp256k1;
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{
@@ -40,6 +40,7 @@ use microservices::rpc::Failure;
 use crate::rpc::request::{IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
+use crate::walletd::NodeSecrets;
 
 use farcaster_chains::{
     bitcoin::{Bitcoin, Wallet as BTCWallet},
@@ -62,9 +63,13 @@ use farcaster_core::{
     role::{Alice, Bob, NegotiationRole, SwapRole},
 };
 
+use bitcoin::secp256k1::{
+    rand::{thread_rng, RngCore}
+};
+
 use std::str::FromStr;
 
-pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Result<(), Error> {
+pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         node_id,
@@ -79,8 +84,18 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Res
         making_offers: none!(),
         wallets: none!(),
         child_processes: none!(),
-        seed,
+        node_secrets: none!(),
     };
+
+    // Start walletd before anything else
+    let mut dest = [0u8; 16];
+    thread_rng().fill_bytes(&mut dest);
+    let hex_token = dest.to_hex();
+
+    let _walletd = launch(
+        "walletd",
+        &["--walletd-token", &hex_token],
+    )?;
 
     let broker = true;
     Service::run(config, runtime, broker)
@@ -121,7 +136,7 @@ pub struct Runtime {
     making_offers: HashSet<PublicOffer<BtcXmr>>,
     wallets: HashMap<SwapId, Wallet>,
     child_processes: Vec<process::Child>,
-    seed: [u8; 32],
+    node_secrets: NodeSecrets,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -210,8 +225,8 @@ impl Runtime {
                             )
                             .expect("Parsable address");
                             let bob = Bob::<BtcXmr>::new(address.into(), FeePolitic::Aggressive);
-                            let btc_wallet = BTCWallet::new(self.seed);
-                            let xmr_wallet = XMRWallet::new(self.seed);
+                            let btc_wallet = BTCWallet::new(self.node_secrets.wallet_seed);
+                            let xmr_wallet = XMRWallet::new(self.node_secrets.wallet_seed);
                             let params =
                                 bob.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
                             if self.wallets.get(&swap_id).is_none() {
@@ -249,8 +264,8 @@ impl Runtime {
                             .expect("Parsable address");
                             let alice: Alice<BtcXmr> =
                                 Alice::new(address.into(), FeePolitic::Aggressive);
-                            let btc_wallet = BTCWallet::new(self.seed);
-                            let xmr_wallet = XMRWallet::new(self.seed);
+                            let btc_wallet = BTCWallet::new(self.node_secrets.wallet_seed);
+                            let xmr_wallet = XMRWallet::new(self.node_secrets.wallet_seed);
                             let params = alice.generate_parameters(
                                 &btc_wallet,
                                 &xmr_wallet,
@@ -580,6 +595,9 @@ impl Runtime {
                     _ => Err(Error::Farcaster("Unknow wallet and swap_id".to_string()))?,
                 }
             }
+            Request::Protocol(Msg::Secret(secret)) => {
+                self.node_secrets = secret.secret;
+            }
 
             Request::GetInfo => {
                 senders.send_to(
@@ -831,8 +849,8 @@ impl Runtime {
                     let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
                                                                        // since we're takers, we are on the other side
                     let taker_role = offer.maker_role.other();
-                    let btc_wallet = BTCWallet::new(self.seed);
-                    let xmr_wallet = XMRWallet::new(self.seed);
+                    let btc_wallet = BTCWallet::new(self.node_secrets.wallet_seed);
+                    let xmr_wallet = XMRWallet::new(self.node_secrets.wallet_seed);
                     match taker_role {
                         SwapRole::Bob => {
                             let address = bitcoin::Address::from_str(

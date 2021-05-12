@@ -50,7 +50,6 @@ fn main() {
     let node_id = opts.key_opts.local_node().node_id();
     info!("{}: {}", "Local node id".ended(), node_id.amount());
 
-    let seed = opts.key_opts.wallet_seed();
     /*
     use self::internal::ResultExt;
     let (config_from_file, _) =
@@ -61,7 +60,7 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    farcasterd::run(config, node_id, seed).expect("Error running farcasterd runtime");
+    farcasterd::run(config, node_id).expect("Error running farcasterd runtime");
 
     unreachable!()
 }

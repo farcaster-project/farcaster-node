@@ -14,7 +14,7 @@
 
 use clap::{AppSettings, Clap};
 
-use crate::peerd::KeyOpts;
+// use crate::walletd::KeyOpts;
 
 /// Farcaster node management daemon; part of Farcaster Node
 ///
@@ -30,8 +30,8 @@ use crate::peerd::KeyOpts;
 )]
 pub struct Opts {
     /// Node key configuration
-    #[clap(flatten)]
-    pub key_opts: KeyOpts,
+    // #[clap(flatten)]
+    // pub key_opts: KeyOpts,
 
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
@@ -42,6 +42,6 @@ pub struct Opts {
 impl Opts {
     pub fn process(&mut self) {
         self.shared.process();
-        self.key_opts.process(&self.shared);
+        // self.key_opts.process(&self.shared);
     }
 }

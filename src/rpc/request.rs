@@ -20,6 +20,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
+use crate::walletd::NodeSecrets;
 
 use bitcoin::{secp256k1, OutPoint};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
@@ -64,6 +65,9 @@ pub enum Msg {
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
+    #[api(type = 29)]
+    #[display("secret")]
+    Secret(Secret),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -72,6 +76,13 @@ pub enum Msg {
 pub enum Commit {
     Alice(CommitAliceParameters<BtcXmr>),
     Bob(CommitBobParameters<BtcXmr>),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("secret")]
+pub struct Secret {
+    pub secret: NodeSecrets,
 }
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]

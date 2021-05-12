@@ -1,13 +1,20 @@
-use crate::rpc::{Request, ServiceBus};
 use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
 use bitcoin::secp256k1;
 use internet2::{LocalNode, TypedEnum};
 use microservices::esb::{self, Handler};
+use crate::rpc::{
+    request::{self, Msg},
+    Request, ServiceBus,
+};
+use crate::walletd::NodeSecrets;
+use request::Secret;
 
-pub fn run(config: Config) -> Result<(), Error> {
+pub fn run(config: Config, token_bytes: Vec<u8>, node_secrets: NodeSecrets) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
+        token_bytes,
+        node_secrets,
     };
 
     Service::run(config, runtime, false)
@@ -15,6 +22,8 @@ pub fn run(config: Config) -> Result<(), Error> {
 
 pub struct Runtime {
     identity: ServiceId,
+    token_bytes: Vec<u8>,
+    node_secrets: NodeSecrets
 }
 
 impl CtlServer for Runtime {}
@@ -53,19 +62,43 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    fn send_farcasterd(&self, senders: &mut Senders, message: request::Msg) -> Result<(), Error> {
+        senders.send_to(
+            ServiceBus::Msg,
+            self.identity(),
+            ServiceId::Farcasterd,
+            Request::Protocol(message),
+        )?;
+        Ok(())
+    }
+
     fn handle_rpc_msg(
         &mut self,
-        _senders: &mut Senders,
+        senders: &mut Senders,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         match request {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
+                let secrets = Secret {
+                    secret: self.node_secrets
+                };
+                self.send_farcasterd(senders, Msg::Secret(secrets))?
             }
             _ => {
                 error!("MSG RPC can only be used for farwarding LNPBP messages")
             }
+            // Request::Protocol(msg) => {
+            //     match &msg {
+            //         Msg::Secret() => {
+            //             let secrets = Secret {
+            //                 secret: self.node_secrets
+            //             };
+            //             self.send_farcasterd(senders, Msg::Secret(secrets))?
+            //         }
+            //     }
+            // }
         }
         Ok(())
     }

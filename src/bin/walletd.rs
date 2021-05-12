@@ -34,6 +34,8 @@ use clap::Clap;
 use farcaster_node::walletd::{self, Opts};
 use farcaster_node::{Config, LogStyle};
 
+use bitcoin::hashes::hex::{FromHex};
+
 fn main() {
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
@@ -45,11 +47,16 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
+    let walletd_token = opts.walletd_token.walletd_token;
+    info!("\n\n{}\n\n", walletd_token);
+    let token_bytes = Vec::from_hex(&walletd_token);
+    info!("\n\n{:?}\n\n", token_bytes);
+
     let node_id = opts.key_opts.local_node().node_id();
     info!("{}: {}", "Local node id".ended(), node_id.amount());
 
     debug!("Starting runtime ...");
-    walletd::run(config).expect("Error running syncerd runtime");
+    walletd::run(config, token_bytes, opts.key_opts.node_secrets()).expect("Error running syncerd runtime");
 
     unreachable!()
 }
