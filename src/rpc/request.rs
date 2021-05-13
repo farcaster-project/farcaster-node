@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::walletd::NodeSecrets;
 use amplify::{ToYamlString, Wrapper};
 use internet2::addr::InetSocketAddr;
 #[cfg(feature = "serde")]
@@ -20,7 +21,6 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
-use crate::walletd::NodeSecrets;
 
 use bitcoin::{secp256k1, OutPoint};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
@@ -65,9 +65,6 @@ pub enum Msg {
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
-    #[api(type = 29)]
-    #[display("secret")]
-    Secret(Secret),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -164,6 +161,14 @@ pub enum Request {
     #[api(type = 2)]
     #[display("send_message({0})")]
     PeerMessage(Messages),
+
+    #[api(type = 30)]
+    #[display("getsecret")]
+    GetSecret,
+
+    #[api(type = 29)]
+    #[display("secret")]
+    Secret(Secret),
 
     #[api(type = 5)]
     #[display("send_message({0})")]

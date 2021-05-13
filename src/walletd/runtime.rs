@@ -1,14 +1,17 @@
-use crate::Senders;
-use crate::{Config, CtlServer, Error, Service, ServiceId};
-use bitcoin::secp256k1;
-use internet2::{LocalNode, TypedEnum};
-use microservices::esb::{self, Handler};
 use crate::rpc::{
     request::{self, Msg},
     Request, ServiceBus,
 };
 use crate::walletd::NodeSecrets;
+use crate::Senders;
+use crate::{Config, CtlServer, Error, Service, ServiceId};
+use bitcoin::secp256k1;
+use internet2::{LocalNode, TypedEnum};
+use microservices::esb::{self, Handler};
 use request::Secret;
+
+// use crate log;
+use crate::LogStyle;
 
 pub fn run(config: Config, token_bytes: Vec<u8>, node_secrets: NodeSecrets) -> Result<(), Error> {
     let runtime = Runtime {
@@ -23,7 +26,7 @@ pub fn run(config: Config, token_bytes: Vec<u8>, node_secrets: NodeSecrets) -> R
 pub struct Runtime {
     identity: ServiceId,
     token_bytes: Vec<u8>,
-    node_secrets: NodeSecrets
+    node_secrets: NodeSecrets,
 }
 
 impl CtlServer for Runtime {}
@@ -47,9 +50,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            _ => {
-                Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))
-            }
+            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
@@ -62,12 +63,16 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_farcasterd(&self, senders: &mut Senders, message: request::Msg) -> Result<(), Error> {
+    fn send_farcasterd(
+        &self,
+        senders: &mut Senders,
+        message: request::Request,
+    ) -> Result<(), Error> {
         senders.send_to(
-            ServiceBus::Msg,
+            ServiceBus::Ctl,
             self.identity(),
             ServiceId::Farcasterd,
-            Request::Protocol(message),
+            message,
         )?;
         Ok(())
     }
@@ -81,24 +86,17 @@ impl Runtime {
         match request {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
+            }
+            Request::GetSecret => {
                 let secrets = Secret {
-                    secret: self.node_secrets
+                    secret: self.node_secrets.clone(),
                 };
-                self.send_farcasterd(senders, Msg::Secret(secrets))?
+                info!("sent Secret request to farcasterd");
+                self.send_farcasterd(senders, Request::Secret(secrets))?
             }
             _ => {
                 error!("MSG RPC can only be used for farwarding LNPBP messages")
             }
-            // Request::Protocol(msg) => {
-            //     match &msg {
-            //         Msg::Secret() => {
-            //             let secrets = Secret {
-            //                 secret: self.node_secrets
-            //             };
-            //             self.send_farcasterd(senders, Msg::Secret(secrets))?
-            //         }
-            //     }
-            // }
         }
         Ok(())
     }

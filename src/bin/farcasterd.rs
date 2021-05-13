@@ -32,7 +32,7 @@ extern crate log;
 use clap::Clap;
 
 use farcaster_node::farcasterd::{self, Opts};
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::Config;
 
 fn main() {
     println!("farcasterd: farcaster node management microservice");
@@ -47,8 +47,8 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
-    let node_id = opts.key_opts.local_node().node_id();
-    info!("{}: {}", "Local node id".ended(), node_id.amount());
+    // let node_id = opts.key_opts.local_node().node_id();
+    // info!("{}: {}", "Local node id".ended(), node_id.amount());
 
     /*
     use self::internal::ResultExt;
@@ -60,7 +60,7 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    farcasterd::run(config, node_id).expect("Error running farcasterd runtime");
+    farcasterd::run(config).expect("Error running farcasterd runtime");
 
     unreachable!()
 }

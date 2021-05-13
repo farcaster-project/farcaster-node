@@ -37,7 +37,6 @@ pub struct Opts {
     #[clap(flatten)]
     pub walletd_token: WalletdToken,
 
-
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
     #[clap(flatten)]
@@ -119,8 +118,7 @@ impl KeyOpts {
             .read_exact(&mut seed_buf)
             .expect("wallet_key has 32 bytes");
         {
-            let expected_key = SecretKey::from_slice(&seed_buf)
-                .expect("wallet_seed has 32 bytes");
+            let expected_key = SecretKey::from_slice(&seed_buf).expect("wallet_seed has 32 bytes");
             assert_eq!(
                 expected_key, key,
                 "Cannot go back and forward from bytes to secret key"
@@ -131,20 +129,17 @@ impl KeyOpts {
 
     pub fn node_secrets(&self) -> NodeSecrets {
         if PathBuf::from(self.key_file.clone()).exists() {
-            NodeSecrets::strict_decode(fs::File::open(&self.key_file).expect(
-                &format!(
-                    "Unable to open key file {}; please check that the user \
+            NodeSecrets::strict_decode(fs::File::open(&self.key_file).expect(&format!(
+                "Unable to open key file {}; please check that the user \
                     running the deamon has necessary permissions",
-                    self.key_file
-                ),
-            ))
+                self.key_file
+            )))
             .expect("Unable to read node code file format")
         } else {
             let mut rng = thread_rng();
             let private_key = SecretKey::new(&mut rng);
             let ephemeral_private_key = SecretKey::new(&mut rng);
-            let local_node =
-                LocalNode::from_keys(private_key, ephemeral_private_key);
+            let local_node = LocalNode::from_keys(private_key, ephemeral_private_key);
             let wallet_seed = Self::create_seed(&mut rng);
             let node_secrets = NodeSecrets {
                 local_node,

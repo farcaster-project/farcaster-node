@@ -28,7 +28,7 @@ use std::{
 };
 
 use bitcoin::hashes::hex::{FromHex, ToHex};
-use bitcoin::secp256k1;
+use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{
     message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT,
@@ -39,8 +39,8 @@ use microservices::rpc::Failure;
 
 use crate::rpc::request::{IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
-use crate::{Config, Error, LogStyle, Service, ServiceId};
 use crate::walletd::NodeSecrets;
+use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 use farcaster_chains::{
     bitcoin::{Bitcoin, Wallet as BTCWallet},
@@ -63,16 +63,18 @@ use farcaster_core::{
     role::{Alice, Bob, NegotiationRole, SwapRole},
 };
 
-use bitcoin::secp256k1::{
-    rand::{thread_rng, RngCore}
-};
+use bitcoin::secp256k1::rand::{thread_rng, RngCore};
 
 use std::str::FromStr;
 
-pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
+pub fn run(config: Config) -> Result<(), Error> {
+    let mut rng = thread_rng();
+    let secp = Secp256k1::new();
+    let (_, public_key) = secp.generate_keypair(&mut rng);
+
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
-        node_id,
+        node_id: Some(public_key),
         chain: config.chain.clone(),
         listens: none!(),
         started: SystemTime::now(),
@@ -84,7 +86,7 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
         making_offers: none!(),
         wallets: none!(),
         child_processes: none!(),
-        node_secrets: none!(),
+        node_secrets: None,
     };
 
     // Start walletd before anything else
@@ -92,10 +94,7 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
     thread_rng().fill_bytes(&mut dest);
     let hex_token = dest.to_hex();
 
-    let _walletd = launch(
-        "walletd",
-        &["--walletd-token", &hex_token],
-    )?;
+    let _walletd = launch("walletd", &["--walletd-token", &hex_token])?;
 
     let broker = true;
     Service::run(config, runtime, broker)
@@ -124,7 +123,7 @@ pub enum Wallet {
 
 pub struct Runtime {
     identity: ServiceId,
-    node_id: secp256k1::PublicKey,
+    node_id: Option<bitcoin::secp256k1::PublicKey>,
     chain: Chain,
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
@@ -136,7 +135,7 @@ pub struct Runtime {
     making_offers: HashSet<PublicOffer<BtcXmr>>,
     wallets: HashMap<SwapId, Wallet>,
     child_processes: Vec<process::Child>,
-    node_secrets: NodeSecrets,
+    node_secrets: Option<NodeSecrets>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -225,8 +224,9 @@ impl Runtime {
                             )
                             .expect("Parsable address");
                             let bob = Bob::<BtcXmr>::new(address.into(), FeePolitic::Aggressive);
-                            let btc_wallet = BTCWallet::new(self.node_secrets.wallet_seed);
-                            let xmr_wallet = XMRWallet::new(self.node_secrets.wallet_seed);
+                            let wallet_seed = self.node_secrets.as_ref().unwrap().wallet_seed;
+                            let btc_wallet = BTCWallet::new(wallet_seed);
+                            let xmr_wallet = XMRWallet::new(wallet_seed);
                             let params =
                                 bob.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
                             if self.wallets.get(&swap_id).is_none() {
@@ -264,8 +264,9 @@ impl Runtime {
                             .expect("Parsable address");
                             let alice: Alice<BtcXmr> =
                                 Alice::new(address.into(), FeePolitic::Aggressive);
-                            let btc_wallet = BTCWallet::new(self.node_secrets.wallet_seed);
-                            let xmr_wallet = XMRWallet::new(self.node_secrets.wallet_seed);
+                            let wallet_seed = self.node_secrets.as_ref().unwrap().wallet_seed;
+                            let btc_wallet = BTCWallet::new(wallet_seed);
+                            let xmr_wallet = XMRWallet::new(wallet_seed);
                             let params = alice.generate_parameters(
                                 &btc_wallet,
                                 &xmr_wallet,
@@ -331,6 +332,15 @@ impl Runtime {
                             "{}",
                             "Unexpected another farcasterd instance connection".err()
                         );
+                    }
+                    ServiceId::Wallet => {
+                        info!("Walletd registered!");
+                        senders.send_to(
+                            ServiceBus::Msg,
+                            self.identity(),
+                            source.clone(),
+                            Request::GetSecret,
+                        )?;
                     }
                     ServiceId::Peer(connection_id) => {
                         if self.connections.insert(connection_id.clone()) {
@@ -595,8 +605,10 @@ impl Runtime {
                     _ => Err(Error::Farcaster("Unknow wallet and swap_id".to_string()))?,
                 }
             }
-            Request::Protocol(Msg::Secret(secret)) => {
-                self.node_secrets = secret.secret;
+            Request::Secret(secret) => {
+                info!("received secret: \n{:?}", secret);
+                self.node_secrets = Some(secret.secret);
+                self.node_id = Some(self.node_secrets.as_ref().unwrap().local_node.node_id());
             }
 
             Request::GetInfo => {
@@ -605,7 +617,7 @@ impl Runtime {
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
-                        node_id: self.node_id,
+                        node_id: self.node_id.unwrap(),
                         listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -675,7 +687,8 @@ impl Runtime {
                         Some(source.clone()),
                         Request::Success(OptionDetails::with(format!(
                             "Node {} listens for connections on {}",
-                            self.node_id, addr
+                            self.node_id.unwrap(),
+                            addr
                         ))),
                     ));
                 }
@@ -746,7 +759,7 @@ impl Runtime {
                     notify_cli.push((Some(source.clone()), Request::Progress(msg)));
                 }
                 let peer = internet2::RemoteNodeAddr {
-                    node_id: self.node_id,
+                    node_id: self.node_id.unwrap(),
                     remote_addr,
                 };
                 let public_offer = offer.to_public_v1(peer);
@@ -849,8 +862,9 @@ impl Runtime {
                     let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
                                                                        // since we're takers, we are on the other side
                     let taker_role = offer.maker_role.other();
-                    let btc_wallet = BTCWallet::new(self.node_secrets.wallet_seed);
-                    let xmr_wallet = XMRWallet::new(self.node_secrets.wallet_seed);
+                    let wallet_seed = self.node_secrets.as_ref().unwrap().wallet_seed;
+                    let btc_wallet = BTCWallet::new(wallet_seed);
+                    let xmr_wallet = XMRWallet::new(wallet_seed);
                     match taker_role {
                         SwapRole::Bob => {
                             let address = bitcoin::Address::from_str(
