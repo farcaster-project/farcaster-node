@@ -29,10 +29,6 @@ use clap::{AppSettings, Clap};
     setting = AppSettings::ColoredHelp
 )]
 pub struct Opts {
-    /// Node key configuration
-    // #[clap(flatten)]
-    // pub key_opts: KeyOpts,
-
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
     #[clap(flatten)]
@@ -42,6 +38,5 @@ pub struct Opts {
 impl Opts {
     pub fn process(&mut self) {
         self.shared.process();
-        // self.key_opts.process(&self.shared);
     }
 }

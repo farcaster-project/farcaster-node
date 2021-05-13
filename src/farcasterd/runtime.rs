@@ -68,13 +68,21 @@ use bitcoin::secp256k1::rand::{thread_rng, RngCore};
 use std::str::FromStr;
 
 pub fn run(config: Config) -> Result<(), Error> {
-    let mut rng = thread_rng();
-    let secp = Secp256k1::new();
-    let (_, public_key) = secp.generate_keypair(&mut rng);
+    // let mut rng = thread_rng();
+    // let secp = Secp256k1::new();
+    // let (_, public_key) = secp.generate_keypair(&mut rng);
+
+    let mut dest = [0u8; 16];
+    thread_rng().fill_bytes(&mut dest);
+    let walletd_token = dest.to_hex();
+
+    // Start walletd before anything else
+    let _walletd = launch("walletd", &["--walletd-token", &walletd_token.clone()])?;
 
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
-        node_id: Some(public_key),
+        // needs to be filled by walletd
+        node_id: None,
         chain: config.chain.clone(),
         listens: none!(),
         started: SystemTime::now(),
@@ -87,14 +95,8 @@ pub fn run(config: Config) -> Result<(), Error> {
         wallets: none!(),
         child_processes: none!(),
         node_secrets: None,
+        walletd_token,
     };
-
-    // Start walletd before anything else
-    let mut dest = [0u8; 16];
-    thread_rng().fill_bytes(&mut dest);
-    let hex_token = dest.to_hex();
-
-    let _walletd = launch("walletd", &["--walletd-token", &hex_token])?;
 
     let broker = true;
     Service::run(config, runtime, broker)
@@ -136,6 +138,7 @@ pub struct Runtime {
     wallets: HashMap<SwapId, Wallet>,
     child_processes: Vec<process::Child>,
     node_secrets: Option<NodeSecrets>,
+    walletd_token: String,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -339,7 +342,7 @@ impl Runtime {
                             ServiceBus::Msg,
                             self.identity(),
                             source.clone(),
-                            Request::GetSecret,
+                            Request::GetSecret(self.walletd_token.clone()),
                         )?;
                     }
                     ServiceId::Peer(connection_id) => {

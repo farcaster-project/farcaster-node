@@ -164,7 +164,7 @@ pub enum Request {
 
     #[api(type = 30)]
     #[display("getsecret")]
-    GetSecret,
+    GetSecret(String),
 
     #[api(type = 29)]
     #[display("secret")]
@@ -318,6 +318,12 @@ pub struct InitSwap {
     pub swap_id: SwapId,
     pub commit: Option<Commit>,
 }
+
+// #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+// #[strict_encoding_crate(lnpbp::strict_encoding)]
+// pub struct WalletdToken {
+//     pub walletd_token: String,
+// }
 
 #[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]

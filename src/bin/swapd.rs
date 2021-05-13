@@ -32,7 +32,7 @@ extern crate log;
 use clap::Clap;
 
 use farcaster_node::swapd::{self, Opts};
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::Config;
 
 fn main() {
     println!("swapd: farcaster swap microservice");
@@ -47,9 +47,6 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
-    let node_id = opts.key_opts.local_node().node_id();
-    info!("{}: {}", "Local node id".ended(), node_id.amount());
-
     /*
     use self::internal::ResultExt;
     let (config_from_file, _) =
@@ -62,7 +59,6 @@ fn main() {
     debug!("Starting runtime ...");
     swapd::run(
         config,
-        opts.key_opts.local_node(),
         opts.swap_id,
         opts.shared.chain,
         opts.public_offer,

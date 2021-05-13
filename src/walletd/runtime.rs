@@ -13,10 +13,10 @@ use request::Secret;
 // use crate log;
 use crate::LogStyle;
 
-pub fn run(config: Config, token_bytes: Vec<u8>, node_secrets: NodeSecrets) -> Result<(), Error> {
+pub fn run(config: Config, walletd_token: String, node_secrets: NodeSecrets) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
-        token_bytes,
+        walletd_token,
         node_secrets,
     };
 
@@ -25,7 +25,7 @@ pub fn run(config: Config, token_bytes: Vec<u8>, node_secrets: NodeSecrets) -> R
 
 pub struct Runtime {
     identity: ServiceId,
-    token_bytes: Vec<u8>,
+    walletd_token: String,
     node_secrets: NodeSecrets,
 }
 
@@ -87,7 +87,11 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
-            Request::GetSecret => {
+            Request::GetSecret(walletd_token) => {
+                if walletd_token != self.walletd_token {
+                    Err(Error::InvalidToken)?
+                }
+                info!("after the error I am carrying on!");
                 let secrets = Secret {
                     secret: self.node_secrets.clone(),
                 };

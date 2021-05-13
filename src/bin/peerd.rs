@@ -195,7 +195,7 @@ fn main() {
             connect = false;
             local_socket = Some(inet_addr);
             id = NodeAddr::Remote(RemoteNodeAddr {
-                node_id: local_node.node_id(),
+                node_id: local_id,
                 remote_addr: RemoteSocketAddr::Ftcp(inet_addr),
             });
 
