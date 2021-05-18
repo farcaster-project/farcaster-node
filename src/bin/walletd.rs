@@ -56,7 +56,7 @@ fn main() {
     info!("{}: {}", "Local node id".ended(), node_id.amount());
 
     debug!("Starting runtime ...");
-    walletd::run(config, walletd_token, opts.key_opts.node_secrets())
+    walletd::run(config, walletd_token, opts.key_opts.node_secrets(), node_id)
         .expect("Error running syncerd runtime");
 
     unreachable!()

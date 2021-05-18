@@ -14,7 +14,6 @@
 
 use clap::{AppSettings, Clap, ValueHint};
 
-use crate::peerd::KeyOpts;
 use bitcoin::hashes::hex::FromHex;
 use farcaster_chains::pairs::btcxmr::BtcXmr;
 use farcaster_core::{negotiation::PublicOffer, role::NegotiationRole};

@@ -47,6 +47,25 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
+    use bitcoin::secp256k1::{
+        rand::{thread_rng},
+        SecretKey,
+    };
+    // use std::fmt;
+    // use std::str::FromStr;
+
+    let mut rng = thread_rng();
+    let key = SecretKey::new(&mut rng);
+    // key.fmt(f: &mut fmt::Formatter);
+
+    // let secret_key_one = SecretKey::from_str("0xcd");
+    debug!("Secret key {:x}", key);
+
+    let string_key: String = format!("{:x}", key);
+    debug!("{}", string_key);
+    // let secret_key = SecretKey::from_slice(&[0xcd; 32]).expect("32 bytes, within curve order");
+
+
     /*
     use self::internal::ResultExt;
     let (config_from_file, _) =

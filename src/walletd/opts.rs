@@ -17,8 +17,6 @@ use clap::{AppSettings, Clap, ValueHint};
 use std::path::PathBuf;
 use std::{fs, io::Read};
 
-// use crate::peerd::KeyOpts;
-
 /// Walletd daemon; part of Farcaster Node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(

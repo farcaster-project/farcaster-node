@@ -42,6 +42,7 @@ pub const FARCASTER_NODE_CONFIG: &'static str = "{data_dir}/farcaster.toml";
 pub const FARCASTER_NODE_TOR_PROXY: &'static str = "127.0.0.1:9050";
 pub const FARCASTER_NODE_KEY_FILE: &'static str = "{data_dir}/key.dat";
 
+
 /// Shared options used by different binaries
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 pub struct Opts {

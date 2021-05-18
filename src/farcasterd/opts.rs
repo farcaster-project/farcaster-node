@@ -14,8 +14,6 @@
 
 use clap::{AppSettings, Clap};
 
-// use crate::walletd::KeyOpts;
-
 /// Farcaster node management daemon; part of Farcaster Node
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument

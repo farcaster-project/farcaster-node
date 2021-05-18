@@ -17,5 +17,5 @@ mod opts;
 mod runtime;
 
 #[cfg(feature = "shell")]
-pub use opts::{KeyOpts, Opts};
+pub use opts::{PeerKeyOpts, Opts};
 pub use runtime::run;

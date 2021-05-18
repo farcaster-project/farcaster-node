@@ -33,10 +33,10 @@ use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
-pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
+pub fn run(config: Config) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Syncer,
-        node_id,
+        node_id: None,
         chain: config.chain.clone(),
         started: SystemTime::now(),
         tasks: none!(),
@@ -48,7 +48,7 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
 
 pub struct Runtime {
     identity: ServiceId,
-    node_id: secp256k1::PublicKey,
+    node_id: Option<secp256k1::PublicKey>,
     chain: Chain,
     started: SystemTime,
     tasks: HashSet<u64>, // FIXME
@@ -119,6 +119,15 @@ impl Runtime {
             (Request::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!("{} daemon is {}", source.ended(), "connected".ended());
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source.clone(),
+                    Request::GetNodeId,
+                )?;
+            }
+            (Request::NodeId(node_id), _) => {
+                self.node_id = Some(node_id.node_id);
             }
             (Request::GetInfo, _) => {
                 senders.send_to(
@@ -126,7 +135,7 @@ impl Runtime {
                     ServiceId::Syncer,
                     source,
                     Request::SyncerInfo(SyncerInfo {
-                        syncer_id: self.node_id,
+                        syncer_id: self.node_id.unwrap(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or(Duration::from_secs(0)),

@@ -979,11 +979,12 @@ impl Runtime {
             let port = socket_addr.port();
 
             debug!("Instantiating peerd...");
-
+            
+            let peer_secret_key = self.node_secrets.as_ref().unwrap();
             // Start peerd
             let child = launch(
                 "peerd",
-                &["--listen", &ip.to_string(), "--port", &port.to_string()],
+                &["--listen", &ip.to_string(), "--port", &port.to_string(), "--peer_secret_key", &port.to_string()],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
             self.child_processes.push(child);

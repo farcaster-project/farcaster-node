@@ -8,16 +8,22 @@ use crate::{Config, CtlServer, Error, Service, ServiceId};
 use bitcoin::secp256k1;
 use internet2::{LocalNode, TypedEnum};
 use microservices::esb::{self, Handler};
-use request::Secret;
+use request::{Secret, NodeId};
 
 // use crate log;
 use crate::LogStyle;
 
-pub fn run(config: Config, walletd_token: String, node_secrets: NodeSecrets) -> Result<(), Error> {
+pub fn run(
+    config: Config,
+    walletd_token: String,
+    node_secrets: NodeSecrets,
+    node_id: bitcoin::secp256k1::PublicKey,
+) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
         walletd_token,
         node_secrets,
+        node_id,
     };
 
     Service::run(config, runtime, false)
@@ -27,6 +33,7 @@ pub struct Runtime {
     identity: ServiceId,
     walletd_token: String,
     node_secrets: NodeSecrets,
+    node_id: bitcoin::secp256k1::PublicKey,
 }
 
 impl CtlServer for Runtime {}
@@ -97,7 +104,7 @@ impl Runtime {
     fn handle_rpc_ctl(
         &mut self,
         senders: &mut Senders,
-        _source: ServiceId,
+        source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         match request {
@@ -105,13 +112,24 @@ impl Runtime {
                 if walletd_token != self.walletd_token {
                     Err(Error::InvalidToken)?
                 }
-                info!("after the error I am carrying on!");
                 let secrets = Secret {
                     secret: self.node_secrets.clone(),
                 };
                 info!("sent Secret request to farcasterd");
                 self.send_farcasterd(senders, Request::Secret(secrets))?
             }
+            Request::GetNodeId => {
+                let node_id = NodeId {
+                    node_id: self.node_id.clone()
+                };
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source,
+                    Request::NodeId(node_id),
+                )?
+            }
+
             _ => {
                 error!("Request is not supported by the CTL interface");
             }
