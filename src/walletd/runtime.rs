@@ -79,7 +79,7 @@ impl Runtime {
 
     fn handle_rpc_msg(
         &mut self,
-        senders: &mut Senders,
+        _senders: &mut Senders,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -87,6 +87,20 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
+            _ => {
+                error!("MSG RPC can only be used for farwarding LNPBP messages")
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_rpc_ctl(
+        &mut self,
+        senders: &mut Senders,
+        _source: ServiceId,
+        request: Request,
+    ) -> Result<(), Error> {
+        match request {
             Request::GetSecret(walletd_token) => {
                 if walletd_token != self.walletd_token {
                     Err(Error::InvalidToken)?
@@ -99,25 +113,7 @@ impl Runtime {
                 self.send_farcasterd(senders, Request::Secret(secrets))?
             }
             _ => {
-                error!("MSG RPC can only be used for farwarding LNPBP messages")
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_rpc_ctl(
-        &mut self,
-        _senders: &mut Senders,
-        _source: ServiceId,
-        request: Request,
-    ) -> Result<(), Error> {
-        match request {
-            _ => {
                 error!("Request is not supported by the CTL interface");
-                // return Err(Error::NotSupported(
-                //     ServiceBus::Ctl,
-                //     request.get_type(),
-                // ));
             }
         }
         Ok(())

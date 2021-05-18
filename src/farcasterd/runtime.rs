@@ -339,7 +339,7 @@ impl Runtime {
                     ServiceId::Wallet => {
                         info!("Walletd registered!");
                         senders.send_to(
-                            ServiceBus::Msg,
+                            ServiceBus::Ctl,
                             self.identity(),
                             source.clone(),
                             Request::GetSecret(self.walletd_token.clone()),
