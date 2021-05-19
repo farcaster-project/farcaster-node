@@ -111,16 +111,13 @@ impl Runtime {
                 if walletd_token != self.walletd_token {
                     Err(Error::InvalidToken)?
                 }
-                let secrets = Secret {
-                    secret: self.node_secrets.clone(),
-                };
+                let secrets = Secret(self.node_secrets.clone(),
+);
                 info!("sent Secret request to farcasterd");
                 self.send_farcasterd(senders, Request::Secret(secrets))?
             }
             Request::GetNodeId => {
-                let node_id = NodeId {
-                    node_id: self.node_id.clone(),
-                };
+                let node_id = NodeId(self.node_id.clone());
                 senders.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
