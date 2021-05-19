@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::walletd::NodeSecrets;
 use amplify::{ToYamlString, Wrapper};
 use internet2::addr::InetSocketAddr;
 #[cfg(feature = "serde")]
@@ -72,6 +73,20 @@ pub enum Msg {
 pub enum Commit {
     Alice(CommitAliceParameters<BtcXmr>),
     Bob(CommitBobParameters<BtcXmr>),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("nodeid")]
+pub struct NodeId {
+    pub node_id: bitcoin::secp256k1::PublicKey,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("secret")]
+pub struct Secret {
+    pub secret: NodeSecrets,
 }
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
@@ -153,6 +168,22 @@ pub enum Request {
     #[api(type = 2)]
     #[display("send_message({0})")]
     PeerMessage(Messages),
+
+    #[api(type = 31)]
+    #[display("getnodeid")]
+    GetNodeId,
+
+    #[api(type = 32)]
+    #[display("nodeid")]
+    NodeId(NodeId),
+
+    #[api(type = 30)]
+    #[display("getsecret")]
+    GetSecret(String),
+
+    #[api(type = 29)]
+    #[display("secret")]
+    Secret(Secret),
 
     #[api(type = 5)]
     #[display("send_message({0})")]

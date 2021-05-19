@@ -102,6 +102,9 @@ pub enum ServiceId {
     #[display("syncer")]
     Syncer,
 
+    #[display("walletd")]
+    Wallet,
+
     #[display("other<{0}>")]
     Other(ClientName),
 }

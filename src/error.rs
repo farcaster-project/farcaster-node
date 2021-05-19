@@ -71,6 +71,9 @@ pub enum Error {
     #[display(inner)]
     #[from(internet2::addr::NoOnionSupportError)]
     Other(String),
+
+    /// Invalid walletd token error
+    InvalidToken,
 }
 
 impl microservices::error::Error for Error {}
