@@ -78,16 +78,12 @@ pub enum Commit {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("nodeid")]
-pub struct NodeId {
-    pub node_id: bitcoin::secp256k1::PublicKey,
-}
+pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("secret")]
-pub struct Secret {
-    pub secret: NodeSecrets,
-}
+pub struct Secret(pub NodeSecrets);
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
