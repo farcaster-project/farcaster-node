@@ -66,6 +66,8 @@ pub mod peerd;
 mod service;
 #[cfg(feature = "node")]
 pub mod swapd;
+#[cfg(feature = "node")]
+pub mod walletd;
 
 pub mod syncerd;
 

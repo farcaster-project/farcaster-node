@@ -29,6 +29,10 @@ required-features = ["server"]
 name = "swap-cli"
 required-features = ["cli"]
 
+[[bin]]
+name = "walletd"
+required-features = ["server"]
+
 # [[bin]]
 # name = "syncer"
 # required-features = ["server"]
