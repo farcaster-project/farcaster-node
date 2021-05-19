@@ -168,7 +168,6 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
-
     /*
     use self::internal::ResultExt;
     let (config_from_file, _) =

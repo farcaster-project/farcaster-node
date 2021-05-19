@@ -52,7 +52,8 @@ fn main() {
     let token_bytes = Vec::from_hex(&walletd_token).unwrap();
     info!("\n\n{:?}\n\n", token_bytes);
 
-    let node_id = opts.key_opts.local_node().node_id();
+    let node_id = opts.key_opts.node_secrets().node_id();
+
     info!("{}: {}", "Local node id".ended(), node_id.amount());
 
     debug!("Starting runtime ...");

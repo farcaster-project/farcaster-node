@@ -73,9 +73,8 @@ pub struct WalletdToken {
 
 use bitcoin::secp256k1::{
     rand::{rngs::ThreadRng, thread_rng},
-    SecretKey,
+    PublicKey, Secp256k1, SecretKey,
 };
-use internet2::LocalNode;
 use lnpbp::strict_encoding;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 
@@ -83,24 +82,20 @@ use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 #[derive(StrictEncode, StrictDecode, Clone, PartialEq, Eq, Debug)]
 pub struct NodeSecrets {
     /// local node private information
-    pub local_node: LocalNode,
+    pub peer_private_key: SecretKey,
     /// seed used for deriving addresses
     pub wallet_seed: [u8; 32],
 }
 
-// impl WalletdToken {
-//     pub fn walletd_token(&self) -> String {
-//         self.walletd_token
-//     }
-// }
+impl NodeSecrets {
+    pub fn node_id(&self) -> PublicKey {
+        PublicKey::from_secret_key(&Secp256k1::new(), &self.peer_private_key)
+    }
+}
 
 impl KeyOpts {
     pub fn process(&mut self, shared: &crate::opts::Opts) {
         shared.process_dir(&mut self.key_file);
-    }
-
-    pub fn local_node(&self) -> LocalNode {
-        self.node_secrets().local_node
     }
 
     pub fn wallet_seed(&self) -> [u8; 32] {
@@ -135,12 +130,10 @@ impl KeyOpts {
             .expect("Unable to read node code file format")
         } else {
             let mut rng = thread_rng();
-            let private_key = SecretKey::new(&mut rng);
-            let ephemeral_private_key = SecretKey::new(&mut rng);
-            let local_node = LocalNode::from_keys(private_key, ephemeral_private_key);
+            let peer_private_key = SecretKey::new(&mut rng);
             let wallet_seed = Self::create_seed(&mut rng);
             let node_secrets = NodeSecrets {
-                local_node,
+                peer_private_key,
                 wallet_seed,
             };
 
