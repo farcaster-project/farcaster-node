@@ -35,7 +35,7 @@ use farcaster_core::{
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
-    session, CreateUnmarshaller, LocalNode, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
+    session, CreateUnmarshaller, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
 use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
@@ -47,7 +47,6 @@ use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
 
 pub fn run(
     config: Config,
-    local_node: LocalNode,
     swap_id: SwapId,
     chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
@@ -79,7 +78,6 @@ pub fn run(
     let runtime = Runtime {
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
-        local_node,
         chain,
         local_state: init_state(&local_role),
         // remote_state: init_state(local_role.other()),
@@ -116,7 +114,6 @@ pub fn run(
 pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
-    local_node: LocalNode,
     chain: Chain,
     local_state: State,
     // remote_state: State,
@@ -176,13 +173,6 @@ pub enum State {
 }
 
 impl CtlServer for Runtime {}
-
-impl Runtime {
-    #[inline]
-    pub fn node_id(&self) -> secp256k1::PublicKey {
-        self.local_node.node_id()
-    }
-}
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
@@ -639,8 +629,6 @@ impl Runtime {
         self.is_originator = false;
         // self.params = payment::channel::Params::with(channel_req)?;
         // self.remote_keys = payment::channel::Keyset::from(channel_req);
-
-        let dumb_key = self.node_id();
 
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(params.into()),

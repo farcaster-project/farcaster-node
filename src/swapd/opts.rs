@@ -14,7 +14,6 @@
 
 use clap::{AppSettings, Clap, ValueHint};
 
-use crate::peerd::KeyOpts;
 use bitcoin::hashes::hex::FromHex;
 use farcaster_chains::pairs::btcxmr::BtcXmr;
 use farcaster_core::{negotiation::PublicOffer, role::NegotiationRole};
@@ -35,10 +34,6 @@ use std::str::FromStr;
     setting = AppSettings::ColoredHelp
 )]
 pub struct Opts {
-    /// Node key configuration
-    #[clap(flatten)]
-    pub key_opts: KeyOpts,
-
     /// Channel id
     #[clap(parse(try_from_str = SwapId::from_hex))]
     pub swap_id: SwapId,
@@ -60,6 +55,5 @@ pub struct Opts {
 impl Opts {
     pub fn process(&mut self) {
         self.shared.process();
-        self.key_opts.process(&self.shared);
     }
 }

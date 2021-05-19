@@ -33,10 +33,9 @@ use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
-pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
+pub fn run(config: Config) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Syncer,
-        node_id,
         chain: config.chain.clone(),
         started: SystemTime::now(),
         tasks: none!(),
@@ -48,7 +47,6 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey) -> Result<(), Error> {
 
 pub struct Runtime {
     identity: ServiceId,
-    node_id: secp256k1::PublicKey,
     chain: Chain,
     started: SystemTime,
     tasks: HashSet<u64>, // FIXME
@@ -126,7 +124,6 @@ impl Runtime {
                     ServiceId::Syncer,
                     source,
                     Request::SyncerInfo(SyncerInfo {
-                        syncer_id: self.node_id,
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or(Duration::from_secs(0)),

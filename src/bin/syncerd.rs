@@ -32,7 +32,7 @@ extern crate log;
 use clap::Clap;
 
 use farcaster_node::syncerd::{self, Opts};
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::Config;
 
 fn main() {
     println!("syncerd: blockchain tasks management microservice");
@@ -47,9 +47,6 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
-    let node_id = opts.key_opts.local_node().node_id();
-    info!("{}: {}", "Local node id".ended(), node_id.amount());
-
     /*
     use self::internal::ResultExt;
     let (config_from_file, _) =
@@ -60,7 +57,7 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    syncerd::run(config, node_id).expect("Error running syncerd runtime");
+    syncerd::run(config).expect("Error running syncerd runtime");
 
     unreachable!()
 }
