@@ -14,8 +14,6 @@
 
 use clap::{AppSettings, Clap};
 
-use crate::peerd::KeyOpts;
-
 /// Farcaster node management daemon; part of Farcaster Node
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
@@ -29,10 +27,6 @@ use crate::peerd::KeyOpts;
     setting = AppSettings::ColoredHelp
 )]
 pub struct Opts {
-    /// Node key configuration
-    #[clap(flatten)]
-    pub key_opts: KeyOpts,
-
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
     #[clap(flatten)]
@@ -42,6 +36,5 @@ pub struct Opts {
 impl Opts {
     pub fn process(&mut self) {
         self.shared.process();
-        self.key_opts.process(&self.shared);
     }
 }

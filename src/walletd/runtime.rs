@@ -1,5 +1,5 @@
 use crate::rpc::{
-    request::{self, Msg},
+    request::{self, Msg, RuntimeContext},
     Request, ServiceBus,
 };
 use crate::walletd::NodeSecrets;
@@ -107,27 +107,40 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::GetSecret(walletd_token) => {
-                if walletd_token != self.walletd_token {
+            Request::GetSecret(request) => {
+                if request.0 != self.walletd_token {
                     Err(Error::InvalidToken)?
                 }
-                let secrets = Secret(self.node_secrets.clone(),
-);
+                let secrets = Secret(self.node_secrets.clone(), request.1);
                 info!("sent Secret request to farcasterd");
                 self.send_farcasterd(senders, Request::Secret(secrets))?
             }
             Request::GetNodeId => {
                 let node_id = NodeId(self.node_id.clone());
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source,
-                    Request::NodeId(node_id),
-                )?
+                self.send_farcasterd(senders, Request::NodeId(node_id))?
             }
 
+            Request::Loopback(request) => match request {
+                RuntimeContext::GetInfo => self.send_farcasterd(senders, Request::GetInfo)?,
+                RuntimeContext::MakeOffer(offer) => {
+                    self.send_farcasterd(senders, Request::MakeOffer(offer))?
+                }
+                RuntimeContext::TakeOffer(offer) => {
+                    self.send_farcasterd(senders, Request::TakeOffer(offer))?
+                }
+                RuntimeContext::Listen(addr) => {
+                    self.send_farcasterd(senders, Request::Listen(addr))?
+                }
+                RuntimeContext::ConnectPeer(addr) => {
+                    self.send_farcasterd(senders, Request::ConnectPeer(addr))?
+                }
+            },
+
             _ => {
-                error!("Request is not supported by the CTL interface");
+                error!(
+                    "Request {:?} is not supported by the CTL interface",
+                    request
+                );
             }
         }
         Ok(())

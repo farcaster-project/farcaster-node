@@ -177,7 +177,7 @@ fn main() {
         .unwrap_or_exit();
      */
 
-    let local_node = opts.key_opts.local_node();
+    let local_node = opts.peer_key_opts.local_node();
     let local_id = local_node.node_id();
     info!("{}: {}", "Local node id".ended(), local_id.amount());
     let peer_socket = PeerSocket::from(opts);
