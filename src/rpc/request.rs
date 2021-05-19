@@ -344,7 +344,6 @@ pub struct ProtoPublicOffer {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(SyncerInfo::to_yaml_string)]
 pub struct SyncerInfo {
-    pub syncer_id: secp256k1::PublicKey,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
