@@ -62,6 +62,7 @@ bitcoin = "0.26"
 lazy_static = "1.4"
 chrono = "0.4"
 nix = { version = "0.19", optional = true }
+regex = { version = "1.5", optional = true }
 # Serialization & parsing
 serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
 serde_with = { version = "1.5", optional = true }
@@ -151,7 +152,7 @@ serde = ["serde_crate", "serde_with", "serde_yaml", "serde_json", "toml",
 tor = ["microservices/tor", "internet2/tor"]
 vendored_openssl = ["microservices/vendored_openssl", "internet2/vendored_openssl"]
 
-integration_test = []
+integration_test = ["regex"]
 
 [package.metadata.configure_me]
 spec = "config_spec.toml"
