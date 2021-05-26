@@ -53,11 +53,15 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    Command::Pedicide
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    // Command::Pedicide
+    //     .exec(&mut client)
+    //     .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    farcasterd.kill().expect("Couldn't kill farcasterd");
+    // farcasterd.kill().expect("Couldn't kill farcasterd");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(farcasterd.id() as i32), 
+        nix::sys::signal::Signal::SIGINT
+    ).expect("Sending CTRL-C failed");
 
     #[cfg(feature = "integration_test")]
     {
