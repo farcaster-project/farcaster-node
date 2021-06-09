@@ -20,8 +20,6 @@ Register-ArgumentCompleter -Native -CommandName 'farcasterd' -ScriptBlock {
 
     $completions = @(switch ($command) {
         'farcasterd' {
-            [CompletionResult]::new('-k', 'k', [CompletionResultType]::ParameterName, 'Node key file')
-            [CompletionResult]::new('--key-file', 'key-file', [CompletionResultType]::ParameterName, 'Node key file')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-c', 'c', [CompletionResultType]::ParameterName, 'Path to the configuration file')

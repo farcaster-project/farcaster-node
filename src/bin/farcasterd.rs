@@ -29,10 +29,14 @@
 #[macro_use]
 extern crate log;
 
+use bitcoin::hashes::hex::ToHex;
+use bitcoin::secp256k1::rand::thread_rng;
+use bitcoin::secp256k1::rand::RngCore;
+
 use clap::Clap;
 
 use farcaster_node::farcasterd::{self, Opts};
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::Config;
 
 fn main() {
     println!("farcasterd: farcaster node management microservice");
@@ -47,21 +51,12 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
-    let node_id = opts.key_opts.local_node().node_id();
-    info!("{}: {}", "Local node id".ended(), node_id.amount());
-
-    let seed = opts.key_opts.wallet_seed();
-    /*
-    use self::internal::ResultExt;
-    let (config_from_file, _) =
-        internal::Config::custom_args_and_optional_files(std::iter::empty::<
-            &str,
-        >())
-        .unwrap_or_exit();
-     */
+    let mut dest = [0u8; 16];
+    thread_rng().fill_bytes(&mut dest);
+    let walletd_token = dest.to_hex();
 
     debug!("Starting runtime ...");
-    farcasterd::run(config, node_id, seed).expect("Error running farcasterd runtime");
+    farcasterd::run(config, walletd_token).expect("Error running farcasterd runtime");
 
     unreachable!()
 }
