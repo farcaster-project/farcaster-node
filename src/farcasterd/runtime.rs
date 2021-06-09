@@ -616,8 +616,6 @@ impl Runtime {
                         source,
                         Request::Loopback(context),
                     )?
-                } else {
-                    Err(Error::Farcaster("runtime_context is none".to_string()))?
                 }
             }
             Request::GetInfo => {
