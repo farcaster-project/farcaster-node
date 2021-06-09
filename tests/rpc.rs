@@ -24,8 +24,8 @@ fn spawn_swap() {
     info!("opts: {:?}", opts);
     let config: Config = opts.shared.clone().into();
 
-    let mut client = Client::with(config.clone(), config.chain.clone())
-        .expect("Error running client");
+    let mut client =
+        Client::with(config.clone(), config.chain.clone()).expect("Error running client");
 
     let mut farcasterd = launch("../farcasterd", data_dir.clone()).unwrap();
 
@@ -46,24 +46,26 @@ fn spawn_swap() {
             .into_iter()
             .chain(data_dir.clone())
             .chain(vec![
-                "make", "Testnet", "Bitcoin", "Monero", "101", "100", "10",
-                "30", "20", "Alice", "0.0.0.0", "9376",
+                "make", "Testnet", "Bitcoin", "Monero", "101", "100", "10", "30", "20", "Alice",
+                "0.0.0.0", "9376",
             ]),
     );
     opts.command
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    let s = System::new_all();
-
-    let procs: Vec<_> = s.
-        get_processes().iter().filter(|(_pid, process)| process.name() == "peerd").collect();
-
-    let _procs2: Vec<_> = procs.iter().map(
-        |(pid, _process)| nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(**pid as i32),
-        nix::sys::signal::Signal::SIGINT
-        ).expect("Sending CTRL-C failed")).collect();
+    let _procs: Vec<_> = System::new_all()
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| process.name() == "peerd")
+        .map(|(pid, _process)| {
+            nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(*pid as i32),
+                nix::sys::signal::Signal::SIGINT,
+            )
+            .expect("Sending CTRL-C failed")
+        })
+        .collect();
 
     farcasterd.kill().expect("Couldn't kill farcasterd");
 
@@ -76,15 +78,13 @@ fn spawn_swap() {
             .stdout;
 
         use regex::RegexSet;
-        let re = RegexSet::new(&[
-            r" farcasterd",
-            r" peerd",
-            r" swapd"
-        ]).unwrap();
+        let re = RegexSet::new(&[r" farcasterd", r" peerd", r" swapd"]).unwrap();
 
-        let matches: Vec<_> = re.matches(std::str::from_utf8(&ps_out).unwrap()).into_iter().collect();
+        let matches: Vec<_> = re
+            .matches(std::str::from_utf8(&ps_out).unwrap())
+            .into_iter()
+            .collect();
         // fails if there are any lingering `farcasterd`s or `peerd`s, so this test is a false-negative if any are running independent of the test
-        assert_eq!(matches, vec![0]);  
+        assert_eq!(matches, vec![0]);
     }
-
 }
