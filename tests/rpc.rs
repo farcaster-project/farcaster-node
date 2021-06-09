@@ -57,7 +57,9 @@ fn spawn_swap() {
     let _procs: Vec<_> = System::new_all()
         .get_processes()
         .iter()
-        .filter(|(_pid, process)| process.name() == "peerd")
+        .filter(|(_pid, process)| {
+            process.name() == "peerd" && process.parent().unwrap() == (farcasterd.id() as i32)
+        })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
                 nix::unistd::Pid::from_raw(*pid as i32),
