@@ -5,6 +5,7 @@ extern crate log;
 use clap::Clap;
 use farcaster_node::rpc::Client;
 use farcaster_node::{Config, LogStyle};
+use sysinfo::{ProcessExt, System, SystemExt};
 
 use farcaster_node::cli::Command;
 use microservices::shell::Exec;
@@ -53,15 +54,18 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
-    // Command::Pedicide
-    //     .exec(&mut client)
-    //     .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    let s = System::new_all();
 
-    // farcasterd.kill().expect("Couldn't kill farcasterd");
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(farcasterd.id() as i32), 
+    let procs: Vec<_> = s.
+        get_processes().iter().filter(|(_pid, process)| process.name() == "peerd").collect();
+
+    let _procs2: Vec<_> = procs.iter().map(
+        |(pid, _process)| nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(**pid as i32),
         nix::sys::signal::Signal::SIGINT
-    ).expect("Sending CTRL-C failed");
+        ).expect("Sending CTRL-C failed")).collect();
+
+    farcasterd.kill().expect("Couldn't kill farcasterd");
 
     #[cfg(feature = "integration_test")]
     {
