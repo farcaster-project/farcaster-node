@@ -78,7 +78,6 @@ pub fn run(config: Config, node_id: secp256k1::PublicKey, seed: [u8; 32]) -> Res
         taking_swaps: none!(),
         making_offers: none!(),
         wallets: none!(),
-        child_processes: none!(),
         seed,
     };
 
@@ -120,7 +119,6 @@ pub struct Runtime {
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
     wallets: HashMap<SwapId, Wallet>,
-    child_processes: Vec<process::Child>,
     seed: [u8; 32],
 }
 
@@ -934,7 +932,6 @@ impl Runtime {
                 &["--listen", &ip.to_string(), "--port", &port.to_string()],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
-            self.child_processes.push(child);
             info!("{}", msg);
             Ok(msg)
         } else {
@@ -970,7 +967,6 @@ impl Runtime {
 
         self.spawning_services
             .insert(ServiceId::Peer(node_addr), source);
-        self.child_processes.push(child);
         debug!("Awaiting for peerd to connect...");
 
         Ok(msg)
@@ -997,7 +993,6 @@ fn launch_swapd(
         ],
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
-    runtime.child_processes.push(child);
     info!("{}", msg);
 
     let list = match negotiation_role {
