@@ -880,23 +880,6 @@ impl Runtime {
                 }
             }
 
-            Request::Pedicide => {
-                let res = self.pedicide();
-                if res.values().any(|result| result.is_err()) {
-                    let msg = format!("Failed to kill some child processes: {:?}", res);
-                    notify_cli.push((
-                        Some(source.clone()),
-                        Request::Failure(Failure { code: 1, info: msg }),
-                    ));
-                } else {
-                    let msg = format!("Successfully killed all child processes: {:?}", res);
-                    notify_cli.push((
-                        Some(source.clone()),
-                        Request::Success(OptionDetails(Some(msg))),
-                    ));
-                }
-            }
-
             Request::Init(_) => {}
             Request::Error(_) => {}
             Request::Ping(_) => {}
@@ -991,13 +974,6 @@ impl Runtime {
         debug!("Awaiting for peerd to connect...");
 
         Ok(msg)
-    }
-
-    pub fn pedicide(&mut self) -> HashMap<u32, io::Result<()>> {
-        self.child_processes
-            .iter_mut()
-            .map(|child| (child.id(), child.kill()))
-            .collect()
     }
 }
 
