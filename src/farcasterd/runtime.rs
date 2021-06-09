@@ -808,10 +808,6 @@ impl Runtime {
             }
 
             Request::TakeOffer(public_offer) => {
-                if self.node_secrets.is_none() {
-                    Err(Error::Farcaster("node_secrets is none".to_string()))?
-                };
-
                 if self.making_offers.contains(&public_offer) {
                     let msg = format!(
                         "Offer {} already exists, ignoring request",
