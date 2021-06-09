@@ -162,6 +162,15 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    fn node_secrets(&self) -> Result<&NodeSecrets, Error> {
+        self.node_secrets
+            .as_ref()
+            .ok_or_else(|| Error::Farcaster("node_secrets is none".to_string()))
+    }
+    fn node_id(&self) -> Result<bitcoin::secp256k1::PublicKey, Error> {
+        self.node_id
+            .ok_or_else(|| Error::Farcaster("node_id is none".to_string()))
+    }
     fn handle_rpc_msg(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
@@ -216,7 +225,7 @@ impl Runtime {
                             )
                             .expect("Parsable address");
                             let bob = Bob::<BtcXmr>::new(address.into(), FeePolitic::Aggressive);
-                            let wallet_seed = self.node_secrets.as_ref().unwrap().wallet_seed;
+                            let wallet_seed = self.node_secrets()?.wallet_seed;
                             let btc_wallet = BTCWallet::new(wallet_seed);
                             let xmr_wallet = XMRWallet::new(wallet_seed);
                             let params =
@@ -256,7 +265,7 @@ impl Runtime {
                             .expect("Parsable address");
                             let alice: Alice<BtcXmr> =
                                 Alice::new(address.into(), FeePolitic::Aggressive);
-                            let wallet_seed = self.node_secrets.as_ref().unwrap().wallet_seed;
+                            let wallet_seed = self.node_secrets()?.wallet_seed;
                             let btc_wallet = BTCWallet::new(wallet_seed);
                             let xmr_wallet = XMRWallet::new(wallet_seed);
                             let params = alice.generate_parameters(
@@ -327,7 +336,7 @@ impl Runtime {
                     }
                     ServiceId::Wallet => {
                         info!("Walletd registered - getting secrets");
-                        self.get_secret(senders, None)?;
+                        self.get_secret(senders, None)?
                     }
                     ServiceId::Peer(connection_id) => {
                         if self.connections.insert(connection_id.clone()) {
@@ -594,12 +603,12 @@ impl Runtime {
             }
             Request::Secret(secret) => {
                 info!("received secret: \n{:?}", secret);
-                self.node_secrets = Some(secret.0);
-                self.node_id = Some(self.node_secrets.as_ref().unwrap().node_id());
+                let request::Secret(node_secrets, runtime_context) = secret;
+                self.node_id = Some(node_secrets.node_id());
+                self.node_secrets = Some(node_secrets);
 
                 // check if we need to execute any loopbacks depending on context content
-                if secret.1.is_some() {
-                    let context = secret.1.unwrap();
+                if let Some(context) = runtime_context {
                     info!("looping back for {:?}", context);
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -607,20 +616,17 @@ impl Runtime {
                         source,
                         Request::Loopback(context),
                     )?
+                } else {
+                    Err(Error::Farcaster("runtime_context is none".to_string()))?
                 }
             }
-
             Request::GetInfo => {
-                if self.node_id.is_none() {
-                    return self.get_secret(senders, Some(RuntimeContext::GetInfo));
-                }
-
                 senders.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
-                        node_id: self.node_id.unwrap(),
+                        node_id: self.node_id()?,
                         listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -656,10 +662,6 @@ impl Runtime {
             }
 
             Request::Listen(addr) => {
-                if self.node_secrets.is_none() {
-                    return self.get_secret(senders, Some(RuntimeContext::Listen(addr)));
-                }
-
                 let addr_str = addr.addr();
                 if self.listens.contains(&addr) {
                     let msg = format!("Listener on {} already exists, ignoring request", addr);
@@ -694,7 +696,7 @@ impl Runtime {
                         Some(source.clone()),
                         Request::Success(OptionDetails::with(format!(
                             "Node {} listens for connections on {}",
-                            self.node_id.unwrap(),
+                            self.node_id()?,
                             addr
                         ))),
                     ));
@@ -702,10 +704,6 @@ impl Runtime {
             }
 
             Request::ConnectPeer(addr) => {
-                if self.node_secrets.is_none() {
-                    return self.get_secret(senders, Some(RuntimeContext::ConnectPeer(addr)));
-                }
-
                 info!(
                     "{} to remote peer {}",
                     "Connecting".promo(),
@@ -740,16 +738,6 @@ impl Runtime {
             //     ));
             // }
             Request::MakeOffer(request::ProtoPublicOffer { offer, remote_addr }) => {
-                if self.node_secrets.is_none() {
-                    return self.get_secret(
-                        senders,
-                        Some(RuntimeContext::MakeOffer(request::ProtoPublicOffer {
-                            offer,
-                            remote_addr,
-                        })),
-                    );
-                }
-
                 if !self.listens.contains(&remote_addr) {
                     self.listens.insert(remote_addr);
                     info!(
@@ -780,7 +768,7 @@ impl Runtime {
                     notify_cli.push((Some(source.clone()), Request::Progress(msg)));
                 }
                 let peer = internet2::RemoteNodeAddr {
-                    node_id: self.node_id.unwrap(),
+                    node_id: self.node_id()?,
                     remote_addr,
                 };
                 let public_offer = offer.to_public_v1(peer);
@@ -821,8 +809,8 @@ impl Runtime {
 
             Request::TakeOffer(public_offer) => {
                 if self.node_secrets.is_none() {
-                    return self.get_secret(senders, Some(RuntimeContext::TakeOffer(public_offer)));
-                }
+                    Err(Error::Farcaster("node_secrets is none".to_string()))?
+                };
 
                 if self.making_offers.contains(&public_offer) {
                     let msg = format!(
@@ -887,7 +875,7 @@ impl Runtime {
                     let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
                                                                        // since we're takers, we are on the other side
                     let taker_role = offer.maker_role.other();
-                    let wallet_seed = self.node_secrets.as_ref().unwrap().wallet_seed;
+                    let wallet_seed = self.node_secrets()?.wallet_seed;
                     let btc_wallet = BTCWallet::new(wallet_seed);
                     let xmr_wallet = XMRWallet::new(wallet_seed);
                     match taker_role {
@@ -1011,7 +999,7 @@ impl Runtime {
                     "--port",
                     &port.to_string(),
                     "--peer-secret-key",
-                    &format!("{:x}", self.node_secrets.as_ref().unwrap().peer_private_key),
+                    &format!("{:x}", self.node_secrets()?.peer_private_key),
                 ],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
@@ -1064,13 +1052,14 @@ impl Runtime {
     ) -> Result<(), Error> {
         info!("node secrets not avaialble yet - fetching and looping back.");
         let get_secret = GetSecret(self.walletd_token.clone(), context);
-        senders.send_to(
-            ServiceBus::Ctl,
-            ServiceId::Farcasterd,
-            ServiceId::Wallet,
-            Request::GetSecret(get_secret),
-        )?;
-        return Ok(());
+        senders
+            .send_to(
+                ServiceBus::Ctl,
+                ServiceId::Farcasterd,
+                ServiceId::Wallet,
+                Request::GetSecret(get_secret),
+            )
+            .map_err(Error::from)
     }
 
     pub fn pedicide(&mut self) -> HashMap<u32, io::Result<()>> {

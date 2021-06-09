@@ -107,11 +107,11 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::GetSecret(request) => {
-                if request.0 != self.walletd_token {
+            Request::GetSecret(request::GetSecret(walletd_token, context)) => {
+                if walletd_token != self.walletd_token {
                     Err(Error::InvalidToken)?
                 }
-                let secrets = Secret(self.node_secrets.clone(), request.1);
+                let secrets = Secret(self.node_secrets.clone(), context);
                 info!("sent Secret request to farcasterd");
                 self.send_farcasterd(senders, Request::Secret(secrets))?
             }
