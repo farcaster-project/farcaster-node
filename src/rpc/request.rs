@@ -82,8 +82,24 @@ pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("runtime context")]
+pub enum RuntimeContext {
+    GetInfo,
+    ConnectPeer(NodeAddr),
+    Listen(RemoteSocketAddr),
+    MakeOffer(ProtoPublicOffer),
+    TakeOffer(PublicOffer<BtcXmr>),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("secret")]
-pub struct Secret(pub NodeSecrets);
+pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("get secret")]
+pub struct GetSecret(pub String, pub Option<RuntimeContext>);
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -175,7 +191,11 @@ pub enum Request {
 
     #[api(type = 30)]
     #[display("getsecret")]
-    GetSecret(String),
+    GetSecret(GetSecret),
+
+    #[api(type = 40)]
+    #[display("loopback")]
+    Loopback(RuntimeContext),
 
     #[api(type = 29)]
     #[display("secret")]

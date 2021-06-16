@@ -23,8 +23,7 @@ _peerd() {
 '--port=[Customize port used by lightning peer network]' \
 '-o+[Overlay peer communications through different transport protocol]: :(tcp zmq http websocket smtp)' \
 '--overlay=[Overlay peer communications through different transport protocol]: :(tcp zmq http websocket smtp)' \
-'-k+[Node key file]: :_files' \
-'--key-file=[Node key file]: :_files' \
+'--peer-secret-key=[]' \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
