@@ -510,7 +510,11 @@ impl Runtime {
 
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let swap_id = if let ServiceId::Swap(swap_id) = source {
-                    Ok(swap_id)
+                    if self.running_swaps.contains(&swap_id) {
+                        Ok(swap_id)
+                    } else {
+                        Err(Error::Farcaster("Unknown swapd".to_string()))
+                    }
                 } else {
                     Err(Error::Farcaster("Not swapd".to_string()))
                 }?;
