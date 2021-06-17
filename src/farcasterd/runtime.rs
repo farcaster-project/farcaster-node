@@ -196,7 +196,7 @@ impl Runtime {
             })) => {
                 let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)
                     .map_err(|_| {
-                        Error::Other(
+                        Error::Farcaster(
                             "The offer received on peer conection is not parsable".to_string(),
                         )
                     })?;
@@ -220,11 +220,11 @@ impl Runtime {
                         .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
                     match offer.maker_role {
                         SwapRole::Bob => {
-                            let address = bitcoin::Address::from_str(
+                            let external_address = bitcoin::Address::from_str(
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
-                            let bob = Bob::<BtcXmr>::new(address.into(), FeePolitic::Aggressive);
+                            let bob = Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
                             let wallet_seed = self.node_secrets()?.wallet_seed;
                             let btc_wallet = BTCWallet::new(wallet_seed);
                             let xmr_wallet = XMRWallet::new(wallet_seed);
@@ -259,12 +259,12 @@ impl Runtime {
                             }
                         }
                         SwapRole::Alice => {
-                            let address = bitcoin::Address::from_str(
+                            let external_address = bitcoin::Address::from_str(
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
                             let alice: Alice<BtcXmr> =
-                                Alice::new(address.into(), FeePolitic::Aggressive);
+                                Alice::new(external_address.into(), FeePolitic::Aggressive);
                             let wallet_seed = self.node_secrets()?.wallet_seed;
                             let btc_wallet = BTCWallet::new(wallet_seed);
                             let xmr_wallet = XMRWallet::new(wallet_seed);
