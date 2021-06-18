@@ -1034,13 +1034,6 @@ impl Runtime {
             )
             .map_err(Error::from)
     }
-
-    pub fn pedicide(&mut self) -> HashMap<u32, io::Result<()>> {
-        self.child_processes
-            .iter_mut()
-            .map(|child| (child.id(), child.kill()))
-            .collect()
-    }
 }
 
 fn launch_swapd(

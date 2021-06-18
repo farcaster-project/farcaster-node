@@ -30,7 +30,6 @@ fn spawn_swap() {
     let mut farcasterd = launch("../farcasterd", data_dir.clone()).unwrap();
 
     use std::{thread, time};
-    thread::sleep(time::Duration::from_secs_f32(0.5));
 
     Command::Ls
         .exec(&mut client)
@@ -54,6 +53,7 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
+    thread::sleep(time::Duration::from_secs_f32(2.0));
     let _procs: Vec<_> = System::new_all()
         .get_processes()
         .iter()
