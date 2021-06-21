@@ -34,8 +34,6 @@ use clap::Clap;
 use farcaster_node::walletd::{self, Opts};
 use farcaster_node::{Config, LogStyle};
 
-use bitcoin::hashes::hex::FromHex;
-
 fn main() {
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
@@ -48,9 +46,7 @@ fn main() {
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
     let walletd_token = opts.walletd_token.walletd_token;
-    info!("\n\n{}\n\n", walletd_token);
-    let token_bytes = Vec::from_hex(&walletd_token).unwrap();
-    info!("\n\n{:?}\n\n", token_bytes);
+    info!("received token: {}", walletd_token);
 
     let node_id = opts.key_opts.node_secrets().node_id();
 
