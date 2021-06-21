@@ -82,7 +82,6 @@ pub fn run(config: Config, walletd_token: String) -> Result<(), Error> {
         taking_swaps: none!(),
         making_offers: none!(),
         wallets: none!(),
-        child_processes: none!(),
         node_secrets: None,
         walletd_token,
     };
@@ -125,7 +124,6 @@ pub struct Runtime {
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
     wallets: HashMap<SwapId, Wallet>,
-    child_processes: Vec<process::Child>,
     node_secrets: Option<NodeSecrets>,
     walletd_token: String,
 }
@@ -919,23 +917,6 @@ impl Runtime {
                 }
             }
 
-            Request::Pedicide => {
-                let res = self.pedicide();
-                if res.values().any(|result| result.is_err()) {
-                    let msg = format!("Failed to kill some child processes: {:?}", res);
-                    notify_cli.push((
-                        Some(source.clone()),
-                        Request::Failure(Failure { code: 1, info: msg }),
-                    ));
-                } else {
-                    let msg = format!("Successfully killed all child processes: {:?}", res);
-                    notify_cli.push((
-                        Some(source.clone()),
-                        Request::Success(OptionDetails(Some(msg))),
-                    ));
-                }
-            }
-
             Request::Init(_) => {}
             Request::Error(_) => {}
             Request::Ping(_) => {}
@@ -997,7 +978,6 @@ impl Runtime {
                 ],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
-            self.child_processes.push(child);
             info!("{}", msg);
             Ok(msg)
         } else {
@@ -1033,7 +1013,6 @@ impl Runtime {
 
         self.spawning_services
             .insert(ServiceId::Peer(node_addr), source);
-        self.child_processes.push(child);
         debug!("Awaiting for peerd to connect...");
 
         Ok(msg)
@@ -1054,13 +1033,6 @@ impl Runtime {
                 Request::GetSecret(get_secret),
             )
             .map_err(Error::from)
-    }
-
-    pub fn pedicide(&mut self) -> HashMap<u32, io::Result<()>> {
-        self.child_processes
-            .iter_mut()
-            .map(|child| (child.id(), child.kill()))
-            .collect()
     }
 }
 
@@ -1084,7 +1056,6 @@ fn launch_swapd(
         ],
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
-    runtime.child_processes.push(child);
     info!("{}", msg);
 
     let list = match negotiation_role {
