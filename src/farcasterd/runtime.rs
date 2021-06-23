@@ -169,6 +169,19 @@ impl Runtime {
         self.node_id
             .ok_or_else(|| Error::Farcaster("node_id is none".to_string()))
     }
+
+    fn swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
+        if let ServiceId::Swap(swap_id) = source {
+            if self.running_swaps.contains(&swap_id) {
+                Ok(swap_id)
+            } else {
+                Err(Error::Farcaster("Unknown swapd".to_string()))
+            }
+        } else {
+            Err(Error::Farcaster("Not swapd".to_string()))
+        }
+    }
+
     fn handle_rpc_msg(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
@@ -194,7 +207,7 @@ impl Runtime {
             })) => {
                 let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)
                     .map_err(|_| {
-                        Error::Other(
+                        Error::Farcaster(
                             "The offer received on peer conection is not parsable".to_string(),
                         )
                     })?;
@@ -218,11 +231,12 @@ impl Runtime {
                         .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
                     match offer.maker_role {
                         SwapRole::Bob => {
-                            let address = bitcoin::Address::from_str(
+                            let external_address = bitcoin::Address::from_str(
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
-                            let bob = Bob::<BtcXmr>::new(address.into(), FeePolitic::Aggressive);
+                            let bob =
+                                Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
                             let wallet_seed = self.node_secrets()?.wallet_seed;
                             let btc_wallet = BTCWallet::new(wallet_seed);
                             let xmr_wallet = XMRWallet::new(wallet_seed);
@@ -257,12 +271,12 @@ impl Runtime {
                             }
                         }
                         SwapRole::Alice => {
-                            let address = bitcoin::Address::from_str(
+                            let external_address = bitcoin::Address::from_str(
                                 "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
                             )
                             .expect("Parsable address");
                             let alice: Alice<BtcXmr> =
-                                Alice::new(address.into(), FeePolitic::Aggressive);
+                                Alice::new(external_address.into(), FeePolitic::Aggressive);
                             let wallet_seed = self.node_secrets()?.wallet_seed;
                             let btc_wallet = BTCWallet::new(wallet_seed);
                             let xmr_wallet = XMRWallet::new(wallet_seed);
@@ -426,7 +440,6 @@ impl Runtime {
                     self.spawning_services.remove(&source);
                 }
             }
-
             Request::Params(params) => {
                 let swap_id = if let ServiceId::Swap(swap_id) = source {
                     Ok(swap_id)
@@ -507,11 +520,7 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
-                let swap_id = if let ServiceId::Swap(swap_id) = source {
-                    Ok(swap_id)
-                } else {
-                    Err(Error::Farcaster("Not swapd".to_string()))
-                }?;
+                let swap_id = self.swap_id(source.clone())?;
                 let core_arb_txs = core_arb_setup.into_core_transactions();
                 match self.wallets.get(&swap_id) {
                     Some(Wallet::Alice(
@@ -554,11 +563,7 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let swap_id = if let ServiceId::Swap(swap_id) = source {
-                    Ok(swap_id)
-                } else {
-                    Err(Error::Farcaster("Not swapd".to_string()))
-                }?;
+                let swap_id = self.swap_id(source.clone())?;
 
                 match self.wallets.get_mut(&swap_id) {
                     Some(Wallet::Bob(
@@ -996,8 +1001,15 @@ impl Runtime {
             )))?;
         }
         // Start peerd
-        let child = launch("peerd", &["--connect", &node_addr.to_string()]);
-
+        let child = launch(
+            "peerd",
+            &[
+                "--connect",
+                &node_addr.to_string(),
+                "--peer-secret-key",
+                &format!("{:x}", self.node_secrets()?.peer_private_key),
+            ],
+        );
         // in case it can't connect wait for it to crash
         std::thread::sleep(Duration::from_secs_f32(0.5));
 
