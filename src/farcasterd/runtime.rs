@@ -1010,6 +1010,7 @@ impl Runtime {
                 &format!("{:x}", self.node_secrets()?.peer_private_key),
             ],
         );
+
         // in case it can't connect wait for it to crash
         std::thread::sleep(Duration::from_secs_f32(0.5));
 
