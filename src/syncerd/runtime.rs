@@ -12,13 +12,19 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
+use crate::syncerd::bitcoin_syncer::Synclet;
 use amplify::Wrapper;
+use farcaster_core::syncer::Abort;
+use farcaster_core::syncer::{Syncer, Task};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::io;
 use std::net::SocketAddr;
 use std::process;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::time::{Duration, SystemTime};
 
 use bitcoin::hashes::hex::ToHex;
@@ -35,23 +41,70 @@ use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 pub fn run(config: Config) -> Result<(), Error> {
+    let syncer: Option<Box<dyn Synclet>>;
+    let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
+    match config.chain {
+        Chain::Testnet3 => {
+            syncer = Some(Box::new(BitcoinSyncer::new(rx)));
+        }
+        _ => syncer = none!(),
+    }
     let runtime = Runtime {
         identity: ServiceId::Syncer,
         chain: config.chain.clone(),
         started: SystemTime::now(),
         tasks: none!(),
-        spawning_services: none!(),
+        syncer: syncer.unwrap(),
+        tx,
     };
 
     Service::run(config, runtime, true)
 }
 
+#[test]
+fn test_zmq_msg_passing() {
+    let ctx = zmq::Context::new();
+    let receiver = ctx.socket(zmq::PAIR).unwrap();
+    receiver.connect("inproc://test").unwrap();
+    let child = std::thread::spawn(move || {
+        let sender = ctx.socket(zmq::PAIR).unwrap();
+        println!("here!");
+        sender.connect("inproc://test").unwrap();
+        println!("here!");
+        sender.send("lol", 0).unwrap();
+        println!("here!");
+    });
+    println!("here again!");
+    let msg = receiver.recv_bytes(0);
+    println!("received?: {:?}", msg);
+    child.join().unwrap();
+}
+
+#[test]
+fn test_channel_msg_passing() {
+    let (tx, rx): (Sender<i32>, Receiver<i32>) = std::sync::mpsc::channel();
+    let child = std::thread::spawn(move || {
+        tx.send(0).unwrap();
+        tx.send(1).unwrap();
+        println!("finished work!");
+    });
+    // let res = rx.try_recv().unwrap();
+    let res = rx.recv().unwrap();
+    println!("res: {:?}", res);
+    let res1 = rx.recv().unwrap();
+    println!("res1: {:?}", res1);
+    child.join().unwrap();
+}
+
 pub struct Runtime {
     identity: ServiceId,
+    syncer: Box<dyn Synclet>,
     chain: Chain,
     started: SystemTime,
     tasks: HashSet<u64>, // FIXME
-    spawning_services: HashMap<ServiceId, ServiceId>,
+    tx: Sender<Task>,
+    // spawning_services: HashMap<ServiceId, ServiceId>,
+    // senders: HashMap<SwapId, &mut esb::SenderList<ServiceBus, ServiceId>>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -70,6 +123,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
+        // self.senders = senders;
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
@@ -112,9 +166,6 @@ impl Runtime {
     ) -> Result<(), Error> {
         let mut notify_cli = None;
         match (&request, &source) {
-            (Request::CreateTask(task), ServiceId::Swap(swapid)) => {
-                self.create_task(task, swapid)?;
-            }
             (Request::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
@@ -124,6 +175,22 @@ impl Runtime {
                 );
 
             }
+            (Request::AbortTask(task), _) => {
+                self.tx.send(Task::Abort(task.clone()));
+            }
+            (Request::BroadcastTransaction(task), _) => {
+                self.tx.send(Task::BroadcastTransaction(task.clone()));
+            }
+            (Request::WatchAddressTask(task), _) => {
+                self.tx.send(Task::WatchAddress(task.clone()));
+            }
+            (Request::WatchHeightTask(task), _) => {
+                self.tx.send(Task::WatchHeight(task.clone()));
+            }
+            (Request::WatchTransactionTask(task), _) => {
+                self.tx.send(Task::WatchTransaction(task.clone()));
+            }
+
             (Request::GetInfo, _) => {
                 senders.send_to(
                     ServiceBus::Ctl,
@@ -164,10 +231,6 @@ impl Runtime {
             senders.send_to(ServiceBus::Ctl, ServiceId::Syncer, respond_to, resp)?;
         }
 
-        Ok(())
-    }
-    // TODO
-    fn create_task(&mut self, task: &u64, swapid: &SwapId) -> Result<(), Error> {
         Ok(())
     }
 }

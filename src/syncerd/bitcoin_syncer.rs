@@ -1,249 +1,309 @@
-#![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
+// #![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
 
-use std::marker::{Sized, Send};
+use crate::farcaster_core::consensus::Decodable;
+use crate::syncerd::syncer_state::AddressTx;
+use crate::syncerd::syncer_state::SyncerState;
+use crate::syncerd::syncer_state::WatchedTransaction;
+use bitcoin::hashes::hex::FromHex;
+use bitcoin::BlockHash;
+use bitcoin::Script;
+use electrum_client::raw_client::ElectrumSslStream;
+use electrum_client::raw_client::RawClient;
+use electrum_client::Hex32Bytes;
+use electrum_client::{Client, ElectrumApi};
+use farcaster_core::consensus::{self};
+use farcaster_core::syncer::Error;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;
-use std::collections::{HashSet, HashMap};
+use std::iter::FromIterator;
+use std::marker::{Send, Sized};
+use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, TryRecvError};
+use std::thread;
+use std::time::Duration;
 
-use async_trait::async_trait;
 use hex;
 
-use farcaster_core::tasks::*;
-use farcaster_core::events::*;
-use farcaster_core::interactions::syncer::Syncer;
+use farcaster_core::chain::bitcoin::tasks::BtcAddressAddendum;
+use farcaster_core::syncer::*;
 
-use farcaster_chains::bitcoin::tasks::BtcAddressAddendum;
+pub trait Rpc {
+    fn new() -> Self;
 
-fn scan_transactions(transactions: serde_json::Value, addresses: HashMap<i32, String>) -> Vec<Event> {
-    // Generate a reverse lookup of String -> i32
-    // TODO: Optimize by being passed it in the first place
-    // Do we have to maintain both or does Rust have bidirectional maps?
-    let mut reverse_lookup: HashMap<String, i32> = HashMap::new();
-    todo!();
+    fn get_height(&mut self) -> Result<u64, Error>;
 
-    let mut relevant = vec![];
-    for tx in transactions["transactions"].as_array().expect("listsinceblock didn't have the transactions array") {
-        let looked_up = reverse_lookup.get(tx["address"].as_str().expect("Address wasn't a string"));
-        if (tx["category"].as_str().expect("Category wasn't a string") != "receive") ||
-           (looked_up.is_none()) {
-            continue
-        }
+    fn send_raw_transaction(&mut self, tx: Vec<u8>) -> Result<String, electrum_client::Error>;
+}
 
-        relevant.push(Event(AddressTransaction {
-            id: looked_up.unwrap(),
-            hash: hex::decode(tx["txid"].as_str().expect("Txid wasn't a string")).expect("Txid wasn't hex"),
-            amount: tx["amount"].as_u64().expect("Received negative/non-numeric funds"),
-        }))
+pub struct ElectrumRpc {
+    client: Client,
+    height: u64,
+    block_hash: BlockHash,
+    addresses: HashMap<BtcAddressAddendum, Hex32Bytes>,
+}
+
+pub struct Block {
+    height: u64,
+    block_hash: BlockHash,
+}
+
+pub struct AddressNotif {
+    address: BtcAddressAddendum,
+    txs: Vec<AddressTx>,
+}
+
+impl ElectrumRpc {
+    pub fn ping(&mut self) -> Result<(), electrum_client::Error> {
+        Ok(self.client.ping()?)
     }
 
-    return relevant
+    pub fn subscribe_script(
+        &mut self,
+        address_addendum: BtcAddressAddendum,
+    ) -> Result<AddressNotif, Error> {
+        let data = self
+            .client
+            .script_subscribe(&bitcoin::Script::from(address_addendum.script_pubkey))
+            .unwrap();
+        self.addresses.insert(address_addendum, data.unwrap());
+        let txs: Vec<AddressTx> = vec![];
+        if let Some(digest) = data {
+            self.handle_address_notification(address_addendum, digest, txs);
+        }
+        let notif = AddressNotif {
+            address: address_addendum,
+            txs,
+        };
+        Ok(notif)
+    }
+
+    pub fn new_block_check(&mut self) -> Option<Block> {
+        let block: Option<Block> = none!();
+        loop {
+            let header = self.client.block_headers_pop();
+            match header {
+                Ok(Some(a)) => {
+                    block = Some(Block {
+                        height: a.height as u64,
+                        block_hash: a.header.block_hash(),
+                    });
+                    println!("\n\n{:?}\n\n", self.height);
+                }
+                _ => break,
+            }
+        }
+        block
+    }
+
+    // check if an address received a new transaction
+    pub fn address_change_check(&mut self) -> Vec<AddressNotif> {
+        let notifs: Vec<AddressNotif> = vec![];
+        for (address, state) in self.addresses.iter() {
+            let txs: Vec<AddressTx> = vec![];
+            loop {
+                // get pending notifications for this address/script_pubkey
+                match self
+                    .client
+                    .script_pop(&bitcoin::Script::from(address.script_pubkey))
+                {
+                    Ok(Some(digest)) => {
+                        if digest != *state {
+                            self.handle_address_notification(*address, digest, txs)
+                        }
+                    }
+                    // nothing left to process for this address - break
+                    _ => break,
+                }
+            }
+            if txs.len() > 0 {
+                notifs.push(AddressNotif {
+                    address: *address,
+                    txs,
+                })
+            }
+        }
+        notifs
+    }
+
+    fn handle_address_notification(
+        &mut self,
+        address: BtcAddressAddendum,
+        digest: Hex32Bytes,
+        txs: Vec<AddressTx>,
+    ) {
+        self.addresses.remove_entry(&address);
+        self.addresses.insert(address, digest);
+        // now that we have established _something_ has changed get the full transaction history of the address
+        let script = bitcoin::Script::from(address.script_pubkey);
+        let tx_history = self.client.script_get_history(&script).unwrap();
+        for hist in tx_history.iter() {
+            let our_amount: u64 = 0;
+            let txid = hist.tx_hash;
+            // get the full transaction to calculate our_amount
+            let tx = self.client.transaction_get(&txid).unwrap();
+            for output in tx.output.iter() {
+                if output.script_pubkey == script {
+                    our_amount += output.value
+                }
+            }
+            // if the transaction is mined, get the blockhash of the block containing it
+            let block_hash = if hist.height > 0 {
+                self.client
+                    .transaction_get_verbose(&txid)
+                    .unwrap()
+                    .blockhash
+                    .unwrap()
+                    .to_vec()
+            } else {
+                vec![]
+            };
+            txs.push(AddressTx {
+                our_amount,
+                tx_id: txid.to_vec(),
+                block_hash,
+            })
+        }
+    }
 }
 
-struct WatchedTransaction {
-    hash: Vec<u8>,
-    confirmation_bound: u16,
+impl Rpc for ElectrumRpc {
+    fn new() -> Self {
+        let client = Client::new("ssl://electrum.blockstream.info:50002").unwrap();
+        let header = client.block_headers_subscribe().unwrap();
+        println!("{:?}", header.height);
+
+        Self {
+            client,
+            addresses: none!(),
+            block_hash: header.header.block_hash(),
+            height: header.height as u64,
+        }
+    }
+
+    fn send_raw_transaction(&mut self, tx: Vec<u8>) -> Result<String, electrum_client::Error> {
+        let result = self.client.transaction_broadcast_raw(&tx)?;
+        Ok(result.to_string())
+    }
+
+    fn get_height(&mut self) -> Result<u64, Error> {
+        Ok(self.height)
+    }
 }
 
-#[async_trait]
-pub trait BitcoinRpc: Sized + Send {
-    // getblockcount
-    async fn get_height(&mut self) -> io::Result<u64>;
-
-    // getblockhash
-    async fn get_block_hash(&mut self, height: u64) -> io::Result<String>;
-
-    // importaddress
-    async fn import_address(&mut self, address: String) -> io::Result<()>;
-    
-    // listsinceblock
-    // Must ensure valid schema for transactions/lastblock
-    async fn list_since_block(&mut self, block: String, confirmations: u64) -> io::Result<serde_json::Value>;
-
-    // sendrawtransaction
-    async fn send_raw_transaction(&mut self, tx: Vec<u8>) -> io::Result<String>;
+#[test]
+fn test_electrumrpc() {
+    let mut rpc = ElectrumRpc::new();
+    rpc.new_block_check();
 }
 
-pub struct BitcoinSyncer<R: BitcoinRpc> {
-    rpc: R,
-    current_block: u64,
+pub trait Synclet {
+    fn run(&mut self);
+}
+
+pub struct BitcoinSyncer {
+    rpc: ElectrumRpc,
     current_block_hash: String,
-
-    tasks: HashMap<i32, Task>,
-    watch_height_count: u32,
-    lifetimes: HashMap<u64, HashSet<i32>>,
-    addresses: HashMap<i32, String>,
-    transactions: HashMap<i32, WatchedTransaction>,
-    events: Vec<Event>,
+    state: SyncerState,
+    rx: Receiver<Task>,
 }
 
-impl<R: BitcoinRpc> BitcoinSyncer<R> {
-    fn add_lifetime(&mut self, lifetime: u64, id: i32) -> io::Result<()> {
-        if lifetime < self.current_block {
-            Err(io::Error::new(io::ErrorKind::Other, "Lifetime has already expired"))?;
-        }
-
-        if let Some(lifetimes) = self.lifetimes.get_mut(&lifetime) {
-            lifetimes.insert(id);
-        } else {
-            let mut lifetimes = HashSet::new();
-            lifetimes.insert(id);
-            self.lifetimes.insert(lifetime, lifetimes);
-        }
-        Ok(())
-    }
-
-    fn remove_lifetime(&mut self, lifetime: u64, id: i32) {
-        if let Some(lifetimes) = self.lifetimes.get_mut(&lifetime) {
-            lifetimes.remove(&id);
-        }
-    }
-
-    fn drop_lifetimes(&mut self, lifetime: &u64) {
-        for task in self.lifetimes.remove(lifetime).unwrap().iter() {
-            self.tasks.remove(task);
-            self.addresses.remove(task);
-            self.transactions.remove(task);
+impl BitcoinSyncer {
+    pub fn new(rx: Receiver<Task>) -> Self {
+        Self {
+            rpc: ElectrumRpc::new(),
+            current_block_hash: String::new(),
+            state: SyncerState::new(),
+            rx,
         }
     }
 }
 
-#[async_trait]
-impl<R: BitcoinRpc> Syncer for BitcoinSyncer<R> {
-    async fn poll(&mut self) -> io::Result<Vec<Event>> {
-        // If we're booting...
-        if self.current_block == 0 {
-            // Get the current block
-            self.current_block = self.rpc.get_height().await?;
-            self.current_block_hash = self.rpc.get_block_hash(self.current_block).await?;
-
-            // Drop all tasks past their lifetime at boot
-            let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
-            for lifetime in lifetimes {
-                if lifetime < self.current_block {
-                    self.drop_lifetimes(&lifetime);
+impl Synclet for BitcoinSyncer {
+    fn run(&mut self) {
+        let rx = self.rx;
+        let _handle = std::thread::spawn(move || {
+            let state = SyncerState::new();
+            let rpc = ElectrumRpc::new();
+            loop {
+                match rx.try_recv() {
+                    Ok(task) => {
+                        match task {
+                            Task::Abort(task) => {
+                                state.abort(task).unwrap();
+                            }
+                            Task::BroadcastTransaction(task) => {
+                                // TODO: match error and emit event with fail code
+                                rpc.send_raw_transaction(task.tx);
+                            }
+                            Task::WatchAddress(task) => {
+                                let res = std::io::Cursor::new(task.addendum);
+                                let address_addendum =
+                                    BtcAddressAddendum::consensus_decode(&mut res).unwrap();
+                                state.watch_address(task);
+                                let address_transactions =
+                                    rpc.subscribe_script(address_addendum).unwrap();
+                                state.change_address(task.addendum, address_transactions.txs);
+                            }
+                            Task::WatchHeight(task) => {
+                                state.watch_height(task);
+                            }
+                            Task::WatchTransaction(task) => {
+                                state.watch_transaction(task);
+                            }
+                        }
+                        // added data to state, check if we received more from the channel
+                        continue;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                    Err(TryRecvError::Empty) => {
+                        // do nothing
+                    }
                 }
-            }
-        }
 
-        // Create an events vector to append to, starting with the pending events
-        let mut events: Vec<Event> = self.events;
-        self.events = vec![];
-
-        // Poll for new blocks
-        while self.current_block < self.rpc.get_height().await? {
-            // Increment the current_block to match the new height
-            self.current_block += 1;
-
-            // Emit a height_changed event
-            for _ in 0 .. self.watch_height_count {
-                events.push(Event::HeightChanged(HeightChanged {
-                    // Watch height count doesn't work out due to the unique IDs of each task
-                    id: todo!(),
-                    block: hex::decode(self.rpc.get_block_hash(self.current_block).await?).map_err(
-                        |_| io::Error::new(io::ErrorKind::Other, "Bitcoin returned a non-hex block hash")
-                    )?,
-                    height: self.current_block
-                }))
-            }
-
-            // Look for interactions with the addresses we're tracking
-            // Usage of listsinceblock is optimal for this due to BTC indexing rules
-            let transactions = self.rpc.list_since_block(self.current_block_hash, 1).await?;
-            self.current_block_hash = transactions["lastblock"].as_str().expect("listsinceblock didn't have the lastblock field").to_owned();
-            events.extend(scan_transactions(transactions, self.addresses));
-
-            // Update transaction confirmations
-            todo!();
-
-            // Drop taks whose lifetime has expired
-            self.drop_lifetimes(&self.current_block);
-        }
-
-        Ok(events)
-    }
-
-    async fn abort(&mut self, task: Abort) {
-        let mut status = 0;
-        match self.tasks.remove(&task.id) {
-            None => {},
-            Some(task) => {
-                match task {
-                    Task::Abort(_) => {},
-                    Task::WatchHeight(height) => {
-                        self.remove_lifetime(height.lifetime, height.id);
-                        self.watch_height_count -= 1;
-                    },
-                    Task::WatchAddress(address) => {
-                        self.remove_lifetime(address.lifetime, address.id);
-                        self.addresses.remove(&address.id);
-                    },
-                    Task::WatchTransaction(tx) => {
-                        self.remove_lifetime(tx.lifetime, tx.id);
-                        self.transactions.remove(&tx.id);
-                    },
-
-                    // Just set an error code as we immediately attempt to broadcast a transaction when told to
-                    Task::BroadcastTransaction(_) => {
-                        status = 1;
-                    },
+                // check if the server can still be reached
+                rpc.ping();
+                // check and process address/script_pubkey notifications
+                let notifs = rpc.address_change_check();
+                for address_transactions in notifs.iter() {
+                    let serialized_address = consensus::serialize(&address_transactions.address);
+                    state.change_address(serialized_address, address_transactions.txs);
                 }
+                // check and process new block notifications
+                let new_block = rpc.new_block_check();
+                if let Some(block_notif) = new_block {
+                    state.change_height(block_notif.height, block_notif.block_hash.to_vec());
+
+                    for (_, watched_tx) in state.transactions {
+                        let tx_id: bitcoin::Txid =
+                            bitcoin::Txid::from_hex(&hex::encode(watched_tx.hash)).unwrap();
+                        let tx = rpc.client.transaction_get_verbose(&tx_id).unwrap();
+
+                        let blockhash = match tx.blockhash {
+                            Some(bh) => Some(bh.to_vec()),
+                            None => none!(),
+                        };
+
+                        state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
+                    }
+                }
+
+                thread::sleep(std::time::Duration::from_secs(1));
             }
-        }
-
-        // Emit the task_aborted event
-        self.events.push(Event(TaskAborted {
-            id: task.id,
-            status
-        }));
+        });
     }
+}
 
-    async fn watch_height(&mut self, task: WatchHeight) {
-        // This is technically valid behavior; immediately pruning the task for being past its lifetime by never inserting it
-        if !self.add_lifetime(task.lifetime, task.id).is_ok() {
-            return;
-        }
-        self.tasks.insert(task.id, task.into());
-        self.watch_height_count += 1;
-    }
-
-    async fn watch_address(&mut self, task: WatchAddress) -> io::Result<()> {
-        let addendum = BtcAddressAddendum::deserialize(task.addendum)?;
-
-        if self.add_lifetime(task.lifetime, task.id).is_err() {
-            return Ok(());
-        };
-        self.tasks.insert(task.id, task.into());
-
-        // Add the address to our set
-        self.addresses.insert(task.id, addendum.address);
-
-        // Scan for old events to emit
-        // Uses a map of just this new address
-        let mut address_map = HashMap::new();
-        address_map.insert(task.id, addendum.address);
-        self.events.extend(scan_transactions(self.rpc.list_since_block(self.rpc.get_block_hash(addendum.from_height).await?, 0).await?, address_map));
-
-        Ok(())
-    }
-
-    async fn watch_transaction(&mut self, task: WatchTransaction) -> io::Result<()> {
-        if self.add_lifetime(task.lifetime, task.id).is_err() {
-            return Ok(());
-        };
-        self.transactions.insert(
-            task.id,
-            WatchedTransaction{
-                hash: task.hash.clone(),
-                confirmation_bound: task.confirmation_bound,
-            }
-        );
-        self.tasks.insert(task.id, task.into());
-
-        Ok(())
-    }
-
-    async fn broadcast_transaction(&mut self, task: BroadcastTransaction) -> io::Result<()> {
-        self.rpc.send_raw_transaction(task.tx).await?;
-        Ok(())
-    }
+#[test]
+pub fn syncer_state() {
+    let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
+    let syncer = BitcoinSyncer::new(rx);
+    syncer.run();
+    let task = Task::WatchHeight(WatchHeight {
+        id: 0,
+        lifetime: 0,
+        addendum: vec![],
+    });
+    tx.send(task);
+    thread::sleep(std::time::Duration::from_secs(100000000));
 }

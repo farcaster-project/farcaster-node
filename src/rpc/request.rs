@@ -14,6 +14,11 @@
 
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
+use farcaster_core::syncer::Abort;
+use farcaster_core::syncer::BroadcastTransaction;
+use farcaster_core::syncer::WatchAddress;
+use farcaster_core::syncer::WatchHeight;
+use farcaster_core::syncer::WatchTransaction;
 use internet2::addr::InetSocketAddr;
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
@@ -443,10 +448,34 @@ pub enum Request {
     // #[display("channel_funding({0})", alt = "{0:#}")]
     // #[from]
     // SwapFunding(PubkeyScript),
+    // #[api(type = 1300)]
+    // #[display("task({0})", alt = "{0:#}")]
+    // #[from]
+    // CreateTask(u64), // FIXME
     #[api(type = 1300)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
-    CreateTask(u64), // FIXME
+    AbortTask(Abort),
+
+    #[api(type = 1301)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    WatchHeightTask(WatchHeight),
+
+    #[api(type = 1302)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    WatchAddressTask(WatchAddress),
+
+    #[api(type = 1303)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    WatchTransactionTask(WatchTransaction),
+
+    #[api(type = 1304)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    BroadcastTransaction(BroadcastTransaction),
 }
 
 impl rpc_connection::Request for Request {}
