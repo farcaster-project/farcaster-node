@@ -15,7 +15,7 @@
 use std::str::FromStr;
 use std::{convert::TryFrom, time::Duration};
 
-use internet2::{NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr};
+use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
