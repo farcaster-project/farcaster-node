@@ -13,11 +13,12 @@ use microservices::shell::Exec;
 #[test]
 fn spawn_swap() {
     use farcaster_node::{cli::Opts, farcasterd::launch};
-    let data_dir = vec!["-d", "tests/.farcaster_node"];
+    let data_dir_maker = vec!["-d", "tests/.farcaster_node_0"];
+    let data_dir_taker = vec!["-d", "tests/.farcaster_node_1"];
     let mut opts = Opts::parse_from(
         vec!["swap-cli"]
             .into_iter()
-            .chain(data_dir.clone())
+            .chain(data_dir_maker.clone())
             .chain(vec!["make"]),
     );
     opts.process();
@@ -27,7 +28,8 @@ fn spawn_swap() {
     let mut client =
         Client::with(config.clone(), config.chain.clone()).expect("Error running client");
 
-    let mut farcasterd = launch("../farcasterd", data_dir.clone()).unwrap();
+    let mut farcasterd_maker = launch("../farcasterd", data_dir_maker.clone()).unwrap();
+    let mut farcasterd_taker = launch("../farcasterd", data_dir_taker.clone()).unwrap();
 
     use std::{thread, time};
 
@@ -40,10 +42,12 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
+    // set up maker
+
     opts = Opts::parse_from(
         vec!["swap-cli"]
             .into_iter()
-            .chain(data_dir.clone())
+            .chain(data_dir_maker.clone())
             .chain(vec![
                 "make", "Testnet", "Bitcoin", "Monero", "101", "100", "10", "30", "20", "Alice",
                 "0.0.0.0", "9376",
@@ -53,12 +57,30 @@ fn spawn_swap() {
         .exec(&mut client)
         .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
+    // set up taker
+
+    opts = Opts::parse_from(
+        vec!["swap-cli"]
+            .into_iter()
+            .chain(data_dir_taker.clone())
+            .chain(vec![
+                "take", "4643535741500100020000008080000080080065000000000000000800640000000000000004000a00000004001e00000001080014000000000000000102ea1d027225923b420a762ac63036adb954f2a4e0acb222dd629f25254e82079e000000000000000000000000000000000000000000000000000000000000000000000024a000",
+            ]),
+    );
+    opts.command
+        .exec(&mut client)
+        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+
+    // clean up processes
+
     thread::sleep(time::Duration::from_secs_f32(2.0));
     let _procs: Vec<_> = System::new_all()
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            process.name() == "peerd" && process.parent().unwrap() == (farcasterd.id() as i32)
+            (process.name() == "peerd" || process.name() == "swapd" || process.name() == "walletd")
+                && (process.parent().unwrap() == (farcasterd_maker.id() as i32)
+                    || process.parent().unwrap() == (farcasterd_maker.id() as i32))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
@@ -69,7 +91,12 @@ fn spawn_swap() {
         })
         .collect();
 
-    farcasterd.kill().expect("Couldn't kill farcasterd");
+    farcasterd_maker
+        .kill()
+        .expect("Couldn't kill farcasterd maker");
+    farcasterd_taker
+        .kill()
+        .expect("Couldn't kill farcasterd taker");
 
     #[cfg(feature = "integration_test")]
     {
