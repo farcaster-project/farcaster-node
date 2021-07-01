@@ -126,7 +126,6 @@ impl Exec for Command {
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success of failure of the request to cli
                 runtime.report_progress()?;
-
                 // TODO: activate when we do client side offer validation, must
                 // be activated on farcasterd as well
                 // let public_offer = runtime.response()?;

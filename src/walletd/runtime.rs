@@ -1,9 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 
-use crate::rpc::{
-    request::{self, Msg, Params, RuntimeContext},
-    Request, ServiceBus,
-};
+use crate::rpc::{Request, ServiceBus, request::{self, Keypair, Msg, Params, RuntimeContext}};
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::Senders;
@@ -506,7 +503,10 @@ impl Runtime {
                 info!("sent Secret request to farcasterd");
                 self.send_farcasterd(
                     senders,
-                    Request::PeerSecret(self.node_secrets.peerd_secret_key),
+                    Request::Keypair(Keypair(
+                        self.node_secrets.peerd_secret_key,
+                        self.node_secrets.node_id(),
+                    )),
                 )?
             }
             Request::GetNodeId => {

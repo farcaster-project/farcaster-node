@@ -22,7 +22,7 @@ use std::iter::FromIterator;
 use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
 
-use bitcoin::{OutPoint, secp256k1::{self, SecretKey}};
+use bitcoin::{OutPoint, PublicKey, secp256k1::{self, SecretKey}};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
 use farcaster_core::{blockchain::FeePolitic, bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
@@ -119,6 +119,11 @@ pub struct TakeCommit {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("keypair")]
+pub struct Keypair(pub bitcoin::secp256k1::SecretKey, pub bitcoin::secp256k1::PublicKey);
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("reveal")]
 pub enum Reveal {
     Alice(RevealAliceParameters<BtcXmr>),
@@ -211,7 +216,7 @@ pub enum Request {
 
     #[api(type = 28)]
     #[display("peer_secret")]
-    PeerSecret(SecretKey),
+    Keypair(Keypair),
 
     #[api(type = 5)]
     #[display("send_message({0})")]

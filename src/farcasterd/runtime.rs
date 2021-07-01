@@ -13,7 +13,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{rpc::request::LaunchSwap, walletd::NodeSecrets, Senders};
+use crate::{
+    rpc::request::{Keypair, LaunchSwap},
+    walletd::NodeSecrets,
+    Senders,
+};
 use amplify::Wrapper;
 use request::{Commit, Params};
 use std::convert::TryFrom;
@@ -370,9 +374,14 @@ impl Runtime {
                 let swap_id = self.swap_id(source.clone())?;
                 self.send_walletd(senders, request)?
             }
-            Request::PeerSecret(peerd_private_key) => {
-                info!("received peerd secret: \n{:?}", peerd_private_key);
-                self.peerd_secret_key = Some(peerd_private_key);
+            Request::Keypair(Keypair(sk, pk)) => {
+                info!(
+                    "received peerd keys, secret \n{:?} \n and public {:?}",
+                    sk.addr(),
+                    pk.addr()
+                );
+                self.peerd_secret_key = Some(sk);
+                self.node_id = Some(pk);
             }
             Request::GetInfo => {
                 senders.send_to(
@@ -440,6 +449,7 @@ impl Runtime {
                         ),
                         Err(ref err) => error!("{}", err.err()),
                     }
+
                     senders.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd,
@@ -508,6 +518,7 @@ impl Runtime {
                         ),
                         Err(ref err) => error!("{}", err.err()),
                     }
+
                     notify_cli.push((
                         Some(source.clone()),
                         resp.into_progress_or_failure()
@@ -647,6 +658,7 @@ impl Runtime {
             Request::CreateTask(_) => {}
             _ => unimplemented!(),
         }
+
         let mut len = 0;
         for (respond_to, resp) in notify_cli.into_iter() {
             if let Some(respond_to) = respond_to {
