@@ -22,16 +22,11 @@ use std::iter::FromIterator;
 use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
 
-use bitcoin::{secp256k1, OutPoint};
+use bitcoin::{OutPoint, PublicKey, secp256k1::{self, SecretKey}};
 use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
-use farcaster_core::{
-    blockchain::FeePolitic,
-    bundle::{
+use farcaster_core::{blockchain::FeePolitic, bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
-    },
-    negotiation::{Offer, PublicOffer},
-    protocol_message::{self, RevealAliceParameters, RevealBobParameters},
-};
+    }, negotiation::{Offer, PublicOffer}, protocol_message::{self, RevealAliceParameters, RevealBobParameters}, role::NegotiationRole};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
@@ -99,7 +94,20 @@ pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("get secret")]
-pub struct GetSecret(pub String, pub Option<RuntimeContext>);
+pub struct GetPeerSecret(pub String, pub Option<RuntimeContext>);
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("launch_swap")]
+pub struct LaunchSwap {
+    pub peerd: ServiceId,
+    pub negotiation_role: NegotiationRole,
+    pub public_offer: PublicOffer<BtcXmr>,
+    pub params: Params,
+    pub swap_id: SwapId,
+    pub commit: Option<Commit>,
+}
+
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -108,6 +116,11 @@ pub struct TakeCommit {
     pub public_offer_hex: String, // TODO: replace by public offer id
     pub swap_id: SwapId,
 }
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("keypair")]
+pub struct Keypair(pub bitcoin::secp256k1::SecretKey, pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -191,15 +204,19 @@ pub enum Request {
 
     #[api(type = 30)]
     #[display("getsecret")]
-    GetSecret(GetSecret),
+    GetPeerSecret(GetPeerSecret),
+
+    #[api(type = 29)]
+    #[display("launch_swap")]
+    LaunchSwap(LaunchSwap),
 
     #[api(type = 40)]
     #[display("loopback")]
     Loopback(RuntimeContext),
 
-    #[api(type = 29)]
-    #[display("secret")]
-    Secret(Secret),
+    #[api(type = 28)]
+    #[display("peer_secret")]
+    Keypair(Keypair),
 
     #[api(type = 5)]
     #[display("send_message({0})")]

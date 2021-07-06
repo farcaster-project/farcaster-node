@@ -233,6 +233,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    /// send messages over the bridge
     fn handle_rpc_msg(
         &mut self,
         _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
@@ -318,7 +319,7 @@ impl Runtime {
         }
         Ok(())
     }
-
+    /// receive messages arriving over the bridge
     fn handle_bridge(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,

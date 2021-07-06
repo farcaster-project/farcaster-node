@@ -82,14 +82,14 @@ use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 #[derive(StrictEncode, StrictDecode, Clone, PartialEq, Eq, Debug)]
 pub struct NodeSecrets {
     /// local node private information
-    pub peer_private_key: SecretKey,
+    pub peerd_secret_key: SecretKey,
     /// seed used for deriving addresses
     pub wallet_seed: [u8; 32],
 }
 
 impl NodeSecrets {
     pub fn node_id(&self) -> PublicKey {
-        PublicKey::from_secret_key(&Secp256k1::new(), &self.peer_private_key)
+        PublicKey::from_secret_key(&Secp256k1::new(), &self.peerd_secret_key)
     }
 }
 
@@ -133,7 +133,7 @@ impl KeyOpts {
             let peer_private_key = SecretKey::new(&mut rng);
             let wallet_seed = Self::create_seed(&mut rng);
             let node_secrets = NodeSecrets {
-                peer_private_key,
+                peerd_secret_key: peer_private_key,
                 wallet_seed,
             };
 

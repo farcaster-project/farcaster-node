@@ -15,7 +15,7 @@
 use std::str::FromStr;
 use std::{convert::TryFrom, time::Duration};
 
-use internet2::{NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, ToRemoteNodeAddr};
+use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
 use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
@@ -126,7 +126,6 @@ impl Exec for Command {
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success of failure of the request to cli
                 runtime.report_progress()?;
-
                 // TODO: activate when we do client side offer validation, must
                 // be activated on farcasterd as well
                 // let public_offer = runtime.response()?;

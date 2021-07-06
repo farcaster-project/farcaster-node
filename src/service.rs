@@ -91,7 +91,7 @@ pub enum ServiceId {
     #[from]
     Peer(NodeAddr),
 
-    #[display("channel<{0:#x}>")]
+    #[display("swap<{0:#x}>")]
     #[from]
     #[from(TempSwapId)]
     Swap(SwapId),
