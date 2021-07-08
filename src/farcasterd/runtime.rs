@@ -339,23 +339,30 @@ impl Runtime {
                 }
             }
             Request::LaunchSwap(LaunchSwap {
-                peerd,
+                peer,
                 negotiation_role,
                 public_offer,
                 params,
                 swap_id,
                 commit,
             }) => {
-                launch_swapd(
-                    self,
-                    peerd,
-                    Some(source),
-                    negotiation_role,
-                    public_offer,
-                    params,
-                    swap_id,
-                    commit,
-                )?;
+                if self.making_offers.remove(&public_offer) {
+                    trace!("{}, {}", "launching swapd with swap_id:", swap_id.amount());
+                    launch_swapd(
+                        self,
+                        peer,
+                        Some(source),
+                        negotiation_role,
+                        public_offer,
+                        params,
+                        swap_id,
+                        commit,
+                    )?;
+                } else {
+                    let msg = "unknown public_offer".to_string();
+                    error!("{}", msg);
+                    Error::Farcaster(msg);
+                }
             }
             Request::Params(_) => {
                 let swap_id = if let ServiceId::Swap(swap_id) = source {
