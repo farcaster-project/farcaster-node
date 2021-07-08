@@ -837,3 +837,11 @@ impl Runtime {
     //     signature
     // }
 }
+
+pub fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
+    if let ServiceId::Swap(swap_id) = source {
+        Ok(swap_id)
+    } else {
+        Err(Error::Farcaster("Not swapd".to_string()))
+    }
+}
