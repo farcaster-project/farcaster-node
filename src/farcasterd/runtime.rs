@@ -159,18 +159,21 @@ impl Runtime {
             .ok_or_else(|| Error::Farcaster("node_id is none".to_string()))
     }
 
-    fn swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
+    fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
+        let swap_id = Self::swap_id(source)?;
+        if self.running_swaps.contains(&swap_id) {
+            Ok(swap_id)
+        } else {
+            Err(Error::Farcaster("Unknown swapd".to_string()))
+        }
+    }
+    fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
         if let ServiceId::Swap(swap_id) = source {
-            if self.running_swaps.contains(&swap_id) {
-                Ok(swap_id)
-            } else {
-                Err(Error::Farcaster("Unknown swapd".to_string()))
-            }
+            Ok(swap_id)
         } else {
             Err(Error::Farcaster("Not swapd".to_string()))
         }
     }
-
     fn handle_rpc_msg(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
@@ -365,20 +368,16 @@ impl Runtime {
                 }
             }
             Request::Params(_) => {
-                let swap_id = if let ServiceId::Swap(swap_id) = source {
-                    Ok(swap_id)
-                } else {
-                    Err(Error::Farcaster("Unknown swap_id".to_string()))
-                }?;
+                Self::swap_id(source)?;
                 self.send_walletd(senders, request)?
             }
 
-            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
-                let swap_id = self.swap_id(source.clone())?;
+            Request::Protocol(Msg::CoreArbitratingSetup(_)) => {
+                self.known_swap_id(source.clone())?;
                 self.send_walletd(senders, request)?
             }
-            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let swap_id = self.swap_id(source.clone())?;
+            Request::Protocol(Msg::RefundProcedureSignatures(_)) => {
+                self.known_swap_id(source.clone())?;
                 self.send_walletd(senders, request)?
             }
             Request::Keypair(Keypair(sk, pk)) => {
