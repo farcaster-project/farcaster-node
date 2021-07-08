@@ -500,7 +500,7 @@ impl Runtime {
                 if self.local_role != SwapRole::Alice {
                     Err(Error::Farcaster("Wrong role".to_string()))?
                 }
-                if self.remote_params.is_some() // must have received params before
+                if self.remote_params.is_none() // must have received params before
                     && self.local_state != State::Alice(AliceState::RevealA)
                 {
                     Err(Error::Farcaster("Wrong state".to_string()))?
