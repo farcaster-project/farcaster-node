@@ -40,10 +40,10 @@ required-features = ["server"]
 
 [dependencies]
 # Farcaster crates
-farcaster_core = { path = "../core/core"}
-farcaster_chains = { path = "../core/chains"}
-# farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", rev = "7ccfe1bcd1eb1961a2f678e640b0ebc8ce215ab4" }
-# farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", rev = "7ccfe1bcd1eb1961a2f678e640b0ebc8ce215ab4" }
+# farcaster_core = { path = "../core/core"}
+# farcaster_chains = { path = "../core/chains"}
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
+farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
 
 # LNP/BP crates
 amplify = "3"
@@ -85,10 +85,10 @@ shellexpand = { version = "2", optional = true }
 zmq = "0.9"
 
 [build-dependencies]
-farcaster_core = { path = "../core/core"}
-farcaster_chains = { path = "../core/chains"}
-# farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", rev = "7ccfe1bcd1eb1961a2f678e640b0ebc8ce215ab4" }
-# farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", rev = "7ccfe1bcd1eb1961a2f678e640b0ebc8ce215ab4" }
+# farcaster_core = { path = "../core/core"}
+# farcaster_chains = { path = "../core/chains"}
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
+farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
 amplify = "3"
 amplify_derive = "2.4.3"
 lnpbp = { version = "0.4", features = ["all"] }
