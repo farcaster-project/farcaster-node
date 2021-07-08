@@ -22,3 +22,4 @@ pub(self) mod storage;
 pub use opts::Opts;
 pub use runtime::run;
 pub use runtime::State;
+pub use runtime::swap_id;

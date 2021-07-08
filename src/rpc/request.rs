@@ -100,7 +100,7 @@ pub struct GetPeerSecret(pub String, pub Option<RuntimeContext>);
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("launch_swap")]
 pub struct LaunchSwap {
-    pub peerd: ServiceId,
+    pub peer: ServiceId,
     pub negotiation_role: NegotiationRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub params: Params,

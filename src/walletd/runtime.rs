@@ -1,6 +1,10 @@
 use std::{collections::HashMap, str::FromStr};
 
-use crate::rpc::{Request, ServiceBus, request::{self, Keypair, Msg, Params, RuntimeContext}};
+use crate::rpc::{
+    request::{self, Keypair, Msg, Params, RuntimeContext},
+    Request, ServiceBus,
+};
+use crate::swapd::swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::Senders;
@@ -117,14 +121,6 @@ impl Runtime {
         Ok(())
     }
 
-    fn swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
-        if let ServiceId::Swap(swap_id) = source {
-            Ok(swap_id)
-        } else {
-            Err(Error::Farcaster("Not swapd".to_string()))
-        }
-    }
-
     fn handle_rpc_msg(
         &mut self,
         senders: &mut Senders,
@@ -189,21 +185,20 @@ impl Runtime {
                                 ),
                             );
                             let launch_swap = LaunchSwap {
-                                peerd: peer.into(),
+                                peer: peer.into(),
                                 negotiation_role: NegotiationRole::Maker,
                                 public_offer,
                                 params: Params::Bob(params),
                                 swap_id,
                                 commit: Some(commit),
                             };
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                source,
+                            self.send_ctl(
+                                senders,
                                 ServiceId::Farcasterd,
                                 Request::LaunchSwap(launch_swap),
-                            )?;
+                            )
                         } else {
-                            Err(Error::Farcaster("Wallet already existed".to_string()))?
+                            Err(Error::Farcaster("Wallet already existed".to_string()))
                         }
                     }
                     SwapRole::Alice => {
@@ -231,25 +226,24 @@ impl Runtime {
                                 ),
                             );
                             let launch_swap = LaunchSwap {
-                                peerd: peer.into(),
+                                peer: peer.into(),
                                 negotiation_role: NegotiationRole::Maker,
                                 public_offer,
                                 params: Params::Alice(params),
                                 swap_id,
                                 commit: Some(commit),
                             };
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                source,
+                            self.send_ctl(
+                                senders,
                                 ServiceId::Farcasterd,
                                 Request::LaunchSwap(launch_swap),
-                            )?;
+                            )
                         } else {
                             error!("Wallet already existed");
-                            Err(Error::Farcaster("Wallet already existed".to_string()))?
+                            Err(Error::Farcaster("Wallet already existed".to_string()))
                         }
                     }
-                };
+                }?
             }
             _ => {
                 error!("MSG RPC can only be used for farwarding LNPBP messages")
@@ -265,8 +259,19 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
+            Request::Params(remote_params) => {
+                // FIXME
+                let swap_id = swap_id(source.clone())?;
+                match self.wallets.get_mut(&swap_id) {
+                    None => {
+                        trace!("unkwnown wallet, creating it")
+                    }
+                    Some(Wallet::Bob(..)) => {}
+                    Some(Wallet::Alice(..)) => {}
+                };
+            }
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let swap_id = self.swap_id(source.clone())?;
+                let swap_id = swap_id(source.clone())?;
 
                 match self.wallets.get_mut(&swap_id) {
                     Some(Wallet::Bob(
@@ -299,7 +304,7 @@ impl Runtime {
                         let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
                         senders.send_to(
                             ServiceBus::Ctl,
-                            ServiceId::Farcasterd,
+                            self.identity(),
                             source, // destination swapd
                             Request::Protocol(buy_proc_sig),
                         )?
@@ -308,7 +313,7 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
-                let swap_id = self.swap_id(source.clone())?;
+                let swap_id = swap_id(source.clone())?;
                 let core_arb_txs = core_arb_setup.into_core_transactions();
                 match self.wallets.get(&swap_id) {
                     Some(Wallet::Alice(
@@ -377,7 +382,7 @@ impl Runtime {
                             bob.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
 
                         let launch_swap = LaunchSwap {
-                            peerd: peer.into(),
+                            peer: peer.into(),
                             negotiation_role: NegotiationRole::Taker,
                             public_offer,
                             params: Params::Bob(params),
@@ -402,7 +407,7 @@ impl Runtime {
                             alice.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
 
                         let launch_swap = LaunchSwap {
-                            peerd: peer.into(),
+                            peer: peer.into(),
                             negotiation_role: NegotiationRole::Taker,
                             public_offer,
                             params: Params::Alice(params),
