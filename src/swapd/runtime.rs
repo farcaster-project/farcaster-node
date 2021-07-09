@@ -422,7 +422,7 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment = self.take_swap(senders, params).map_err(|err| {
+                let commitment = self.taker_commit(senders, params).map_err(|err| {
                     self.report_failure_to(
                         senders,
                         &report_to,
@@ -461,7 +461,7 @@ impl Runtime {
                     self.maker_peer = Some(addr.clone());
                 }
                 let local_commit =
-                    self.make_swap(senders, &peerd, swap_id, params)
+                    self.maker_commit(senders, &peerd, swap_id, params)
                         .map_err(|err| {
                             self.report_failure_to(
                                 senders,
@@ -515,6 +515,7 @@ impl Runtime {
                     error!("Wrong role");
                     Err(Error::Farcaster("Wrong role".to_string()))?
                 }
+                // FIXME validate state?
                 trace!("sending peer BuyProcedureSignature msg");
                 self.send_peer(senders, BuyProcedureSignature(buy_proc_sig))?;
                 self.local_state = State::Bob(BobState::BuyProcSigB);
@@ -579,7 +580,7 @@ impl Runtime {
 }
 
 impl Runtime {
-    pub fn take_swap(
+    pub fn taker_commit(
         &mut self,
         senders: &mut Senders,
         params: Params,
@@ -608,7 +609,7 @@ impl Runtime {
         Ok(commitment)
     }
 
-    pub fn make_swap(
+    pub fn maker_commit(
         &mut self,
         senders: &mut Senders,
         peerd: &ServiceId,
