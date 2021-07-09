@@ -259,17 +259,6 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Params(remote_params) => {
-                // FIXME
-                let swap_id = swap_id(source.clone())?;
-                match self.wallets.get_mut(&swap_id) {
-                    None => {
-                        trace!("unkwnown wallet, creating it")
-                    }
-                    Some(Wallet::Bob(..)) => {}
-                    Some(Wallet::Alice(..)) => {}
-                };
-            }
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 let swap_id = swap_id(source.clone())?;
 
