@@ -25,7 +25,7 @@ use farcaster_core::{
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 use microservices::esb::{self, Handler};
-use request::{LaunchSwap, NodeId, Secret};
+use request::{LaunchSwap, NodeId};
 
 pub fn run(
     config: Config,
@@ -490,7 +490,7 @@ impl Runtime {
                     },
                 }
             }
-            Request::GetPeerSecret(request::GetPeerSecret(walletd_token, context)) => {
+            Request::PeerSecret(request::PeerSecret(walletd_token, context)) => {
                 if walletd_token != self.walletd_token {
                     Err(Error::InvalidToken)?
                 }

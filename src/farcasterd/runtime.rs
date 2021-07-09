@@ -39,7 +39,7 @@ use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
 use crate::rpc::request::{
-    GetPeerSecret, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, RuntimeContext,
+    PeerSecret, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, RuntimeContext,
 };
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
@@ -745,14 +745,14 @@ impl Runtime {
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
         context: Option<RuntimeContext>,
     ) -> Result<(), Error> {
-        info!("node secrets not avaialble yet - fetching and looping back.");
-        let get_secret = GetPeerSecret(self.walletd_token.clone(), context);
+        info!("node secrets not available yet - fetching and looping back.");
+        let get_secret = PeerSecret(self.walletd_token.clone(), context);
         senders
             .send_to(
                 ServiceBus::Ctl,
                 ServiceId::Farcasterd,
                 ServiceId::Wallet,
-                Request::GetPeerSecret(get_secret),
+                Request::PeerSecret(get_secret),
             )
             .map_err(Error::from)
     }

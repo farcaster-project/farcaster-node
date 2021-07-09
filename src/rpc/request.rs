@@ -94,7 +94,7 @@ pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("get secret")]
-pub struct GetPeerSecret(pub String, pub Option<RuntimeContext>);
+pub struct PeerSecret(pub String, pub Option<RuntimeContext>);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -204,7 +204,7 @@ pub enum Request {
 
     #[api(type = 30)]
     #[display("getsecret")]
-    GetPeerSecret(GetPeerSecret),
+    PeerSecret(PeerSecret),
 
     #[api(type = 29)]
     #[display("launch_swap")]
