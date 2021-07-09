@@ -13,11 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{
-    rpc::request::{Keypair, LaunchSwap},
-    walletd::NodeSecrets,
-    Senders,
-};
+use crate::{Senders, rpc::request::{Keypair, LaunchSwap}, swapd::swap_id, walletd::NodeSecrets};
 use amplify::Wrapper;
 use request::{Commit, Params};
 use std::convert::TryFrom;
@@ -160,18 +156,11 @@ impl Runtime {
     }
 
     fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
-        let swap_id = Self::swap_id(source)?;
+        let swap_id = swap_id(source)?;
         if self.running_swaps.contains(&swap_id) {
             Ok(swap_id)
         } else {
             Err(Error::Farcaster("Unknown swapd".to_string()))
-        }
-    }
-    fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
-        if let ServiceId::Swap(swap_id) = source {
-            Ok(swap_id)
-        } else {
-            Err(Error::Farcaster("Not swapd".to_string()))
         }
     }
     fn handle_rpc_msg(
@@ -368,7 +357,7 @@ impl Runtime {
                 }
             }
             Request::Params(_) => {
-                Self::swap_id(source)?;
+                swap_id(source)?;
                 self.send_walletd(senders, request)?
             }
 
