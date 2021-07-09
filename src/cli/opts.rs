@@ -20,12 +20,10 @@ use std::str::FromStr;
 use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 
-use farcaster_chains::{
-    bitcoin::{Amount, Bitcoin, CSVTimelock},
-    monero::Monero,
-    pairs::btcxmr::BtcXmr,
-};
 use farcaster_core::{
+    chain::bitcoin::{Bitcoin, timelock::CSVTimelock, fee::SatPerVByte},
+    chain::monero::Monero,
+    chain::pairs::btcxmr::BtcXmr,
     blockchain::{FeeStrategy, Network},
     negotiation::PublicOffer,
     role::SwapRole,
@@ -123,11 +121,11 @@ pub enum Command {
 
         /// Amount of arbitrating assets to exchanged
         #[clap(default_value = "100")]
-        arbitrating_amount: Amount,
+        arbitrating_amount: bitcoin::Amount,
 
         /// Amount of accordant assets to exchanged
         #[clap(default_value = "100")]
-        accordant_amount: u64,
+        accordant_amount: monero::Amount,
 
         /// The cancel timelock parameter of the arbitrating blockchain
         #[clap(default_value = "10")]
@@ -139,7 +137,7 @@ pub enum Command {
 
         /// The chosen fee strategy for the arbitrating transactions
         #[clap(default_value = "20")]
-        fee_strategy: FeeStrategy<farcaster_chains::bitcoin::fee::SatPerVByte>,
+        fee_strategy: FeeStrategy<SatPerVByte>,
 
         /// The future maker swap role
         #[clap(default_value = "Alice", possible_values = &["Alice", "Bob"])]

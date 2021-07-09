@@ -27,11 +27,15 @@ use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
+
 use farcaster_core::{
+    chain::bitcoin::{fee::SatPerVByte, Bitcoin, timelock::CSVTimelock},
+    chain::monero::Monero,
+    chain::pairs::btcxmr::{Wallet as CoreWallet, BtcXmr},
     blockchain::{self, FeeStrategy},
     negotiation::{Offer, PublicOffer},
-    protocol_message::CoreArbitratingSetup,
-    role::{Arbitrating, NegotiationRole, SwapRole},
+    protocol_message::{CoreArbitratingSetup, CommitAliceParameters, CommitBobParameters},
+    role::{Arbitrating, TradeRole, SwapRole},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -50,7 +54,7 @@ pub fn run(
     swap_id: SwapId,
     chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
-    negotiation_role: NegotiationRole,
+    negotiation_role: TradeRole,
 ) -> Result<(), Error> {
     let Offer {
         network,
@@ -66,8 +70,8 @@ pub fn run(
 
     // alice or bob
     let local_role = match negotiation_role {
-        NegotiationRole::Maker => maker_role,
-        NegotiationRole::Taker => maker_role.other(),
+        TradeRole::Maker => maker_role,
+        TradeRole::Taker => maker_role.other(),
     };
 
     let init_state = |&role| match role {
@@ -127,8 +131,8 @@ pub struct Runtime {
     commit_remote: Option<Commit>,
     commit_local: Option<Commit>,
     local_role: SwapRole,
-    accordant_amount: u64,
-    arbitrating_amount: Amount,
+    accordant_amount: monero::Amount,
+    arbitrating_amount: bitcoin::Amount,
     cancel_timelock: CSVTimelock,
     punish_timelock: CSVTimelock,
     fee_strategy: FeeStrategy<SatPerVByte>,
@@ -140,12 +144,6 @@ pub struct Runtime {
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
-
-use farcaster_chains::{
-    bitcoin::{fee::SatPerVByte, Amount, Bitcoin, CSVTimelock},
-    monero::Monero,
-    pairs::btcxmr::BtcXmr,
-};
 
 #[derive(Eq, PartialEq)]
 pub enum AliceState {
@@ -249,7 +247,13 @@ impl Runtime {
                         trace!("received commitment from counterparty, can now reveal");
                         self.commit_remote = Some(commit.clone());
                         if let Some(local_params) = &self.local_params {
-                            let reveal: Reveal = local_params.clone().try_into()?;
+                            let reveal: Reveal = self
+                                .local_params
+                                .clone()
+                                .map(Into::into)
+                                .ok_or_else(|| {
+                                    Error::Farcaster("Failed to construct Reveal".to_string())
+                                })?;
                             self.send_peer(senders, Msg::Reveal(reveal))?
                         } else {
                             Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
@@ -265,6 +269,7 @@ impl Runtime {
                         if self.remote_params.is_some() {
                             Err(Error::Farcaster("remote_params already set".to_string()))?
                         }
+
                         let next_state = match self.state {
                             State::Alice(AliceState::CommitA) => {
                                 Ok(State::Alice(AliceState::RevealA))
@@ -280,10 +285,12 @@ impl Runtime {
                             )),
                         }?;
 
+                        let core_wallet = CoreWallet::new_keyless();
                         let remote_params = match role {
                             Reveal::Alice(reveal) => match &self.commit_remote {
                                 Some(Commit::Alice(commit)) => {
-                                    Params::Alice(commit.verify_then_bundle(&reveal)?)
+                                    commit.verify_with_reveal(&core_wallet, reveal.clone())?;
+                                    Params::Alice(reveal.clone().into())
                                 }
                                 _ => {
                                     let err_msg = "expected Some(Commit::Alice(commit))";
@@ -293,7 +300,8 @@ impl Runtime {
                             },
                             Reveal::Bob(reveal) => match &self.commit_remote {
                                 Some(Commit::Bob(commit)) => {
-                                    Params::Bob(commit.verify_then_bundle(&reveal)?)
+                                    commit.verify_with_reveal(&core_wallet, reveal.clone())?;
+                                    Params::Bob(reveal.clone().into())
                                 }
                                 _ => {
                                     let err_msg = "expected Some(Commit::Bob(commit))";
@@ -312,7 +320,7 @@ impl Runtime {
                             || self.state == State::Bob(BobState::CommitB)
                         {
                             if let Some(local_params) = &self.local_params {
-                                let reveal: Reveal = local_params.clone().try_into()?;
+                                let reveal: Reveal = local_params.clone().into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?
                             } else {
                                 // maybe should not fail here because of the
@@ -620,9 +628,14 @@ impl Runtime {
             self.swap_id().promoter()
         );
         info!("{}", &msg);
+        let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
-            Params::Bob(params) => request::Commit::Bob(params.into()),
-            Params::Alice(params) => request::Commit::Alice(params.into()),
+            Params::Bob(params) => request::Commit::Bob(
+                CommitBobParameters::commit_to_bundle(&core_wallet, params)
+                ),
+            Params::Alice(params) => request::Commit::Alice(
+                CommitAliceParameters::commit_to_bundle(&core_wallet, params)
+                ),
         };
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
@@ -661,9 +674,14 @@ impl Runtime {
         // self.params = payment::channel::Params::with(channel_req)?;
         // self.remote_keys = payment::channel::Keyset::from(channel_req);
 
+        let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
-            Params::Bob(params) => request::Commit::Bob(params.into()),
-            Params::Alice(params) => request::Commit::Alice(params.into()),
+            Params::Bob(params) => request::Commit::Bob(
+                CommitBobParameters::commit_to_bundle(&core_wallet, params)
+                ),
+            Params::Alice(params) => request::Commit::Alice(
+                CommitAliceParameters::commit_to_bundle(&core_wallet, params)
+                ),
         };
         // let accept_channel = message::AcceptChannel {
         //     temporary_channel_id: channel_req.temporary_channel_id,

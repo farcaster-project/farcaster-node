@@ -7,17 +7,16 @@ use crate::LogStyle;
 use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
 use bitcoin::secp256k1;
-use farcaster_chains::{
-    bitcoin::{Bitcoin, Wallet as BTCWallet},
-    monero::{Monero, Wallet as XMRWallet},
-    pairs::btcxmr::BtcXmr,
-};
 use farcaster_core::{
+    chain::bitcoin::{Bitcoin, transaction::Funding},
+    chain::monero::{Monero},
+    chain::pairs::btcxmr::{Wallet as CoreWallet, BtcXmr},
     blockchain::FeePolitic,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
     negotiation::PublicOffer,
     protocol_message::{BuyProcedureSignature, CoreArbitratingSetup, RefundProcedureSignatures},
-    role::{Alice, Bob, NegotiationRole, SwapRole},
+    role::{Alice, Bob, TradeRole, SwapRole},
+    transaction::Fundable,
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
@@ -55,16 +54,14 @@ pub enum Wallet {
     Alice(
         Alice<BtcXmr>,
         AliceParameters<BtcXmr>,
-        BTCWallet,
-        XMRWallet,
+        CoreWallet,
         PublicOffer<BtcXmr>,
         Option<BobParameters<BtcXmr>>,
     ),
     Bob(
         Bob<BtcXmr>,
         BobParameters<BtcXmr>,
-        BTCWallet,
-        XMRWallet,
+        CoreWallet,
         PublicOffer<BtcXmr>,
         Option<FundingTransaction<Bitcoin>>,
         Option<AliceParameters<BtcXmr>>,
@@ -165,18 +162,16 @@ impl Runtime {
                         let bob =
                             Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let btc_wallet = BTCWallet::new(wallet_seed);
-                        let xmr_wallet = XMRWallet::new(wallet_seed);
+                        let core_wallet = CoreWallet::new(wallet_seed);
                         let params =
-                            bob.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
+                            bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Bob(
                                     bob,
                                     params.clone(),
-                                    btc_wallet,
-                                    xmr_wallet,
+                                    core_wallet,
                                     public_offer.clone(),
                                     None,
                                     None,
@@ -185,13 +180,13 @@ impl Runtime {
                             );
                             let launch_swap = LaunchSwap {
                                 peer: peer.into(),
-                                negotiation_role: NegotiationRole::Maker,
+                                trade_role: TradeRole::Maker,
                                 public_offer,
                                 params: Params::Bob(params.clone()),
                                 swap_id,
                                 commit: Some(commit),
                             };
-                            let reveal: Reveal = Params::Bob(params).try_into()?;
+                            let reveal: Reveal = Params::Bob(params).into();
                             self.swaps.insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
                                 senders,
@@ -210,25 +205,23 @@ impl Runtime {
                         let alice: Alice<BtcXmr> =
                             Alice::new(external_address.into(), FeePolitic::Aggressive);
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let btc_wallet = BTCWallet::new(wallet_seed);
-                        let xmr_wallet = XMRWallet::new(wallet_seed);
+                        let core_wallet = CoreWallet::new(wallet_seed);
                         let params =
-                            alice.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
+                            alice.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Alice(
                                     alice,
                                     params.clone(),
-                                    btc_wallet,
-                                    xmr_wallet,
+                                    core_wallet,
                                     public_offer.clone(),
                                     None,
                                 ),
                             );
                             let launch_swap = LaunchSwap {
                                 peer: peer.into(),
-                                negotiation_role: NegotiationRole::Maker,
+                                trade_role: TradeRole::Maker,
                                 public_offer,
                                 params: Params::Alice(params),
                                 swap_id,
@@ -256,8 +249,7 @@ impl Runtime {
                             Some(Wallet::Bob(
                                 bob,
                                 bob_params,
-                                btc_wallet,
-                                xmr_wallet,
+                                core_wallet,
                                 public_offer,
                                 // TODO: set funding_bundle somewhere, its now
                                 // actually None, so will never hit this.
@@ -275,22 +267,34 @@ impl Runtime {
                                 if core_arb_txs.is_some() {
                                     Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
                                 }
+                                // FIXME
+                                let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
+                                let (_, pubkey) = (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
+                                let pubkey = bitcoin::PublicKey {
+                                    compressed: true,
+                                    key: pubkey,
+                                };
+                                let mut funding = Funding::initialize(
+                                    pubkey,
+                                    farcaster_core::blockchain::Network::Mainnet
+                                ).map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
+                                funding.update(funding_bundle.funding.clone());
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
                                     &params,
                                     bob_params,
-                                    &funding_bundle,
+                                    funding,
                                     public_offer,
                                 )?;
                                 *core_arb_txs = Some(core_arbitrating_txs.clone());
                                 let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
-                                    &btc_wallet,
+                                    core_wallet,
                                     bob_params,
                                     &core_arbitrating_txs,
                                 )?;
-                                let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
-                                    &core_arbitrating_txs,
-                                    &cosign_arbitrating_cancel,
-                                )?;
+                                let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from((
+                                    core_arbitrating_txs,
+                                    cosign_arbitrating_cancel,
+                                ));
                                 let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
                                 self.send_ctl(senders, source, Request::Protocol(core_arb_setup))?;
                             }
@@ -305,7 +309,6 @@ impl Runtime {
                         Some(Wallet::Alice(
                             _alice,
                             _alice_params,
-                            _,
                             _,
                             _public_offer,
                             bob_params,
@@ -323,8 +326,7 @@ impl Runtime {
                     Some(Wallet::Bob(
                         bob,
                         bob_params,
-                        btc_wallet,
-                        _xmr_wallet,
+                        core_wallet,
                         public_offer,
                         Some(_funding_tx),
                         Some(alice_params),
@@ -332,21 +334,20 @@ impl Runtime {
                     )) => {
                         // *refund_sigs = Some(refund_proc_sigs);
                         let signed_adaptor_buy = bob.sign_adaptor_buy(
-                            &btc_wallet,
+                            core_wallet,
                             alice_params,
                             bob_params,
                             core_arbitrating_txs,
                             public_offer,
                         )?;
                         let signed_arb_lock = bob.sign_arbitrating_lock(
-                            &btc_wallet,
-                            &btc_wallet,
+                            core_wallet,
+                            core_wallet,
                             core_arbitrating_txs,
                         )?;
 
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
-                        let buy_proc_sig =
-                            BuyProcedureSignature::<BtcXmr>::from_bundle(&signed_adaptor_buy)?;
+                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from(signed_adaptor_buy);
                         let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -387,34 +388,33 @@ impl Runtime {
             },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let swap_id = swap_id(source.clone())?;
-                let core_arb_txs = core_arb_setup.into_core_transactions();
+                let core_arb_txs = core_arb_setup.into();
                 match self.wallets.get(&swap_id) {
                     Some(Wallet::Alice(
                         alice,
                         alice_params,
-                        btc_wallet,
-                        xmr_wallet,
+                        core_wallet,
                         public_offer,
                         Some(bob_parameters),
                     )) => {
                         let signed_adaptor_refund = alice.sign_adaptor_refund(
-                            &btc_wallet,
+                            core_wallet,
                             alice_params,
                             bob_parameters,
                             &core_arb_txs,
                             public_offer,
                         )?;
                         let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
-                            &btc_wallet,
+                            core_wallet,
                             alice_params,
                             bob_parameters,
                             &core_arb_txs,
                             public_offer,
                         )?;
-                        let refund_proc_signatures = RefundProcedureSignatures::from_bundles(
-                            &cosigned_arb_cancel,
-                            &signed_adaptor_refund,
-                        )?;
+                        let refund_proc_signatures = RefundProcedureSignatures::from((
+                            cosigned_arb_cancel,
+                            signed_adaptor_refund,
+                        ));
                         let refund_proc_signatures =
                             Msg::RefundProcedureSignatures(refund_proc_signatures);
 
@@ -443,8 +443,7 @@ impl Runtime {
                 self.swaps.insert(swap_id, None);
                 let taker_role = offer.maker_role.other();
                 let wallet_seed = self.node_secrets.wallet_seed;
-                let btc_wallet = BTCWallet::new(wallet_seed);
-                let xmr_wallet = XMRWallet::new(wallet_seed);
+                let core_wallet = CoreWallet::new(wallet_seed);
                 match taker_role {
                     SwapRole::Bob => {
                         let address = bitcoin::Address::from_str(
@@ -453,11 +452,11 @@ impl Runtime {
                         .expect("Parsable address");
                         let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                         let params =
-                            bob.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
+                            bob.generate_parameters(&core_wallet, &public_offer)?;
 
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
-                            negotiation_role: NegotiationRole::Taker,
+                            trade_role: TradeRole::Taker,
                             public_offer,
                             params: Params::Bob(params),
                             swap_id,
@@ -478,11 +477,11 @@ impl Runtime {
                         let alice: Alice<BtcXmr> =
                             Alice::new(address.into(), FeePolitic::Aggressive);
                         let params =
-                            alice.generate_parameters(&btc_wallet, &xmr_wallet, &public_offer)?;
+                            alice.generate_parameters(&core_wallet, &public_offer)?;
 
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
-                            negotiation_role: NegotiationRole::Taker,
+                            trade_role: TradeRole::Taker,
                             public_offer,
                             params: Params::Alice(params),
                             swap_id,

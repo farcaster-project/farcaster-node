@@ -15,8 +15,7 @@
 use clap::{AppSettings, Clap, ValueHint};
 
 use bitcoin::hashes::hex::FromHex;
-use farcaster_chains::pairs::btcxmr::BtcXmr;
-use farcaster_core::{negotiation::PublicOffer, role::NegotiationRole};
+use farcaster_core::{chain::pairs::btcxmr::BtcXmr, negotiation::PublicOffer, role::TradeRole};
 use internet2::PartialNodeAddr;
 use lnp::ChannelId as SwapId;
 use std::str::FromStr;
@@ -42,9 +41,9 @@ pub struct Opts {
     #[clap(parse(try_from_str = FromStr::from_str))]
     pub public_offer: PublicOffer<BtcXmr>,
 
-    /// Negotiation role of participant (Maker or Taker)
+    /// Trade role of participant (Maker or Taker)
     #[clap(parse(try_from_str = FromStr::from_str))]
-    pub negotiation_role: NegotiationRole,
+    pub negotiation_role: TradeRole,
 
     /// These params can be read also from the configuration file, not just
     /// Command-line args or environment variables

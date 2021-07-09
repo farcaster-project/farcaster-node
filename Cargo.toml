@@ -40,10 +40,11 @@ required-features = ["server"]
 
 [dependencies]
 # Farcaster crates
-# farcaster_core = { path = "../core/core"}
+#farcaster_core = { path = "../core"}
+#farcaster_core = { git = "https://github.com/h4sh3d/farcaster-core", branch = "keyless-wallet" }
 # farcaster_chains = { path = "../core/chains"}
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
-farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+#farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
 
 # LNP/BP crates
 amplify = "3"
@@ -58,6 +59,8 @@ internet2 = { version = "0.3.10" }
 microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 # Bitcoin
 bitcoin = "0.26"
+# Monero
+monero = "0.13"
 # Rust language
 lazy_static = "1.4"
 chrono = "0.4"
@@ -85,15 +88,19 @@ shellexpand = { version = "2", optional = true }
 zmq = "0.9"
 
 [build-dependencies]
-# farcaster_core = { path = "../core/core"}
+#farcaster_core = { path = "../core"}
+#farcaster_core = { git = "https://github.com/h4sh3d/farcaster-core", branch = "keyless-wallet" }
 # farcaster_chains = { path = "../core/chains"}
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
-farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+# farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
 amplify = "3"
 amplify_derive = "2.4.3"
 lnpbp = { version = "0.4", features = ["all"] }
 lightning_encoding = "0.4.0-beta.1"
+# Bitcoin
 bitcoin = "0.26"
+# Monero
+monero = "0.13"
 lnp-core =  "0.3"
 # internet2 = { path = "../alt/rust-internet2" }
 # microservices = { path = "../alt/rust-internet2/microservices", default-features = false, features = ["peer"] } 

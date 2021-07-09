@@ -23,10 +23,18 @@ use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
 
 use bitcoin::{OutPoint, PublicKey, secp256k1::{self, SecretKey}};
-use farcaster_chains::{bitcoin::Bitcoin, monero::Monero, pairs::btcxmr::BtcXmr};
-use farcaster_core::{blockchain::FeePolitic, bundle::{
+use farcaster_core::{
+    chain::bitcoin::Bitcoin,
+    chain::monero::Monero,
+    chain::pairs::btcxmr::BtcXmr,
+    blockchain::FeePolitic,
+    bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
-    }, negotiation::{Offer, PublicOffer}, protocol_message::{self, RevealAliceParameters, RevealBobParameters}, role::NegotiationRole};
+    },
+    negotiation::{Offer, PublicOffer}, protocol_message::{self, RevealAliceParameters, RevealBobParameters},
+    protocol_message::{CommitAliceParameters, CommitBobParameters},
+    role::TradeRole
+};
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
@@ -35,6 +43,7 @@ use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
+
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
@@ -101,7 +110,7 @@ pub struct PeerSecret(pub String, pub Option<RuntimeContext>);
 #[display("launch_swap")]
 pub struct LaunchSwap {
     pub peer: ServiceId,
-    pub negotiation_role: NegotiationRole,
+    pub trade_role: TradeRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub params: Params,
     pub swap_id: SwapId,
@@ -348,9 +357,6 @@ pub enum Request {
 
 impl rpc_connection::Request for Request {}
 
-use farcaster_core::protocol_message::{CommitAliceParameters, CommitBobParameters};
-// use farcaster_chains::pairs::btcxmr::BtcXmr;
-
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{peerd}, {swap_id}")]
@@ -580,34 +586,14 @@ impl IntoSuccessOrFalure for Result<(), crate::Error> {
     }
 }
 
-impl From<Params> for Commit {
-    fn from(params: Params) -> Self {
-        match params {
-            Params::Alice(params) => {
-                let params: CommitAliceParameters<BtcXmr> = params.into();
-                Commit::Alice(params)
-            }
-            Params::Bob(params) => {
-                let params: CommitBobParameters<BtcXmr> = params.into();
-                Commit::Bob(params)
-            }
-        }
-    }
-}
-
-impl TryInto<Reveal> for Params {
-    type Error = farcaster_core::Error;
-
-    fn try_into(self) -> Result<Reveal, Self::Error> {
+impl Into<Reveal> for Params {
+    fn into(self) -> Reveal {
         match self {
             Params::Alice(params) => {
-                let params: RevealAliceParameters<BtcXmr> = params.try_into()?;
-                Ok(Reveal::Alice(params))
+                Reveal::Alice(params.into())
             }
-
             Params::Bob(params) => {
-                let params: RevealBobParameters<BtcXmr> = params.try_into()?;
-                Ok(Reveal::Bob(params))
+                Reveal::Bob(params.into())
             }
         }
     }

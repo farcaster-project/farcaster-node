@@ -44,25 +44,19 @@ use crate::rpc::request::{
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
-use farcaster_chains::{
-    bitcoin::{Bitcoin, Wallet as BTCWallet},
-    monero::{Monero, Wallet as XMRWallet},
-    pairs::btcxmr::BtcXmr,
-};
 use farcaster_core::{
+    chain::pairs::btcxmr::{Wallet, BtcXmr},
     blockchain::FeePolitic,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
         SignedArbitratingLock,
     },
-    crypto::FromSeed,
-    datum::Key,
     negotiation::PublicOffer,
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
     },
-    role::{Alice, Bob, NegotiationRole, SwapRole},
+    role::{Alice, Bob, TradeRole, SwapRole},
 };
 
 use std::str::FromStr;
@@ -335,7 +329,7 @@ impl Runtime {
             }
             Request::LaunchSwap(LaunchSwap {
                 peer,
-                negotiation_role,
+                trade_role,
                 public_offer,
                 params,
                 swap_id,
@@ -347,7 +341,7 @@ impl Runtime {
                         self,
                         peer,
                         Some(source),
-                        negotiation_role,
+                        trade_role,
                         public_offer,
                         params,
                         swap_id,
@@ -765,7 +759,7 @@ fn launch_swapd(
     runtime: &mut Runtime,
     peerd: ServiceId,
     report_to: Option<ServiceId>,
-    negotiation_role: NegotiationRole,
+    trade_role: TradeRole,
     public_offer: PublicOffer<BtcXmr>,
     params: Params,
     swap_id: SwapId,
@@ -777,15 +771,15 @@ fn launch_swapd(
         &[
             swap_id.to_hex(),
             public_offer.to_string(),
-            negotiation_role.to_string(),
+            trade_role.to_string(),
         ],
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
     info!("{}", msg);
 
-    let list = match negotiation_role {
-        NegotiationRole::Taker => &mut runtime.taking_swaps,
-        NegotiationRole::Maker => &mut runtime.making_swaps,
+    let list = match trade_role {
+        TradeRole::Taker => &mut runtime.taking_swaps,
+        TradeRole::Maker => &mut runtime.making_swaps,
     };
     list.insert(
         ServiceId::Swap(swap_id),
