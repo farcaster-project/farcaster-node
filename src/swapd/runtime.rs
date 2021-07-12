@@ -44,7 +44,6 @@ use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
-use Msg::BuyProcedureSignature;
 
 pub fn run(
     config: Config,
@@ -80,7 +79,7 @@ pub fn run(
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
         chain,
-        local_state: init_state(&local_role),
+        state: init_state(&local_role),
         // remote_state: init_state(local_role.other()),
         funding_outpoint: default!(),
         maker_peer: None,
@@ -90,7 +89,7 @@ pub fn run(
         started: SystemTime::now(),
         local_params: default!(),
         remote_params: default!(),
-        is_originator: false,
+        is_maker: false,
         obscuring_factor: 0,
         accordant_amount,
         arbitrating_amount,
@@ -116,14 +115,14 @@ pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
     chain: Chain,
-    local_state: State,
+    state: State,
     // remote_state: State,
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
     local_params: Option<Params>,
     remote_params: Option<Params>,
-    is_originator: bool,
+    is_maker: bool,
     obscuring_factor: u64,
     commit_remote: Option<Commit>,
     commit_local: Option<Commit>,
@@ -245,8 +244,8 @@ impl Runtime {
         match &request {
             Request::Protocol(msg) => {
                 match &msg {
-                    // bob and alice
-                    Msg::MakerCommit(commit) | Msg::TakerCommit(TakeCommit { commit, .. }) => {
+                    Msg::MakerCommit(commit) => {
+                        // bob and alice, maker commited, now taker reveals
                         trace!("received commitment from counterparty, can now reveal");
                         self.commit_remote = Some(commit.clone());
                         if let Some(local_params) = &self.local_params {
@@ -256,20 +255,34 @@ impl Runtime {
                             Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
                         };
                     }
+                    Msg::TakerCommit(TakeCommit { commit, .. }) => {
+                        unreachable!(
+                            "msg handled by farcasterd/walletd, and indirectly here by Request::MakeSwap"
+                        )
+                    }
                     // bob and alice
                     Msg::Reveal(role) => {
                         if self.remote_params.is_some() {
                             Err(Error::Farcaster("remote_params already set".to_string()))?
                         }
+                        let next_state = match self.state {
+                            State::Alice(AliceState::CommitA) => {
+                                Ok(State::Alice(AliceState::RevealA))
+                            }
+                            State::Bob(BobState::CommitB) => Ok(State::Bob(BobState::RevealB)),
+                            State::Alice(AliceState::RevealA) => {
+                                Ok(State::Alice(AliceState::RevealA))
+                            }
+                            State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::RevealB)),
+                            _ => Err(Error::Farcaster(
+                                "Must be on Commit state (maker) or reveal state (taker)"
+                                    .to_string(),
+                            )),
+                        }?;
+
                         let remote_params = match role {
                             Reveal::Alice(reveal) => match &self.commit_remote {
                                 Some(Commit::Alice(commit)) => {
-                                    if self.local_role == SwapRole::Alice {
-                                        Err(Error::Farcaster(
-                                            "Wrong role: local role is Alice, and received message from Alice"
-                                                .to_string(),
-                                        ))?
-                                    };
                                     Params::Alice(commit.verify_then_bundle(&reveal)?)
                                 }
                                 _ => {
@@ -280,13 +293,6 @@ impl Runtime {
                             },
                             Reveal::Bob(reveal) => match &self.commit_remote {
                                 Some(Commit::Bob(commit)) => {
-                                    if self.local_role == SwapRole::Bob {
-                                        Err(Error::Farcaster(
-                                            "Wrong role: local role is Bob, and received \\
-                                             message from Bob"
-                                                .to_string(),
-                                        ))?
-                                    };
                                     Params::Bob(commit.verify_then_bundle(&reveal)?)
                                 }
                                 _ => {
@@ -315,23 +321,22 @@ impl Runtime {
                         }
                         self.state = next_state;
                     }
-                    // alice receives, bob sends from ctl
+                    // alice receives, bob sends
                     Msg::CoreArbitratingSetup(_) => {
-                        if self.local_role != SwapRole::Alice {
-                            Err(Error::Farcaster(
-                                "Wrong role: Only Alice receives CoreArbitratingSetup msg \\
-                                 through peer connection"
-                                    .to_string(),
-                            ))?
+                        if self.state != State::Alice(AliceState::RevealA) {
+                            Err(Error::Farcaster(s!(
+                                "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
+                                 through peer connection at state RevealA"
+                            )))?
                         }
                         self.send_wallet(msg_bus, senders, request.clone())?
                     }
-                    // bob receives, alice sends from ctl
+                    // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) => {
-                        if self.local_role != SwapRole::Bob {
+                        if self.state != State::Bob(BobState::CorearbB) {
                             Err(Error::Farcaster(
-                                "Wrong role: Only Bob receives RefundProcedureSignatures msg \\
-                                 through peer connection"
+                                "Wrong state: Bob receives RefundProcedureSignatures msg \\
+                                 through peer connection in state CorearbB"
                                     .to_string(),
                             ))?
                         }
@@ -339,9 +344,11 @@ impl Runtime {
                     }
                     // alice receives, bob sends
                     // ProtocolMessages::BuyProcedureSignature(_) => {}
-                    BuyProcedureSignature(_) => {
-                        if self.local_role != SwapRole::Alice {
-                            Err(Error::Farcaster("Wrong role".to_string()))?
+                    Msg::BuyProcedureSignature(_) => {
+                        if self.state == State::Alice(AliceState::RefundProcedureSignatures) {
+                            Err(Error::Farcaster(s!(
+                                "Wrong state: must be RefundProcedureSignatures"
+                            )))?
                         }
                         self.send_wallet(msg_bus, senders, request.clone())?
                     }
@@ -431,6 +438,11 @@ impl Runtime {
                         "This swapd instance is not reponsible for swap_id", swap_id
                     )
                 };
+                let next_state = match self.state {
+                    State::Bob(BobState::StartB) => Ok(State::Bob(BobState::CommitB)),
+                    State::Alice(AliceState::StartA) => Ok(State::Alice(AliceState::CommitA)),
+                    _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
+                }?;
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
                 self.local_params = Some(params.clone());
@@ -438,7 +450,7 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commitment = self.taker_commit(senders, params).map_err(|err| {
+                let commit = self.taker_commit(senders, params).map_err(|err| {
                     self.report_failure_to(
                         senders,
                         &report_to,
@@ -450,15 +462,12 @@ impl Runtime {
                 })?;
                 let public_offer_hex = self.public_offer.to_string();
                 let take_swap = TakeCommit {
-                    commit: commitment,
+                    commit,
                     public_offer_hex,
                     swap_id,
                 };
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
-                self.local_state = match self.local_role {
-                    SwapRole::Bob => State::Bob(BobState::CommitB),
-                    SwapRole::Alice => State::Alice(AliceState::CommitA),
-                };
+                self.state = next_state;
             }
 
             Request::MakeSwap(InitSwap {
@@ -471,70 +480,73 @@ impl Runtime {
                 if self.commit_remote.is_some() {
                     Err(Error::Farcaster("remote commit already set".to_string()))?
                 }
+                let next_state = match self.state {
+                    State::Bob(BobState::StartB) => Ok(State::Bob(BobState::CommitB)),
+                    State::Alice(AliceState::StartA) => Ok(State::Alice(AliceState::CommitA)),
+                    _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
+                }?;
                 self.peer_service = peerd.clone();
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let local_commit =
-                    self.maker_commit(senders, &peerd, swap_id, params)
-                        .map_err(|err| {
-                            self.report_failure_to(
-                                senders,
-                                &report_to,
-                                microservices::rpc::Failure {
-                                    code: 0, // TODO: Create error type system
-                                    info: err.to_string(),
-                                },
-                            )
-                        })?;
+
+                let local_commit = self
+                    .maker_commit(senders, &peerd, swap_id, params)
+                    .map_err(|err| {
+                        self.report_failure_to(
+                            senders,
+                            &report_to,
+                            microservices::rpc::Failure {
+                                code: 0, // TODO: Create error type system
+                                info: err.to_string(),
+                            },
+                        )
+                    })?;
 
                 trace!("setting commit_remote and commit_local msg");
                 self.commit_remote = Some(remote_commit);
                 self.commit_local = Some(local_commit.clone());
                 trace!("sending peer MakerCommit msg");
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
-                self.local_state = match self.local_role {
-                    SwapRole::Bob => State::Bob(BobState::CommitB),
-                    SwapRole::Alice => State::Alice(AliceState::CommitA),
-                };
+                self.state = next_state;
             }
 
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
-                if self.local_role != SwapRole::Bob {
-                    Err(Error::Farcaster("Wrong role".to_string()))?
-                }
-                if self.local_state != State::Bob(BobState::RevealB) {
-                    Err(Error::Farcaster("Wrong state".to_string()))?
-                }
+                let next_state = match self.state {
+                    State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::CorearbB)),
+                    _ => Err(Error::Farcaster(s!("Wrong state: must be RevealBB"))),
+                }?;
                 trace!("sending peer CoreArbitratingSetup msg");
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
-                self.local_state = State::Bob(BobState::CorearbB);
+                self.state = next_state;
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                if self.local_role != SwapRole::Alice {
-                    Err(Error::Farcaster("Wrong role".to_string()))?
-                }
-                if self.remote_params.is_none() // must have received params before
-                    && self.local_state != State::Alice(AliceState::RevealA)
-                {
-                    Err(Error::Farcaster("Wrong state".to_string()))?
+                // must have received params before
+                let next_state = match self.state {
+                    State::Alice(AliceState::RevealA) => {
+                        Ok(State::Alice(AliceState::RefundProcedureSignatures))
+                    }
+                    _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
+                }?;
+                if self.remote_params.is_none() {
+                    Err(Error::Farcaster(s!("remote_params is none")))?
                 }
                 trace!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
-                self.local_state = State::Alice(AliceState::RefundProcedureSignatures);
+                self.state = next_state;
             }
 
-            Request::Protocol(BuyProcedureSignature(buy_proc_sig)) => {
-                if self.local_role != SwapRole::Alice {
-                    error!("Wrong role");
-                    Err(Error::Farcaster("Wrong role".to_string()))?
-                }
-                // FIXME validate state?
+            Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+                let next_state = match self.state {
+                    State::Bob(BobState::CorearbB) => Ok(State::Bob(BobState::BuyProcSigB)),
+                    _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
+                }?;
+
                 trace!("sending peer BuyProcedureSignature msg");
-                self.send_peer(senders, BuyProcedureSignature(buy_proc_sig))?;
-                self.local_state = State::Bob(BobState::BuyProcSigB);
+                self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
+                self.state = next_state;
             }
             // Request::FundSwap(funding_outpoint) => {
             //     self.enquirer = source.into();
@@ -577,7 +589,7 @@ impl Runtime {
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap_or(Duration::from_secs(0))
                         .as_secs(),
-                    is_originator: self.is_originator,
+                    is_maker: self.is_maker,
                     // params: self.params, // FIXME
                     // serde::Serialize/Deserialize missing
                     local_keys: dumb!(),
@@ -617,7 +629,7 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg)?;
 
-        self.is_originator = true;
+        self.is_maker = false;
         self.local_params = Some(params);
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
@@ -645,7 +657,7 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
-        self.is_originator = false;
+        self.is_maker = true;
         // self.params = payment::channel::Params::with(channel_req)?;
         // self.remote_keys = payment::channel::Keyset::from(channel_req);
 
