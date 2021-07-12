@@ -290,6 +290,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
 
+                    // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -306,6 +307,8 @@ impl Runtime {
                          Ordering swap acceptance",
                         source
                     );
+
+                    // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
