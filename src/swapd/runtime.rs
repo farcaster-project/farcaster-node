@@ -297,7 +297,23 @@ impl Runtime {
                             },
                         };
                         self.remote_params = Some(remote_params.clone());
-                        self.send_wallet(msg_bus, senders, Request::Params(remote_params))?
+                        // self.send_peer(senders, msg)?;
+                        self.send_wallet(msg_bus, senders, Request::Params(remote_params))?;
+
+                        // if did not yet reveal, maker only. on the msg flow as
+                        // of 2021-07-13 taker reveals first
+                        if self.state == State::Alice(AliceState::CommitA)
+                            || self.state == State::Bob(BobState::CommitB)
+                        {
+                            if let Some(local_params) = &self.local_params {
+                                let reveal: Reveal = local_params.clone().try_into()?;
+                                self.send_peer(senders, Msg::Reveal(reveal))?
+                            } else {
+                                // maybe should not fail here because of the
+                                Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
+                            };
+                        }
+                        self.state = next_state;
                     }
                     // alice receives, bob sends from ctl
                     Msg::CoreArbitratingSetup(_) => {
