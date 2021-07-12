@@ -1,4 +1,7 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use crate::rpc::{
     request::{self, Keypair, Msg, Params, RuntimeContext},
@@ -39,6 +42,7 @@ pub fn run(
         node_secrets,
         node_id,
         wallets: none!(),
+        swaps: none!(),
     };
 
     Service::run(config, runtime, false)
@@ -50,6 +54,7 @@ pub struct Runtime {
     node_secrets: NodeSecrets,
     node_id: bitcoin::secp256k1::PublicKey,
     wallets: HashMap<SwapId, Wallet>,
+    swaps: HashSet<SwapId>,
 }
 
 pub enum Wallet {
@@ -245,20 +250,76 @@ impl Runtime {
                     }
                 }?
             }
-            _ => {
-                error!("MSG RPC can only be used for farwarding LNPBP messages")
-            }
-        }
-        Ok(())
-    }
+            Request::Params(params) => {
+                let swap_id = swap_id(source.clone())?;
+                match params {
+                    // getting paramaters from counterparty alice routed through
+                    // swapd, thus im bob on this swap
+                    Params::Alice(params) => {
+                        match self.wallets.get_mut(&swap_id) {
+                            Some(Wallet::Bob(
+                                bob,
+                                bob_params,
+                                btc_wallet,
+                                xmr_wallet,
+                                public_offer,
+                                // TODO: set funding_bundle somewhere, its now
+                                // actually None, so will never hit this.
+                                Some(funding_bundle),
+                                alice_params, // None
+                                core_arb_txs, // None
+                            )) => {
+                                // set wallet params
+                                if alice_params.is_some() {
+                                    Err(Error::Farcaster("Alice params already set".to_string()))?
+                                }
+                                *alice_params = Some(params.clone());
 
-    fn handle_rpc_ctl(
-        &mut self,
-        senders: &mut Senders,
-        source: ServiceId,
-        request: Request,
-    ) -> Result<(), Error> {
-        match request {
+                                // set wallet core_arb_txs
+                                if core_arb_txs.is_some() {
+                                    Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
+                                }
+                                let core_arbitrating_txs = bob.core_arbitrating_transactions(
+                                    &params,
+                                    bob_params,
+                                    &funding_bundle,
+                                    public_offer,
+                                )?;
+                                *core_arb_txs = Some(core_arbitrating_txs.clone());
+                                let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
+                                    &btc_wallet,
+                                    bob_params,
+                                    &core_arbitrating_txs,
+                                )?;
+                                let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
+                                    &core_arbitrating_txs,
+                                    &cosign_arbitrating_cancel,
+                                )?;
+                                let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
+                                self.send_ctl(senders, source, Request::Protocol(core_arb_setup))?;
+                            }
+                            _ => Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?,
+                        }
+                    }
+
+                    // getting paramaters from counterparty bob, thus im alice
+                    // on this swap
+                    Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
+                        // TODO: validation
+                        Some(Wallet::Alice(
+                            _alice,
+                            _alice_params,
+                            _,
+                            _,
+                            _public_offer,
+                            bob_params,
+                        )) => {
+                            *bob_params = Some(params);
+                        }
+                        _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
+                    },
+                }
+            }
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 let swap_id = swap_id(source.clone())?;
 
@@ -301,6 +362,21 @@ impl Runtime {
                     _ => Err(Error::Farcaster("Unknow wallet and swap_id".to_string()))?,
                 }
             }
+            _ => {
+                error!("MSG RPC can only be used for farwarding LNPBP messages")
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_rpc_ctl(
+        &mut self,
+        senders: &mut Senders,
+        source: ServiceId,
+        request: Request,
+    ) -> Result<(), Error> {
+        match request {
+
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let swap_id = swap_id(source.clone())?;
                 let core_arb_txs = core_arb_setup.into_core_transactions();
@@ -336,7 +412,7 @@ impl Runtime {
 
                         senders.send_to(
                             ServiceBus::Ctl,
-                            ServiceId::Farcasterd,
+                            self.identity(),
                             source,
                             Request::Protocol(refund_proc_signatures),
                         )?
@@ -411,84 +487,6 @@ impl Runtime {
                         )?;
                     }
                 };
-            }
-            Request::Params(params) => {
-                let swap_id = if let ServiceId::Swap(swap_id) = source {
-                    Ok(swap_id)
-                } else {
-                    Err(Error::Farcaster("Unknown swap_id".to_string()))
-                }?;
-                match params {
-                    // getting paramaters from counterparty alice routed through
-                    // swapd, thus im bob on this swap
-                    Params::Alice(params) => {
-                        match self.wallets.get_mut(&swap_id) {
-                            Some(Wallet::Bob(
-                                bob,
-                                bob_params,
-                                btc_wallet,
-                                xmr_wallet,
-                                public_offer,
-                                // TODO: set funding_bundle somewhere, its now
-                                // actually None, so will never hit this.
-                                Some(funding_bundle),
-                                alice_params, // None
-                                core_arb_txs, // None
-                            )) => {
-                                // set wallet params
-                                if alice_params.is_some() {
-                                    Err(Error::Farcaster("Alice params already set".to_string()))?
-                                }
-                                *alice_params = Some(params.clone());
-
-                                // set wallet core_arb_txs
-                                if core_arb_txs.is_some() {
-                                    Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
-                                }
-                                let core_arbitrating_txs = bob.core_arbitrating_transactions(
-                                    &params,
-                                    bob_params,
-                                    &funding_bundle,
-                                    public_offer,
-                                )?;
-                                *core_arb_txs = Some(core_arbitrating_txs.clone());
-                                let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
-                                    &btc_wallet,
-                                    bob_params,
-                                    &core_arbitrating_txs,
-                                )?;
-                                let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from_bundles(
-                                    &core_arbitrating_txs,
-                                    &cosign_arbitrating_cancel,
-                                )?;
-                                let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    ServiceId::Farcasterd, // source
-                                    source,                // destination swapd
-                                    Request::Protocol(core_arb_setup),
-                                )?
-                            }
-                            _ => Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?,
-                        }
-                    }
-
-                    // getting paramaters from counterparty bob, thus im alice
-                    // on this swap
-                    Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
-                        Some(Wallet::Alice(
-                            _alice,
-                            _alice_params,
-                            _,
-                            _,
-                            _public_offer,
-                            bob_params,
-                        )) => {
-                            *bob_params = Some(params);
-                        }
-                        _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
-                    },
-                }
             }
             Request::PeerSecret(request::PeerSecret(walletd_token, context)) => {
                 if walletd_token != self.walletd_token {
