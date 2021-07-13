@@ -1,12 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
+use std::{collections::{HashMap, HashSet}, convert::TryInto, str::FromStr};
 
-use crate::rpc::{
-    request::{self, Keypair, Msg, Params, RuntimeContext},
-    Request, ServiceBus,
-};
+use crate::rpc::{Request, ServiceBus, request::{self, Keypair, Msg, Params, Reveal, RuntimeContext}};
 use crate::swapd::swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
@@ -54,7 +48,7 @@ pub struct Runtime {
     node_secrets: NodeSecrets,
     node_id: bitcoin::secp256k1::PublicKey,
     wallets: HashMap<SwapId, Wallet>,
-    swaps: HashSet<SwapId>,
+    swaps: HashMap<SwapId, Option<Request>>,
 }
 
 pub enum Wallet {
@@ -193,10 +187,12 @@ impl Runtime {
                                 peer: peer.into(),
                                 negotiation_role: NegotiationRole::Maker,
                                 public_offer,
-                                params: Params::Bob(params),
+                                params: Params::Bob(params.clone()),
                                 swap_id,
                                 commit: Some(commit),
                             };
+                            let reveal: Reveal = Params::Bob(params).try_into()?;
+                            self.swaps.insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
                                 senders,
                                 ServiceId::Farcasterd,
@@ -376,7 +372,19 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-
+            Request::Hello => match source {
+                ServiceId::Swap(swap_id) => {
+                    if let Some(option_req) = self.swaps.get_mut(&swap_id) {
+                        trace!("know swapd, you launched it");
+                        if let Some(req) = option_req {
+                            let request = req.clone();
+                            *option_req = None;
+                            self.send_ctl(senders, source, request)?
+                        }
+                    }
+                }
+                _ => {}
+            },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let swap_id = swap_id(source.clone())?;
                 let core_arb_txs = core_arb_setup.into_core_transactions();
@@ -432,6 +440,7 @@ impl Runtime {
 
                 let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
                                                                    // since we're takers, we are on the other side
+                self.swaps.insert(swap_id, None);
                 let taker_role = offer.maker_role.other();
                 let wallet_seed = self.node_secrets.wallet_seed;
                 let btc_wallet = BTCWallet::new(wallet_seed);
