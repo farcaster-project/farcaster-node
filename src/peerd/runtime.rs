@@ -12,14 +12,14 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use std::thread::spawn;
 use std::time::{Duration, SystemTime};
 
 use amplify::Bipolar;
 use bitcoin::secp256k1::rand::{self, Rng};
 use bitcoin::secp256k1::PublicKey;
-use internet2::addr::InetSocketAddr;
+use internet2::{CreateUnmarshaller, Unmarshall, Unmarshaller, addr::InetSocketAddr};
 use internet2::{presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType, ZMQ_CONTEXT};
 use lnp::{message, Messages};
 use microservices::esb::{self, Handler};
@@ -31,7 +31,6 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceId};
-
 pub fn run(
     config: Config,
     connection: PeerConnection,
@@ -68,7 +67,8 @@ pub fn run(
             ZmqType::Rep,
         )?,
     };
-    let listener = peer::Listener::with(receiver, bridge_handler);
+    let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
+    let listener = peer::Listener::<ListenerRuntime, Msg>::with(receiver, bridge_handler, unmarshaller);
     spawn(move || listener.run_or_panic("peerd-listener"));
     // TODO: Use the handle returned by spawn to track the child process
 
@@ -112,6 +112,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
         request: Request,
     ) -> Result<(), Error> {
         // Bridge does not receive replies for now
+        trace!("BridgeHandler received reply: {}", request);
         Ok(())
     }
 
@@ -127,21 +128,22 @@ pub struct ListenerRuntime {
 }
 
 impl ListenerRuntime {
-    fn send_over_bridge(&mut self, req: Request) -> Result<(), Error> {
+    fn send_over_bridge(&mut self, req: <Unmarshaller<Msg> as Unmarshall>::Data) -> Result<(), Error> {
         debug!("Forwarding LNPWP message over BRIDGE interface to the runtime");
         self.bridge
-            .send_to(ServiceBus::Bridge, self.identity.clone(), req)?;
+            .send_to(ServiceBus::Bridge, self.identity.clone(), Request::Protocol((&*req).clone()))?;
         Ok(())
     }
 }
 
-impl peer::Handler for ListenerRuntime {
+use std::fmt::{Display, Debug};
+impl peer::Handler<Msg> for ListenerRuntime {
     type Error = crate::Error;
 
-    fn handle(&mut self, message: Messages) -> Result<(), Self::Error> {
+    fn handle(&mut self, message: <Unmarshaller<Msg> as Unmarshall>::Data) -> Result<(), Self::Error> {
         // Forwarding all received messages to the runtime
-        trace!("LNPWP message details: {:?}", message);
-        self.send_over_bridge(Request::PeerMessage(message))
+        trace!("FPWP message details: {:?}", message);
+        self.send_over_bridge(message)
     }
 
     fn handle_err(&mut self, err: Self::Error) -> Result<(), Self::Error> {
@@ -151,7 +153,8 @@ impl peer::Handler for ListenerRuntime {
                 trace!("Time to ping the remote peer");
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
-                self.send_over_bridge(Request::PingPeer)
+                //
+                self.send_over_bridge(Arc::new(Msg::Ping)) // FIXME: uncomment
             }
             // for all other error types, indicating internal errors, we
             // propagate error to the upper level
@@ -254,16 +257,16 @@ impl Runtime {
             }
             _ => {}
         }
-        match request {
-            Request::PeerMessage(message) => {
+        match request.clone() {
+            Request::Protocol(message) => {
                 // 1. Check permissions
                 // 2. Forward to the remote peer
-                debug!("Forwarding LN peer message to the remote peer");
+                debug!("Forwarding LN peer message to the remote peer, request: {}", &request.get_type());
                 self.messages_sent += 1;
                 self.sender.send_message(message)?;
             }
             _ => {
-                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                error!("MSG RPC can be only used for forwarding Protocol Messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
@@ -351,6 +354,8 @@ impl Runtime {
                 }
                 self.awaited_pong = None;
             }
+            Request::Protocol(Msg::Ping) => self.ping()?,
+
             // swap initiation message
             Request::Protocol(Msg::TakerCommit(_)) => {
                 senders.send_to(
@@ -368,70 +373,70 @@ impl Runtime {
             //         request,
             //     )?;
             // }
-            Request::PeerMessage(Messages::OpenChannel(_)) => {
-                senders.send_to(
-                    ServiceBus::Msg,
-                    self.identity(),
-                    ServiceId::Farcasterd,
-                    request,
-                )?;
-            }
+            // Request::PeerMessage(Messages::OpenChannel(_)) => {
+            //     senders.send_to(
+            //         ServiceBus::Msg,
+            //         self.identity(),
+            //         ServiceId::Farcasterd,
+            //         request,
+            //     )?;
+            // }
 
-            Request::PeerMessage(Messages::AcceptChannel(accept_channel)) => {
-                let channeld: ServiceId = accept_channel.temporary_channel_id.into();
-                self.routing.insert(channeld.clone(), channeld.clone());
-                senders.send_to(ServiceBus::Msg, self.identity(), channeld, request)?;
-            }
+            // Request::PeerMessage(Messages::AcceptChannel(accept_channel)) => {
+            //     let channeld: ServiceId = accept_channel.temporary_channel_id.into();
+            //     self.routing.insert(channeld.clone(), channeld.clone());
+            //     senders.send_to(ServiceBus::Msg, self.identity(), channeld, request)?;
+            // }
 
-            Request::PeerMessage(Messages::FundingCreated(message::FundingCreated {
-                temporary_channel_id,
-                ..
-            })) => {
-                senders.send_to(
-                    ServiceBus::Msg,
-                    self.identity(),
-                    temporary_channel_id.clone().into(),
-                    request,
-                )?;
-            }
+            // Request::PeerMessage(Messages::FundingCreated(message::FundingCreated {
+            //     temporary_channel_id,
+            //     ..
+            // })) => {
+            //     senders.send_to(
+            //         ServiceBus::Msg,
+            //         self.identity(),
+            //         temporary_channel_id.clone().into(),
+            //         request,
+            //     )?;
+            // }
 
-            Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
-                channel_id,
-                ..
-            }))
-            | Request::PeerMessage(Messages::FundingLocked(message::FundingLocked {
-                channel_id,
-                ..
-            }))
-            | Request::PeerMessage(Messages::UpdateAddHtlc(message::UpdateAddHtlc {
-                channel_id,
-                ..
-            }))
-            | Request::PeerMessage(Messages::UpdateFulfillHtlc(message::UpdateFulfillHtlc {
-                channel_id,
-                ..
-            }))
-            | Request::PeerMessage(Messages::UpdateFailHtlc(message::UpdateFailHtlc {
-                channel_id,
-                ..
-            }))
-            | Request::PeerMessage(Messages::UpdateFailMalformedHtlc(
-                message::UpdateFailMalformedHtlc { channel_id, .. },
-            )) => {
-                let channeld: ServiceId = channel_id.clone().into();
-                senders.send_to(
-                    ServiceBus::Msg,
-                    self.identity(),
-                    self.routing.get(&channeld).cloned().unwrap_or(channeld),
-                    request,
-                )?;
-            }
+            // Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
+            //     channel_id,
+            //     ..
+            // }))
+            // | Request::PeerMessage(Messages::FundingLocked(message::FundingLocked {
+            //     channel_id,
+            //     ..
+            // }))
+            // | Request::PeerMessage(Messages::UpdateAddHtlc(message::UpdateAddHtlc {
+            //     channel_id,
+            //     ..
+            // }))
+            // | Request::PeerMessage(Messages::UpdateFulfillHtlc(message::UpdateFulfillHtlc {
+            //     channel_id,
+            //     ..
+            // }))
+            // | Request::PeerMessage(Messages::UpdateFailHtlc(message::UpdateFailHtlc {
+            //     channel_id,
+            //     ..
+            // }))
+            // | Request::PeerMessage(Messages::UpdateFailMalformedHtlc(
+            //     message::UpdateFailMalformedHtlc { channel_id, .. },
+            // )) => {
+            //     let channeld: ServiceId = channel_id.clone().into();
+            //     senders.send_to(
+            //         ServiceBus::Msg,
+            //         self.identity(),
+            //         self.routing.get(&channeld).cloned().unwrap_or(channeld),
+            //         request,
+            //     )?;
+            // }
 
-            Request::PeerMessage(message) => {
-                // 1. Check permissions
-                // 2. Forward to the corresponding daemon
-                debug!("Got peer LNPWP message {}", message);
-            }
+            // Request::PeerMessage(message) => {
+            //     // 1. Check permissions
+            //     // 2. Forward to the corresponding daemon
+            //     debug!("Got peer LNPWP message {}", message);
+            // }
 
             other => {
                 error!("Request is not supported by the BRIDGE interface");
