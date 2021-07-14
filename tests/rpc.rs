@@ -80,7 +80,7 @@ fn spawn_swap() {
         .filter(|(_pid, process)| {
             (process.name() == "peerd" || process.name() == "swapd" || process.name() == "walletd")
                 && (process.parent().unwrap() == (farcasterd_maker.id() as i32)
-                    || process.parent().unwrap() == (farcasterd_maker.id() as i32))
+                    || process.parent().unwrap() == (farcasterd_taker.id() as i32))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
