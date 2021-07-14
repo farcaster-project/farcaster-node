@@ -363,6 +363,7 @@ impl Runtime {
 
                     // bob and alice
                     Msg::Abort(_) => Err(Error::Farcaster("Abort not yet supported".to_string()))?,
+                    Msg::Ping => { unreachable!("ping must remain in peerd, not arrive in swapd") },
                 }
             }
             // Request::PeerMessage(Messages::FundingCreated(funding_created))

@@ -12,6 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
+use lightning_encoding::{LightningDecode, strategies::AsStrict};
 use crate::walletd::NodeSecrets;
 use amplify::{ToYamlString, Wrapper};
 use internet2::addr::InetSocketAddr;
@@ -51,7 +53,7 @@ pub enum Msg {
     #[api(type = 28)]
     #[display("maker_commit(...)")]
     MakerCommit(Commit),
-    #[api(type = 20)]
+    #[api(type = 21)]
     #[display("taker_commit(...)")]
     TakerCommit(TakeCommit),
     #[api(type = 22)]
@@ -69,6 +71,13 @@ pub enum Msg {
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
+    #[api(type = 29)]
+    #[display("ping(...)")]
+    Ping,
+}
+
+impl lightning_encoding::Strategy for Msg {
+    type Strategy = AsStrict;
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
