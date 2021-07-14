@@ -33,9 +33,9 @@ fn spawn_swap() {
 
     use std::{thread, time};
 
-    Command::Ls
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    // Command::Ls
+    //     .exec(&mut client)
+    //     .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
 
     info!("executing command: {:?}", opts.command);
     opts.command
@@ -78,9 +78,9 @@ fn spawn_swap() {
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            (process.name() == "peerd" || process.name() == "swapd" || process.name() == "walletd")
-                && (process.parent().unwrap() == (farcasterd_maker.id() as i32)
-                    || process.parent().unwrap() == (farcasterd_taker.id() as i32))
+            ["peerd", "swapd", "walletd"].contains(&process.name())
+                && [farcasterd_maker.id(), farcasterd_taker.id()]
+                    .contains(&(process.parent().unwrap() as u32))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
