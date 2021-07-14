@@ -107,7 +107,7 @@ fn spawn_swap() {
             .stdout;
 
         use regex::RegexSet;
-        let re = RegexSet::new(&[r" farcasterd", r" peerd", r" swapd"]).unwrap();
+        let re = RegexSet::new(&[r" farcasterd", r" peerd", r" swapd", r" walletd"]).unwrap();
 
         let matches: Vec<_> = re
             .matches(std::str::from_utf8(&ps_out).unwrap())
