@@ -219,20 +219,19 @@ fn main() {
                 debug!("Forking child process");
                 if let ForkResult::Child = unsafe { fork().expect("Unable to fork child process") }
                 {
-                    trace!("Child forked; returning into main listener event loop");
-                    continue;
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(30)))
+                        .expect("Unable to set up timeout for TCP connection");
+
+                    debug!("Establishing session with the remote");
+                    let session = session::Raw::with_ftcp_unencrypted(stream, inet_addr)
+                        .expect("Unable to establish session with the remote peer");
+
+                    debug!("Session successfully established");
+                    break PeerConnection::with(session);
                 }
-
-                stream
-                    .set_read_timeout(Some(Duration::from_secs(30)))
-                    .expect("Unable to set up timeout for TCP connection");
-
-                debug!("Establishing session with the remote");
-                let session = session::Raw::with_ftcp_unencrypted(stream, inet_addr)
-                    .expect("Unable to establish session with the remote peer");
-
-                debug!("Session successfully established");
-                break PeerConnection::with(session);
+                trace!("Child forked; returning into main listener event loop");
+                continue;
             }
         }
         PeerSocket::Connect(remote_node_addr) => {

@@ -13,11 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{
-    rpc::request::{Keypair, LaunchSwap},
-    walletd::NodeSecrets,
-    Senders,
-};
+use crate::{Senders, rpc::request::{Keypair, LaunchSwap}, swapd::swap_id, walletd::NodeSecrets};
 use amplify::Wrapper;
 use request::{Commit, Params};
 use std::convert::TryFrom;
@@ -43,7 +39,7 @@ use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
 use crate::rpc::request::{
-    GetPeerSecret, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, RuntimeContext,
+    PeerSecret, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, RuntimeContext,
 };
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
@@ -159,18 +155,14 @@ impl Runtime {
             .ok_or_else(|| Error::Farcaster("node_id is none".to_string()))
     }
 
-    fn swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
-        if let ServiceId::Swap(swap_id) = source {
-            if self.running_swaps.contains(&swap_id) {
-                Ok(swap_id)
-            } else {
-                Err(Error::Farcaster("Unknown swapd".to_string()))
-            }
+    fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
+        let swap_id = swap_id(source)?;
+        if self.running_swaps.contains(&swap_id) {
+            Ok(swap_id)
         } else {
-            Err(Error::Farcaster("Not swapd".to_string()))
+            Err(Error::Farcaster("Unknown swapd".to_string()))
         }
     }
-
     fn handle_rpc_msg(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
@@ -298,6 +290,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
 
+                    // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -314,6 +307,8 @@ impl Runtime {
                          Ordering swap acceptance",
                         source
                     );
+
+                    // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -339,39 +334,42 @@ impl Runtime {
                 }
             }
             Request::LaunchSwap(LaunchSwap {
-                peerd,
+                peer,
                 negotiation_role,
                 public_offer,
                 params,
                 swap_id,
                 commit,
             }) => {
-                launch_swapd(
-                    self,
-                    peerd,
-                    Some(source),
-                    negotiation_role,
-                    public_offer,
-                    params,
-                    swap_id,
-                    commit,
-                )?;
+                if self.making_offers.remove(&public_offer) {
+                    trace!("{}, {}", "launching swapd with swap_id:", swap_id.amount());
+                    launch_swapd(
+                        self,
+                        peer,
+                        Some(source),
+                        negotiation_role,
+                        public_offer,
+                        params,
+                        swap_id,
+                        commit,
+                    )?;
+                } else {
+                    let msg = "unknown public_offer".to_string();
+                    error!("{}", msg);
+                    Error::Farcaster(msg);
+                }
             }
             Request::Params(_) => {
-                let swap_id = if let ServiceId::Swap(swap_id) = source {
-                    Ok(swap_id)
-                } else {
-                    Err(Error::Farcaster("Unknown swap_id".to_string()))
-                }?;
+                swap_id(source)?;
                 self.send_walletd(senders, request)?
             }
 
-            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
-                let swap_id = self.swap_id(source.clone())?;
+            Request::Protocol(Msg::CoreArbitratingSetup(_)) => {
+                self.known_swap_id(source.clone())?;
                 self.send_walletd(senders, request)?
             }
-            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let swap_id = self.swap_id(source.clone())?;
+            Request::Protocol(Msg::RefundProcedureSignatures(_)) => {
+                self.known_swap_id(source.clone())?;
                 self.send_walletd(senders, request)?
             }
             Request::Keypair(Keypair(sk, pk)) => {
@@ -750,14 +748,14 @@ impl Runtime {
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
         context: Option<RuntimeContext>,
     ) -> Result<(), Error> {
-        info!("node secrets not avaialble yet - fetching and looping back.");
-        let get_secret = GetPeerSecret(self.walletd_token.clone(), context);
+        info!("node secrets not available yet - fetching and looping back.");
+        let get_secret = PeerSecret(self.walletd_token.clone(), context);
         senders
             .send_to(
                 ServiceBus::Ctl,
                 ServiceId::Farcasterd,
                 ServiceId::Wallet,
-                Request::GetPeerSecret(get_secret),
+                Request::PeerSecret(get_secret),
             )
             .map_err(Error::from)
     }

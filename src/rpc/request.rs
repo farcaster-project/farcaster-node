@@ -94,13 +94,13 @@ pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("get secret")]
-pub struct GetPeerSecret(pub String, pub Option<RuntimeContext>);
+pub struct PeerSecret(pub String, pub Option<RuntimeContext>);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("launch_swap")]
 pub struct LaunchSwap {
-    pub peerd: ServiceId,
+    pub peer: ServiceId,
     pub negotiation_role: NegotiationRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub params: Params,
@@ -204,7 +204,7 @@ pub enum Request {
 
     #[api(type = 30)]
     #[display("getsecret")]
-    GetPeerSecret(GetPeerSecret),
+    PeerSecret(PeerSecret),
 
     #[api(type = 29)]
     #[display("launch_swap")]
@@ -457,7 +457,7 @@ pub struct SwapInfo {
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    pub is_originator: bool,
+    pub is_maker: bool,
     //// FIXME serde::Serialize/Deserialize missing
     // #[serde_as(as = "Option<DisplayFromStr)>")]
     // pub params: Option<Params>,
