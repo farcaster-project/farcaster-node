@@ -40,11 +40,15 @@ required-features = ["server"]
 
 [dependencies]
 # Farcaster crates
-#farcaster_core = { path = "../core"}
+farcaster_core = { path = "../core" }
 #farcaster_core = { git = "https://github.com/h4sh3d/farcaster-core", branch = "keyless-wallet" }
 # farcaster_chains = { path = "../core/chains"}
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+# farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 #farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
+# farcaster_core = { path = "../core/core"}
+# farcaster_chains = { path = "../core/chains"}
+# # farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
+# # farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
 
 # LNP/BP crates
 amplify = "3"
@@ -52,11 +56,12 @@ amplify_derive = "2.4.3"
 lightning_encoding = "0.4.0-beta.1"
 lnpbp = {version = "0.4", features = ["all"]}
 slip132 = "0.3"
-lnp-core = "0.3.1"
-# internet2 = { path = "../alt/rust-internet2" }
-# microservices = { path = "../alt/rust-internet2/microservices", default-features = false, features = ["peer"] } 
-internet2 = { version = "0.3.10" }
-microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
+# lnp-core = "0.3.1"
+lnp-core =  { path = "../ext/lnp-core" }
+internet2 = { path = "../ext/rust-internet2" }
+microservices = { path = "../ext/rust-internet2/microservices", default-features = false, features = ["peer"] } 
+# internet2 = { version = "0.3.10" }
+# microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 # Bitcoin
 bitcoin = "0.26"
 # Monero
@@ -91,7 +96,10 @@ zmq = "0.9"
 #farcaster_core = { path = "../core"}
 #farcaster_core = { git = "https://github.com/h4sh3d/farcaster-core", branch = "keyless-wallet" }
 # farcaster_chains = { path = "../core/chains"}
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+# farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster_core = { path = "../core"}
+# farcaster_chains = { path = "../core/chains"}
+# # farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
 # farcaster_chains = { git = "https://github.com/farcaster-project/farcaster-core", branch = "cherry2" }
 amplify = "3"
 amplify_derive = "2.4.3"
@@ -101,11 +109,17 @@ lightning_encoding = "0.4.0-beta.1"
 bitcoin = "0.26"
 # Monero
 monero = "0.13"
-lnp-core =  "0.3"
-# internet2 = { path = "../alt/rust-internet2" }
-# microservices = { path = "../alt/rust-internet2/microservices", default-features = false, features = ["peer"] } 
-internet2 = { version = "0.3.10" }
-microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
+# lnp-core =  "0.3"
+internet2 = { path = "../ext/rust-internet2" }
+microservices = { path = "../ext/rust-internet2/microservices", default-features = false, features = ["peer"] } 
+# internet2 = { version = "0.3.10" }
+# microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
+# # lnp-core =  "0.3"
+lnp-core =  { path = "../ext/lnp-core" }
+# internet2 = { path = "../ext/rust-internet2" }
+# microservices = { path = "../ext/rust-internet2/microservices", default-features = false, features = ["peer"] } 
+# # internet2 = { version = "0.3.10" }
+# # microservices = { version = "0.3.10", default-features = false, features = ["peer"] }
 lazy_static = "1.4"
 clap = "3.0.0-beta.2"
 clap_generate = "3.0.0-beta.2"

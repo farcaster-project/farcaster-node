@@ -154,7 +154,8 @@ impl peer::Handler<Msg> for ListenerRuntime {
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
                 //
-                self.send_over_bridge(Arc::new(Msg::Ping)) // FIXME: uncomment
+                // self.send_over_bridge(Arc::new(Msg::Ping)) // FIXME: uncomment
+                Ok(())
             }
             // for all other error types, indicating internal errors, we
             // propagate error to the upper level
@@ -201,12 +202,12 @@ impl esb::Handler<ServiceBus> for Runtime {
         if self.connect {
             info!("{} with the remote peer", "Initializing connection".promo());
 
-            self.sender.send_message(Messages::Init(message::Init {
-                global_features: none!(),
-                local_features: none!(),
-                assets: none!(),
-                unknown_tlvs: none!(),
-            }))?;
+            // self.sender.send_message(Messages::Init(message::Init {
+            //     global_features: none!(),
+            //     local_features: none!(),
+            //     assets: none!(),
+            //     unknown_tlvs: none!(),
+            // }))?;
 
             self.connect = false;
         }
@@ -243,24 +244,25 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        match &request {
-            Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
-                channel_id,
-                ..
-            })) => {
-                debug!(
-                    "Renaming channeld service from temporary id {:#} to channel id #{:#}",
-                    source, channel_id
-                );
-                self.routing.remove(&source);
-                self.routing.insert(channel_id.clone().into(), source);
-            }
-            _ => {}
-        }
+        // match &request {
+        //     Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
+        //         channel_id,
+        //         ..
+        //     })) => {
+        //         debug!(
+        //             "Renaming channeld service from temporary id {:#} to channel id #{:#}",
+        //             source, channel_id
+        //         );
+        //         self.routing.remove(&source);
+        //         self.routing.insert(channel_id.clone().into(), source);
+        //     }
+        //     _ => {}
+        // }
         match request.clone() {
             Request::Protocol(message) => {
                 // 1. Check permissions
                 // 2. Forward to the remote peer
+                debug!("Message type: {}", message.get_type());
                 debug!("Forwarding LN peer message to the remote peer, request: {}", &request.get_type());
                 self.messages_sent += 1;
                 self.sender.send_message(message)?;
@@ -311,9 +313,9 @@ impl Runtime {
                 self.send_ctl(senders, source, Request::PeerInfo(info))?;
             }
 
-            Request::PingPeer => {
-                self.ping()?;
-            }
+            // Request::PingPeer => {
+            //     self.ping()?;
+            // }
 
             _ => {
                 error!("Request is not supported by the CTL interface");
@@ -331,30 +333,30 @@ impl Runtime {
     ) -> Result<(), Error> {
         debug!("BRIDGE RPC request: {}", request);
 
-        if let Request::PeerMessage(_) = request {
+        if let Request::Protocol(_) = request {
             self.messages_received += 1;
         }
 
         match &request {
-            Request::PingPeer => {
-                self.ping()?;
-            }
+            // Request::PingPeer => {
+            //     self.ping()?;
+            // }
 
-            Request::PeerMessage(Messages::Ping(message::Ping { pong_size, .. })) => {
-                self.pong(*pong_size)?;
-            }
+            // Request::PeerMessage(Messages::Ping(message::Ping { pong_size, .. })) => {
+            //     self.pong(*pong_size)?;
+            // }
 
-            Request::PeerMessage(Messages::Pong(noise)) => {
-                match self.awaited_pong {
-                    None => error!("Unexpected pong from the remote peer"),
-                    Some(len) if len as usize != noise.len() => {
-                        warn!("Pong data size does not match requested with ping")
-                    }
-                    _ => trace!("Got pong reply, exiting pong await mode"),
-                }
-                self.awaited_pong = None;
-            }
-            Request::Protocol(Msg::Ping) => self.ping()?,
+            // Request::PeerMessage(Messages::Pong(noise)) => {
+            //     match self.awaited_pong {
+            //         None => error!("Unexpected pong from the remote peer"),
+            //         Some(len) if len as usize != noise.len() => {
+            //             warn!("Pong data size does not match requested with ping")
+            //         }
+            //         _ => trace!("Got pong reply, exiting pong await mode"),
+            //     }
+            //     self.awaited_pong = None;
+            // }
+            // Request::Protocol(Msg::Ping) => self.ping()?,
 
             // swap initiation message
             Request::Protocol(Msg::TakerCommit(_)) => {

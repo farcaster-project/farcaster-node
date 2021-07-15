@@ -13,13 +13,13 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
-use lightning_encoding::{LightningDecode, strategies::AsStrict};
+use lightning_encoding::{LightningDecode, LightningEncode, strategies::AsStrict};
 use crate::walletd::NodeSecrets;
 use amplify::{ToYamlString, Wrapper};
 use internet2::addr::InetSocketAddr;
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds, Same};
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{fmt::{self, Debug, Display, Formatter}, io, marker::PhantomData};
 use std::iter::FromIterator;
 use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
@@ -47,8 +47,9 @@ use microservices::rpc::Failure;
 use microservices::rpc_connection;
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
+#[api(encoding = "lightning")]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[api(encoding = "strict")]
+#[display(inner)]
 pub enum Msg {
     #[api(type = 28)]
     #[display("maker_commit(...)")]
@@ -76,7 +77,34 @@ pub enum Msg {
     Ping,
 }
 
-impl lightning_encoding::Strategy for Msg {
+impl LightningEncode for Msg {
+    fn lightning_encode<E: io::Write>(&self, e: E) -> Result<usize, io::Error> {
+        Payload::from(self.clone()).lightning_encode(e)
+    }
+}
+
+impl LightningDecode for Msg {
+    fn lightning_decode<D: io::Read>(
+        d: D,
+    ) -> Result<Self, lightning_encoding::Error> {
+        Ok((&*Msg::create_unmarshaller()
+            .unmarshall(&Vec::<u8>::lightning_decode(d)?)
+            .map_err(|_| {
+                lightning_encoding::Error::DataIntegrityError(s!(
+                    "can't unmarshall LMP message"
+                ))
+            })?)
+           .clone())
+    }
+}
+
+impl lightning_encoding::Strategy for Commit {
+    type Strategy = AsStrict;
+}
+impl lightning_encoding::Strategy for TakeCommit {
+    type Strategy = AsStrict;
+}
+impl lightning_encoding::Strategy for Reveal {
     type Strategy = AsStrict;
 }
 
