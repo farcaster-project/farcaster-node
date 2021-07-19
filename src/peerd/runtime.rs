@@ -12,14 +12,14 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::{collections::HashMap, sync::Arc};
-use std::thread::spawn;
+use std::{rc::Rc, thread::spawn};
 use std::time::{Duration, SystemTime};
+use std::{collections::HashMap, sync::Arc};
 
 use amplify::Bipolar;
 use bitcoin::secp256k1::rand::{self, Rng};
 use bitcoin::secp256k1::PublicKey;
-use internet2::{CreateUnmarshaller, Unmarshall, Unmarshaller, addr::InetSocketAddr};
+use internet2::{addr::InetSocketAddr, CreateUnmarshaller, Unmarshall, Unmarshaller};
 use internet2::{presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType, ZMQ_CONTEXT};
 use lnp::{message, Messages};
 use microservices::esb::{self, Handler};
@@ -68,7 +68,8 @@ pub fn run(
         )?,
     };
     let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
-    let listener = peer::Listener::<ListenerRuntime, Msg>::with(receiver, bridge_handler, unmarshaller);
+    let listener =
+        peer::Listener::<ListenerRuntime, Msg>::with(receiver, bridge_handler, unmarshaller);
     spawn(move || listener.run_or_panic("peerd-listener"));
     // TODO: Use the handle returned by spawn to track the child process
 
@@ -128,19 +129,28 @@ pub struct ListenerRuntime {
 }
 
 impl ListenerRuntime {
-    fn send_over_bridge(&mut self, req: <Unmarshaller<Msg> as Unmarshall>::Data) -> Result<(), Error> {
+    fn send_over_bridge(
+        &mut self,
+        req: <Unmarshaller<Msg> as Unmarshall>::Data,
+    ) -> Result<(), Error> {
         debug!("Forwarding LNPWP message over BRIDGE interface to the runtime");
-        self.bridge
-            .send_to(ServiceBus::Bridge, self.identity.clone(), Request::Protocol((&*req).clone()))?;
+        self.bridge.send_to(
+            ServiceBus::Bridge,
+            self.identity.clone(),
+            Request::Protocol((&*req).clone()),
+        )?;
         Ok(())
     }
 }
 
-use std::fmt::{Display, Debug};
+use std::fmt::{Debug, Display};
 impl peer::Handler<Msg> for ListenerRuntime {
     type Error = crate::Error;
 
-    fn handle(&mut self, message: <Unmarshaller<Msg> as Unmarshall>::Data) -> Result<(), Self::Error> {
+    fn handle(
+        &mut self,
+        message: <Unmarshaller<Msg> as Unmarshall>::Data,
+    ) -> Result<(), Self::Error> {
         // Forwarding all received messages to the runtime
         trace!("FPWP message details: {:?}", message);
         self.send_over_bridge(message)
@@ -250,8 +260,8 @@ impl Runtime {
         //         ..
         //     })) => {
         //         debug!(
-        //             "Renaming channeld service from temporary id {:#} to channel id #{:#}",
-        //             source, channel_id
+        //             "Renaming channeld service from temporary id {:#} to channel id
+        // #{:#}",             source, channel_id
         //         );
         //         self.routing.remove(&source);
         //         self.routing.insert(channel_id.clone().into(), source);
@@ -263,7 +273,10 @@ impl Runtime {
                 // 1. Check permissions
                 // 2. Forward to the remote peer
                 debug!("Message type: {}", message.get_type());
-                debug!("Forwarding LN peer message to the remote peer, request: {}", &request.get_type());
+                debug!(
+                    "Forwarding LN peer message to the remote peer, request: {}",
+                    &request.get_type()
+                );
                 self.messages_sent += 1;
                 self.sender.send_message(message)?;
             }
@@ -316,7 +329,6 @@ impl Runtime {
             // Request::PingPeer => {
             //     self.ping()?;
             // }
-
             _ => {
                 error!("Request is not supported by the CTL interface");
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
@@ -439,7 +451,6 @@ impl Runtime {
             //     // 2. Forward to the corresponding daemon
             //     debug!("Got peer LNPWP message {}", message);
             // }
-
             other => {
                 error!("Request is not supported by the BRIDGE interface");
                 dbg!(other);
