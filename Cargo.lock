@@ -690,26 +690,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 
 [[package]]
-name = "farcaster_chains"
-version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=cherry2#ff69dbf0ec6981f146043a9ded2a640b15129cf3"
-dependencies = [
- "bitcoin",
- "farcaster_core",
- "hex",
- "monero",
- "strict_encoding",
- "thiserror",
-]
-
-[[package]]
 name = "farcaster_core"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=cherry2#ff69dbf0ec6981f146043a9ded2a640b15129cf3"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#b6d4f9038aa85f792ced5683200d533f4ae2f9c6"
 dependencies = [
+ "bitcoin",
  "hex",
  "internet2",
+ "monero",
  "strict_encoding",
+ "strict_encoding_derive",
  "thiserror",
 ]
 
@@ -731,7 +721,6 @@ dependencies = [
  "configure_me_codegen",
  "dotenv",
  "env_logger",
- "farcaster_chains",
  "farcaster_core",
  "internet2",
  "lazy_static",
@@ -740,6 +729,7 @@ dependencies = [
  "lnpbp",
  "log",
  "microservices",
+ "monero",
  "nix",
  "regex",
  "serde 1.0.125",
@@ -1027,16 +1017,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67c21572b4949434e4fc1e1978b99c5f77064153c59d998bf13ecd96fb5ecba7"
 
 [[package]]
-name = "keccak-hash"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae0386ec98c26dd721aaa3412bf3a817156ff3ee7cb6959503f8d1095f4ccc51"
-dependencies = [
- "primitive-types",
- "tiny-keccak",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1232,17 +1212,17 @@ dependencies = [
 
 [[package]]
 name = "monero"
-version = "0.11.2"
-source = "git+https://github.com/monero-rs/monero-rs#2dba2daee9e8bcc90079009279c17ae743794185"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a7038b6ba92588189248fbb4f8b2744d4918a9732f826e414814a50c168dca3"
 dependencies = [
  "base58-monero",
  "curve25519-dalek",
  "fixed-hash",
  "hex",
  "hex-literal",
- "keccak-hash",
- "strict_encoding",
  "thiserror",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -1433,16 +1413,6 @@ name = "ppv-lite86"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
-
-[[package]]
-name = "primitive-types"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2415937401cb030a2a0a4d922483f945fa068f52a7dbb22ce0fe5f2b6f6adace"
-dependencies = [
- "fixed-hash",
- "uint",
-]
 
 [[package]]
 name = "proc-macro-error"
@@ -2268,18 +2238,6 @@ name = "typenum"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f6906492a7cd215bfa4cf595b600146ccfac0c79bcbd1f3000162af5e8b06"
-
-[[package]]
-name = "uint"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e11fe9a9348741cf134085ad57c249508345fe16411b3d7fb4ff2da2f1d6382e"
-dependencies = [
- "byteorder",
- "crunchy",
- "hex",
- "static_assertions",
-]
 
 [[package]]
 name = "unicode-bidi"
