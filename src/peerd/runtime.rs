@@ -210,7 +210,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
     ) -> Result<(), Error> {
         if self.connect {
-            info!("{} with the remote peer", "Initializing connection".promo());
+            info!("{} with the remote peer", "Initializing connection".bright_blue_bold());
 
             // self.sender.send_message(Messages::Init(message::Init {
             //     global_features: none!(),
