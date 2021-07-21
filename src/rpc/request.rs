@@ -12,29 +12,37 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::walletd::NodeSecrets;
+use amplify::{Holder, ToYamlString, Wrapper};
+use internet2::addr::InetSocketAddr;
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
-use lightning_encoding::{LightningDecode, LightningEncode, strategies::AsStrict};
-use crate::walletd::NodeSecrets;
-use amplify::{ToYamlString, Wrapper, Holder};
-use internet2::addr::InetSocketAddr;
+use lightning_encoding::{strategies::AsStrict, LightningDecode, LightningEncode};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds, Same};
-use std::{fmt::{self, Debug, Display, Formatter}, io, marker::PhantomData};
 use std::iter::FromIterator;
 use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    io,
+    marker::PhantomData,
+};
 
-use bitcoin::{OutPoint, PublicKey, secp256k1::{self, SecretKey}};
+use bitcoin::{
+    secp256k1::{self, SecretKey},
+    OutPoint, PublicKey,
+};
 use farcaster_core::{
-    chain::bitcoin::Bitcoin,
-    chain::monero::Monero,
-    chain::pairs::btcxmr::BtcXmr,
     blockchain::FeePolitic,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
     },
-    negotiation::{Offer, PublicOffer}, protocol_message::{self, RevealAliceParameters, RevealBobParameters},
+    chain::bitcoin::Bitcoin,
+    chain::monero::Monero,
+    chain::pairs::btcxmr::BtcXmr,
+    negotiation::{Offer, PublicOffer},
+    protocol_message::{self, RevealAliceParameters, RevealBobParameters},
     protocol_message::{CommitAliceParameters, CommitBobParameters},
     role::TradeRole,
     swap::SwapId,
@@ -44,7 +52,9 @@ use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
 use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::chain::AssetId;
-use lnpbp::strict_encoding::{StrictDecode, StrictEncode, strict_encode_list, strategies::HashFixedBytes, Strategy};
+use lnpbp::strict_encoding::{
+    strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
+};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 
@@ -117,17 +127,13 @@ lazy_static! {
 }
 
 impl LightningDecode for Msg {
-    fn lightning_decode<D: io::Read>(
-        d: D,
-    ) -> Result<Self, lightning_encoding::Error> {
+    fn lightning_decode<D: io::Read>(d: D) -> Result<Self, lightning_encoding::Error> {
         Ok((&*UNMARSHALLER
             .unmarshall(&Vec::<u8>::lightning_decode(d)?)
             .map_err(|_| {
-                lightning_encoding::Error::DataIntegrityError(s!(
-                    "can't unmarshall FWP message"
-                ))
+                lightning_encoding::Error::DataIntegrityError(s!("can't unmarshall FWP message"))
             })?)
-           .clone())
+            .clone())
     }
 }
 
@@ -187,7 +193,6 @@ pub struct LaunchSwap {
     pub commit: Option<Commit>,
 }
 
-
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct TakeCommit {
@@ -199,7 +204,10 @@ pub struct TakeCommit {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("keypair")]
-pub struct Keypair(pub bitcoin::secp256k1::SecretKey, pub bitcoin::secp256k1::PublicKey);
+pub struct Keypair(
+    pub bitcoin::secp256k1::SecretKey,
+    pub bitcoin::secp256k1::PublicKey,
+);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -659,12 +667,8 @@ impl IntoSuccessOrFalure for Result<(), crate::Error> {
 impl Into<Reveal> for (SwapId, Params) {
     fn into(self) -> Reveal {
         match self {
-            (swap_id, Params::Alice(params)) => {
-                Reveal::Alice((swap_id, params).into())
-            }
-            (swap_id, Params::Bob(params)) => {
-                Reveal::Bob((swap_id, params).into())
-            }
+            (swap_id, Params::Alice(params)) => Reveal::Alice((swap_id, params).into()),
+            (swap_id, Params::Bob(params)) => Reveal::Bob((swap_id, params).into()),
         }
     }
 }
