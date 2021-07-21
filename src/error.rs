@@ -24,12 +24,15 @@ use microservices::{esb, rpc};
 #[cfg(feature = "_rpc")]
 use crate::rpc::ServiceBus;
 
-#[derive(Clone, Debug, Display, From, Error)]
+#[derive(Debug, Display, From, Error)]
 #[display(doc_comments)]
 #[non_exhaustive]
 pub enum Error {
-    /// Farcaster core errors
-    Farcaster(String), // FIXME farcaster errors don't impl Clone, needed by microservices::Error
+    /// Farcaster core errors: {0}
+    FarcasterCore(farcaster_core::Error),
+
+    /// Farcaster node errors: {0}
+    Farcaster(String),
     /// I/O error: {0:?}
     #[from(io::Error)]
     Io(IoError),
@@ -103,6 +106,6 @@ impl From<Error> for rpc::Error {
 
 impl From<farcaster_core::Error> for Error {
     fn from(err: farcaster_core::Error) -> Self {
-        Error::Farcaster(err.to_string())
+        Error::FarcasterCore(err)
     }
 }
