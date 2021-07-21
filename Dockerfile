@@ -1,17 +1,19 @@
-ARG BUILDER_DIR=/srv/lnp
+ARG BUILDER_DIR=/srv/farcaster
 
 
-FROM rust:1.47.0-slim-buster as builder
+FROM rust:1.53.0-slim-buster as builder
 
-ARG SRC_DIR=/usr/local/src/lnp
+ARG SRC_DIR=/usr/local/src/farcaster
 ARG BUILDER_DIR
 
-RUN apt-get update -y \
-    && apt-get install -y \
+RUN apt-get update -y && apt-get install -y --no-install-recommends apt-utils
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libsqlite3-dev \
         libssl-dev \
         libzmq3-dev \
-        pkg-config
+        pkg-config \
+        build-essential \
+        cmake
 
 WORKDIR "$SRC_DIR"
 
@@ -25,15 +27,15 @@ WORKDIR ${SRC_DIR}
 
 RUN mkdir "${BUILDER_DIR}"
 
-RUN cargo install --path . --root "${BUILDER_DIR}" --bins --all-features
+RUN cargo install --path . --root "${BUILDER_DIR}" --bins --all-features --locked
 
 
 FROM debian:buster-slim
 
 ARG BUILDER_DIR
 ARG BIN_DIR=/usr/local/bin
-ARG DATA_DIR=/var/lib/lnp
-ARG USER=lnpd
+ARG DATA_DIR=/var/lib/farcaster
+ARG USER=farcasterd
 
 RUN apt-get update -y \
     && apt-get install -y \
@@ -52,8 +54,8 @@ USER ${USER}
 
 VOLUME "$DATA_DIR"
 
-EXPOSE 9735
+EXPOSE 9735 9981
 
-ENTRYPOINT ["lnpd"]
+ENTRYPOINT ["farcasterd"]
 
-CMD ["-vvv", "--data-dir", "/var/lib/lnp"]
+CMD ["-vvv", "--data-dir", "/var/lib/farcaster", "-x", "lnpz://0.0.0.0:9981/?api=esb"]
