@@ -147,22 +147,33 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Display)]
 pub enum AliceState {
+    #[display("Start")]
     StartA,
+    #[display("Commit")]
     CommitA,
+    #[display("Reveal")]
     RevealA,
+    #[display("RefundProcSigs")]
     RefundProcedureSignatures,
+    #[display("Finish")]
     FinishA,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Display)]
 pub enum BobState {
+    #[display("Start")]
     StartB,
+    #[display("Commit")]
     CommitB,
+    #[display("Reveal")]
     RevealB,
+    #[display("CoreArb")]
     CorearbB,
+    #[display("BuyProcSig")]
     BuyProcSigB,
+    #[display("Finish")]
     FinishB,
 }
 
@@ -324,7 +335,7 @@ impl Runtime {
                             || self.state == State::Bob(BobState::CommitB)
                         {
                             if let Some(local_params) = self.local_params.clone() {
-                                let reveal: Reveal = (self.swap_id(), local_params).clone().into();
+                                let reveal: Reveal = (self.swap_id(), local_params).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?
                             } else {
                                 // maybe should not fail here because of the
@@ -490,6 +501,7 @@ impl Runtime {
                 swap_id,
                 commit: Some(remote_commit),
             }) => {
+                self.local_params = Some(params.clone());
                 if self.commit_remote.is_some() {
                     Err(Error::Farcaster("remote commit already set".to_string()))?
                 }
