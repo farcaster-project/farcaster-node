@@ -134,7 +134,7 @@ impl Exec for Command {
                 // let instruction =
                 //     format!("Share the following offer with taker:",);
                 // let hex = format!("{:?}", &public_offer);
-                // println!("{} \n {}", instruction.progress(), hex.amount());
+                // println!("{} \n {}", instruction.green_bold(), hex.bright_yellow_bold());
             }
 
             Command::Take { public_offer } => {

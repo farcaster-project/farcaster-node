@@ -340,27 +340,27 @@ where
 use colored::Colorize;
 
 pub trait LogStyle: ToString {
-    fn promo(&self) -> colored::ColoredString {
+    fn bright_blue_bold(&self) -> colored::ColoredString {
         self.to_string().bold().bright_blue()
     }
 
-    fn promoter(&self) -> colored::ColoredString {
+    fn bright_blue_italic(&self) -> colored::ColoredString {
         self.to_string().italic().bright_blue()
     }
 
-    fn progress(&self) -> colored::ColoredString {
+    fn green_bold(&self) -> colored::ColoredString {
         self.to_string().bold().green()
     }
 
-    fn ended(&self) -> colored::ColoredString {
+    fn bright_green_bold(&self) -> colored::ColoredString {
         self.to_string().bold().bright_green()
     }
 
-    fn ender(&self) -> colored::ColoredString {
+    fn bright_green_italic(&self) -> colored::ColoredString {
         self.to_string().italic().bright_green()
     }
 
-    fn amount(&self) -> colored::ColoredString {
+    fn bright_yellow_bold(&self) -> colored::ColoredString {
         self.to_string().bold().bright_yellow()
     }
 
