@@ -14,7 +14,7 @@
 
 use std::any::Any;
 
-use lnp::ChannelId as SwapId;
+use farcaster_core::swap::SwapId;
 
 use crate::Error;
 

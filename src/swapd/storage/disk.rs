@@ -15,7 +15,7 @@
 use std::any::Any;
 use std::path::PathBuf;
 
-use lnp::ChannelId as SwapId;
+use farcaster_core::swap::SwapId;
 
 use super::Driver;
 use crate::Error;

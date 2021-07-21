@@ -36,6 +36,7 @@ use farcaster_core::{
     negotiation::{Offer, PublicOffer},
     protocol_message::{CoreArbitratingSetup, CommitAliceParameters, CommitBobParameters},
     role::{Arbitrating, TradeRole, SwapRole},
+    swap::SwapId,
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -44,10 +45,11 @@ use internet2::{
 use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
 use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
+
 
 pub fn run(
     config: Config,
@@ -245,15 +247,14 @@ impl Runtime {
                     Msg::MakerCommit(commit) => {
                         // bob and alice, maker commited, now taker reveals
                         trace!("received commitment from counterparty, can now reveal");
+                        let swap_id = match commit {
+                            Commit::Alice(c) => c.swap_id,
+                            Commit::Bob(c) => c.swap_id,
+                        };
+
                         self.commit_remote = Some(commit.clone());
                         if let Some(local_params) = &self.local_params {
-                            let reveal: Reveal = self
-                                .local_params
-                                .clone()
-                                .map(Into::into)
-                                .ok_or_else(|| {
-                                    Error::Farcaster("Failed to construct Reveal".to_string())
-                                })?;
+                            let reveal: Reveal = (swap_id, local_params.clone()).into();
                             self.send_peer(senders, Msg::Reveal(reveal))?
                         } else {
                             Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
@@ -319,8 +320,8 @@ impl Runtime {
                         if self.state == State::Alice(AliceState::CommitA)
                             || self.state == State::Bob(BobState::CommitB)
                         {
-                            if let Some(local_params) = &self.local_params {
-                                let reveal: Reveal = local_params.clone().into();
+                            if let Some(local_params) = self.local_params.clone() {
+                                let reveal: Reveal = (self.swap_id(), local_params).clone().into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?
                             } else {
                                 // maybe should not fail here because of the
@@ -414,7 +415,7 @@ impl Runtime {
             }
 
             _ => {
-                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                error!("MSG RPC can be only used for forwarding FWP messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
@@ -632,10 +633,10 @@ impl Runtime {
         let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(
-                CommitBobParameters::commit_to_bundle(&core_wallet, params)
+                CommitBobParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
                 ),
             Params::Alice(params) => request::Commit::Alice(
-                CommitAliceParameters::commit_to_bundle(&core_wallet, params)
+                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
                 ),
         };
         // Ignoring possible reporting errors here and after: do not want to
@@ -659,8 +660,8 @@ impl Runtime {
         params: Params,
     ) -> Result<request::Commit, Error> {
         let msg = format!(
-            "{} with swap id {:#} from remote peer {}",
-            "Accepting channel".promo(),
+            "{} as Maker with swap id {:#} from Taker remote peer {}",
+            "Accepting swap".promo(),
             swap_id.promoter(),
             peerd.promoter()
         );
@@ -678,10 +679,10 @@ impl Runtime {
         let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(
-                CommitBobParameters::commit_to_bundle(&core_wallet, params)
+                CommitBobParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
                 ),
             Params::Alice(params) => request::Commit::Alice(
-                CommitAliceParameters::commit_to_bundle(&core_wallet, params)
+                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
                 ),
         };
         // let accept_channel = message::AcceptChannel {

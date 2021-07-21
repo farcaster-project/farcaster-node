@@ -133,7 +133,7 @@ impl ListenerRuntime {
         &mut self,
         req: <Unmarshaller<Msg> as Unmarshall>::Data,
     ) -> Result<(), Error> {
-        debug!("Forwarding LNPWP message over BRIDGE interface to the runtime");
+        debug!("Forwarding FWP message over BRIDGE interface to the runtime");
         self.bridge.send_to(
             ServiceBus::Bridge,
             self.identity.clone(),
@@ -152,7 +152,7 @@ impl peer::Handler<Msg> for ListenerRuntime {
         message: <Unmarshaller<Msg> as Unmarshall>::Data,
     ) -> Result<(), Self::Error> {
         // Forwarding all received messages to the runtime
-        trace!("FPWP message details: {:?}", message);
+        trace!("FWP message details: {:?}", message);
         self.send_over_bridge(message)
     }
 
@@ -449,7 +449,7 @@ impl Runtime {
             // Request::PeerMessage(message) => {
             //     // 1. Check permissions
             //     // 2. Forward to the corresponding daemon
-            //     debug!("Got peer LNPWP message {}", message);
+            //     debug!("Got peer FWP message {}", message);
             // }
             other => {
                 error!("Request is not supported by the BRIDGE interface");

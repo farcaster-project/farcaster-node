@@ -17,9 +17,10 @@ use farcaster_core::{
     protocol_message::{BuyProcedureSignature, CoreArbitratingSetup, RefundProcedureSignatures},
     role::{Alice, Bob, TradeRole, SwapRole},
     transaction::Fundable,
+    swap::SwapId,
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
-use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
+// use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 use microservices::esb::{self, Handler};
 use request::{LaunchSwap, NodeId};
 
@@ -186,7 +187,7 @@ impl Runtime {
                                 swap_id,
                                 commit: Some(commit),
                             };
-                            let reveal: Reveal = Params::Bob(params).into();
+                            let reveal: Reveal = (swap_id, Params::Bob(params)).into();
                             self.swaps.insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
                                 senders,
@@ -292,6 +293,7 @@ impl Runtime {
                                     &core_arbitrating_txs,
                                 )?;
                                 let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from((
+                                    swap_id,
                                     core_arbitrating_txs,
                                     cosign_arbitrating_cancel,
                                 ));
@@ -347,7 +349,7 @@ impl Runtime {
                         )?;
 
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
-                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from(signed_adaptor_buy);
+                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from((swap_id, signed_adaptor_buy));
                         let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -412,6 +414,7 @@ impl Runtime {
                             public_offer,
                         )?;
                         let refund_proc_signatures = RefundProcedureSignatures::from((
+                            swap_id,
                             cosigned_arb_cancel,
                             signed_adaptor_refund,
                         ));
@@ -438,7 +441,7 @@ impl Runtime {
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
-                let swap_id: SwapId = TempSwapId::random().into(); // TODO: replace by public_offer_id
+                let swap_id: SwapId = SwapId::random().into(); // TODO: replace by public_offer_id
                                                                    // since we're takers, we are on the other side
                 self.swaps.insert(swap_id, None);
                 let taker_role = offer.maker_role.other();
