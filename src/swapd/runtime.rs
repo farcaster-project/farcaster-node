@@ -243,18 +243,21 @@ impl Runtime {
         let msg_bus = ServiceBus::Msg;
         match &request {
             Request::Protocol(msg) => {
+                if  msg.swap_id() != self.swap_id(){
+                    Err(Error::Farcaster(format!(
+                        "{}: expected {}, found {}",
+                        "Incorrect swap_id ".to_string(),
+                        self.swap_id(),
+                        msg.swap_id(),
+                    )))?
+                }
                 match &msg {
                     Msg::MakerCommit(commit) => {
                         // bob and alice, maker commited, now taker reveals
                         trace!("received commitment from counterparty, can now reveal");
-                        let swap_id = match commit {
-                            Commit::Alice(c) => c.swap_id,
-                            Commit::Bob(c) => c.swap_id,
-                        };
-
                         self.commit_remote = Some(commit.clone());
                         if let Some(local_params) = &self.local_params {
-                            let reveal: Reveal = (swap_id, local_params.clone()).into();
+                            let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                             self.send_peer(senders, Msg::Reveal(reveal))?
                         } else {
                             Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
