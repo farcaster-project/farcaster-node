@@ -326,9 +326,9 @@ impl Runtime {
                 self.send_ctl(senders, source, Request::PeerInfo(info))?;
             }
 
-            // Request::PingPeer => {
-            //     self.ping()?;
-            // }
+            Request::PingPeer => {
+                self.ping()?;
+            }
             _ => {
                 error!("Request is not supported by the CTL interface");
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
@@ -350,24 +350,21 @@ impl Runtime {
         }
 
         match &request {
-            // Request::PingPeer => {
-            //     self.ping()?;
-            // }
-
             Request::PeerMessage(Messages::Ping(message::Ping { pong_size, .. })) => {
                 self.pong(*pong_size)?;
             }
 
-            // Request::PeerMessage(Messages::Pong(noise)) => {
-            //     match self.awaited_pong {
-            //         None => error!("Unexpected pong from the remote peer"),
-            //         Some(len) if len as usize != noise.len() => {
-            //             warn!("Pong data size does not match requested with ping")
-            //         }
-            //         _ => trace!("Got pong reply, exiting pong await mode"),
-            //     }
-            //     self.awaited_pong = None;
-            // }
+            Request::PeerMessage(Messages::Pong(noise)) => {
+                match self.awaited_pong {
+                    None => error!("Unexpected pong from the remote peer"),
+                    Some(len) if len as usize != noise.len() => {
+                        warn!("Pong data size does not match requested with ping")
+                    }
+                    _ => trace!("Got pong reply, exiting pong await mode"),
+                }
+                self.awaited_pong = None;
+            }
+
             // Request::Protocol(Msg::Ping) => self.ping()?,
 
             // swap initiation message
