@@ -135,6 +135,22 @@ This will launch a `peerd` service for `node1`
 
 That is about all you can do for now.
 
+## Docker usage
+
+Build the node container with `docker build -t farcaster:latest .` inside the project folder and then run the node with
+
+```
+docker run --rm -t -p 9735:9735 -p 9981:9981 --name farcaster_node farcaster
+```
+
+The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed ports `9735` and `9981` on the host.
+
+It is then possible to command `farcasterd` with `swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info` from the host.
+
+Stop the container with `docker stop farcaster_node` (ctrl+c does not work yet).
+
+:warning: this exposes the control bus on the host, only intended for debug or on a trusted network.
+
 ## LNP-node original readme
 This node was forked from `lnp-node` on 2021-03-12.
 
