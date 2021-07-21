@@ -77,6 +77,31 @@ pub enum Msg {
     #[api(type = 29)]
     #[display("ping(...)")]
     Ping,
+impl Msg {
+    pub fn swap_id(&self) -> SwapId {
+        match self {
+            Msg::MakerCommit(m) => match m {
+                Commit::Alice(n) => n.swap_id,
+                Commit::Bob(n) => n.swap_id,
+            },
+            Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
+            Msg::Reveal(m) => match m {
+                Reveal::Alice(n) => n.swap_id,
+                Reveal::Bob(n) => n.swap_id,
+            },
+            Msg::RefundProcedureSignatures(protocol_message::RefundProcedureSignatures {
+                swap_id,
+                ..
+            }) => *swap_id,
+            Msg::Abort(protocol_message::Abort { swap_id, .. }) => *swap_id,
+            Msg::CoreArbitratingSetup(protocol_message::CoreArbitratingSetup {
+                swap_id, ..
+            }) => *swap_id,
+            Msg::BuyProcedureSignature(protocol_message::BuyProcedureSignature {
+                swap_id, ..
+            }) => *swap_id,
+        }
+    }
 }
 
 impl LightningEncode for Msg {
