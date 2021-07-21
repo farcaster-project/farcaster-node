@@ -370,7 +370,9 @@ impl Runtime {
             }
             Request::Keypair(Keypair(sk, pk)) => {
                 info!(
-                    "received peerd keys, secret \n{:?} \n and public {:?}",
+                    "received peerd keys \n \
+                     secret: {} \n \
+                     public: {}",
                     sk.addr(),
                     pk.addr()
                 );
