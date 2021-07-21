@@ -408,15 +408,14 @@ impl Runtime {
                     Request::PeerList(self.connections.iter().cloned().collect()),
                 )?;
             }
-            // FIXME: turn of after serde for SwapList
-            // Request::ListSwaps => {
-            //     senders.send_to(
-            //         ServiceBus::Ctl,
-            //         ServiceId::Farcasterd, // source
-            //         source,                // destination
-            //         Request::SwapList(self.running_swaps.iter().cloned().collect()),
-            //     )?;
-            // }
+            Request::ListSwaps => {
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
+                    Request::SwapList(self.running_swaps.iter().cloned().collect()),
+                )?;
+            }
 
             Request::Listen(addr) => {
                 let addr_str = addr.addr();

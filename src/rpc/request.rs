@@ -378,11 +378,10 @@ pub enum Request {
     #[from]
     PeerList(List<NodeAddr>),
 
-    // FIXME: add serde
-    // #[api(type = 1104)]
-    // #[display("swap_list({0})", alt = "{0:#}")]
-    // #[from]
-    // SwapList(List<SwapId>),
+    #[api(type = 1104)]
+    #[display("swap_list({0})", alt = "{0:#}")]
+    #[from]
+    SwapList(List<SwapId>),
 
     #[api(type = 1105)]
     #[display("task_list({0})", alt = "{0:#}")]
