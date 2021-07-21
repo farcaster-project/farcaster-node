@@ -13,9 +13,10 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
+use lazy_static::lazy_static;
 use lightning_encoding::{LightningDecode, LightningEncode, strategies::AsStrict};
 use crate::walletd::NodeSecrets;
-use amplify::{ToYamlString, Wrapper};
+use amplify::{ToYamlString, Wrapper, Holder};
 use internet2::addr::InetSocketAddr;
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds, Same};
@@ -35,14 +36,15 @@ use farcaster_core::{
     },
     negotiation::{Offer, PublicOffer}, protocol_message::{self, RevealAliceParameters, RevealBobParameters},
     protocol_message::{CommitAliceParameters, CommitBobParameters},
-    role::TradeRole
+    role::TradeRole,
+    swap::SwapId,
 };
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::chain::AssetId;
-use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
+use lnpbp::strict_encoding::{StrictDecode, StrictEncode, strict_encode_list, strategies::HashFixedBytes, Strategy};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 
@@ -83,15 +85,19 @@ impl LightningEncode for Msg {
     }
 }
 
+lazy_static! {
+    pub static ref UNMARSHALLER: Unmarshaller<Msg> = Msg::create_unmarshaller();
+}
+
 impl LightningDecode for Msg {
     fn lightning_decode<D: io::Read>(
         d: D,
     ) -> Result<Self, lightning_encoding::Error> {
-        Ok((&*Msg::create_unmarshaller()
+        Ok((&*UNMARSHALLER
             .unmarshall(&Vec::<u8>::lightning_decode(d)?)
             .map_err(|_| {
                 lightning_encoding::Error::DataIntegrityError(s!(
-                    "can't unmarshall LMP message"
+                    "can't unmarshall FWP message"
                 ))
             })?)
            .clone())
@@ -372,10 +378,11 @@ pub enum Request {
     #[from]
     PeerList(List<NodeAddr>),
 
-    #[api(type = 1104)]
-    #[display("swap_list({0})", alt = "{0:#}")]
-    #[from]
-    SwapList(List<SwapId>),
+    // FIXME: add serde
+    // #[api(type = 1104)]
+    // #[display("swap_list({0})", alt = "{0:#}")]
+    // #[from]
+    // SwapList(List<SwapId>),
 
     #[api(type = 1105)]
     #[display("task_list({0})", alt = "{0:#}")]
@@ -623,14 +630,14 @@ impl IntoSuccessOrFalure for Result<(), crate::Error> {
     }
 }
 
-impl Into<Reveal> for Params {
+impl Into<Reveal> for (SwapId, Params) {
     fn into(self) -> Reveal {
         match self {
-            Params::Alice(params) => {
-                Reveal::Alice(params.into())
+            (swap_id, Params::Alice(params)) => {
+                Reveal::Alice((swap_id, params).into())
             }
-            Params::Bob(params) => {
-                Reveal::Bob(params.into())
+            (swap_id, Params::Bob(params)) => {
+                Reveal::Bob((swap_id, params).into())
             }
         }
     }

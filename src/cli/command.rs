@@ -16,8 +16,10 @@ use std::str::FromStr;
 use std::{convert::TryFrom, time::Duration};
 
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
-use lnp::{message, ChannelId as SwapId, LIGHTNING_P2P_DEFAULT_PORT};
+use lnp::{message, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
+
+use farcaster_core::swap::SwapId;
 
 use super::Command;
 use crate::rpc::{request, Client, Request};

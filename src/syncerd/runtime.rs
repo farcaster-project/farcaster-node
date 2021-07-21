@@ -24,10 +24,11 @@ use std::time::{Duration, SystemTime};
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
-use lnp::{message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId};
+use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
+use farcaster_core::swap::SwapId;
 
 use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
@@ -97,7 +98,7 @@ impl Runtime {
             }
 
             _ => {
-                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                error!("MSG RPC can be only used for forwarding FWP messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }

@@ -17,7 +17,7 @@ use clap::{AppSettings, Clap, ValueHint};
 use bitcoin::hashes::hex::FromHex;
 use farcaster_core::{chain::pairs::btcxmr::BtcXmr, negotiation::PublicOffer, role::TradeRole};
 use internet2::PartialNodeAddr;
-use lnp::ChannelId as SwapId;
+use farcaster_core::swap::SwapId;
 use std::str::FromStr;
 
 /// Lightning peer network channel daemon; part of LNP Node
@@ -34,7 +34,7 @@ use std::str::FromStr;
 )]
 pub struct Opts {
     /// Channel id
-    #[clap(parse(try_from_str = SwapId::from_hex))]
+    #[clap(parse(try_from_str = SwapId::from_str))]
     pub swap_id: SwapId,
 
     /// Public offer to initiate swapd runtime

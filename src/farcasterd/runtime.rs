@@ -32,11 +32,13 @@ use bitcoin::secp256k1;
 use bitcoin::{hashes::hex::ToHex, secp256k1::SecretKey};
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{
-    message, ChannelId as SwapId, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT,
+    message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT,
 };
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
+
+use farcaster_core::swap::SwapId;
 
 use crate::rpc::request::{
     PeerSecret, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, RuntimeContext,
@@ -204,7 +206,7 @@ impl Runtime {
             }
 
             _ => {
-                error!("MSG RPC can be only used for forwarding LNPWP messages");
+                error!("MSG RPC can be only used for forwarding FWP messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
@@ -276,7 +278,7 @@ impl Runtime {
                     // connection daemon
                     debug!(
                         "Swapd {} is known: we spawned it to create a swap. \
-                         Ordering swap opening",
+                         Requesting swapd to be the maker of this swap",
                         source
                     );
                     notify_cli.push((
@@ -298,7 +300,7 @@ impl Runtime {
                     // connection daemon
                     debug!(
                         "Daemon {} is known: we spawned it to create a swap. \
-                         Ordering swap acceptance",
+                         Requesting swapd to be the taker of this swap",
                         source
                     );
 
@@ -406,15 +408,15 @@ impl Runtime {
                     Request::PeerList(self.connections.iter().cloned().collect()),
                 )?;
             }
-
-            Request::ListSwaps => {
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::SwapList(self.running_swaps.iter().cloned().collect()),
-                )?;
-            }
+            // FIXME: turn of after serde for SwapList
+            // Request::ListSwaps => {
+            //     senders.send_to(
+            //         ServiceBus::Ctl,
+            //         ServiceId::Farcasterd, // source
+            //         source,                // destination
+            //         Request::SwapList(self.running_swaps.iter().cloned().collect()),
+            //     )?;
+            // }
 
             Request::Listen(addr) => {
                 let addr_str = addr.addr();

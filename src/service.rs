@@ -18,11 +18,13 @@ use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
 use internet2::{zmqsocket, NodeAddr, ZmqType};
-use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
+// use lnp::{TempChannelId as TempSwapId};
 use lnpbp::strict_encoding::{strict_deserialize, strict_serialize};
 #[cfg(feature = "node")]
 use microservices::node::TryService;
 use microservices::{esb, rpc};
+
+use farcaster_core::swap::SwapId;
 
 use crate::rpc::{Request, ServiceBus};
 use crate::Config;
@@ -93,7 +95,7 @@ pub enum ServiceId {
 
     #[display("swap<{0:#x}>")]
     #[from]
-    #[from(TempSwapId)]
+    // #[from(TempSwapId)]
     Swap(SwapId),
 
     #[display("client<{0}>")]
