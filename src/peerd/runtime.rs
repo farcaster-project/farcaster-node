@@ -379,13 +379,14 @@ impl Runtime {
                     request,
                 )?;
             }
-            // Request::Protocol(_msg) => {
-            //     senders.send_to(
-            //         ServiceBus::Msg,
-            //         self.identity(),
-            //         ServiceId::Swap(),
-            //         request,
-            //     )?;
+            Request::Protocol(msg) => {
+                senders.send_to(
+                    ServiceBus::Msg,
+                    self.identity(),
+                    ServiceId::Swap(msg.swap_id()),
+                    request,
+                )?;
+            }
             // }
             // Request::PeerMessage(Messages::OpenChannel(_)) => {
             //     senders.send_to(
