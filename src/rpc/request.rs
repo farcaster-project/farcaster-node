@@ -74,9 +74,11 @@ pub enum Msg {
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
-    #[api(type = 29)]
-    #[display("ping(...)")]
-    Ping,
+    /* #[api(type = 29)]
+     * #[display("ping(...)")]
+     * Ping, */
+}
+
 impl Msg {
     pub fn swap_id(&self) -> SwapId {
         match self {

@@ -354,9 +354,9 @@ impl Runtime {
             //     self.ping()?;
             // }
 
-            // Request::PeerMessage(Messages::Ping(message::Ping { pong_size, .. })) => {
-            //     self.pong(*pong_size)?;
-            // }
+            Request::PeerMessage(Messages::Ping(message::Ping { pong_size, .. })) => {
+                self.pong(*pong_size)?;
+            }
 
             // Request::PeerMessage(Messages::Pong(noise)) => {
             //     match self.awaited_pong {
