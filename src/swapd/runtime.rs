@@ -492,7 +492,7 @@ impl Runtime {
                         },
                     )
                 })?;
-                let public_offer_hex = self.public_offer.to_string();
+                let public_offer_hex = self.public_offer.to_hex();
                 let take_swap = TakeCommit {
                     commit,
                     public_offer_hex,

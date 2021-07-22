@@ -545,7 +545,7 @@ impl Runtime {
                     remote_addr: remote_addr.clone(),
                 };
                 let public_offer = offer.clone().to_public_v1(peer);
-                let hex_public_offer = public_offer.to_string();
+                let hex_public_offer = public_offer.to_hex();
                 if self.making_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
@@ -584,7 +584,7 @@ impl Runtime {
                 if self.making_offers.contains(&public_offer) {
                     let msg = format!(
                         "Offer {} already exists, ignoring request",
-                        &public_offer.to_string()
+                        &public_offer.to_hex()
                     );
                     warn!("{}", msg.err());
                     notify_cli.push((
@@ -771,7 +771,7 @@ fn launch_swapd(
         "swapd",
         &[
             swap_id.to_hex(),
-            public_offer.to_string(),
+            public_offer.to_hex(),
             trade_role.to_string(),
         ],
     )?;
