@@ -647,28 +647,9 @@ impl Runtime {
                     senders.send_to(ServiceBus::Ctl, source, ServiceId::Wallet, request)?;
                 }
             }
-
-            Request::Init(_) => {}
-            Request::Error(_) => {}
-            Request::Ping(_) => {}
-            Request::Pong(_) => {}
-            Request::PeerMessage(_) => {}
-            Request::Protocol(_) => {}
-            Request::ListTasks => {}
-            Request::PingPeer => {}
-            Request::TakeSwap(_) => {}
-            Request::FundSwap(_) => {}
-            Request::Progress(_) => {}
-            Request::Success(_) => {}
-            Request::Failure(_) => {}
-            Request::SyncerInfo(_) => {}
-            Request::NodeInfo(_) => {}
-            Request::PeerInfo(_) => {}
-            Request::SwapInfo(_) => {}
-            Request::TaskList(_) => {}
-            // Request::SwapFunding(_) => {}
-            Request::CreateTask(_) => {}
-            _ => unimplemented!(),
+            req => {
+                error!("Currently unsupported request: {}", req.err());
+                unimplemented!()},
         }
 
         let mut len = 0;
