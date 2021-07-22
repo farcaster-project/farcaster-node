@@ -401,6 +401,10 @@ impl Runtime {
                 }
                 _ => {}
             },
+            Request::Progress(progress) => {
+                // TODO update wallet state?
+                info!("{}", progress);
+            }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let swap_id = swap_id(source.clone())?;
                 let core_arb_txs = core_arb_setup.into();

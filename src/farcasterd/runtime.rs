@@ -222,7 +222,7 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        let mut notify_cli: Vec<(Option<ServiceId>, Request)> = none!();
+        let mut report_to: Vec<(Option<ServiceId>, Request)> = none!();
         match request.clone() {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
@@ -289,7 +289,7 @@ impl Runtime {
                          Requesting swapd to be the maker of this swap",
                         source
                     );
-                    notify_cli.push((
+                    report_to.push((
                         swap_params.report_to.clone(), // walletd
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
@@ -311,7 +311,7 @@ impl Runtime {
                          Requesting swapd to be the taker of this swap",
                         source
                     );
-                    notify_cli.push((
+                    report_to.push((
                         swap_params.report_to.clone(), // walletd
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
@@ -331,7 +331,7 @@ impl Runtime {
                          connection by a request from {}",
                         source, enquirer
                     );
-                    notify_cli.push((
+                    report_to.push((
                         Some(enquirer.clone()),
                         Request::Success(OptionDetails::with(format!(
                             "Peer connected to {}",
@@ -441,7 +441,7 @@ impl Runtime {
                 if self.listens.contains(&addr) {
                     let msg = format!("Listener on {} already exists, ignoring request", addr);
                     warn!("{}", msg.err());
-                    notify_cli.push((
+                    report_to.push((
                         Some(source.clone()),
                         Request::Failure(Failure { code: 1, info: msg }),
                     ));
@@ -468,7 +468,7 @@ impl Runtime {
                         source.clone(),
                         resp.into_progress_or_failure(),
                     )?;
-                    notify_cli.push((
+                    report_to.push((
                         Some(source.clone()),
                         Request::Success(OptionDetails::with(format!(
                             "Node {} listens for connections on {}",
@@ -490,7 +490,7 @@ impl Runtime {
                     Ok(_) => {}
                     Err(ref err) => error!("{}", err.err()),
                 }
-                notify_cli.push((Some(source.clone()), resp.into_progress_or_failure()));
+                report_to.push((Some(source.clone()), resp.into_progress_or_failure()));
             }
 
             // Request::OpenSwapWith(request::CreateSwap {
@@ -531,7 +531,7 @@ impl Runtime {
                         Err(ref err) => error!("{}", err.err()),
                     }
 
-                    notify_cli.push((
+                    report_to.push((
                         Some(source.clone()),
                         resp.into_progress_or_failure()
                         // Request::Progress(format!(
@@ -542,7 +542,7 @@ impl Runtime {
                 } else {
                     info!("Already listening on {}", &remote_addr);
                     let msg = format!("Already listening on {}", &remote_addr);
-                    notify_cli.push((Some(source.clone()), Request::Progress(msg)));
+                    report_to.push((Some(source.clone()), Request::Progress(msg)));
                 }
                 let peer = internet2::RemoteNodeAddr {
                     node_id: self.node_id()?,
@@ -561,7 +561,7 @@ impl Runtime {
                         "Pubic offer registered:".bright_blue_bold(),
                         &hex_public_offer.bright_yellow_bold()
                     );
-                    notify_cli.push((
+                    report_to.push((
                         Some(source.clone()),
                         Request::Success(OptionDetails(Some(msg))),
                     ));
@@ -574,7 +574,7 @@ impl Runtime {
                 } else {
                     let msg = "This Public offer was previously registered";
                     warn!("{}", msg.err());
-                    notify_cli.push((
+                    report_to.push((
                         Some(source.clone()),
                         Request::Failure(Failure {
                             code: 1,
@@ -591,7 +591,7 @@ impl Runtime {
                         &public_offer.to_hex()
                     );
                     warn!("{}", msg.err());
-                    notify_cli.push((
+                    report_to.push((
                         Some(source.clone()),
                         Request::Failure(Failure { code: 1, info: msg }),
                     ));
@@ -616,7 +616,7 @@ impl Runtime {
 
                         let peer_connected_is_ok = peer_connected.is_ok();
 
-                        notify_cli.push((
+                        report_to.push((
                             Some(source.clone()),
                             peer_connected.into_progress_or_failure(),
                         ));
@@ -629,7 +629,7 @@ impl Runtime {
 
                         warn!("{}", &msg);
 
-                        notify_cli.push((Some(source.clone()), Request::Progress(msg)));
+                        report_to.push((Some(source.clone()), Request::Progress(msg)));
                         true
                     };
 
@@ -643,7 +643,7 @@ impl Runtime {
                         self.making_offers.insert(public_offer.clone());
                         info!("{}", offer_registered.bright_yellow_bold());
 
-                        notify_cli.push((
+                        report_to.push((
                             Some(source.clone()),
                             Request::Success(OptionDetails(Some(offer_registered))),
                         ));
@@ -657,7 +657,7 @@ impl Runtime {
         }
 
         let mut len = 0;
-        for (respond_to, resp) in notify_cli.into_iter() {
+        for (respond_to, resp) in report_to.into_iter() {
             if let Some(respond_to) = respond_to {
                 len += 1;
                 debug!("notifications to cli: {}", len);
