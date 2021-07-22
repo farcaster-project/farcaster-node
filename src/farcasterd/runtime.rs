@@ -343,11 +343,11 @@ impl Runtime {
             }
             Request::LaunchSwap(LaunchSwap {
                 peer,
-                trade_role,
+                local_trade_role,
                 public_offer,
-                params,
+                local_params,
                 swap_id,
-                commit,
+                remote_commit,
             }) => {
                 if self.making_offers.remove(&public_offer) {
                     trace!(
@@ -360,11 +360,11 @@ impl Runtime {
                         self,
                         peer,
                         Some(source),
-                        trade_role,
+                        local_trade_role,
                         public_offer,
-                        params,
+                        local_params,
                         swap_id,
-                        commit,
+                        remote_commit,
                     )?;
                 } else {
                     let msg = "unknown public_offer".to_string();
@@ -764,11 +764,11 @@ fn launch_swapd(
     runtime: &mut Runtime,
     peerd: ServiceId,
     report_to: Option<ServiceId>,
-    trade_role: TradeRole,
+    local_trade_role: TradeRole,
     public_offer: PublicOffer<BtcXmr>,
-    params: Params,
+    local_params: Params,
     swap_id: SwapId,
-    commit: Option<Commit>,
+    remote_commit: Option<Commit>,
 ) -> Result<String, Error> {
     debug!("Instantiating swapd...");
     let child = launch(
@@ -776,13 +776,13 @@ fn launch_swapd(
         &[
             swap_id.to_hex(),
             public_offer.to_hex(),
-            trade_role.to_string(),
+            local_trade_role.to_string(),
         ],
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
     info!("{}", msg);
 
-    let list = match trade_role {
+    let list = match local_trade_role {
         TradeRole::Taker => &mut runtime.taking_swaps,
         TradeRole::Maker => &mut runtime.making_swaps,
     };
@@ -791,9 +791,9 @@ fn launch_swapd(
         request::InitSwap {
             peerd,
             report_to,
-            params,
+            local_params,
             swap_id,
-            commit,
+            remote_commit,
         },
     );
 

@@ -186,11 +186,11 @@ pub struct PeerSecret(pub String, pub Option<RuntimeContext>);
 #[display("launch_swap")]
 pub struct LaunchSwap {
     pub peer: ServiceId,
-    pub trade_role: TradeRole,
+    pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer<BtcXmr>,
-    pub params: Params,
+    pub local_params: Params,
     pub swap_id: SwapId,
-    pub commit: Option<Commit>,
+    pub remote_commit: Option<Commit>,
 }
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
@@ -441,9 +441,9 @@ impl rpc_connection::Request for Request {}
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
-    pub params: Params,
+    pub local_params: Params,
     pub swap_id: SwapId,
-    pub commit: Option<Commit>,
+    pub remote_commit: Option<Commit>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

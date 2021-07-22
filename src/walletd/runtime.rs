@@ -139,7 +139,7 @@ impl Runtime {
             // handled by farcasterd, receiving taker commit because we are
             // maker
             Request::Protocol(Msg::TakerCommit(request::TakeCommit {
-                commit,
+                commit: remote_commit,
                 public_offer_hex,
                 swap_id,
             })) => {
@@ -171,13 +171,13 @@ impl Runtime {
                             Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let core_wallet = CoreWallet::new(wallet_seed);
-                        let params = bob.generate_parameters(&core_wallet, &public_offer)?;
+                        let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Bob(
                                     bob,
-                                    params.clone(),
+                                    local_params.clone(),
                                     core_wallet,
                                     public_offer.clone(),
                                     None,
@@ -187,11 +187,11 @@ impl Runtime {
                             );
                             let launch_swap = LaunchSwap {
                                 peer: peer.into(),
-                                trade_role: TradeRole::Maker,
+                                local_trade_role: TradeRole::Maker,
                                 public_offer,
-                                params: Params::Bob(params.clone()),
+                                local_params: Params::Bob(local_params.clone()),
                                 swap_id,
-                                commit: Some(commit),
+                                remote_commit: Some(remote_commit),
                             };
                             let reveal: Reveal = (swap_id, Params::Bob(params)).into();
                             self.swaps
@@ -228,11 +228,11 @@ impl Runtime {
                             );
                             let launch_swap = LaunchSwap {
                                 peer: peer.into(),
-                                trade_role: TradeRole::Maker,
+                                local_trade_role: TradeRole::Maker,
                                 public_offer,
-                                params: Params::Alice(params),
+                                local_params: Params::Alice(params),
                                 swap_id,
-                                commit: Some(commit),
+                                remote_commit: Some(remote_commit),
                             };
                             self.send_ctl(
                                 senders,
@@ -475,11 +475,11 @@ impl Runtime {
 
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
-                            trade_role: TradeRole::Taker,
+                            local_trade_role: TradeRole::Taker,
                             public_offer,
-                            params: Params::Bob(params),
+                            local_params: Params::Bob(params),
                             swap_id,
-                            commit: None,
+                            remote_commit: None,
                         };
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -499,11 +499,11 @@ impl Runtime {
 
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
-                            trade_role: TradeRole::Taker,
+                            local_trade_role: TradeRole::Taker,
                             public_offer,
-                            params: Params::Alice(params),
+                            local_params: Params::Alice(params),
                             swap_id,
-                            commit: None,
+                            remote_commit: None,
                         };
                         senders.send_to(
                             ServiceBus::Ctl,
