@@ -120,11 +120,11 @@ pub enum Command {
         accordant_blockchain: Monero,
 
         /// Amount of arbitrating assets to exchanged
-        #[clap(default_value = "100")]
+        #[clap(default_value = "100 BTC")]
         arbitrating_amount: bitcoin::Amount,
 
         /// Amount of accordant assets to exchanged
-        #[clap(default_value = "100")]
+        #[clap(default_value = "100 XMR")]
         accordant_amount: monero::Amount,
 
         /// The cancel timelock parameter of the arbitrating blockchain
