@@ -290,7 +290,7 @@ impl Runtime {
                         source
                     );
                     notify_cli.push((
-                        swap_params.report_to.clone(),
+                        swap_params.report_to.clone(), // walletd
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
 
@@ -311,6 +311,10 @@ impl Runtime {
                          Requesting swapd to be the taker of this swap",
                         source
                     );
+                    notify_cli.push((
+                        swap_params.report_to.clone(), // walletd
+                        Request::Progress(format!("Swap daemon {} operational", source)),
+                    ));
 
                     // FIXME msgs should go to walletd?
                     senders.send_to(
