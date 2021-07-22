@@ -23,12 +23,12 @@ use std::time::{Duration, SystemTime};
 
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
+use farcaster_core::swap::SwapId;
 use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
 use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
-use farcaster_core::swap::SwapId;
 
 use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
@@ -117,7 +117,11 @@ impl Runtime {
             }
             (Request::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
-                info!("{} daemon is {}", source.bright_green_bold(), "connected".bright_green_bold());
+                info!(
+                    "{} daemon is {}",
+                    source.bright_green_bold(),
+                    "connected".bright_green_bold()
+                );
             }
             (Request::GetInfo, _) => {
                 senders.send_to(

@@ -1,6 +1,13 @@
-use std::{collections::{HashMap, HashSet}, convert::TryInto, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+    str::FromStr,
+};
 
-use crate::rpc::{Request, ServiceBus, request::{self, Keypair, Msg, Params, Reveal, RuntimeContext}};
+use crate::rpc::{
+    request::{self, Keypair, Msg, Params, Reveal, RuntimeContext},
+    Request, ServiceBus,
+};
 use crate::swapd::swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
@@ -8,16 +15,16 @@ use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
 use bitcoin::secp256k1;
 use farcaster_core::{
-    chain::bitcoin::{Bitcoin, transaction::Funding},
-    chain::monero::{Monero},
-    chain::pairs::btcxmr::{Wallet as CoreWallet, BtcXmr},
     blockchain::FeePolitic,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
+    chain::bitcoin::{transaction::Funding, Bitcoin},
+    chain::monero::Monero,
+    chain::pairs::btcxmr::{BtcXmr, Wallet as CoreWallet},
     negotiation::PublicOffer,
     protocol_message::{BuyProcedureSignature, CoreArbitratingSetup, RefundProcedureSignatures},
-    role::{Alice, Bob, TradeRole, SwapRole},
-    transaction::Fundable,
+    role::{Alice, Bob, SwapRole, TradeRole},
     swap::SwapId,
+    transaction::Fundable,
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 // use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
@@ -164,8 +171,7 @@ impl Runtime {
                             Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let core_wallet = CoreWallet::new(wallet_seed);
-                        let params =
-                            bob.generate_parameters(&core_wallet, &public_offer)?;
+                        let params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             self.wallets.insert(
                                 swap_id,
@@ -188,7 +194,8 @@ impl Runtime {
                                 commit: Some(commit),
                             };
                             let reveal: Reveal = (swap_id, Params::Bob(params)).into();
-                            self.swaps.insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
+                            self.swaps
+                                .insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
                                 senders,
                                 ServiceId::Farcasterd,
@@ -207,8 +214,7 @@ impl Runtime {
                             Alice::new(external_address.into(), FeePolitic::Aggressive);
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let core_wallet = CoreWallet::new(wallet_seed);
-                        let params =
-                            alice.generate_parameters(&core_wallet, &public_offer)?;
+                        let params = alice.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             self.wallets.insert(
                                 swap_id,
@@ -270,15 +276,21 @@ impl Runtime {
                                 }
                                 // FIXME
                                 let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
-                                let (_, pubkey) = (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
+                                let (_, pubkey) =
+                                    (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
                                 let pubkey = bitcoin::PublicKey {
                                     compressed: true,
                                     key: pubkey,
                                 };
                                 let mut funding = Funding::initialize(
                                     pubkey,
-                                    farcaster_core::blockchain::Network::Mainnet
-                                ).map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
+                                    farcaster_core::blockchain::Network::Mainnet,
+                                )
+                                .map_err(|_| {
+                                    Error::Farcaster(
+                                        "Impossible to initialize funding tx".to_string(),
+                                    )
+                                })?;
                                 funding.update(funding_bundle.funding.clone());
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
                                     &params,
@@ -349,7 +361,8 @@ impl Runtime {
                         )?;
 
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
-                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from((swap_id, signed_adaptor_buy));
+                        let buy_proc_sig =
+                            BuyProcedureSignature::<BtcXmr>::from((swap_id, signed_adaptor_buy));
                         let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -442,7 +455,7 @@ impl Runtime {
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
                 let swap_id: SwapId = SwapId::random().into(); // TODO: replace by public_offer_id
-                                                                   // since we're takers, we are on the other side
+                                                               // since we're takers, we are on the other side
                 self.swaps.insert(swap_id, None);
                 let taker_role = offer.maker_role.other();
                 let wallet_seed = self.node_secrets.wallet_seed;
@@ -454,8 +467,7 @@ impl Runtime {
                         )
                         .expect("Parsable address");
                         let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
-                        let params =
-                            bob.generate_parameters(&core_wallet, &public_offer)?;
+                        let params = bob.generate_parameters(&core_wallet, &public_offer)?;
 
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
@@ -479,8 +491,7 @@ impl Runtime {
                         .expect("Parsable address");
                         let alice: Alice<BtcXmr> =
                             Alice::new(address.into(), FeePolitic::Aggressive);
-                        let params =
-                            alice.generate_parameters(&core_wallet, &public_offer)?;
+                        let params = alice.generate_parameters(&core_wallet, &public_offer)?;
 
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),

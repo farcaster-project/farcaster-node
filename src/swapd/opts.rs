@@ -15,9 +15,9 @@
 use clap::{AppSettings, Clap, ValueHint};
 
 use bitcoin::hashes::hex::FromHex;
+use farcaster_core::swap::SwapId;
 use farcaster_core::{chain::pairs::btcxmr::BtcXmr, negotiation::PublicOffer, role::TradeRole};
 use internet2::PartialNodeAddr;
-use farcaster_core::swap::SwapId;
 use std::str::FromStr;
 
 /// Lightning peer network channel daemon; part of LNP Node

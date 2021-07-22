@@ -327,7 +327,12 @@ where
         Ok(())
     }
 
-    fn send_wallet(&mut self, bus: ServiceBus, senders: &mut Senders, request: Request) -> Result<(), Error> {
+    fn send_wallet(
+        &mut self,
+        bus: ServiceBus,
+        senders: &mut Senders,
+        request: Request,
+    ) -> Result<(), Error> {
         let source = self.identity();
         trace!("sending {} to walletd from {}", request, source);
         senders
