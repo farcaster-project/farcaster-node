@@ -147,28 +147,42 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Display)]
 pub enum AliceState {
+    #[display("Start")]
     StartA,
+    #[display("Commit")]
     CommitA,
+    #[display("Reveal")]
     RevealA,
+    #[display("RefundProcSigs")]
     RefundProcedureSignatures,
+    #[display("Finish")]
     FinishA,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Display)]
 pub enum BobState {
+    #[display("Start")]
     StartB,
+    #[display("Commit")]
     CommitB,
+    #[display("Reveal")]
     RevealB,
+    #[display("CoreArb")]
     CorearbB,
+    #[display("BuyProcSig")]
     BuyProcSigB,
+    #[display("Finish")]
     FinishB,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Display)]
+#[display(inner)]
 pub enum State {
+    #[display("AliceState({0})")]
     Alice(AliceState),
+    #[display("BobState({0})")]
     Bob(BobState),
 }
 
@@ -207,7 +221,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl Runtime {
     fn send_peer(&self, senders: &mut Senders, msg: request::Msg) -> Result<(), Error> {
-        trace!("sending peer message {}", msg.amount());
+        trace!("sending peer message {}", msg.bright_yellow_bold());
         senders.send_to(
             ServiceBus::Msg,
             self.identity(),
@@ -324,13 +338,15 @@ impl Runtime {
                             || self.state == State::Bob(BobState::CommitB)
                         {
                             if let Some(local_params) = self.local_params.clone() {
-                                let reveal: Reveal = (self.swap_id(), local_params).clone().into();
+                                let reveal: Reveal = (self.swap_id(), local_params).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?
                             } else {
                                 // maybe should not fail here because of the
                                 Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
                             };
                         }
+
+                        info!("!!!!!!!! {}", next_state.bright_blue_bold());
                         self.state = next_state;
                     }
                     // alice receives, bob sends
@@ -385,7 +401,7 @@ impl Runtime {
             //     // halt the channel just because the client disconnected
             //     let msg = format!(
             //         "{} both signatures present",
-            //         "Channel funded:".ended()
+            //         "Channel funded:".bright_green_bold()
             //     );
             //     info!("{}", msg);
             //     let _ = self.report_progress_to(senders, &enquirer, msg);
@@ -404,7 +420,7 @@ impl Runtime {
 
                 // Ignoring possible error here: do not want to
                 // halt the channel just because the client disconnected
-                let msg = format!("{} transaction confirmed", "Channel active:".ended());
+                let msg = format!("{} transaction confirmed", "Channel active:".bright_green_bold());
                 info!("{}", msg);
                 let _ = self.report_success_to(senders, &enquirer, Some(msg));
             }
@@ -490,6 +506,7 @@ impl Runtime {
                 swap_id,
                 commit: Some(remote_commit),
             }) => {
+                self.local_params = Some(params.clone());
                 if self.commit_remote.is_some() {
                     Err(Error::Farcaster("remote commit already set".to_string()))?
                 }
@@ -499,7 +516,6 @@ impl Runtime {
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
                 }?;
                 self.peer_service = peerd.clone();
-
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
@@ -521,6 +537,7 @@ impl Runtime {
                 self.commit_remote = Some(remote_commit);
                 self.commit_local = Some(local_commit.clone());
                 trace!("sending peer MakerCommit msg");
+                info!("!!!!!!!! {}", next_state.bright_blue_bold());
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
                 self.state = next_state;
             }
@@ -532,6 +549,7 @@ impl Runtime {
                 }?;
                 trace!("sending peer CoreArbitratingSetup msg");
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
+                info!("!!!!!!!! {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -548,6 +566,7 @@ impl Runtime {
                 }
                 trace!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
+                info!("!!!!!!!! {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -559,6 +578,7 @@ impl Runtime {
 
                 trace!("sending peer BuyProcedureSignature msg");
                 self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
+                info!("!!!!!!!! {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
             // Request::FundSwap(funding_outpoint) => {
@@ -628,9 +648,9 @@ impl Runtime {
     ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} {} with id {:#}",
-            "Proposing to the Maker".promo(),
-            "that I take the swap offer".promo(),
-            self.swap_id().promoter()
+            "Proposing to the Maker".bright_blue_bold(),
+            "that I take the swap offer".bright_blue_bold(),
+            self.swap_id().bright_blue_italic()
         );
         info!("{}", &msg);
         let core_wallet = CoreWallet::new_keyless();
@@ -664,9 +684,9 @@ impl Runtime {
     ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} as Maker with swap id {:#} from Taker remote peer {}",
-            "Accepting swap".promo(),
-            swap_id.promoter(),
-            peerd.promoter()
+            "Accepting swap".bright_blue_bold(),
+            swap_id.bright_blue_italic(),
+            peerd.bright_blue_italic()
         );
         info!("{}", msg);
 
@@ -713,9 +733,9 @@ impl Runtime {
 
         let msg = format!(
             "{} swap {:#} from remote peer Taker {}",
-            "Making".ended(),
-            swap_id.ender(),
-            peerd.ender()
+            "Making".bright_green_bold(),
+            swap_id.bright_green_italic(),
+            peerd.bright_green_italic()
         );
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
@@ -731,9 +751,9 @@ impl Runtime {
     ) -> Result<(), payment::channel::NegotiationError> {
         info!(
             "Channel {:#} {} by the remote peer {}",
-            accept_channel.temporary_channel_id.ender(),
-            "was accepted".ended(),
-            peerd.ender()
+            accept_channel.temporary_channel_id.bright_green_italic(),
+            "was accepted".bright_green_bold(),
+            peerd.bright_green_italic()
         );
         // Ignoring possible reporting errors here and after: do not want to
         // halt the channel just because the client disconnected
@@ -746,8 +766,8 @@ impl Runtime {
 
         let msg = format!(
             "{} returned parameters for the channel {:#}",
-            "Verifying".promo(),
-            accept_channel.temporary_channel_id.promoter()
+            "Verifying".bright_blue_bold(),
+            accept_channel.temporary_channel_id.bright_blue_italic()
         );
         info!("{}", msg);
 
@@ -757,8 +777,8 @@ impl Runtime {
 
         let msg = format!(
             "Channel {:#} is {}",
-            accept_channel.temporary_channel_id.ender(),
-            "ready for funding".ended()
+            accept_channel.temporary_channel_id.bright_green_italic(),
+            "ready for funding".bright_green_bold()
         );
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
@@ -775,8 +795,8 @@ impl Runtime {
 
     //     info!(
     //         "{} {}",
-    //         "Funding channel".promo(),
-    //         self.swap_id.promoter()
+    //         "Funding channel".bright_blue_bold(),
+    //         self.swap_id.bright_blue_italic()
     //     );
     //     let _ = self.report_progress_to(
     //         senders,
@@ -798,8 +818,8 @@ impl Runtime {
 
     //     let msg = format!(
     //         "{} for channel {:#}. Awaiting for remote node signature.",
-    //         "Funding created".ended(),
-    //         self.swap_id.ender()
+    //         "Funding created".bright_green_bold(),
+    //         self.swap_id.bright_green_italic()
     //     );
     //     info!("{}", msg);
     //     let _ = self.report_progress_to(senders, &enquirer, msg);
@@ -816,8 +836,8 @@ impl Runtime {
 
     //     info!(
     //         "{} {}",
-    //         "Accepting channel funding".promo(),
-    //         self.swap_id.promoter()
+    //         "Accepting channel funding".bright_blue_bold(),
+    //         self.swap_id.bright_blue_italic()
     //     );
     //     let _ = self.report_progress_to(
     //         senders,
@@ -844,8 +864,8 @@ impl Runtime {
 
     //     let msg = format!(
     //         "{} for channel {:#}. Awaiting for funding tx mining.",
-    //         "Funding signed".ended(),
-    //         self.swap_id.ender()
+    //         "Funding signed".bright_green_bold(),
+    //         self.swap_id.bright_green_italic()
     //     );
     //     info!("{}", msg);
     //     let _ = self.report_progress_to(senders, &enquirer, msg);

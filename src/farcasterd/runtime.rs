@@ -223,7 +223,7 @@ impl Runtime {
         match request.clone() {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
-                info!("{} daemon is {}", source.ended(), "connected".ended());
+                info!("{} daemon is {}", source.bright_green_bold(), "connected".bright_green_bold());
 
                 match &source {
                     ServiceId::Farcasterd => {
@@ -338,7 +338,7 @@ impl Runtime {
                 commit,
             }) => {
                 if self.making_offers.remove(&public_offer) {
-                    trace!("{}, {}", "launching swapd with swap_id:", swap_id.amount());
+                    trace!("{}, {}", "launching swapd with swap_id:", swap_id.bright_yellow_bold());
                     launch_swapd(
                         self,
                         peer,
@@ -370,7 +370,9 @@ impl Runtime {
             }
             Request::Keypair(Keypair(sk, pk)) => {
                 info!(
-                    "received peerd keys, secret \n{:?} \n and public {:?}",
+                    "received peerd keys \n \
+                     secret: {} \n \
+                     public: {}",
                     sk.addr(),
                     pk.addr()
                 );
@@ -431,13 +433,13 @@ impl Runtime {
                     self.listens.insert(addr);
                     info!(
                         "{} for incoming LN peer connections on {}",
-                        "Starting listener".promo(),
+                        "Starting listener".bright_blue_bold(),
                         addr_str
                     );
                     match resp {
                         Ok(_) => info!(
                             "Connection daemon {} for incoming LN peer connections on {}",
-                            "listens".ended(),
+                            "listens".bright_green_bold(),
                             addr_str
                         ),
                         Err(ref err) => error!("{}", err.err()),
@@ -463,8 +465,8 @@ impl Runtime {
             Request::ConnectPeer(addr) => {
                 info!(
                     "{} to remote peer {}",
-                    "Connecting".promo(),
-                    addr.promoter()
+                    "Connecting".bright_blue_bold(),
+                    addr.bright_blue_italic()
                 );
                 let resp = self.connect_peer(source.clone(), &addr);
                 match resp {
@@ -481,8 +483,8 @@ impl Runtime {
             // }) => {
             //     info!(
             //         "{} by request from {}",
-            //         "Creating channel".promo(),
-            //         source.promoter()
+            //         "Creating channel".bright_blue_bold(),
+            //         source.bright_blue_italic()
             //     );
             //     let resp = self.create_swap(peerd, report_to, swap_req,
             // false);     match resp {
@@ -499,14 +501,14 @@ impl Runtime {
                     self.listens.insert(remote_addr);
                     info!(
                         "{} for incoming LN peer connections on {}",
-                        "Starting listener".promo(),
-                        remote_addr.promo()
+                        "Starting listener".bright_blue_bold(),
+                        remote_addr.bright_blue_bold()
                     );
                     let resp = self.listen(&remote_addr);
                     match resp {
                         Ok(_) => info!(
                             "Connection daemon {} for incoming LN peer connections on {}",
-                            "listens".ended(),
+                            "listens".bright_green_bold(),
                             remote_addr
                         ),
                         Err(ref err) => error!("{}", err.err()),
@@ -534,13 +536,13 @@ impl Runtime {
                 if self.making_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
-                        "Pubic offer registered, please share with taker: ".promo(),
-                        hex_public_offer.amount()
+                        "Pubic offer registered, please share with taker: ".bright_blue_bold(),
+                        hex_public_offer.bright_yellow_bold()
                     );
                     info!(
                         "{} {}",
-                        "Pubic offer registered:".promo(),
-                        &hex_public_offer.amount()
+                        "Pubic offer registered:".bright_blue_bold(),
+                        &hex_public_offer.bright_yellow_bold()
                     );
                     notify_cli.push((
                         Some(source.clone()),
@@ -590,8 +592,8 @@ impl Runtime {
                     let peer_connected_is_ok = if !self.connections.contains(&peer) {
                         info!(
                             "{} to remote peer {}",
-                            "Connecting".promo(),
-                            peer.promoter()
+                            "Connecting".bright_blue_bold(),
+                            peer.bright_blue_italic()
                         );
                         let peer_connected = self.connect_peer(source.clone(), &peer);
 
@@ -603,7 +605,7 @@ impl Runtime {
                         ));
                         peer_connected_is_ok
                     } else {
-                        let msg = format!("Already connected to remote peer {}", peer.promoter());
+                        let msg = format!("Already connected to remote peer {}", peer.bright_blue_italic());
                         warn!("{}", &msg);
 
                         notify_cli.push((Some(source.clone()), Request::Progress(msg)));
@@ -613,12 +615,12 @@ impl Runtime {
                     if peer_connected_is_ok {
                         let offer_registered = format!(
                             "{} {}",
-                            "Pubic offer registered:".promo(),
-                            &public_offer.amount()
+                            "Pubic offer registered:".bright_blue_bold(),
+                            &public_offer.bright_yellow_bold()
                         );
                         // not yet in the set
                         self.making_offers.insert(public_offer.clone());
-                        info!("{}", offer_registered.amount());
+                        info!("{}", offer_registered.bright_yellow_bold());
 
                         notify_cli.push((
                             Some(source.clone()),
@@ -659,8 +661,8 @@ impl Runtime {
                 debug!("notifications to cli: {}", len);
                 info!(
                     "Respond to {} -> Response {}",
-                    respond_to.amount(),
-                    resp.promo(),
+                    respond_to.bright_yellow_bold(),
+                    resp.bright_blue_bold(),
                 );
                 senders.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, respond_to, resp)?;
             }

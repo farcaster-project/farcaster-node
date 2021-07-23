@@ -120,14 +120,14 @@ impl Client {
             match self.report_failure()? {
                 // Failure is already covered by `report_response()`
                 Request::Progress(info) => {
-                    println!("{}", info.progress());
+                    println!("{}", info.green_bold());
                     finished = false;
                 }
                 Request::Success(OptionDetails(Some(info))) => {
-                    println!("{}{}", "Success: ".ended(), info);
+                    println!("{}{}", "Success: ".bright_green_bold(), info);
                 }
                 Request::Success(OptionDetails(None)) => {
-                    println!("{}", "Success".ended());
+                    println!("{}", "Success".bright_green_bold());
                 }
                 other => {
                     eprintln!("{}: {}", "Unexpected report".err(), other.err_details());
