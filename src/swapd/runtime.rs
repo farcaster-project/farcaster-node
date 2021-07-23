@@ -88,12 +88,12 @@ pub fn run(
         // remote_state: init_state(local_role.other()),
         funding_outpoint: default!(),
         maker_peer: None,
-        commit_remote: None,
-        commit_local: None,
+        remote_commit: None,
+        local_commit: None,
         local_role,
         started: SystemTime::now(),
-        local_params: default!(),
-        remote_params: default!(),
+        local_params: none!(),
+        remote_params: none!(),
         is_maker: false,
         obscuring_factor: 0,
         accordant_amount,
@@ -116,6 +116,9 @@ pub fn run(
     let broker = false;
     Service::run(config, runtime, broker)
 }
+
+// FIXME: State enum should carry over the data that is accumulated over time,
+// and corresponding files should be removed from Runtime
 pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
@@ -129,8 +132,8 @@ pub struct Runtime {
     remote_params: Option<Params>,
     is_maker: bool,
     obscuring_factor: u64,
-    commit_remote: Option<Commit>,
-    commit_local: Option<Commit>,
+    remote_commit: Option<Commit>,
+    local_commit: Option<Commit>,
     local_role: SwapRole,
     accordant_amount: monero::Amount,
     arbitrating_amount: bitcoin::Amount,
@@ -266,9 +269,9 @@ impl Runtime {
                 }
                 match &msg {
                     Msg::MakerCommit(commit) => {
-                        // bob and alice, maker commited, now taker reveals
+                        // bob and alice, we are taker, maker commited, now we reveal
                         trace!("received commitment from counterparty, can now reveal");
-                        self.commit_remote = Some(commit.clone());
+                        self.remote_commit = Some(commit.clone());
                         if let Some(local_params) = &self.local_params {
                             let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                             self.send_peer(senders, Msg::Reveal(reveal))?
@@ -278,13 +281,21 @@ impl Runtime {
                     }
                     Msg::TakerCommit(TakeCommit { commit, .. }) => {
                         unreachable!(
-                            "msg handled by farcasterd/walletd, and indirectly here by Request::MakeSwap"
+                            "msg handled by farcasterd/walletd, and indirectly here by \
+                             Ctl Request::MakeSwap"
                         )
                     }
                     // bob and alice
                     Msg::Reveal(role) => {
                         if self.remote_params.is_some() {
+                            error!(
+                                "{}: {}",
+                                "remote_params already set",
+                                self.remote_params.clone().expect("Checked above")
+                            );
                             Err(Error::Farcaster("remote_params already set".to_string()))?
+                        } else {
+                            error!("{}", "remote_params not yet set");
                         }
 
                         let next_state = match self.state {
@@ -304,7 +315,7 @@ impl Runtime {
 
                         let core_wallet = CoreWallet::new_keyless();
                         let remote_params = match role {
-                            Reveal::Alice(reveal) => match &self.commit_remote {
+                            Reveal::Alice(reveal) => match &self.remote_commit {
                                 Some(Commit::Alice(commit)) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Params::Alice(reveal.clone().into())
@@ -315,7 +326,7 @@ impl Runtime {
                                     Err(Error::Farcaster(err_msg.to_string()))?
                                 }
                             },
-                            Reveal::Bob(reveal) => match &self.commit_remote {
+                            Reveal::Bob(reveal) => match &self.remote_commit {
                                 Some(Commit::Bob(commit)) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Params::Bob(reveal.clone().into())
@@ -460,9 +471,9 @@ impl Runtime {
             Request::TakeSwap(InitSwap {
                 peerd,
                 report_to,
-                params,
+                local_params,
                 swap_id,
-                commit: None,
+                remote_commit: None,
             }) => {
                 if &ServiceId::Swap(swap_id) != &self.identity {
                     error!(
@@ -477,12 +488,12 @@ impl Runtime {
                 }?;
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
-                self.local_params = Some(params.clone());
+                self.local_params = Some(local_params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commit = self.taker_commit(senders, params).map_err(|err| {
+                let commit = self.taker_commit(senders, local_params).map_err(|err| {
                     self.report_failure_to(
                         senders,
                         &report_to,
@@ -492,25 +503,30 @@ impl Runtime {
                         },
                     )
                 })?;
-                let public_offer_hex = self.public_offer.to_string();
+                self.local_commit = Some(commit.clone());
+                let public_offer_hex = self.public_offer.to_hex();
                 let take_swap = TakeCommit {
                     commit,
                     public_offer_hex,
                     swap_id,
                 };
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
+                info!("!!!!!!!! {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
             Request::MakeSwap(InitSwap {
                 peerd,
                 report_to,
-                params,
+                local_params,
                 swap_id,
-                commit: Some(remote_commit),
+                remote_commit: Some(remote_commit),
             }) => {
-                self.local_params = Some(params.clone());
-                if self.commit_remote.is_some() {
+                if self.local_params.is_some() {
+                    Err(Error::Farcaster("local_params already set".to_string()))?
+                }
+                self.local_params = Some(local_params.clone());
+                if self.remote_commit.is_some() {
                     Err(Error::Farcaster("remote commit already set".to_string()))?
                 }
                 let next_state = match self.state {
@@ -524,7 +540,7 @@ impl Runtime {
                 }
 
                 let local_commit = self
-                    .maker_commit(senders, &peerd, swap_id, params)
+                    .maker_commit(senders, &peerd, swap_id, local_params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -537,8 +553,8 @@ impl Runtime {
                     })?;
 
                 trace!("setting commit_remote and commit_local msg");
-                self.commit_remote = Some(remote_commit);
-                self.commit_local = Some(local_commit.clone());
+                self.remote_commit = Some(remote_commit);
+                self.local_commit = Some(local_commit.clone());
                 trace!("sending peer MakerCommit msg");
                 info!("!!!!!!!! {}", next_state.bright_blue_bold());
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;

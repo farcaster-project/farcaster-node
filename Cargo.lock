@@ -692,20 +692,24 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "farcaster_core"
 version = "0.1.0"
+source = "git+https://github.com/zkao/farcaster-core?branch=align_deps#6d7c7cb28afac49cce4637c380b4ccedb1c4ac1f"
 dependencies = [
  "bitcoin",
+ "fixed-hash",
  "hex",
  "internet2",
  "lightning_encoding",
  "monero",
+ "serde 1.0.125",
  "strict_encoding",
  "strict_encoding_derive",
  "thiserror",
+ "tiny-keccak",
 ]
 
 [[package]]
 name = "farcaster_node"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "amplify",
  "amplify_derive",
@@ -985,6 +989,7 @@ dependencies = [
 [[package]]
 name = "internet2"
 version = "0.3.10"
+source = "git+https://github.com/zkao/rust-internet2?branch=farcaster#d137e46c1515c4d2623223e270cd5f2f3829ee47"
 dependencies = [
  "amplify",
  "amplify_derive",
@@ -1085,6 +1090,7 @@ checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
 [[package]]
 name = "lnp-core"
 version = "0.3.1"
+source = "git+https://github.com/zkao/lnp-core?branch=farcaster#f4741fab43ee9773a1c2b3898b27da45f4cfe090"
 dependencies = [
  "amplify",
  "amplify_derive",
@@ -1177,6 +1183,7 @@ dependencies = [
 [[package]]
 name = "microservices"
 version = "0.3.10"
+source = "git+https://github.com/zkao/rust-internet2?branch=farcaster#d137e46c1515c4d2623223e270cd5f2f3829ee47"
 dependencies = [
  "amplify",
  "amplify_derive",
