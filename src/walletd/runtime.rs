@@ -14,6 +14,7 @@ use crate::LogStyle;
 use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
 use bitcoin::secp256k1;
+use colored::Colorize;
 use farcaster_core::{
     blockchain::FeePolitic,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
@@ -173,6 +174,23 @@ impl Runtime {
                         let core_wallet = CoreWallet::new(wallet_seed);
                         let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
+                            // FIXME get his externally
+                            // let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
+                            // let (_, pubkey) =
+                            //     (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
+                            // let pubkey = bitcoin::PublicKey {
+                            //     compressed: true,
+                            //     key: pubkey,
+                            // };
+                            // let mut funding = Funding::initialize(
+                            //     pubkey,
+                            //     farcaster_core::blockchain::Network::Mainnet,
+                            // )
+                            // .map_err(|_| {
+                            //     Error::Farcaster("Impossible to initialize funding tx".to_string())
+                            // })?;
+                            // funding.update(funding_bundle.funding.clone());
+                            info!("Creating {}", "Wallet::Bob".bright_yellow());
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Bob(
@@ -193,9 +211,10 @@ impl Runtime {
                                 swap_id,
                                 remote_commit: Some(remote_commit),
                             };
-                            let reveal: Reveal = (swap_id, Params::Bob(local_params)).into();
-                            self.swaps
-                                .insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
+                            self.swaps.insert(swap_id, None);
+                            // let reveal: Reveal = (swap_id, Params::Bob(local_params)).into();
+                            // self.swaps
+                            //     .insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
                                 senders,
                                 ServiceId::Farcasterd,
@@ -259,8 +278,8 @@ impl Runtime {
                                 core_wallet,
                                 public_offer,
                                 // TODO: set funding_bundle somewhere, its now
-                                // actually None, so will never hit this.
-                                Some(funding_bundle),
+                                // actually None
+                                None, //Some(funding_bundle),
                                 alice_params, // None
                                 core_arb_txs, // None
                             )) => {
@@ -274,6 +293,7 @@ impl Runtime {
                                 if core_arb_txs.is_some() {
                                     Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
                                 }
+
                                 // FIXME
                                 let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
                                 let (_, pubkey) =
@@ -282,7 +302,7 @@ impl Runtime {
                                     compressed: true,
                                     key: pubkey,
                                 };
-                                let mut funding = Funding::initialize(
+                                let funding = Funding::initialize(
                                     pubkey,
                                     farcaster_core::blockchain::Network::Mainnet,
                                 )
@@ -291,7 +311,8 @@ impl Runtime {
                                         "Impossible to initialize funding tx".to_string(),
                                     )
                                 })?;
-                                funding.update(funding_bundle.funding.clone());
+                                // FIXME
+                                // funding.update(funding_bundle.funding.clone());
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
                                     &params,
                                     bob_params,
@@ -388,10 +409,10 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => match source {
+            Request::Hello => match &source {
                 ServiceId::Swap(swap_id) => {
                     if let Some(option_req) = self.swaps.get_mut(&swap_id) {
-                        trace!("know swapd, you launched it");
+                        trace!("Know swapd, you launched it");
                         if let Some(req) = option_req {
                             let request = req.clone();
                             *option_req = None;
@@ -399,7 +420,9 @@ impl Runtime {
                         }
                     }
                 }
-                _ => {}
+                source => {
+                    debug!("Received Hello from {}", source);
+                }
             },
             Request::Progress(progress) => {
                 // TODO update wallet state?
