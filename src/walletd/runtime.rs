@@ -193,7 +193,7 @@ impl Runtime {
                                 swap_id,
                                 remote_commit: Some(remote_commit),
                             };
-                            let reveal: Reveal = (swap_id, Params::Bob(params)).into();
+                            let reveal: Reveal = (swap_id, Params::Bob(local_params)).into();
                             self.swaps
                                 .insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
