@@ -50,7 +50,13 @@ fn main() {
 
     let node_id = opts.key_opts.node_secrets().node_id();
 
-    info!("{}: {}", "Local node id".bright_green_bold(), node_id.bright_yellow_bold());
+
+    info!(
+        "{}: {}",
+        "Local node id".bright_green_bold(),
+        node_id.bright_yellow_bold()
+    );
+
 
     debug!("Starting runtime ...");
     walletd::run(config, walletd_token, opts.key_opts.node_secrets(), node_id)

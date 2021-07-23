@@ -21,10 +21,10 @@ use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 
 use farcaster_core::{
-    chain::bitcoin::{Bitcoin, timelock::CSVTimelock, fee::SatPerVByte},
+    blockchain::{FeeStrategy, Network},
+    chain::bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
     chain::monero::Monero,
     chain::pairs::btcxmr::BtcXmr,
-    blockchain::{FeeStrategy, Network},
     negotiation::PublicOffer,
     role::SwapRole,
 };

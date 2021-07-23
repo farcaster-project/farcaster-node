@@ -29,13 +29,13 @@ use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
 
 use farcaster_core::{
-    chain::bitcoin::{fee::SatPerVByte, Bitcoin, timelock::CSVTimelock},
-    chain::monero::Monero,
-    chain::pairs::btcxmr::{Wallet as CoreWallet, BtcXmr},
     blockchain::{self, FeeStrategy},
+    chain::bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
+    chain::monero::Monero,
+    chain::pairs::btcxmr::{BtcXmr, Wallet as CoreWallet},
     negotiation::{Offer, PublicOffer},
-    protocol_message::{CoreArbitratingSetup, CommitAliceParameters, CommitBobParameters},
-    role::{Arbitrating, TradeRole, SwapRole},
+    protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
+    role::{Arbitrating, SwapRole, TradeRole},
     swap::SwapId,
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
@@ -49,7 +49,6 @@ use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
-
 
 pub fn run(
     config: Config,
@@ -257,7 +256,7 @@ impl Runtime {
         let msg_bus = ServiceBus::Msg;
         match &request {
             Request::Protocol(msg) => {
-                if  msg.swap_id() != self.swap_id(){
+                if msg.swap_id() != self.swap_id() {
                     Err(Error::Farcaster(format!(
                         "{}: expected {}, found {}",
                         "Incorrect swap_id ".to_string(),
@@ -383,7 +382,8 @@ impl Runtime {
 
                     // bob and alice
                     Msg::Abort(_) => Err(Error::Farcaster("Abort not yet supported".to_string()))?,
-                    // Msg::Ping => { unreachable!("ping must remain in peerd, not arrive in swapd") },
+                    /* Msg::Ping => { unreachable!("ping must remain in peerd, not arrive in
+                     * swapd") }, */
                 }
             }
             // Request::PeerMessage(Messages::FundingCreated(funding_created))
@@ -420,7 +420,10 @@ impl Runtime {
 
                 // Ignoring possible error here: do not want to
                 // halt the channel just because the client disconnected
-                let msg = format!("{} transaction confirmed", "Channel active:".bright_green_bold());
+                let msg = format!(
+                    "{} transaction confirmed",
+                    "Channel active:".bright_green_bold()
+                );
                 info!("{}", msg);
                 let _ = self.report_success_to(senders, &enquirer, Some(msg));
             }
@@ -655,12 +658,14 @@ impl Runtime {
         info!("{}", &msg);
         let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
-            Params::Bob(params) => request::Commit::Bob(
-                CommitBobParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
-                ),
+            Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
+                self.swap_id(),
+                &core_wallet,
+                params,
+            )),
             Params::Alice(params) => request::Commit::Alice(
-                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
-                ),
+                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params),
+            ),
         };
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
@@ -701,12 +706,14 @@ impl Runtime {
 
         let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
-            Params::Bob(params) => request::Commit::Bob(
-                CommitBobParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
-                ),
+            Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
+                self.swap_id(),
+                &core_wallet,
+                params,
+            )),
             Params::Alice(params) => request::Commit::Alice(
-                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params)
-                ),
+                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params),
+            ),
         };
         // let accept_channel = message::AcceptChannel {
         //     temporary_channel_id: channel_req.temporary_channel_id,

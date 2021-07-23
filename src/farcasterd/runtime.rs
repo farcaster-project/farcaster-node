@@ -13,7 +13,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{Senders, rpc::request::{Keypair, LaunchSwap}, swapd::swap_id, walletd::NodeSecrets};
+use crate::{
+    rpc::request::{Keypair, LaunchSwap},
+    swapd::swap_id,
+    walletd::NodeSecrets,
+    Senders,
+};
 use amplify::Wrapper;
 use request::{Commit, Params};
 use std::convert::TryFrom;
@@ -31,9 +36,7 @@ use std::{
 use bitcoin::secp256k1;
 use bitcoin::{hashes::hex::ToHex, secp256k1::SecretKey};
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
-use lnp::{
-    message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT,
-};
+use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
@@ -41,24 +44,24 @@ use microservices::rpc::Failure;
 use farcaster_core::swap::SwapId;
 
 use crate::rpc::request::{
-    PeerSecret, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, RuntimeContext,
+    IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, PeerSecret, RuntimeContext,
 };
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 use farcaster_core::{
-    chain::pairs::btcxmr::{Wallet, BtcXmr},
     blockchain::FeePolitic,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
         SignedArbitratingLock,
     },
+    chain::pairs::btcxmr::{BtcXmr, Wallet},
     negotiation::PublicOffer,
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
     },
-    role::{Alice, Bob, TradeRole, SwapRole},
+    role::{Alice, Bob, SwapRole, TradeRole},
 };
 
 use std::str::FromStr;
@@ -223,7 +226,12 @@ impl Runtime {
         match request.clone() {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
-                info!("{} daemon is {}", source.bright_green_bold(), "connected".bright_green_bold());
+                info!(
+                    "{} daemon is {}",
+                    source.bright_green_bold(),
+                    "connected".bright_green_bold()
+                );
+
 
                 match &source {
                     ServiceId::Farcasterd => {
@@ -338,7 +346,12 @@ impl Runtime {
                 commit,
             }) => {
                 if self.making_offers.remove(&public_offer) {
-                    trace!("{}, {}", "launching swapd with swap_id:", swap_id.bright_yellow_bold());
+                    trace!(
+                        "{}, {}",
+                        "launching swapd with swap_id:",
+                        swap_id.bright_yellow_bold()
+                    );
+
                     launch_swapd(
                         self,
                         peer,
@@ -605,7 +618,11 @@ impl Runtime {
                         ));
                         peer_connected_is_ok
                     } else {
-                        let msg = format!("Already connected to remote peer {}", peer.bright_blue_italic());
+                        let msg = format!(
+                            "Already connected to remote peer {}",
+                            peer.bright_blue_italic()
+                        );
+
                         warn!("{}", &msg);
 
                         notify_cli.push((Some(source.clone()), Request::Progress(msg)));

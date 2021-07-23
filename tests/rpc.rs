@@ -113,7 +113,8 @@ fn spawn_swap() {
             .matches(std::str::from_utf8(&ps_out).unwrap())
             .into_iter()
             .collect();
-        // fails if there are any lingering `farcasterd`s or `peerd`s, so this test is a false-negative if any are running independent of the test
+        // fails if there are any lingering `farcasterd`s or `peerd`s, so this test is a
+        // false-negative if any are running independent of the test
         assert_eq!(matches, vec![0]);
     }
 }

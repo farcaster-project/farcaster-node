@@ -12,9 +12,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::{rc::Rc, thread::spawn};
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
+use std::{rc::Rc, thread::spawn};
 
 use amplify::Bipolar;
 use bitcoin::secp256k1::rand::{self, Rng};
@@ -210,7 +210,11 @@ impl esb::Handler<ServiceBus> for Runtime {
         _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
     ) -> Result<(), Error> {
         if self.connect {
-            info!("{} with the remote peer", "Initializing connection".bright_blue_bold());
+            info!(
+                "{} with the remote peer",
+                "Initializing connection".bright_blue_bold()
+            );
+
 
             // self.sender.send_message(Messages::Init(message::Init {
             //     global_features: none!(),
