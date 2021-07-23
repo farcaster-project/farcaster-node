@@ -179,11 +179,13 @@ fn main() {
 
     let local_node = opts.peer_key_opts.local_node();
     let local_id = local_node.node_id();
+
     info!(
         "{}: {}",
         "Local node id".bright_green_bold(),
         local_id.bright_yellow_bold()
     );
+
     let peer_socket = PeerSocket::from(opts);
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 

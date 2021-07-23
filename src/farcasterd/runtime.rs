@@ -232,6 +232,7 @@ impl Runtime {
                     "connected".bright_green_bold()
                 );
 
+
                 match &source {
                     ServiceId::Farcasterd => {
                         error!(
@@ -350,6 +351,7 @@ impl Runtime {
                         "launching swapd with swap_id:",
                         swap_id.bright_yellow_bold()
                     );
+
                     launch_swapd(
                         self,
                         peer,
@@ -620,6 +622,7 @@ impl Runtime {
                             "Already connected to remote peer {}",
                             peer.bright_blue_italic()
                         );
+
                         warn!("{}", &msg);
 
                         notify_cli.push((Some(source.clone()), Request::Progress(msg)));

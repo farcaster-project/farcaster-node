@@ -215,6 +215,7 @@ impl esb::Handler<ServiceBus> for Runtime {
                 "Initializing connection".bright_blue_bold()
             );
 
+
             // self.sender.send_message(Messages::Init(message::Init {
             //     global_features: none!(),
             //     local_features: none!(),

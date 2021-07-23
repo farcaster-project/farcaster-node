@@ -136,6 +136,7 @@ impl Exec for Command {
                 // let hex = format!("{:?}", &public_offer);
                 // println!("{} \n {}", instruction.green_bold(),
                 // hex.bright_yellow_bold());
+
             }
 
             Command::Take { public_offer } => {
