@@ -31,6 +31,7 @@ pub struct SyncerState {
     task_count: u32,
 }
 
+#[derive(Clone)]
 pub struct AddressTx {
     pub our_amount: u64,
     pub tx_id: Vec<u8>,
@@ -41,7 +42,7 @@ impl SyncerState {
     pub fn new() -> Self {
         Self {
             block_height: 0,
-            block_hash: vec![],
+            block_hash: vec![0],
             tasks: HashMap::new(),
             watch_height: HashMap::new(),
             lifetimes: HashMap::new(),
@@ -53,7 +54,7 @@ impl SyncerState {
     }
 
     pub fn abort(&mut self, task: Abort) -> Result<(), Error> {
-        let mut status = 0;
+        let status = 0;
         // match self.tasks.remove(&task.id) {
         //     None => {}
         //     Some(task) => {
@@ -92,10 +93,10 @@ impl SyncerState {
         if !self.add_lifetime(task.lifetime, self.task_count).is_ok() {
             return Ok(());
         }
-        self.watch_height.insert(self.task_count, task);
+        self.watch_height.insert(self.task_count, task.clone());
         self.events.push(Event::HeightChanged(HeightChanged {
             id: task.id,
-            block: self.block_hash,
+            block: self.block_hash.clone(),
             height: self.block_height,
         }));
         Ok(())
@@ -131,13 +132,13 @@ impl SyncerState {
         self.drop_lifetimes();
 
         self.block_height = height;
-        self.block_hash = block;
+        self.block_hash = block.clone();
         println!("height changed: {:?}", self.block_height);
         // Emit a height_changed event
         for task in self.watch_height.values() {
             self.events.push(Event::HeightChanged(HeightChanged {
                 id: task.id,
-                block,
+                block: block.clone(),
                 height: self.block_height,
             }))
         }
@@ -146,15 +147,15 @@ impl SyncerState {
     pub fn change_address(&mut self, address_addendum: Vec<u8>, txs: Vec<AddressTx>) {
         self.drop_lifetimes();
 
-        for (id, addr) in self.addresses {
+        for (id, addr) in self.addresses.iter() {
             if address_addendum == addr.addendum {
                 for tx in txs.iter() {
                     self.events
                         .push(Event::AddressTransaction(AddressTransaction {
                             id: addr.id,
-                            hash: tx.tx_id,
+                            hash: tx.tx_id.clone(),
                             amount: tx.our_amount,
-                            block: tx.block_hash,
+                            block: tx.block_hash.clone(),
                         }))
                 }
             }
@@ -168,27 +169,29 @@ impl SyncerState {
         confirmations: Option<u32>,
     ) {
         self.drop_lifetimes();
-        for (id, watchedTx) in self.transactions {
-            if watchedTx.hash == tx_id {
-                let block = match block_hash {
-                    Some(bh) => bh,
-                    // per RFC, no block hash should be encoded as 0x0
-                    None => hex::decode("0x0").unwrap(),
-                };
-                let confs = match confirmations {
-                    Some(confs) => confs as i32,
-                    // per RFC, no confirmation should be encoded as -1
-                    None => -1,
-                };
+
+        let block = match block_hash {
+            Some(bh) => bh,
+            // per RFC, no block hash should be encoded as 0x0
+            None => hex::decode("0x0").unwrap(),
+        };
+        let confs = match confirmations {
+            Some(confs) => confs as i32,
+            // per RFC, no confirmation should be encoded as -1
+            None => -1,
+        };
+
+        for (id, watched_tx) in self.transactions.clone().iter() {
+            if watched_tx.hash == tx_id {
                 self.events
                     .push(Event::TransactionConfirmations(TransactionConfirmations {
-                        id: watchedTx.id,
-                        block,
+                        id: watched_tx.id,
+                        block: block.clone(),
                         confirmations: confs,
                     }));
                 // prune the task once it has reached its confirmation bound
-                if confs >= watchedTx.confirmation_bound as i32 {
-                    self.remove_transaction(watchedTx.lifetime, id);
+                if confs >= watched_tx.confirmation_bound as i32 {
+                    self.remove_transaction(watched_tx.lifetime, *id);
                 }
             }
         }

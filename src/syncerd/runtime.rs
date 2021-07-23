@@ -45,11 +45,11 @@ pub fn run(config: Config) -> Result<(), Error> {
     let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
     match config.chain {
         Chain::Testnet3 => {
-            syncer = Some(Box::new(BitcoinSyncer::new(rx)));
+            syncer = Some(Box::new(BitcoinSyncer::new()));
         }
         _ => syncer = none!(),
     }
-    let runtime = Runtime {
+    let mut runtime = Runtime {
         identity: ServiceId::Syncer,
         chain: config.chain.clone(),
         started: SystemTime::now(),
@@ -57,6 +57,7 @@ pub fn run(config: Config) -> Result<(), Error> {
         syncer: syncer.unwrap(),
         tx,
     };
+    runtime.syncer.run(rx);
 
     Service::run(config, runtime, true)
 }
@@ -173,7 +174,6 @@ impl Runtime {
                     source.bright_green_bold(),
                     "connected".bright_green_bold()
                 );
-
             }
             (Request::AbortTask(task), _) => {
                 self.tx.send(Task::Abort(task.clone()));

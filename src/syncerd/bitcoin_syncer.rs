@@ -64,12 +64,19 @@ impl ElectrumRpc {
     ) -> Result<AddressNotif, Error> {
         let data = self
             .client
-            .script_subscribe(&bitcoin::Script::from(address_addendum.script_pubkey))
+            .script_subscribe(&bitcoin::Script::from(
+                address_addendum.script_pubkey.clone(),
+            ))
             .unwrap();
-        self.addresses.insert(address_addendum, data.unwrap());
-        let txs: Vec<AddressTx> = vec![];
+        self.addresses
+            .insert(address_addendum.clone(), data.unwrap());
+        let mut txs: Vec<AddressTx> = vec![];
         if let Some(digest) = data {
-            self.handle_address_notification(address_addendum, digest, txs);
+            txs.extend(self.handle_address_notification(
+                address_addendum.clone(),
+                digest,
+                txs.clone(),
+            ));
         }
         let notif = AddressNotif {
             address: address_addendum,
@@ -79,7 +86,7 @@ impl ElectrumRpc {
     }
 
     pub fn new_block_check(&mut self) -> Option<Block> {
-        let block: Option<Block> = none!();
+        let mut block: Option<Block> = none!();
         loop {
             let header = self.client.block_headers_pop();
             match header {
@@ -98,18 +105,22 @@ impl ElectrumRpc {
 
     // check if an address received a new transaction
     pub fn address_change_check(&mut self) -> Vec<AddressNotif> {
-        let notifs: Vec<AddressNotif> = vec![];
-        for (address, state) in self.addresses.iter() {
-            let txs: Vec<AddressTx> = vec![];
+        let mut notifs: Vec<AddressNotif> = vec![];
+        for (address, state) in self.addresses.clone().iter() {
+            let mut txs: Vec<AddressTx> = vec![];
             loop {
                 // get pending notifications for this address/script_pubkey
                 match self
                     .client
-                    .script_pop(&bitcoin::Script::from(address.script_pubkey))
+                    .script_pop(&bitcoin::Script::from(address.script_pubkey.clone()))
                 {
                     Ok(Some(digest)) => {
                         if digest != *state {
-                            self.handle_address_notification(*address, digest, txs)
+                            txs.extend(self.handle_address_notification(
+                                address.clone(),
+                                digest,
+                                txs.clone(),
+                            ));
                         }
                     }
                     // nothing left to process for this address - break
@@ -118,7 +129,7 @@ impl ElectrumRpc {
             }
             if txs.len() > 0 {
                 notifs.push(AddressNotif {
-                    address: *address,
+                    address: address.clone(),
                     txs,
                 })
             }
@@ -130,15 +141,15 @@ impl ElectrumRpc {
         &mut self,
         address: BtcAddressAddendum,
         digest: Hex32Bytes,
-        txs: Vec<AddressTx>,
-    ) {
+        mut txs: Vec<AddressTx>,
+    ) -> Vec<AddressTx> {
         self.addresses.remove_entry(&address);
-        self.addresses.insert(address, digest);
+        self.addresses.insert(address.clone(), digest);
         // now that we have established _something_ has changed get the full transaction history of the address
         let script = bitcoin::Script::from(address.script_pubkey);
         let tx_history = self.client.script_get_history(&script).unwrap();
         for hist in tx_history.iter() {
-            let our_amount: u64 = 0;
+            let mut our_amount: u64 = 0;
             let txid = hist.tx_hash;
             // get the full transaction to calculate our_amount
             let tx = self.client.transaction_get(&txid).unwrap();
@@ -164,6 +175,7 @@ impl ElectrumRpc {
                 block_hash,
             })
         }
+        txs
     }
 }
 
@@ -198,33 +210,22 @@ fn test_electrumrpc() {
 }
 
 pub trait Synclet {
-    fn run(&mut self);
+    fn run(&mut self, rx: Receiver<Task>);
 }
 
-pub struct BitcoinSyncer {
-    rpc: ElectrumRpc,
-    current_block_hash: String,
-    state: SyncerState,
-    rx: Receiver<Task>,
-}
+pub struct BitcoinSyncer {}
 
 impl BitcoinSyncer {
-    pub fn new(rx: Receiver<Task>) -> Self {
-        Self {
-            rpc: ElectrumRpc::new(),
-            current_block_hash: String::new(),
-            state: SyncerState::new(),
-            rx,
-        }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
 impl Synclet for BitcoinSyncer {
-    fn run(&mut self) {
-        let rx = self.rx;
+    fn run(&mut self, rx: Receiver<Task>) {
         let _handle = std::thread::spawn(move || {
-            let state = SyncerState::new();
-            let rpc = ElectrumRpc::new();
+            let mut state = SyncerState::new();
+            let mut rpc = ElectrumRpc::new();
             loop {
                 match rx.try_recv() {
                     Ok(task) => {
@@ -237,10 +238,10 @@ impl Synclet for BitcoinSyncer {
                                 rpc.send_raw_transaction(task.tx);
                             }
                             Task::WatchAddress(task) => {
-                                let res = std::io::Cursor::new(task.addendum);
+                                let mut res = std::io::Cursor::new(task.addendum.clone());
                                 let address_addendum =
                                     BtcAddressAddendum::consensus_decode(&mut res).unwrap();
-                                state.watch_address(task);
+                                state.watch_address(task.clone());
                                 let address_transactions =
                                     rpc.subscribe_script(address_addendum).unwrap();
                                 state.change_address(task.addendum, address_transactions.txs);
@@ -267,16 +268,16 @@ impl Synclet for BitcoinSyncer {
                 let notifs = rpc.address_change_check();
                 for address_transactions in notifs.iter() {
                     let serialized_address = consensus::serialize(&address_transactions.address);
-                    state.change_address(serialized_address, address_transactions.txs);
+                    state.change_address(serialized_address, address_transactions.txs.clone());
                 }
                 // check and process new block notifications
                 let new_block = rpc.new_block_check();
                 if let Some(block_notif) = new_block {
                     state.change_height(block_notif.height, block_notif.block_hash.to_vec());
 
-                    for (_, watched_tx) in state.transactions {
+                    for (_, watched_tx) in state.transactions.clone().iter() {
                         let tx_id: bitcoin::Txid =
-                            bitcoin::Txid::from_hex(&hex::encode(watched_tx.hash)).unwrap();
+                            bitcoin::Txid::from_hex(&hex::encode(watched_tx.hash.clone())).unwrap();
                         let tx = rpc.client.transaction_get_verbose(&tx_id).unwrap();
 
                         let blockhash = match tx.blockhash {
@@ -297,8 +298,8 @@ impl Synclet for BitcoinSyncer {
 #[test]
 pub fn syncer_state() {
     let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
-    let syncer = BitcoinSyncer::new(rx);
-    syncer.run();
+    let mut syncer = BitcoinSyncer::new();
+    syncer.run(rx);
     let task = Task::WatchHeight(WatchHeight {
         id: 0,
         lifetime: 0,
