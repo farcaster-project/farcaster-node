@@ -95,6 +95,8 @@ impl ElectrumRpc {
                         height: a.height as u64,
                         block_hash: a.header.block_hash(),
                     });
+                    self.height = a.height as u64;
+                    self.block_hash = a.header.block_hash();
                     println!("\n\n{:?}\n\n", self.height);
                 }
                 _ => break,
@@ -188,8 +190,8 @@ impl Rpc for ElectrumRpc {
         Self {
             client,
             addresses: none!(),
-            block_hash: header.header.block_hash(),
             height: header.height as u64,
+            block_hash: header.header.block_hash(),
         }
     }
 
@@ -226,6 +228,7 @@ impl Synclet for BitcoinSyncer {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = ElectrumRpc::new();
+            state.change_height(rpc.height, rpc.block_hash.to_vec());
             loop {
                 match rx.try_recv() {
                     Ok(task) => {
@@ -288,6 +291,7 @@ impl Synclet for BitcoinSyncer {
                         state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
                     }
                 }
+                println!("events: {:?}", state.events);
 
                 thread::sleep(std::time::Duration::from_secs(1));
             }
@@ -295,16 +299,16 @@ impl Synclet for BitcoinSyncer {
     }
 }
 
-#[test]
-pub fn syncer_state() {
-    let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
-    let mut syncer = BitcoinSyncer::new();
-    syncer.run(rx);
-    let task = Task::WatchHeight(WatchHeight {
-        id: 0,
-        lifetime: 0,
-        addendum: vec![],
-    });
-    tx.send(task);
-    thread::sleep(std::time::Duration::from_secs(100000000));
-}
+// #[test]
+// pub fn syncer_state() {
+//     let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
+//     let mut syncer = BitcoinSyncer::new();
+//     syncer.run(rx);
+//     let task = Task::WatchHeight(WatchHeight {
+//         id: 0,
+//         lifetime: 100000000,
+//         addendum: vec![],
+//     });
+//     tx.send(task).unwrap();
+//     thread::sleep(std::time::Duration::from_secs(100000000));
+// }
