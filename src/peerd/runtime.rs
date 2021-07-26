@@ -26,10 +26,7 @@ use microservices::esb::{self, Handler};
 use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 
-use crate::rpc::{
-    request::{Msg, PeerInfo, TakeCommit},
-    Request, ServiceBus,
-};
+use crate::rpc::{Request, ServiceBus, request::{self, Msg, PeerInfo, TakeCommit, Token}};
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceId};
 pub fn run(
     config: Config,
@@ -40,6 +37,7 @@ pub fn run(
     local_socket: Option<InetSocketAddr>,
     remote_socket: InetSocketAddr,
     connect: bool,
+    wallet_token: Token,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
     let (receiver, sender) = connection.split();
@@ -87,6 +85,7 @@ pub fn run(
         messages_sent: 0,
         messages_received: 0,
         awaited_pong: None,
+        wallet_token,
     };
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx)?;
@@ -146,7 +145,6 @@ impl ListenerRuntime {
 use std::fmt::{Debug, Display};
 impl peer::Handler<Msg> for ListenerRuntime {
     type Error = crate::Error;
-
     fn handle(
         &mut self,
         message: <Unmarshaller<Msg> as Unmarshall>::Data,
@@ -192,6 +190,7 @@ pub struct Runtime {
     messages_sent: usize,
     messages_received: usize,
     awaited_pong: Option<u16>,
+    wallet_token: Token,
 }
 
 impl CtlServer for Runtime {}
@@ -214,7 +213,7 @@ impl esb::Handler<ServiceBus> for Runtime {
                 "{} with the remote peer",
                 "Initializing connection".bright_blue_bold()
             );
-
+            // self.send_ctl(senders, ServiceId::Wallet, request::PeerSecret)
 
             // self.sender.send_message(Messages::Init(message::Init {
             //     global_features: none!(),

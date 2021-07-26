@@ -24,6 +24,7 @@ _peerd() {
 '-o+[Overlay peer communications through different transport protocol]: :(tcp zmq http websocket smtp)' \
 '--overlay=[Overlay peer communications through different transport protocol]: :(tcp zmq http websocket smtp)' \
 '--peer-secret-key=[]' \
+'--wallet-token=[]' \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \

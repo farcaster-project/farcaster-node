@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, ArgGroup, Clap, ValueHint};
-use std::net::IpAddr;
+use std::{io, net::IpAddr};
 use std::path::PathBuf;
 use std::{fs, io::Read};
 
@@ -85,6 +85,9 @@ pub struct Opts {
     #[clap(flatten)]
     pub peer_key_opts: PeerKeyOpts,
 
+    /// WalletToken configuration
+    #[clap(flatten)]
+    pub wallet_token: TokenString,
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
     #[clap(flatten)]
@@ -97,11 +100,29 @@ impl Opts {
     }
 }
 
+
 /// Node key configuration
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 pub struct PeerKeyOpts {
     #[clap(long)]
     pub peer_secret_key: String,
+}
+
+/// WalletToken configuration
+#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+pub struct TokenString {
+    #[clap(long)]
+    pub wallet_token: String,
+}
+
+impl FromStr for TokenString {
+    type Err = io::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(TokenString {
+            wallet_token: s.to_string(),
+        })
+    }
 }
 
 use bitcoin::secp256k1::{rand::thread_rng, SecretKey};

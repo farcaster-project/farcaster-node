@@ -4,10 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::rpc::{
-    request::{self, Keypair, Msg, Params, Reveal, RuntimeContext},
-    Request, ServiceBus,
-};
+use crate::rpc::{Request, ServiceBus, request::{self, Keypair, Msg, Params, Reveal, RuntimeContext, Token}};
 use crate::swapd::swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
@@ -34,13 +31,13 @@ use request::{LaunchSwap, NodeId};
 
 pub fn run(
     config: Config,
-    walletd_token: String,
+    wallet_token: Token,
     node_secrets: NodeSecrets,
     node_id: bitcoin::secp256k1::PublicKey,
 ) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
-        walletd_token,
+        wallet_token,
         node_secrets,
         node_id,
         wallets: none!(),
@@ -52,7 +49,7 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,
-    walletd_token: String,
+    wallet_token: Token,
     node_secrets: NodeSecrets,
     node_id: bitcoin::secp256k1::PublicKey,
     wallets: HashMap<SwapId, Wallet>,
@@ -537,8 +534,8 @@ impl Runtime {
                     }
                 };
             }
-            Request::PeerSecret(request::PeerSecret(walletd_token)) => {
-                if walletd_token != self.walletd_token {
+            Request::PeerSecret(request::PeerSecret(wallet_token)) => {
+                if wallet_token != self.wallet_token {
                     Err(Error::InvalidToken)?
                 }
                 info!("sent Secret request to farcasterd");

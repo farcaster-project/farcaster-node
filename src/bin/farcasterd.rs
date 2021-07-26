@@ -35,7 +35,7 @@ use bitcoin::secp256k1::rand::RngCore;
 
 use clap::Clap;
 
-use farcaster_node::farcasterd::{self, Opts};
+use farcaster_node::{farcasterd::{self, Opts}, rpc::request::Token};
 use farcaster_node::Config;
 
 fn main() {
@@ -53,10 +53,10 @@ fn main() {
 
     let mut dest = [0u8; 16];
     thread_rng().fill_bytes(&mut dest);
-    let walletd_token = dest.to_hex();
+    let wallet_token = Token(dest.to_hex());
 
     debug!("Starting runtime ...");
-    farcasterd::run(config, walletd_token).expect("Error running farcasterd runtime");
+    farcasterd::run(config, wallet_token).expect("Error running farcasterd runtime");
 
     unreachable!()
 }

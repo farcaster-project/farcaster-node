@@ -13,12 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{
-    rpc::request::{Keypair, LaunchSwap},
-    swapd::swap_id,
-    walletd::NodeSecrets,
-    Senders,
-};
+use crate::{Senders, rpc::request::{Keypair, LaunchSwap, Token}, swapd::swap_id, walletd::NodeSecrets};
 use amplify::Wrapper;
 use request::{Commit, Params};
 use std::convert::TryFrom;
@@ -66,8 +61,8 @@ use farcaster_core::{
 
 use std::str::FromStr;
 
-pub fn run(config: Config, walletd_token: String) -> Result<(), Error> {
-    let _walletd = launch("walletd", &["--walletd-token", &walletd_token.clone()])?;
+pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
+    let _walletd = launch("walletd", &["--wallet-token", &wallet_token.to_string().clone()])?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         node_id: None,
@@ -82,7 +77,7 @@ pub fn run(config: Config, walletd_token: String) -> Result<(), Error> {
         making_offers: none!(),
         // wallets: none!(),
         peerd_secret_key: none!(),
-        walletd_token,
+        wallet_token,
     };
 
     let broker = true;
@@ -103,7 +98,7 @@ pub struct Runtime {
     making_offers: HashSet<PublicOffer<BtcXmr>>,
     // wallets: HashMap<SwapId, Wallet>,
     peerd_secret_key: Option<SecretKey>,
-    walletd_token: String,
+    wallet_token: Token,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -691,6 +686,8 @@ impl Runtime {
                     &port.to_string(),
                     "--peer-secret-key",
                     &format!("{:x}", self.peerd_secret_key()?),
+                    "--wallet-token",
+                    &self.wallet_token.to_string(),
                 ],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
@@ -719,6 +716,8 @@ impl Runtime {
                 &node_addr.to_string(),
                 "--peer-secret-key",
                 &format!("{:x}", self.peerd_secret_key()?),
+                "--wallet-token",
+                &self.wallet_token.to_string(),
             ],
         );
 
@@ -747,7 +746,7 @@ impl Runtime {
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
     ) -> Result<(), Error> {
         info!("node secrets not available yet - fetching and looping back.");
-        let get_secret = PeerSecret(self.walletd_token.clone());
+        let get_secret = PeerSecret(self.wallet_token.clone());
         senders
             .send_to(
                 ServiceBus::Ctl,

@@ -20,14 +20,14 @@ use lazy_static::lazy_static;
 use lightning_encoding::{strategies::AsStrict, LightningDecode, LightningEncode};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds, Same};
-use std::iter::FromIterator;
-use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     marker::PhantomData,
 };
+use std::{iter::FromIterator, str::FromStr};
+use std::{num::ParseIntError, time::Duration};
 
 use bitcoin::{
     secp256k1::{self, SecretKey},
@@ -176,10 +176,15 @@ pub enum RuntimeContext {
 #[display("secret")]
 pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("{0}")]
+pub struct Token(pub String);
+
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("get secret")]
-pub struct PeerSecret(pub String);
+pub struct PeerSecret(pub Token);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]

@@ -52,7 +52,7 @@ extern crate serde_with;
 pub mod cli;
 #[cfg(feature = "_rpc")]
 mod config;
-mod error;
+pub mod error;
 #[cfg(feature = "shell")]
 pub mod opts;
 #[cfg(feature = "_rpc")]

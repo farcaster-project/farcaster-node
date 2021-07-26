@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::opts::FARCASTER_NODE_KEY_FILE;
+use crate::{opts::FARCASTER_NODE_KEY_FILE};
 use clap::{AppSettings, Clap, ValueHint};
 use std::path::PathBuf;
 use std::{fs, io::Read};
@@ -33,7 +33,7 @@ pub struct Opts {
 
     /// Walletd token
     #[clap(flatten)]
-    pub walletd_token: WalletdToken,
+    pub token: WalletToken,
 
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
@@ -66,9 +66,9 @@ pub struct KeyOpts {
 }
 
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
-pub struct WalletdToken {
+pub struct WalletToken {
     #[clap(short, long, env = "FARCASTER_WALLETD_TOKEN", default_value = "")]
-    pub walletd_token: String,
+    pub wallet_token: String,
 }
 
 use bitcoin::secp256k1::{
