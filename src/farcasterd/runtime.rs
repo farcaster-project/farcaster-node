@@ -647,8 +647,8 @@ impl Runtime {
                             Some(source.clone()),
                             Request::Success(OptionDetails(Some(offer_registered))),
                         ));
+                        senders.send_to(ServiceBus::Ctl, source, ServiceId::Wallet, request)?;
                     }
-                    senders.send_to(ServiceBus::Ctl, source, ServiceId::Wallet, request)?;
                 }
             }
             req => {
