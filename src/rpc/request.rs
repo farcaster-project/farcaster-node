@@ -179,7 +179,7 @@ pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("get secret")]
-pub struct PeerSecret(pub String, pub Option<RuntimeContext>);
+pub struct PeerSecret(pub String);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]

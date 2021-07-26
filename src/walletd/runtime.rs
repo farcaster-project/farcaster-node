@@ -537,7 +537,7 @@ impl Runtime {
                     }
                 };
             }
-            Request::PeerSecret(request::PeerSecret(walletd_token, context)) => {
+            Request::PeerSecret(request::PeerSecret(walletd_token)) => {
                 if walletd_token != self.walletd_token {
                     Err(Error::InvalidToken)?
                 }

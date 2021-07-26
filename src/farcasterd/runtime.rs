@@ -242,7 +242,7 @@ impl Runtime {
                     }
                     ServiceId::Wallet => {
                         info!("Walletd registered - getting secrets");
-                        self.get_secret(senders, None)?
+                        self.get_secret(senders)?
                     }
                     ServiceId::Peer(connection_id) => {
                         if self.connections.insert(connection_id.clone()) {
@@ -745,10 +745,9 @@ impl Runtime {
     fn get_secret(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        context: Option<RuntimeContext>,
     ) -> Result<(), Error> {
         info!("node secrets not available yet - fetching and looping back.");
-        let get_secret = PeerSecret(self.walletd_token.clone(), context);
+        let get_secret = PeerSecret(self.walletd_token.clone());
         senders
             .send_to(
                 ServiceBus::Ctl,
