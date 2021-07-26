@@ -303,12 +303,8 @@ impl Runtime {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
                             State::Bob(BobState::CommitB) => Ok(State::Bob(BobState::RevealB)),
-                            State::Alice(AliceState::RevealA) => {
-                                Ok(State::Alice(AliceState::RevealA))
-                            }
-                            State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::RevealB)),
                             _ => Err(Error::Farcaster(
-                                "Must be on Commit state (maker) or reveal state (taker)"
+                                "Must be on Commit state"
                                     .to_string(),
                             )),
                         }?;
