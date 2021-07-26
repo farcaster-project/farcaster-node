@@ -265,9 +265,9 @@ impl Runtime {
                     }
                 }?
             }
-            Request::Params(params) => {
+            Request::Params(role) => {
                 let swap_id = swap_id(source.clone())?;
-                match params {
+                match role {
                     // getting paramaters from counterparty alice routed through
                     // swapd, thus im bob on this swap
                     Params::Alice(params) => {
