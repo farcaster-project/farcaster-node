@@ -4,7 +4,10 @@ use std::{
     str::FromStr,
 };
 
-use crate::rpc::{Request, ServiceBus, request::{self, Keypair, Msg, Params, Reveal, RuntimeContext, Token}};
+use crate::rpc::{
+    request::{self, Keypair, Msg, Params, Reveal, RuntimeContext, Token},
+    Request, ServiceBus,
+};
 use crate::swapd::swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
@@ -184,8 +187,8 @@ impl Runtime {
                             //     farcaster_core::blockchain::Network::Mainnet,
                             // )
                             // .map_err(|_| {
-                            //     Error::Farcaster("Impossible to initialize funding tx".to_string())
-                            // })?;
+                            //     Error::Farcaster("Impossible to initialize funding
+                            // tx".to_string()) })?;
                             // funding.update(funding_bundle.funding.clone());
                             info!("Creating {}", "Wallet::Bob".bright_yellow());
                             self.wallets.insert(
@@ -276,7 +279,7 @@ impl Runtime {
                                 public_offer,
                                 // TODO: set funding_bundle somewhere, its now
                                 // actually None
-                                None, //Some(funding_bundle),
+                                None,         //Some(funding_bundle),
                                 alice_params, // None
                                 core_arb_txs, // None
                             )) => {
@@ -468,7 +471,10 @@ impl Runtime {
                     _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
                 }
             }
-            Request::TakeOffer(public_offer) => {
+            Request::TakeOffer(request::PubOffer {
+                public_offer,
+                peer_secret_key: None,
+            }) => {
                 let PublicOffer {
                     version,
                     offer,
@@ -534,7 +540,8 @@ impl Runtime {
                     }
                 };
             }
-            Request::PeerSecret(request::PeerSecret(wallet_token)) => {
+            Request::PeerSecret(request::PeerSecret(wallet_token, request_id)) => {
+                // eprintln!("inside PeerSecret handler");
                 if wallet_token != self.wallet_token {
                     Err(Error::InvalidToken)?
                 }
@@ -544,6 +551,7 @@ impl Runtime {
                     Request::Keypair(Keypair(
                         self.node_secrets.peerd_secret_key,
                         self.node_secrets.node_id(),
+                        request_id,
                     )),
                 )?
             }
@@ -552,22 +560,21 @@ impl Runtime {
                 self.send_farcasterd(senders, Request::NodeId(node_id))?
             }
 
-            Request::Loopback(request) => match request {
-                RuntimeContext::GetInfo => self.send_farcasterd(senders, Request::GetInfo)?,
-                RuntimeContext::MakeOffer(offer) => {
-                    self.send_farcasterd(senders, Request::MakeOffer(offer))?
-                }
-                RuntimeContext::TakeOffer(offer) => {
-                    self.send_farcasterd(senders, Request::TakeOffer(offer))?
-                }
-                RuntimeContext::Listen(addr) => {
-                    self.send_farcasterd(senders, Request::Listen(addr))?
-                }
-                RuntimeContext::ConnectPeer(addr) => {
-                    self.send_farcasterd(senders, Request::ConnectPeer(addr))?
-                }
-            },
-
+            // Request::Loopback(request) => match request {
+            //     RuntimeContext::GetInfo => self.send_farcasterd(senders, Request::GetInfo)?,
+            //     RuntimeContext::MakeOffer(offer) => {
+            //         self.send_farcasterd(senders, Request::MakeOffer(offer))?
+            //     }
+            //     RuntimeContext::TakeOffer(offer) => {
+            //         self.send_farcasterd(senders, Request::TakeOffer(offer))?
+            //     }
+            //     RuntimeContext::Listen(addr) => {
+            //         self.send_farcasterd(senders, Request::Listen(addr))?
+            //     }
+            //     RuntimeContext::ConnectPeer(addr) => {
+            //         self.send_farcasterd(senders, Request::ConnectPeer(addr))?
+            //     }
+            // },
             _ => {
                 error!(
                     "Request {:?} is not supported by the CTL interface",

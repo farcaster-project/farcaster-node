@@ -128,6 +128,7 @@ pub struct ListenerRuntime {
 }
 
 impl ListenerRuntime {
+    /// send msgs over bridge from remote to local runtime
     fn send_over_bridge(
         &mut self,
         req: <Unmarshaller<Msg> as Unmarshall>::Data,
