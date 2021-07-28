@@ -104,8 +104,8 @@ pub enum Command {
     /// Maker creates offer and start listening. Command used to to print a hex
     /// representation of the offer that shall be shared with Taker.
     /// Additionally it spins up the listener awaiting for connection related to
-    /// this offer. Example usage: `make Testnet Bitcoin Monero 100000 200 10 10
-    /// 20 Alice`
+    /// this offer. Example usage:
+    /// `make Testnet Bitcoin Monero "100000 BTC" "200 XMR" 10 10 20 Alice`
     Make {
         /// Type of offer and network to use
         #[clap(default_value = "Testnet")]

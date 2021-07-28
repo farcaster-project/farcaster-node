@@ -49,7 +49,7 @@ fn spawn_swap() {
             .into_iter()
             .chain(data_dir_maker.clone())
             .chain(vec![
-                "make", "Testnet", "Bitcoin", "Monero", "101", "100", "10", "30", "20", "Alice",
+                "make", "Testnet", "Bitcoin", "Monero", "101 BTC", "100 XMR", "10", "30", "20", "Alice",
                 "0.0.0.0", "9376",
             ]),
     );
