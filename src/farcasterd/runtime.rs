@@ -13,7 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{Senders, rpc::request::{Keypair, LaunchSwap, PubOffer, RequestId, Token}, swapd::swap_id, walletd::NodeSecrets};
+use crate::{Senders, rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token}, swapd::swap_id, walletd::NodeSecrets};
 use amplify::Wrapper;
 use request::{Commit, Params};
 use std::ffi::OsStr;
@@ -42,7 +42,7 @@ use microservices::rpc::Failure;
 use farcaster_core::swap::SwapId;
 
 use crate::rpc::request::{
-    IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, PeerSecret, RuntimeContext,
+    IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, GetKeys, RuntimeContext,
 };
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
@@ -373,7 +373,7 @@ impl Runtime {
                 self.known_swap_id(source.clone())?;
                 self.send_walletd(senders, request)?
             }
-            Request::Keypair(Keypair(sk, pk, id)) => {
+            Request::Keys(Keys(sk, pk, id)) => {
                 info!(
                     "received peerd keys \n \
                      secret: {} \n \
@@ -800,12 +800,12 @@ impl Runtime {
         );
         let req_id = RequestId::rand();
         self.pending_requests.insert(req_id.clone(), (request, source));
-        let wallet_token = PeerSecret(self.wallet_token.clone(), req_id);
+        let wallet_token = GetKeys(self.wallet_token.clone(), req_id);
         senders.send_to(
             ServiceBus::Ctl,
             ServiceId::Farcasterd,
             ServiceId::Wallet,
-            Request::PeerSecret(wallet_token),
+            Request::GetKeys(wallet_token),
         )?;
         Ok(())
     }

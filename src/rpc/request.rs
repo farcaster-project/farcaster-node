@@ -218,7 +218,7 @@ pub struct Token(pub String);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("get secret")]
-pub struct PeerSecret(pub Token, pub RequestId);
+pub struct GetKeys(pub Token, pub RequestId);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -243,7 +243,7 @@ pub struct TakeCommit {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("keypair(sk:{0},pk:{1})")]
-pub struct Keypair(
+pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
     pub bitcoin::secp256k1::PublicKey,
     pub RequestId,
@@ -330,11 +330,11 @@ pub enum Request {
     NodeId(NodeId),
 
     #[api(type = 30)]
-    #[display("getsecret")]
-    PeerSecret(PeerSecret),
+    #[display("getsecret({0})")]
+    GetKeys(GetKeys),
 
     #[api(type = 29)]
-    #[display("launch_swap")]
+    #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
 
     #[api(type = 40)]
@@ -342,8 +342,8 @@ pub enum Request {
     Loopback(RuntimeContext),
 
     #[api(type = 28)]
-    #[display("peer_secret")]
-    Keypair(Keypair),
+    #[display("keys({0})")]
+    Keys(Keys),
 
     #[api(type = 5)]
     #[display("send_message({0})")]
@@ -385,12 +385,12 @@ pub enum Request {
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
-    #[display("take_swap(...)")]
+    #[display("take_swap({0})")]
     TakeSwap(InitSwap),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 204)]
-    #[display("make_swap(...)")]
+    #[display("make_swap({0})")]
     MakeSwap(InitSwap),
 
     #[api(type = 199)]

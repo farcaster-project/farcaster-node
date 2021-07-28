@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::rpc::{
-    request::{self, Keypair, Msg, Params, Reveal, RuntimeContext, Token},
+    request::{self, Keys, Msg, Params, Reveal, RuntimeContext, Token},
     Request, ServiceBus,
 };
 use crate::swapd::swap_id;
@@ -540,7 +540,7 @@ impl Runtime {
                     }
                 };
             }
-            Request::PeerSecret(request::PeerSecret(wallet_token, request_id)) => {
+            Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
                 // eprintln!("inside PeerSecret handler");
                 if wallet_token != self.wallet_token {
                     Err(Error::InvalidToken)?
@@ -548,7 +548,7 @@ impl Runtime {
                 info!("sent Secret request to farcasterd");
                 self.send_farcasterd(
                     senders,
-                    Request::Keypair(Keypair(
+                    Request::Keys(Keys(
                         self.node_secrets.peerd_secret_key,
                         self.node_secrets.node_id(),
                         request_id,
