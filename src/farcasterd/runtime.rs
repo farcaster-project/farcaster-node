@@ -80,7 +80,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         making_swaps: none!(),
         taking_swaps: none!(),
         making_offers: none!(),
-        peerd_keys: none!(),
+        node_ids: none!(),
         wallet_token,
         pending_requests: none!(),
     };
@@ -100,7 +100,7 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
-    peerd_keys: Vec<PublicKey>, // TODO HashSet<SwapId, PublicKey>
+    node_ids: Vec<PublicKey>, // TODO HashSet<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
 }
@@ -142,7 +142,7 @@ impl Runtime {
         Ok(())
     }
     fn node_ids(&self) -> &Vec<PublicKey> {
-        self.peerd_keys.as_ref()
+        self.node_ids.as_ref()
     }
 
     fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
@@ -383,7 +383,7 @@ impl Runtime {
                 );
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
-                    self.peerd_keys.push(pk);
+                    self.node_ids.push(pk);
                     trace!("Received expected peer keys, injecting key in request");
                     let req = if let Request::MakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
@@ -409,7 +409,7 @@ impl Runtime {
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
-                        node_id: self.node_ids().clone(),
+                        node_ids: self.node_ids().clone(),
                         listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)

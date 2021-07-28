@@ -496,7 +496,7 @@ pub struct InitSwap {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(NodeInfo::to_yaml_string)]
 pub struct NodeInfo {
-    pub node_id: Vec<secp256k1::PublicKey>,
+    pub node_ids: Vec<secp256k1::PublicKey>,
     pub listens: Vec<RemoteSocketAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
