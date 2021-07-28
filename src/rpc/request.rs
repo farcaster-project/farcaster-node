@@ -16,6 +16,9 @@ use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
 use farcaster_core::syncer::Abort;
 use farcaster_core::syncer::BroadcastTransaction;
+use farcaster_core::syncer::Event;
+use farcaster_core::syncer::HeightChanged;
+use farcaster_core::syncer::Task;
 use farcaster_core::syncer::WatchAddress;
 use farcaster_core::syncer::WatchHeight;
 use farcaster_core::syncer::WatchTransaction;
@@ -455,27 +458,12 @@ pub enum Request {
     #[api(type = 1300)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
-    AbortTask(Abort),
+    SyncerTask(Task),
 
     #[api(type = 1301)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
-    WatchHeightTask(WatchHeight),
-
-    #[api(type = 1302)]
-    #[display("task({0})", alt = "{0:#}")]
-    #[from]
-    WatchAddressTask(WatchAddress),
-
-    #[api(type = 1303)]
-    #[display("task({0})", alt = "{0:#}")]
-    #[from]
-    WatchTransactionTask(WatchTransaction),
-
-    #[api(type = 1304)]
-    #[display("task({0})", alt = "{0:#}")]
-    #[from]
-    BroadcastTransaction(BroadcastTransaction),
+    SyncerEvent(Event),
 }
 
 impl rpc_connection::Request for Request {}

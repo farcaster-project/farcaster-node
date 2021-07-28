@@ -30,7 +30,9 @@ use std::time::{Duration, SystemTime};
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use farcaster_core::swap::SwapId;
-use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
+use internet2::{
+    presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
+};
 use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
@@ -43,6 +45,12 @@ use crate::{Config, Error, LogStyle, Service, ServiceId};
 pub fn run(config: Config) -> Result<(), Error> {
     let syncer: Option<Box<dyn Synclet>>;
     let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
+
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
+    tx_event.connect("inproc://syncerdbridge")?;
+    rx_event.bind("inproc://syncerdbridge")?;
+
     match config.chain {
         Chain::Testnet3 => {
             syncer = Some(Box::new(BitcoinSyncer::new()));
@@ -57,9 +65,12 @@ pub fn run(config: Config) -> Result<(), Error> {
         syncer: syncer.unwrap(),
         tx,
     };
-    runtime.syncer.run(rx);
+    runtime.syncer.run(rx, tx_event);
 
-    Service::run(config, runtime, true)
+    let mut service = Service::service(config, runtime)?;
+    service.add_loopback(rx_event)?;
+    service.run_loop()?;
+    unreachable!()
 }
 
 #[test]
@@ -175,22 +186,9 @@ impl Runtime {
                     "connected".bright_green_bold()
                 );
             }
-            (Request::AbortTask(task), _) => {
-                self.tx.send(Task::Abort(task.clone()));
+            (Request::SyncerTask(task), _) => {
+                self.tx.send(task.clone());
             }
-            (Request::BroadcastTransaction(task), _) => {
-                self.tx.send(Task::BroadcastTransaction(task.clone()));
-            }
-            (Request::WatchAddressTask(task), _) => {
-                self.tx.send(Task::WatchAddress(task.clone()));
-            }
-            (Request::WatchHeightTask(task), _) => {
-                self.tx.send(Task::WatchHeight(task.clone()));
-            }
-            (Request::WatchTransactionTask(task), _) => {
-                self.tx.send(Task::WatchTransaction(task.clone()));
-            }
-
             (Request::GetInfo, _) => {
                 senders.send_to(
                     ServiceBus::Ctl,

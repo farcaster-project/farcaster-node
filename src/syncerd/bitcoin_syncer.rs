@@ -1,6 +1,8 @@
 // #![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
 
 use crate::farcaster_core::consensus::Decodable;
+use crate::internet2::TypedEnum;
+use crate::rpc::Request;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
@@ -212,7 +214,7 @@ fn test_electrumrpc() {
 }
 
 pub trait Synclet {
-    fn run(&mut self, rx: Receiver<Task>);
+    fn run(&mut self, rx: Receiver<Task>, tx: zmq::Socket);
 }
 
 pub struct BitcoinSyncer {}
@@ -224,7 +226,7 @@ impl BitcoinSyncer {
 }
 
 impl Synclet for BitcoinSyncer {
-    fn run(&mut self, rx: Receiver<Task>) {
+    fn run(&mut self, rx: Receiver<Task>, tx: zmq::Socket) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = ElectrumRpc::new();
@@ -292,6 +294,11 @@ impl Synclet for BitcoinSyncer {
                     }
                 }
                 println!("events: {:?}", state.events);
+
+                // now consume the requests
+                for event in state.events.drain(..) {
+                    let request = Request::SyncerEvent(event);
+                }
 
                 thread::sleep(std::time::Duration::from_secs(1));
             }
