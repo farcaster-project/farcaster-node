@@ -195,7 +195,7 @@ pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("puboffer")]
+#[display("{public_offer}")]
 pub struct PubOffer {
     pub public_offer: PublicOffer<BtcXmr>,
     pub peer_secret_key: Option<SecretKey>,
@@ -217,7 +217,7 @@ pub struct Token(pub String);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("get secret")]
+#[display("get keys(token({0}), req_id({1}))")]
 pub struct GetKeys(pub Token, pub RequestId);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -242,7 +242,7 @@ pub struct TakeCommit {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("keypair(sk:{0},pk:{1})")]
+#[display("keypair(sk:({0}),pk:({1})),id:({2})")]
 pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
     pub bitcoin::secp256k1::PublicKey,
@@ -326,11 +326,11 @@ pub enum Request {
     GetNodeId,
 
     #[api(type = 32)]
-    #[display("nodeid")]
+    #[display("nodeid({0})")]
     NodeId(NodeId),
 
     #[api(type = 30)]
-    #[display("getsecret({0})")]
+    #[display("get_keys({0})")]
     GetKeys(GetKeys),
 
     #[api(type = 29)]
