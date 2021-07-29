@@ -106,7 +106,7 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
-    node_ids: Vec<PublicKey>, // TODO HashSet<SwapId, PublicKey>
+    node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
 }
@@ -147,8 +147,8 @@ impl Runtime {
         senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
         Ok(())
     }
-    fn node_ids(&self) -> &Vec<PublicKey> {
-        self.node_ids.as_ref()
+    fn node_ids(&self) -> Vec<PublicKey> {
+        self.node_ids.iter().cloned().collect()
     }
 
     fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
@@ -389,7 +389,7 @@ impl Runtime {
                 );
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
-                    self.node_ids.push(pk);
+                    self.node_ids.insert(pk);
                     trace!("Received expected peer keys, injecting key in request");
                     let req = if let Request::MakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
