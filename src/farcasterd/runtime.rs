@@ -13,7 +13,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{Senders, rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token}, swapd::swap_id, walletd::NodeSecrets};
+use crate::{
+    rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token},
+    swapd::swap_id,
+    walletd::NodeSecrets,
+    Senders,
+};
 use amplify::Wrapper;
 use request::{Commit, Params};
 use std::ffi::OsStr;
@@ -28,7 +33,10 @@ use std::{
 };
 use std::{convert::TryFrom, thread::sleep};
 
-use bitcoin::secp256k1::{self, rand::{thread_rng, RngCore}};
+use bitcoin::secp256k1::{
+    self,
+    rand::{thread_rng, RngCore},
+};
 use bitcoin::{
     hashes::hex::ToHex,
     secp256k1::{PublicKey, SecretKey},
@@ -41,9 +49,7 @@ use microservices::rpc::Failure;
 
 use farcaster_core::swap::SwapId;
 
-use crate::rpc::request::{
-    IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, GetKeys, RuntimeContext,
-};
+use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
@@ -67,7 +73,7 @@ use std::str::FromStr;
 pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
     let _walletd = launch(
         "walletd",
-        &["--wallet-token", &wallet_token.to_string().clone()],
+        &["--wallet-token", &wallet_token.to_string()],
     )?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
@@ -799,7 +805,8 @@ impl Runtime {
                 and then proceed with parent request"
         );
         let req_id = RequestId::rand();
-        self.pending_requests.insert(req_id.clone(), (request, source));
+        self.pending_requests
+            .insert(req_id.clone(), (request, source));
         let wallet_token = GetKeys(self.wallet_token.clone(), req_id);
         senders.send_to(
             ServiceBus::Ctl,

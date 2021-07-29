@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::rpc::{
-    request::{self, Keys, Msg, Params, Reveal, RuntimeContext, Token},
+    request::{self, Keys, Msg, Params, Reveal, Token},
     Request, ServiceBus,
 };
 use crate::swapd::swap_id;
@@ -556,21 +556,6 @@ impl Runtime {
                 )?
             }
 
-            // Request::Loopback(request) => match request {
-            //     RuntimeContext::GetInfo => self.send_farcasterd(senders, Request::GetInfo)?,
-            //     RuntimeContext::MakeOffer(offer) => {
-            //         self.send_farcasterd(senders, Request::MakeOffer(offer))?
-            //     }
-            //     RuntimeContext::TakeOffer(offer) => {
-            //         self.send_farcasterd(senders, Request::TakeOffer(offer))?
-            //     }
-            //     RuntimeContext::Listen(addr) => {
-            //         self.send_farcasterd(senders, Request::Listen(addr))?
-            //     }
-            //     RuntimeContext::ConnectPeer(addr) => {
-            //         self.send_farcasterd(senders, Request::ConnectPeer(addr))?
-            //     }
-            // },
             _ => {
                 error!(
                     "Request {:?} is not supported by the CTL interface",

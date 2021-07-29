@@ -179,22 +179,6 @@ pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("runtime context")]
-pub enum RuntimeContext {
-    GetInfo,
-    ConnectPeer(NodeAddr),
-    Listen(RemoteSocketAddr),
-    MakeOffer(ProtoPublicOffer),
-    TakeOffer(PublicOffer<BtcXmr>),
-}
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("secret")]
-pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{public_offer}")]
 pub struct PubOffer {
     pub public_offer: PublicOffer<BtcXmr>,
@@ -332,10 +316,6 @@ pub enum Request {
     #[api(type = 29)]
     #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
-
-    #[api(type = 40)]
-    #[display("loopback")]
-    Loopback(RuntimeContext),
 
     #[api(type = 28)]
     #[display("keys({0})")]
