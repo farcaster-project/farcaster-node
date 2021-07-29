@@ -555,10 +555,6 @@ impl Runtime {
                     )),
                 )?
             }
-            Request::GetNodeId => {
-                let node_id = NodeId(self.node_id.clone());
-                self.send_farcasterd(senders, Request::NodeId(node_id))?
-            }
 
             // Request::Loopback(request) => match request {
             //     RuntimeContext::GetInfo => self.send_farcasterd(senders, Request::GetInfo)?,
