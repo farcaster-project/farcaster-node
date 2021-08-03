@@ -572,8 +572,14 @@ impl Runtime {
                         // )),
                     ));
 
+
+                let node_ids = self.node_ids();
+                if node_ids.len() != 1 {
+                        error!("{}", "Currently node supports only 1 node id");
+                        return Ok(())
+                }
                 let peer = internet2::RemoteNodeAddr {
-                    node_id: self.node_ids()[0], // FIXME shouldnt be 0 here
+                    node_id: node_ids[0], // checked above
                     remote_addr: remote_addr.clone(),
                 };
                 let public_offer = offer.clone().to_public_v1(peer);
