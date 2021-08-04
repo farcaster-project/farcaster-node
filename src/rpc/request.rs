@@ -464,9 +464,22 @@ pub enum Request {
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     SyncerEvent(Event),
+
+    #[api(type = 1302)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SyncerdBridgeEvent(SyncerdBridgeEvent),
 }
 
 impl rpc_connection::Request for Request {}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("syncerd event")]
+pub struct SyncerdBridgeEvent {
+    pub event: Event,
+    pub source: ServiceId,
+}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]

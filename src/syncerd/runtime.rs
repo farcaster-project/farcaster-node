@@ -15,6 +15,8 @@
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::bitcoin_syncer::Synclet;
 use amplify::Wrapper;
+use farcaster_core::blockchain::Network;
+use farcaster_core::chain::pairs::Coins;
 use farcaster_core::syncer::Abort;
 use farcaster_core::syncer::{Syncer, Task};
 use std::collections::{HashMap, HashSet};
@@ -42,9 +44,15 @@ use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
+pub struct SyncerdTask {
+    pub task: Task,
+    pub source: ServiceId,
+}
+
 pub fn run(config: Config) -> Result<(), Error> {
+    info!("creating a new syncer");
     let syncer: Option<Box<dyn Synclet>>;
-    let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
 
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
@@ -55,17 +63,18 @@ pub fn run(config: Config) -> Result<(), Error> {
         Chain::Testnet3 => {
             syncer = Some(Box::new(BitcoinSyncer::new()));
         }
-        _ => syncer = none!(),
+        _ => {
+            syncer = none!();
+        }
     }
     let mut runtime = Runtime {
         identity: ServiceId::Syncer,
-        chain: config.chain.clone(),
         started: SystemTime::now(),
         tasks: none!(),
         syncer: syncer.unwrap(),
         tx,
     };
-    runtime.syncer.run(rx, tx_event);
+    runtime.syncer.run(rx, tx_event, runtime.identity().into());
 
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
@@ -73,48 +82,12 @@ pub fn run(config: Config) -> Result<(), Error> {
     unreachable!()
 }
 
-#[test]
-fn test_zmq_msg_passing() {
-    let ctx = zmq::Context::new();
-    let receiver = ctx.socket(zmq::PAIR).unwrap();
-    receiver.connect("inproc://test").unwrap();
-    let child = std::thread::spawn(move || {
-        let sender = ctx.socket(zmq::PAIR).unwrap();
-        println!("here!");
-        sender.connect("inproc://test").unwrap();
-        println!("here!");
-        sender.send("lol", 0).unwrap();
-        println!("here!");
-    });
-    println!("here again!");
-    let msg = receiver.recv_bytes(0);
-    println!("received?: {:?}", msg);
-    child.join().unwrap();
-}
-
-#[test]
-fn test_channel_msg_passing() {
-    let (tx, rx): (Sender<i32>, Receiver<i32>) = std::sync::mpsc::channel();
-    let child = std::thread::spawn(move || {
-        tx.send(0).unwrap();
-        tx.send(1).unwrap();
-        println!("finished work!");
-    });
-    // let res = rx.try_recv().unwrap();
-    let res = rx.recv().unwrap();
-    println!("res: {:?}", res);
-    let res1 = rx.recv().unwrap();
-    println!("res1: {:?}", res1);
-    child.join().unwrap();
-}
-
 pub struct Runtime {
     identity: ServiceId,
     syncer: Box<dyn Synclet>,
-    chain: Chain,
     started: SystemTime,
     tasks: HashSet<u64>, // FIXME
-    tx: Sender<Task>,
+    tx: Sender<SyncerdTask>,
     // spawning_services: HashMap<ServiceId, ServiceId>,
     // senders: HashMap<SwapId, &mut esb::SenderList<ServiceBus, ServiceId>>,
 }
@@ -139,7 +112,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
+            ServiceBus::Bridge => self.handle_bridge(senders, source, request),
         }
     }
 
@@ -155,7 +128,7 @@ impl Runtime {
     fn handle_rpc_msg(
         &mut self,
         _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        source: ServiceId,
+        _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         match request {
@@ -187,7 +160,12 @@ impl Runtime {
                 );
             }
             (Request::SyncerTask(task), _) => {
-                self.tx.send(task.clone());
+                self.tx
+                    .send(SyncerdTask {
+                        task: task.clone(),
+                        source,
+                    })
+                    .unwrap();
             }
             (Request::GetInfo, _) => {
                 senders.send_to(
@@ -231,33 +209,27 @@ impl Runtime {
 
         Ok(())
     }
-}
+    fn handle_bridge(
+        &mut self,
+        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _source: ServiceId,
+        request: Request,
+    ) -> Result<(), Error> {
+        debug!("Syncerd BRIDGE RPC request: {}", request);
+        match request {
+            Request::SyncerdBridgeEvent(syncerd_bridge_event) => {
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    syncerd_bridge_event.source,
+                    Request::SyncerEvent(syncerd_bridge_event.event),
+                )?;
+            }
 
-fn launch(
-    name: &str,
-    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-) -> io::Result<process::Child> {
-    let mut bin_path = std::env::current_exe().map_err(|err| {
-        error!("Unable to detect binary directory: {}", err);
-        err
-    })?;
-    bin_path.pop();
-
-    bin_path.push(name);
-    #[cfg(target_os = "windows")]
-    bin_path.set_extension("exe");
-
-    debug!(
-        "Launching {} as a separate process using `{}` as binary",
-        name,
-        bin_path.to_string_lossy()
-    );
-
-    let mut cmd = process::Command::new(bin_path);
-    cmd.args(std::env::args().skip(1)).args(args);
-    trace!("Executing `{:?}`", cmd);
-    cmd.spawn().map_err(|err| {
-        error!("Error launching {}: {}", name, err);
-        err
-    })
+            _ => {
+                debug!("bridge request {:?} not handled here", request);
+            }
+        }
+        Ok(())
+    }
 }

@@ -1,11 +1,17 @@
 // #![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
 
+use crate::error::Error;
 use crate::farcaster_core::consensus::Decodable;
+use crate::internet2::Duplex;
+use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
+use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
+use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
+use crate::ServiceId;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::BlockHash;
 use bitcoin::Script;
@@ -14,7 +20,10 @@ use electrum_client::raw_client::RawClient;
 use electrum_client::Hex32Bytes;
 use electrum_client::{Client, ElectrumApi};
 use farcaster_core::consensus::{self};
-use farcaster_core::syncer::Error;
+use internet2::zmqsocket::Connection;
+use internet2::zmqsocket::ZmqType;
+use internet2::PlainTranscoder;
+use internet2::ZMQ_CONTEXT;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;
@@ -36,6 +45,8 @@ pub trait Rpc {
     fn get_height(&mut self) -> Result<u64, Error>;
 
     fn send_raw_transaction(&mut self, tx: Vec<u8>) -> Result<String, electrum_client::Error>;
+
+    fn ping(&mut self) -> Result<(), Error>;
 }
 
 pub struct ElectrumRpc {
@@ -43,6 +54,7 @@ pub struct ElectrumRpc {
     height: u64,
     block_hash: BlockHash,
     addresses: HashMap<BtcAddressAddendum, Hex32Bytes>,
+    ping_count: u8,
 }
 
 pub struct Block {
@@ -56,10 +68,6 @@ pub struct AddressNotif {
 }
 
 impl ElectrumRpc {
-    pub fn ping(&mut self) -> Result<(), electrum_client::Error> {
-        Ok(self.client.ping()?)
-    }
-
     pub fn subscribe_script(
         &mut self,
         address_addendum: BtcAddressAddendum,
@@ -99,7 +107,7 @@ impl ElectrumRpc {
                     });
                     self.height = a.height as u64;
                     self.block_hash = a.header.block_hash();
-                    println!("\n\n{:?}\n\n", self.height);
+                    trace!("new height received: {:?}", self.height);
                 }
                 _ => break,
             }
@@ -187,13 +195,14 @@ impl Rpc for ElectrumRpc {
     fn new() -> Self {
         let client = Client::new("ssl://electrum.blockstream.info:50002").unwrap();
         let header = client.block_headers_subscribe().unwrap();
-        println!("{:?}", header.height);
+        trace!("New ElectrumRpc at height {:?}", header.height);
 
         Self {
             client,
             addresses: none!(),
             height: header.height as u64,
             block_hash: header.header.block_hash(),
+            ping_count: 0,
         }
     }
 
@@ -205,6 +214,17 @@ impl Rpc for ElectrumRpc {
     fn get_height(&mut self) -> Result<u64, Error> {
         Ok(self.height)
     }
+
+    fn ping(&mut self) -> Result<(), Error> {
+        if self.ping_count % 10 == 0 {
+            if self.client.ping().is_err() {
+                return Err(Error::Other("ping failed".to_string()));
+            }
+            self.ping_count = 0;
+        }
+        self.ping_count += 1;
+        Ok(())
+    }
 }
 
 #[test]
@@ -214,7 +234,7 @@ fn test_electrumrpc() {
 }
 
 pub trait Synclet {
-    fn run(&mut self, rx: Receiver<Task>, tx: zmq::Socket);
+    fn run(&mut self, rx: Receiver<SyncerdTask>, tx: zmq::Socket, syncer_address: Vec<u8>);
 }
 
 pub struct BitcoinSyncer {}
@@ -226,39 +246,46 @@ impl BitcoinSyncer {
 }
 
 impl Synclet for BitcoinSyncer {
-    fn run(&mut self, rx: Receiver<Task>, tx: zmq::Socket) {
+    fn run(&mut self, rx: Receiver<SyncerdTask>, tx: zmq::Socket, syncer_address: Vec<u8>) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = ElectrumRpc::new();
+            let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
+            let mut transcoder = PlainTranscoder {};
+            let writer = connection.as_sender();
+
             state.change_height(rpc.height, rpc.block_hash.to_vec());
             loop {
+                // check if the server can still be reached
+                rpc.ping().unwrap();
+
                 match rx.try_recv() {
-                    Ok(task) => {
-                        match task {
+                    Ok(syncerd_task) => {
+                        match syncerd_task.task {
                             Task::Abort(task) => {
-                                state.abort(task).unwrap();
+                                state.abort(task, syncerd_task.source).unwrap();
                             }
                             Task::BroadcastTransaction(task) => {
                                 // TODO: match error and emit event with fail code
-                                rpc.send_raw_transaction(task.tx);
+                                rpc.send_raw_transaction(task.tx).unwrap();
                             }
                             Task::WatchAddress(task) => {
                                 let mut res = std::io::Cursor::new(task.addendum.clone());
                                 let address_addendum =
                                     BtcAddressAddendum::consensus_decode(&mut res).unwrap();
-                                state.watch_address(task.clone());
+                                state.watch_address(task.clone(), syncerd_task.source);
                                 let address_transactions =
                                     rpc.subscribe_script(address_addendum).unwrap();
                                 state.change_address(task.addendum, address_transactions.txs);
                             }
                             Task::WatchHeight(task) => {
-                                state.watch_height(task);
+                                state.watch_height(task, syncerd_task.source);
                             }
                             Task::WatchTransaction(task) => {
-                                state.watch_transaction(task);
+                                state.watch_transaction(task, syncerd_task.source);
                             }
                         }
-                        // added data to state, check if we received more from the channel
+                        // added data to state, check if we received more from the channel before sending out events
                         continue;
                     }
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
@@ -267,8 +294,6 @@ impl Synclet for BitcoinSyncer {
                     }
                 }
 
-                // check if the server can still be reached
-                rpc.ping();
                 // check and process address/script_pubkey notifications
                 let notifs = rpc.address_change_check();
                 for address_transactions in notifs.iter() {
@@ -293,11 +318,20 @@ impl Synclet for BitcoinSyncer {
                         state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
                     }
                 }
-                println!("events: {:?}", state.events);
+                trace!("pending events: {:?}", state.events);
 
                 // now consume the requests
-                for event in state.events.drain(..) {
-                    let request = Request::SyncerEvent(event);
+                for (event, source) in state.events.drain(..) {
+                    let request = Request::SyncerdBridgeEvent(SyncerdBridgeEvent { event, source });
+                    trace!("sending request over syncerd bridge: {:?}", request);
+                    writer
+                        .send_routed(
+                            &syncer_address,
+                            &syncer_address,
+                            &syncer_address,
+                            &transcoder.encrypt(request.serialize()),
+                        )
+                        .unwrap();
                 }
 
                 thread::sleep(std::time::Duration::from_secs(1));
@@ -306,16 +340,25 @@ impl Synclet for BitcoinSyncer {
     }
 }
 
-// #[test]
-// pub fn syncer_state() {
-//     let (tx, rx): (Sender<Task>, Receiver<Task>) = std::sync::mpsc::channel();
-//     let mut syncer = BitcoinSyncer::new();
-//     syncer.run(rx);
-//     let task = Task::WatchHeight(WatchHeight {
-//         id: 0,
-//         lifetime: 100000000,
-//         addendum: vec![],
-//     });
-//     tx.send(task).unwrap();
-//     thread::sleep(std::time::Duration::from_secs(100000000));
-// }
+#[test]
+pub fn syncer_state() {
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    tx_event.connect("inproc://syncerdbridge").unwrap();
+    rx_event.bind("inproc://syncerdbridge").unwrap();
+
+    let mut syncer = BitcoinSyncer::new();
+    syncer.run(rx, tx_event, ServiceId::Syncer.into());
+    let task = SyncerdTask {
+        task: Task::WatchHeight(WatchHeight {
+            id: 0,
+            lifetime: 100000000,
+            addendum: vec![],
+        }),
+        source: ServiceId::Syncer,
+    };
+    tx.send(task).unwrap();
+    let message = rx_event.recv_multipart(0);
+    assert!(message.is_ok());
+}
