@@ -85,7 +85,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         spawning_services: none!(),
         making_swaps: none!(),
         taking_swaps: none!(),
-        making_offers: none!(),
+        offers: none!(),
         node_ids: none!(),
         wallet_token,
         pending_requests: none!(),
@@ -105,7 +105,7 @@ pub struct Runtime {
     spawning_services: HashMap<ServiceId, ServiceId>,
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
-    making_offers: HashSet<PublicOffer<BtcXmr>>,
+    offers: HashSet<PublicOffer<BtcXmr>>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
@@ -188,7 +188,7 @@ impl Runtime {
                             "The offer received on peer conection is not parsable".to_string(),
                         )
                     })?;
-                if !self.making_offers.contains(&public_offer) {
+                if !self.offers.contains(&public_offer) {
                     error!(
                         "Unknow offer {}, you are not the maker of that offer, ignoring it",
                         &public_offer
@@ -343,7 +343,7 @@ impl Runtime {
                 swap_id,
                 remote_commit,
             }) => {
-                if self.making_offers.remove(&public_offer) {
+                if self.offers.remove(&public_offer) {
                     trace!(
                         "{}, {}",
                         "launching swapd with swap_id:",
@@ -427,7 +427,7 @@ impl Runtime {
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
                         swaps: self.running_swaps.iter().cloned().collect(),
-                        offers: self.making_offers.iter().cloned().collect(),
+                        offers: self.offers.iter().cloned().collect(),
                     }),
                 )?;
             }
@@ -584,7 +584,7 @@ impl Runtime {
                 };
                 let public_offer = offer.clone().to_public_v1(peer);
                 let hex_public_offer = public_offer.to_hex();
-                if self.making_offers.insert(public_offer) {
+                if self.offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
                         "Pubic offer registered, please share with taker: ".bright_blue_bold(),
@@ -622,7 +622,7 @@ impl Runtime {
                 public_offer,
                 peer_secret_key,
             }) => {
-                if self.making_offers.contains(&public_offer) {
+                if self.offers.contains(&public_offer) {
                     let msg = format!(
                         "Offer {} already exists, ignoring request",
                         &public_offer.to_hex()
@@ -682,7 +682,7 @@ impl Runtime {
                             &public_offer.bright_yellow_bold()
                         );
                         // not yet in the set
-                        self.making_offers.insert(public_offer.clone());
+                        self.offers.insert(public_offer.clone());
                         info!("{}", offer_registered.bright_yellow_bold());
 
                         report_to.push((
