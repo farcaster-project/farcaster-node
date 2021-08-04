@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     str::FromStr,
 };
 
@@ -13,7 +13,7 @@ use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
-use bitcoin::secp256k1;
+use bitcoin::{hashes::hex::FromHex, secp256k1, util::psbt::serialize::Deserialize, Transaction};
 use colored::Colorize;
 use farcaster_core::{
     blockchain::FeePolitic,
@@ -22,7 +22,10 @@ use farcaster_core::{
     chain::monero::Monero,
     chain::pairs::btcxmr::{BtcXmr, Wallet as CoreWallet},
     negotiation::PublicOffer,
-    protocol_message::{BuyProcedureSignature, CoreArbitratingSetup, RefundProcedureSignatures},
+    protocol_message::{
+        BuyProcedureSignature, CommitAliceParameters, CoreArbitratingSetup,
+        RefundProcedureSignatures,
+    },
     role::{Alice, Bob, SwapRole, TradeRole},
     swap::SwapId,
     transaction::Fundable,
@@ -72,7 +75,8 @@ pub enum Wallet {
         BobParameters<BtcXmr>,
         CoreWallet,
         PublicOffer<BtcXmr>,
-        Option<FundingTransaction<Bitcoin>>,
+        Option<Funding>,
+        Option<CommitAliceParameters<BtcXmr>>,
         Option<AliceParameters<BtcXmr>>,
         Option<CoreArbitratingTransactions<Bitcoin>>,
     ),
@@ -164,45 +168,37 @@ impl Runtime {
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
                 match offer.maker_role {
                     SwapRole::Bob => {
-                        let external_address = bitcoin::Address::from_str(
-                            "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
-                        )
-                        .expect("Parsable address");
+                        let external_address = address();
                         let bob =
                             Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
-                        let wallet_seed = self.node_secrets.wallet_seed;
-                        let core_wallet = CoreWallet::new(wallet_seed);
+                        let core_wallet = CoreWallet::new(self.node_secrets.wallet_seed);
                         let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            // FIXME get his externally
-                            // let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
-                            // let (_, pubkey) =
-                            //     (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
-                            // let pubkey = bitcoin::PublicKey {
-                            //     compressed: true,
-                            //     key: pubkey,
-                            // };
-                            // let mut funding = Funding::initialize(
-                            //     pubkey,
-                            //     farcaster_core::blockchain::Network::Mainnet,
-                            // )
-                            // .map_err(|_| {
-                            //     Error::Farcaster("Impossible to initialize funding
-                            // tx".to_string()) })?;
-                            // funding.update(funding_bundle.funding.clone());
+                            let funding = create_funding()?;
                             info!("Creating {}", "Wallet::Bob".bright_yellow());
-                            self.wallets.insert(
-                                swap_id,
-                                Wallet::Bob(
-                                    bob,
-                                    local_params.clone(),
-                                    core_wallet,
-                                    public_offer.clone(),
-                                    None,
-                                    None,
-                                    None,
-                                ),
-                            );
+                            if let request::Commit::Alice(remote_commit) = remote_commit.clone() {
+                                if self.wallets.get(&swap_id).is_none() {
+                                    self.wallets.insert(
+                                        swap_id,
+                                        Wallet::Bob(
+                                            bob,
+                                            local_params.clone(),
+                                            core_wallet,
+                                            public_offer.clone(),
+                                            Some(funding),
+                                            Some(remote_commit),
+                                            None,
+                                            None,
+                                        ),
+                                    );
+                                } else {
+                                    error!("Wallet already exists");
+                                    return Ok(());
+                                }
+                            } else {
+                                error!("Not Commit::Alice");
+                                return Ok(());
+                            }
                             let launch_swap = LaunchSwap {
                                 peer: peer.into(),
                                 local_trade_role: TradeRole::Maker,
@@ -212,9 +208,6 @@ impl Runtime {
                                 remote_commit: Some(remote_commit),
                             };
                             self.swaps.insert(swap_id, None);
-                            // let reveal: Reveal = (swap_id, Params::Bob(local_params)).into();
-                            // self.swaps
-                            //     .insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
                                 senders,
                                 ServiceId::Farcasterd,
@@ -225,26 +218,29 @@ impl Runtime {
                         }
                     }
                     SwapRole::Alice => {
-                        let external_address = bitcoin::Address::from_str(
-                            "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
-                        )
-                        .expect("Parsable address");
+                        let external_address = address();
                         let alice: Alice<BtcXmr> =
                             Alice::new(external_address.into(), FeePolitic::Aggressive);
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let core_wallet = CoreWallet::new(wallet_seed);
                         let params = alice.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            self.wallets.insert(
-                                swap_id,
-                                Wallet::Alice(
-                                    alice,
-                                    params.clone(),
-                                    core_wallet,
-                                    public_offer.clone(),
-                                    None,
-                                ),
-                            );
+                            info!("Creating {}", "Wallet::Alice".bright_yellow());
+                            if self.wallets.get(&swap_id).is_none() {
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Alice(
+                                        alice,
+                                        params.clone(),
+                                        core_wallet,
+                                        public_offer.clone(),
+                                        None,
+                                    ),
+                                )
+                            } else {
+                                error!("Wallet already exists");
+                                return Ok(());
+                            };
                             let launch_swap = LaunchSwap {
                                 peer: peer.into(),
                                 local_trade_role: TradeRole::Maker,
@@ -260,7 +256,7 @@ impl Runtime {
                             )
                         } else {
                             error!("Wallet already existed");
-                            Err(Error::Farcaster("Wallet already existed".to_string()))
+                            return Ok(());
                         }
                     }
                 }?
@@ -268,8 +264,23 @@ impl Runtime {
             Request::Params(role) => {
                 let swap_id = swap_id(source.clone())?;
                 match role {
+                    // receiving from counterparty Bob, thus im Alice Maker or Taker
+                    Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
+                        Some(Wallet::Alice(
+                            _alice,
+                            _alice_params,
+                            _,
+                            _public_offer,
+                            bob_params,
+                        )) => {
+                            *bob_params = Some(params);
+                            // nothing to do yet, waiting for Msg
+                            // CoreArbitratingSetup to proceed
+                        }
+                        _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
+                    },
                     // getting paramaters from counterparty alice routed through
-                    // swapd, thus im bob on this swap
+                    // swapd, thus im bob on this swap, Bob can proceed
                     Params::Alice(params) => {
                         match self.wallets.get_mut(&swap_id) {
                             Some(Wallet::Bob(
@@ -278,8 +289,9 @@ impl Runtime {
                                 core_wallet,
                                 public_offer,
                                 // TODO: set funding_bundle somewhere, its now
-                                // actually None
-                                None,         //Some(funding_bundle),
+                                Some(funding),
+                                Some(commit), /* reveal does not reach here, stops in swapd,
+                                               * cant verify commit */
                                 alice_params, // None
                                 core_arb_txs, // None
                             )) => {
@@ -293,30 +305,11 @@ impl Runtime {
                                 if core_arb_txs.is_some() {
                                     Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
                                 }
-
-                                // FIXME
-                                let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
-                                let (_, pubkey) =
-                                    (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
-                                let pubkey = bitcoin::PublicKey {
-                                    compressed: true,
-                                    key: pubkey,
-                                };
-                                let funding = Funding::initialize(
-                                    pubkey,
-                                    farcaster_core::blockchain::Network::Mainnet,
-                                )
-                                .map_err(|_| {
-                                    Error::Farcaster(
-                                        "Impossible to initialize funding tx".to_string(),
-                                    )
-                                })?;
-                                // FIXME
-                                // funding.update(funding_bundle.funding.clone());
+                                // FIXME should be set before
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
                                     &params,
                                     bob_params,
-                                    funding,
+                                    funding.clone(),
                                     public_offer,
                                 )?;
                                 *core_arb_txs = Some(core_arbitrating_txs.clone());
@@ -336,22 +329,6 @@ impl Runtime {
                             _ => Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?,
                         }
                     }
-
-                    // getting paramaters from counterparty bob, thus im alice
-                    // on this swap
-                    Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
-                        // TODO: validation
-                        Some(Wallet::Alice(
-                            _alice,
-                            _alice_params,
-                            _,
-                            _public_offer,
-                            bob_params,
-                        )) => {
-                            *bob_params = Some(params);
-                        }
-                        _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
-                    },
                 }
             }
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
@@ -364,6 +341,7 @@ impl Runtime {
                         core_wallet,
                         public_offer,
                         Some(_funding_tx),
+                        Some(commit),
                         Some(alice_params),
                         Some(core_arbitrating_txs),
                     )) => {
@@ -484,26 +462,40 @@ impl Runtime {
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
-                let swap_id: SwapId = SwapId::random().into(); // TODO: replace by public_offer_id
-                                                               // since we're takers, we are on the other side
+                let swap_id: SwapId = SwapId::random().into();
                 self.swaps.insert(swap_id, None);
+                // since we're takers, we are on the other side
                 let taker_role = offer.maker_role.other();
-                let wallet_seed = self.node_secrets.wallet_seed;
-                let core_wallet = CoreWallet::new(wallet_seed);
+                let core_wallet = CoreWallet::new(self.node_secrets.wallet_seed);
                 match taker_role {
                     SwapRole::Bob => {
-                        let address = bitcoin::Address::from_str(
-                            "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
-                        )
-                        .expect("Parsable address");
+                        let address = address();
                         let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
-                        let params = bob.generate_parameters(&core_wallet, &public_offer)?;
-
+                        let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
+                        let funding = create_funding()?;
+                        info!("Creating {}", "Wallet::Bob".bright_yellow());
+                        if self.wallets.get(&swap_id).is_none() {
+                            self.wallets.insert(
+                                swap_id,
+                                Wallet::Bob(
+                                    bob,
+                                    local_params.clone(),
+                                    core_wallet,
+                                    public_offer.clone(),
+                                    Some(funding),
+                                    None,
+                                    None,
+                                    None,
+                                ),
+                            );
+                        } else {
+                            Err(Error::Farcaster(s!("Wallet already exists")))?
+                        }
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
                             local_trade_role: TradeRole::Taker,
                             public_offer,
-                            local_params: Params::Bob(params),
+                            local_params: Params::Bob(local_params),
                             swap_id,
                             remote_commit: None,
                         };
@@ -515,19 +507,35 @@ impl Runtime {
                         )?;
                     }
                     SwapRole::Alice => {
-                        let address = bitcoin::Address::from_str(
-                            "bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk",
-                        )
-                        .expect("Parsable address");
+                        let address = address();
                         let alice: Alice<BtcXmr> =
                             Alice::new(address.into(), FeePolitic::Aggressive);
-                        let params = alice.generate_parameters(&core_wallet, &public_offer)?;
+                        let local_params =
+                            alice.generate_parameters(&core_wallet, &public_offer)?;
+                        let wallet_seed = self.node_secrets.wallet_seed;
+                        let core_wallet = CoreWallet::new(wallet_seed);
 
+                        if self.wallets.get(&swap_id).is_none() {
+                            // TODO instead of storing in state, start building
+                            // requests and store the state in there directly
+                            self.wallets.insert(
+                                swap_id,
+                                Wallet::Alice(
+                                    alice,
+                                    local_params.clone(),
+                                    core_wallet,
+                                    public_offer.clone(),
+                                    None,
+                                ),
+                            );
+                        } else {
+                            Err(Error::Farcaster(s!("Wallet already exists")))?
+                        }
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
                             local_trade_role: TradeRole::Taker,
                             public_offer,
-                            local_params: Params::Alice(params),
+                            local_params: Params::Alice(local_params),
                             swap_id,
                             remote_commit: None,
                         };
@@ -565,4 +573,30 @@ impl Runtime {
         }
         Ok(())
     }
+}
+
+fn address() -> bitcoin::Address {
+    bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
+        .expect("Parsable address")
+}
+
+pub fn create_funding() -> Result<Funding, Error> {
+    let tx_hex = Vec::from_hex("01000000000105979237e926bc57c319d98b9c89a929aa404b65ea5a0ab45c9f058377e5ecf5750000000000ffffffffc91bd1d4b3d4fb45aa72fc7d49dd5a3c0a0213f527c58fb5b534ddeb2a9f51130000000000ffffffff5f714adfbad928150c2f22756c024b5282e273be414a74050c9672b146be23000100000000ffffffff2344ae6f3dbee616af09cc039d58fb2826cc46fa995bd48b91e507510c9ed48e0000000000ffffffff29826e5abd7d4b551803a31e07e69c7e7bc72b383b7bf8a95ef62297565d9ed40000000000ffffffff015a17f000000000001600145585e364d7bfe44b0508033c206e4773ad5e8b6d02473044022053a2e2e49c0c8827bf7db07f5f60e2f1320f8fea14fac289e844f221e8f4cd33022036be86e6edabf98d6e6de3581654d51671a3bdee55ed7a969f3c35ca8c9b759001210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49302483045022100b47cb32ed0a7764069f688363d1f2619eaa60c73eb929870d02a43c0b818d33102201d2321c14f70d81854377ecc253ad3f935fbf86d0cac7541af254296a3a4180c01210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c4930247304402201c88d188f4157bec6f8ac4c8b5cb8cf64d0d7af8c338f92a1be5e481221b97340220049d19ac7631b66c127ff660faabc8c70ea41efa4b8ce005ee083f339783f80001210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49302483045022100ad73bbba162803c61c5b196d29b05d4e34d4e1524bc37f095f027b4734fcccb602201ee014653f617ca99479be2c506c815d5b5532f252958caa6ba7409a4ed37f2b01210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49302483045022100d43abb60f4d4f1d6efc2cd3ab5d8504d54394dec27351b715ad5d307fb90087a022058812c60a378821866208b91ae25eedd4966e371d7af162839308d2a2e98eca901210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49300000000").unwrap();
+    let funding_tx = Transaction::deserialize(&tx_hex).unwrap();
+    let funding_bundle = FundingTransaction::<Bitcoin> {
+        funding: funding_tx,
+    };
+
+    let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
+    let (_, pubkey) = (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
+    let pubkey = bitcoin::PublicKey {
+        compressed: true,
+        key: pubkey,
+    };
+    let mut funding = Funding::initialize(pubkey, farcaster_core::blockchain::Network::Mainnet)
+        .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
+    funding
+        .update(funding_bundle.clone().funding.clone())
+        .map_err(|_| Error::Farcaster(s!("Could not update funding")))?;
+    Ok(funding)
 }
