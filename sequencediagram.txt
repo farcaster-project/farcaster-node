@@ -53,8 +53,7 @@ m_swap -> m_wallet : Msg Params
 peerd -> t_swap : Msg Reveal (maker is sender)
 t_swap -> t_wallet : Msg Params
 ==End of Commit-Reveal act==
-==Maker is Bob==
-m_wallet -> m_wallet : run
+==Protocol==
 m_wallet -> m_swap : Ctl CoreArbitratingSetup
 peerd <- m_swap : Msg CoreArbitratingSetup
 t_swap <- peerd : Msg CoreArbitratingSetup
@@ -69,18 +68,3 @@ t_swap <- peerd : Msg BuyProcedureSignature
 t_swap -> t_wallet : Msg BuyProcedureSignature
 ==End of Swap-Setup act==
 
-==Maker is Alice==
-t_wallet -> t_wallet : run
-t_wallet -> t_swap : Ctl CoreArbitratingSetup
-peerd <- t_swap : Msg CoreArbitratingSetup
-m_swap <- peerd : Msg CoreArbitratingSetup
-m_wallet <- m_swap : Msg CoreArbitratingSetup
-m_wallet -> m_swap : Ctl RefundProcedureSignatures
-m_swap -> peerd : Msg RefundProcedureSignatures
-peerd -> t_swap : Msg RefundProcedureSignatures
-t_wallet <- t_swap : Msg RefundProcedureSignatures
-t_wallet -> t_swap : Ctl BuyProcedureSignature
-peerd <- t_swap : Msg BuyProcedureSignature
-m_swap <- peerd : Msg BuyProcedureSignature
-m_swap -> m_wallet : Msg BuyProcedureSignature
-==End of Swap-Setup act==
