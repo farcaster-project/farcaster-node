@@ -416,6 +416,9 @@ impl Runtime {
                     _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
                 }
             }
+            Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+                info!("received buyproceduresignature")
+            }
             _ => {
                 error!("MSG RPC can only be used for farwarding LNPBP messages")
             }
