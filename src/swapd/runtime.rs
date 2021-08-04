@@ -379,7 +379,7 @@ impl Runtime {
                     // alice receives, bob sends
                     // ProtocolMessages::BuyProcedureSignature(_) => {}
                     Msg::BuyProcedureSignature(_) => {
-                        if self.state == State::Alice(AliceState::RefundProcedureSignatures) {
+                        if self.state != State::Alice(AliceState::RefundProcedureSignatures) {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: must be RefundProcedureSignatures"
                             )))?
