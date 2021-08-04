@@ -373,39 +373,6 @@ impl Runtime {
                     _ => Err(Error::Farcaster("Unknow wallet and swap_id".to_string()))?,
                 }
             }
-            _ => {
-                error!("MSG RPC can only be used for farwarding LNPBP messages")
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_rpc_ctl(
-        &mut self,
-        senders: &mut Senders,
-        source: ServiceId,
-        request: Request,
-    ) -> Result<(), Error> {
-        match request {
-            Request::Hello => match &source {
-                ServiceId::Swap(swap_id) => {
-                    if let Some(option_req) = self.swaps.get_mut(&swap_id) {
-                        trace!("Know swapd, you launched it");
-                        if let Some(req) = option_req {
-                            let request = req.clone();
-                            *option_req = None;
-                            self.send_ctl(senders, source, request)?
-                        }
-                    }
-                }
-                source => {
-                    debug!("Received Hello from {}", source);
-                }
-            },
-            Request::Progress(progress) => {
-                // TODO update wallet state?
-                info!("{}", progress);
-            }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let swap_id = swap_id(source.clone())?;
                 let core_arb_txs = core_arb_setup.into();
@@ -449,6 +416,40 @@ impl Runtime {
                     _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
                 }
             }
+            _ => {
+                error!("MSG RPC can only be used for farwarding LNPBP messages")
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_rpc_ctl(
+        &mut self,
+        senders: &mut Senders,
+        source: ServiceId,
+        request: Request,
+    ) -> Result<(), Error> {
+        match request {
+            Request::Hello => match &source {
+                ServiceId::Swap(swap_id) => {
+                    if let Some(option_req) = self.swaps.get_mut(&swap_id) {
+                        trace!("Know swapd, you launched it");
+                        if let Some(req) = option_req {
+                            let request = req.clone();
+                            *option_req = None;
+                            self.send_ctl(senders, source, request)?
+                        }
+                    }
+                }
+                source => {
+                    debug!("Received Hello from {}", source);
+                }
+            },
+            Request::Progress(progress) => {
+                // TODO update wallet state?
+                info!("{}", progress);
+            }
+
             Request::TakeOffer(request::PubOffer {
                 public_offer,
                 peer_secret_key: None,
