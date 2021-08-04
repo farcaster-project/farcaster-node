@@ -31,7 +31,7 @@ extern crate log;
 
 use clap::Clap;
 
-use farcaster_node::walletd::{self, Opts};
+use farcaster_node::{rpc::request::Token, walletd::{self, Opts}};
 use farcaster_node::{Config, LogStyle};
 
 fn main() {
@@ -45,11 +45,10 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
-    let walletd_token = opts.walletd_token.walletd_token;
-    info!("received token: {}", walletd_token);
+    let wallet_token = Token(opts.token.wallet_token);
+    info!("received token: {}", wallet_token);
 
     let node_id = opts.key_opts.node_secrets().node_id();
-
 
     info!(
         "{}: {}",
@@ -59,7 +58,7 @@ fn main() {
 
 
     debug!("Starting runtime ...");
-    walletd::run(config, walletd_token, opts.key_opts.node_secrets(), node_id)
+    walletd::run(config, wallet_token, opts.key_opts.node_secrets(), node_id)
         .expect("Error running syncerd runtime");
 
     unreachable!()

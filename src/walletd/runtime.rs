@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::rpc::{
-    request::{self, Keypair, Msg, Params, Reveal, RuntimeContext},
+    request::{self, Keys, Msg, Params, Reveal, Token},
     Request, ServiceBus,
 };
 use crate::swapd::swap_id;
@@ -14,6 +14,7 @@ use crate::LogStyle;
 use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
 use bitcoin::secp256k1;
+use colored::Colorize;
 use farcaster_core::{
     blockchain::FeePolitic,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
@@ -33,13 +34,13 @@ use request::{LaunchSwap, NodeId};
 
 pub fn run(
     config: Config,
-    walletd_token: String,
+    wallet_token: Token,
     node_secrets: NodeSecrets,
     node_id: bitcoin::secp256k1::PublicKey,
 ) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
-        walletd_token,
+        wallet_token,
         node_secrets,
         node_id,
         wallets: none!(),
@@ -51,7 +52,7 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,
-    walletd_token: String,
+    wallet_token: Token,
     node_secrets: NodeSecrets,
     node_id: bitcoin::secp256k1::PublicKey,
     wallets: HashMap<SwapId, Wallet>,
@@ -173,6 +174,23 @@ impl Runtime {
                         let core_wallet = CoreWallet::new(wallet_seed);
                         let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
+                            // FIXME get his externally
+                            // let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
+                            // let (_, pubkey) =
+                            //     (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
+                            // let pubkey = bitcoin::PublicKey {
+                            //     compressed: true,
+                            //     key: pubkey,
+                            // };
+                            // let mut funding = Funding::initialize(
+                            //     pubkey,
+                            //     farcaster_core::blockchain::Network::Mainnet,
+                            // )
+                            // .map_err(|_| {
+                            //     Error::Farcaster("Impossible to initialize funding
+                            // tx".to_string()) })?;
+                            // funding.update(funding_bundle.funding.clone());
+                            info!("Creating {}", "Wallet::Bob".bright_yellow());
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Bob(
@@ -193,9 +211,10 @@ impl Runtime {
                                 swap_id,
                                 remote_commit: Some(remote_commit),
                             };
-                            let reveal: Reveal = (swap_id, Params::Bob(local_params)).into();
-                            self.swaps
-                                .insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
+                            self.swaps.insert(swap_id, None);
+                            // let reveal: Reveal = (swap_id, Params::Bob(local_params)).into();
+                            // self.swaps
+                            //     .insert(swap_id, Some(Request::Protocol(Msg::Reveal(reveal))));
                             self.send_ctl(
                                 senders,
                                 ServiceId::Farcasterd,
@@ -246,9 +265,9 @@ impl Runtime {
                     }
                 }?
             }
-            Request::Params(params) => {
+            Request::Params(role) => {
                 let swap_id = swap_id(source.clone())?;
-                match params {
+                match role {
                     // getting paramaters from counterparty alice routed through
                     // swapd, thus im bob on this swap
                     Params::Alice(params) => {
@@ -259,8 +278,8 @@ impl Runtime {
                                 core_wallet,
                                 public_offer,
                                 // TODO: set funding_bundle somewhere, its now
-                                // actually None, so will never hit this.
-                                Some(funding_bundle),
+                                // actually None
+                                None,         //Some(funding_bundle),
                                 alice_params, // None
                                 core_arb_txs, // None
                             )) => {
@@ -274,6 +293,7 @@ impl Runtime {
                                 if core_arb_txs.is_some() {
                                     Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
                                 }
+
                                 // FIXME
                                 let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
                                 let (_, pubkey) =
@@ -282,7 +302,7 @@ impl Runtime {
                                     compressed: true,
                                     key: pubkey,
                                 };
-                                let mut funding = Funding::initialize(
+                                let funding = Funding::initialize(
                                     pubkey,
                                     farcaster_core::blockchain::Network::Mainnet,
                                 )
@@ -291,7 +311,8 @@ impl Runtime {
                                         "Impossible to initialize funding tx".to_string(),
                                     )
                                 })?;
-                                funding.update(funding_bundle.funding.clone());
+                                // FIXME
+                                // funding.update(funding_bundle.funding.clone());
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
                                     &params,
                                     bob_params,
@@ -388,10 +409,10 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => match source {
+            Request::Hello => match &source {
                 ServiceId::Swap(swap_id) => {
                     if let Some(option_req) = self.swaps.get_mut(&swap_id) {
-                        trace!("know swapd, you launched it");
+                        trace!("Know swapd, you launched it");
                         if let Some(req) = option_req {
                             let request = req.clone();
                             *option_req = None;
@@ -399,7 +420,9 @@ impl Runtime {
                         }
                     }
                 }
-                _ => {}
+                source => {
+                    debug!("Received Hello from {}", source);
+                }
             },
             Request::Progress(progress) => {
                 // TODO update wallet state?
@@ -448,7 +471,10 @@ impl Runtime {
                     _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
                 }
             }
-            Request::TakeOffer(public_offer) => {
+            Request::TakeOffer(request::PubOffer {
+                public_offer,
+                peer_secret_key: None,
+            }) => {
                 let PublicOffer {
                     version,
                     offer,
@@ -514,39 +540,21 @@ impl Runtime {
                     }
                 };
             }
-            Request::PeerSecret(request::PeerSecret(walletd_token, context)) => {
-                if walletd_token != self.walletd_token {
+            Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
+                // eprintln!("inside PeerSecret handler");
+                if wallet_token != self.wallet_token {
                     Err(Error::InvalidToken)?
                 }
                 info!("sent Secret request to farcasterd");
                 self.send_farcasterd(
                     senders,
-                    Request::Keypair(Keypair(
+                    Request::Keys(Keys(
                         self.node_secrets.peerd_secret_key,
                         self.node_secrets.node_id(),
+                        request_id,
                     )),
                 )?
             }
-            Request::GetNodeId => {
-                let node_id = NodeId(self.node_id.clone());
-                self.send_farcasterd(senders, Request::NodeId(node_id))?
-            }
-
-            Request::Loopback(request) => match request {
-                RuntimeContext::GetInfo => self.send_farcasterd(senders, Request::GetInfo)?,
-                RuntimeContext::MakeOffer(offer) => {
-                    self.send_farcasterd(senders, Request::MakeOffer(offer))?
-                }
-                RuntimeContext::TakeOffer(offer) => {
-                    self.send_farcasterd(senders, Request::TakeOffer(offer))?
-                }
-                RuntimeContext::Listen(addr) => {
-                    self.send_farcasterd(senders, Request::Listen(addr))?
-                }
-                RuntimeContext::ConnectPeer(addr) => {
-                    self.send_farcasterd(senders, Request::ConnectPeer(addr))?
-                }
-            },
 
             _ => {
                 error!(

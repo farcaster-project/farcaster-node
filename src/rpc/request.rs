@@ -20,17 +20,21 @@ use lazy_static::lazy_static;
 use lightning_encoding::{strategies::AsStrict, LightningDecode, LightningEncode};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds, Same};
-use std::iter::FromIterator;
-use std::time::Duration;
 use std::{collections::BTreeMap, convert::TryInto};
 use std::{
     fmt::{self, Debug, Display, Formatter},
     io,
     marker::PhantomData,
 };
+use std::{iter::FromIterator, str::FromStr};
+use std::{num::ParseIntError, time::Duration};
 
 use bitcoin::{
-    secp256k1::{self, SecretKey},
+    secp256k1::{
+        self,
+        rand::{thread_rng, RngCore},
+        SecretKey,
+    },
     OutPoint, PublicKey,
 };
 use farcaster_core::{
@@ -147,6 +151,19 @@ impl lightning_encoding::Strategy for Reveal {
     type Strategy = AsStrict;
 }
 
+#[derive(Eq, PartialEq, Hash, Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("request_id({0})")]
+pub struct RequestId(pub u64);
+
+impl RequestId {
+    pub fn rand() -> RequestId {
+        let mut id = [0u8; 8];
+        thread_rng().fill_bytes(&mut id);
+        RequestId(u64::from_be_bytes(id))
+    }
+}
+
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("commit")]
@@ -162,24 +179,30 @@ pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("runtime context")]
-pub enum RuntimeContext {
-    GetInfo,
-    ConnectPeer(NodeAddr),
-    Listen(RemoteSocketAddr),
-    MakeOffer(ProtoPublicOffer),
-    TakeOffer(PublicOffer<BtcXmr>),
+#[display("{public_offer}")]
+pub struct PubOffer {
+    pub public_offer: PublicOffer<BtcXmr>,
+    pub peer_secret_key: Option<SecretKey>,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+impl From<PublicOffer<BtcXmr>> for PubOffer {
+    fn from(public_offer: PublicOffer<BtcXmr>) -> Self {
+        PubOffer {
+            public_offer,
+            peer_secret_key: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("secret")]
-pub struct Secret(pub NodeSecrets, pub Option<RuntimeContext>);
+#[display("{0}")]
+pub struct Token(pub String);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("get secret")]
-pub struct PeerSecret(pub String, pub Option<RuntimeContext>);
+#[display("get keys(token({0}), req_id({1}))")]
+pub struct GetKeys(pub Token, pub RequestId);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
@@ -201,12 +224,13 @@ pub struct TakeCommit {
     pub swap_id: SwapId,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("keypair")]
-pub struct Keypair(
+#[display("keypair(sk:({0}),pk:({1})),id:({2})")]
+pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
     pub bitcoin::secp256k1::PublicKey,
+    pub RequestId,
 );
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -281,29 +305,21 @@ pub enum Request {
     #[display("send_message({0})")]
     PeerMessage(Messages),
 
-    #[api(type = 31)]
-    #[display("getnodeid")]
-    GetNodeId,
-
     #[api(type = 32)]
-    #[display("nodeid")]
+    #[display("nodeid({0})")]
     NodeId(NodeId),
 
     #[api(type = 30)]
-    #[display("getsecret")]
-    PeerSecret(PeerSecret),
+    #[display("get_keys({0})")]
+    GetKeys(GetKeys),
 
     #[api(type = 29)]
-    #[display("launch_swap")]
+    #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
 
-    #[api(type = 40)]
-    #[display("loopback")]
-    Loopback(RuntimeContext),
-
     #[api(type = 28)]
-    #[display("peer_secret")]
-    Keypair(Keypair),
+    #[display("keys({0})")]
+    Keys(Keys),
 
     #[api(type = 5)]
     #[display("send_message({0})")]
@@ -345,17 +361,17 @@ pub enum Request {
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
-    #[display("take_swap(...)")]
+    #[display("take_swap({0})")]
     TakeSwap(InitSwap),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 204)]
-    #[display("make_swap(...)")]
+    #[display("make_swap({0})")]
     MakeSwap(InitSwap),
 
     #[api(type = 199)]
     #[display("public_offer({0:#}))")]
-    TakeOffer(PublicOffer<BtcXmr>),
+    TakeOffer(PubOffer),
 
     #[api(type = 198)]
     #[display("proto_puboffer({0:#})")]
@@ -456,7 +472,7 @@ pub struct InitSwap {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(NodeInfo::to_yaml_string)]
 pub struct NodeInfo {
-    pub node_id: secp256k1::PublicKey,
+    pub node_ids: Vec<secp256k1::PublicKey>,
     pub listens: Vec<RemoteSocketAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
@@ -475,6 +491,7 @@ pub struct NodeInfo {
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
     pub remote_addr: RemoteSocketAddr,
+    pub peer_secret_key: Option<SecretKey>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

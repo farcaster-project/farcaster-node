@@ -29,6 +29,7 @@ Register-ArgumentCompleter -Native -CommandName 'peerd' -ScriptBlock {
             [CompletionResult]::new('-o', 'o', [CompletionResultType]::ParameterName, 'Overlay peer communications through different transport protocol')
             [CompletionResult]::new('--overlay', 'overlay', [CompletionResultType]::ParameterName, 'Overlay peer communications through different transport protocol')
             [CompletionResult]::new('--peer-secret-key', 'peer-secret-key', [CompletionResultType]::ParameterName, 'peer-secret-key')
+            [CompletionResult]::new('--wallet-token', 'wallet-token', [CompletionResultType]::ParameterName, 'wallet-token')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-c', 'c', [CompletionResultType]::ParameterName, 'Path to the configuration file')

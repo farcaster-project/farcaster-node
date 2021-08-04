@@ -14,14 +14,13 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
-    rpc::request::{Keypair, LaunchSwap},
+    rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token},
     swapd::swap_id,
     walletd::NodeSecrets,
     Senders,
 };
 use amplify::Wrapper;
 use request::{Commit, Params};
-use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::hash::Hash;
 use std::io;
@@ -32,9 +31,16 @@ use std::{
     collections::{HashMap, HashSet},
     io::Read,
 };
+use std::{convert::TryFrom, thread::sleep};
 
-use bitcoin::secp256k1;
-use bitcoin::{hashes::hex::ToHex, secp256k1::SecretKey};
+use bitcoin::secp256k1::{
+    self,
+    rand::{thread_rng, RngCore},
+};
+use bitcoin::{
+    hashes::hex::ToHex,
+    secp256k1::{PublicKey, SecretKey},
+};
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::Chain;
@@ -43,9 +49,7 @@ use microservices::rpc::Failure;
 
 use farcaster_core::swap::SwapId;
 
-use crate::rpc::request::{
-    IntoProgressOrFalure, Msg, NodeInfo, OptionDetails, PeerSecret, RuntimeContext,
-};
+use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
@@ -66,11 +70,13 @@ use farcaster_core::{
 
 use std::str::FromStr;
 
-pub fn run(config: Config, walletd_token: String) -> Result<(), Error> {
-    let _walletd = launch("walletd", &["--walletd-token", &walletd_token.clone()])?;
+pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
+    let _walletd = launch(
+        "walletd",
+        &["--wallet-token", &wallet_token.to_string()],
+    )?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
-        node_id: None,
         chain: config.chain.clone(),
         listens: none!(),
         started: SystemTime::now(),
@@ -80,9 +86,9 @@ pub fn run(config: Config, walletd_token: String) -> Result<(), Error> {
         making_swaps: none!(),
         taking_swaps: none!(),
         making_offers: none!(),
-        // wallets: none!(),
-        peerd_secret_key: none!(),
-        walletd_token,
+        node_ids: none!(),
+        wallet_token,
+        pending_requests: none!(),
     };
 
     let broker = true;
@@ -91,7 +97,6 @@ pub fn run(config: Config, walletd_token: String) -> Result<(), Error> {
 
 pub struct Runtime {
     identity: ServiceId,
-    node_id: Option<secp256k1::PublicKey>,
     chain: Chain,
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
@@ -101,9 +106,9 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     making_offers: HashSet<PublicOffer<BtcXmr>>,
-    // wallets: HashMap<SwapId, Wallet>,
-    peerd_secret_key: Option<SecretKey>,
-    walletd_token: String,
+    node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
+    wallet_token: Token,
+    pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -142,16 +147,8 @@ impl Runtime {
         senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
         Ok(())
     }
-    fn peerd_secret_key(&self) -> Result<SecretKey, Error> {
-        if let Some(peerd_secret_key) = self.peerd_secret_key {
-            Ok(peerd_secret_key)
-        } else {
-            Err(Error::Farcaster("peerd_secret_key is none".to_string()))
-        }
-    }
-    fn node_id(&self) -> Result<bitcoin::secp256k1::PublicKey, Error> {
-        self.node_id
-            .ok_or_else(|| Error::Farcaster("node_id is none".to_string()))
+    fn node_ids(&self) -> Vec<PublicKey> {
+        self.node_ids.iter().cloned().collect()
     }
 
     fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
@@ -231,8 +228,6 @@ impl Runtime {
                     source.bright_green_bold(),
                     "connected".bright_green_bold()
                 );
-
-
                 match &source {
                     ServiceId::Farcasterd => {
                         error!(
@@ -241,8 +236,7 @@ impl Runtime {
                         );
                     }
                     ServiceId::Wallet => {
-                        info!("Walletd registered - getting secrets");
-                        self.get_secret(senders, None)?
+                        info!("Walletd functional");
                     }
                     ServiceId::Peer(connection_id) => {
                         if self.connections.insert(connection_id.clone()) {
@@ -385,7 +379,7 @@ impl Runtime {
                 self.known_swap_id(source.clone())?;
                 self.send_walletd(senders, request)?
             }
-            Request::Keypair(Keypair(sk, pk)) => {
+            Request::Keys(Keys(sk, pk, id)) => {
                 info!(
                     "received peerd keys \n \
                      secret: {} \n \
@@ -393,8 +387,27 @@ impl Runtime {
                     sk.addr(),
                     pk.addr()
                 );
-                self.peerd_secret_key = Some(sk);
-                self.node_id = Some(pk);
+                if let Some((request, source)) = self.pending_requests.remove(&id) {
+                    // storing node_id
+                    self.node_ids.insert(pk);
+                    trace!("Received expected peer keys, injecting key in request");
+                    let req = if let Request::MakeOffer(mut req) = request {
+                        req.peer_secret_key = Some(sk);
+                        Ok(Request::MakeOffer(req))
+                    } else if let Request::TakeOffer(mut req) = request {
+                        req.peer_secret_key = Some(sk);
+                        Ok(Request::TakeOffer(req))
+                    } else {
+                        Err(Error::Farcaster(s!(
+                            "Unexpected request: calling back from Keypair handling"
+                        )))
+                    }?;
+                    trace!("Procede executing pending request");
+                    // recurse with request containing key
+                    self.handle_rpc_ctl(senders, source, req)?
+                } else {
+                    error!("Received unexpected peer keys");
+                }
             }
             Request::GetInfo => {
                 senders.send_to(
@@ -402,7 +415,7 @@ impl Runtime {
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
-                        node_id: self.node_id()?,
+                        node_ids: self.node_ids().clone(),
                         listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -436,62 +449,63 @@ impl Runtime {
                 )?;
             }
 
-            Request::Listen(addr) => {
-                let addr_str = addr.addr();
-                if self.listens.contains(&addr) {
-                    let msg = format!("Listener on {} already exists, ignoring request", addr);
-                    warn!("{}", msg.err());
-                    report_to.push((
-                        Some(source.clone()),
-                        Request::Failure(Failure { code: 1, info: msg }),
-                    ));
-                } else {
-                    let resp = self.listen(&addr);
-                    self.listens.insert(addr);
-                    info!(
-                        "{} for incoming LN peer connections on {}",
-                        "Starting listener".bright_blue_bold(),
-                        addr_str
-                    );
-                    match resp {
-                        Ok(_) => info!(
-                            "Connection daemon {} for incoming LN peer connections on {}",
-                            "listens".bright_green_bold(),
-                            addr_str
-                        ),
-                        Err(ref err) => error!("{}", err.err()),
-                    }
+            // Request::Listen(addr) => {
+            //     let addr_str = addr.addr();
+            //     if self.listens.contains(&addr) {
+            //         let msg = format!("Listener on {} already exists, ignoring request", addr);
+            //         warn!("{}", msg.err());
+            //         report_to.push((
+            //             Some(source.clone()),
+            //             Request::Failure(Failure { code: 1, info: msg }),
+            //         ));
+            //     } else {
+            //         let (_, sk) = self.peerd_keys()?;
+            //         let resp = self.listen(&addr, sk);
+            //         self.listens.insert(addr);
+            //         info!(
+            //             "{} for incoming LN peer connections on {}",
+            //             "Starting listener".bright_blue_bold(),
+            //             addr_str
+            //         );
+            //         match resp {
+            //             Ok(_) => info!(
+            //                 "Connection daemon {} for incoming LN peer connections on {}",
+            //                 "listens".bright_green_bold(),
+            //                 addr_str
+            //             ),
+            //             Err(ref err) => error!("{}", err.err()),
+            //         }
 
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        ServiceId::Farcasterd,
-                        source.clone(),
-                        resp.into_progress_or_failure(),
-                    )?;
-                    report_to.push((
-                        Some(source.clone()),
-                        Request::Success(OptionDetails::with(format!(
-                            "Node {} listens for connections on {}",
-                            self.node_id()?,
-                            addr
-                        ))),
-                    ));
-                }
-            }
+            //         senders.send_to(
+            //             ServiceBus::Ctl,
+            //             ServiceId::Farcasterd,
+            //             source.clone(),
+            //             resp.into_progress_or_failure(),
+            //         )?;
+            //         report_to.push((
+            //             Some(source.clone()),
+            //             Request::Success(OptionDetails::with(format!(
+            //                 "Node {} listens for connections on {}",
+            //                 self.node_ids()[0], // FIXME
+            //                 addr
+            //             ))),
+            //         ));
+            //     }
+            // }
 
-            Request::ConnectPeer(addr) => {
-                info!(
-                    "{} to remote peer {}",
-                    "Connecting".bright_blue_bold(),
-                    addr.bright_blue_italic()
-                );
-                let resp = self.connect_peer(source.clone(), &addr);
-                match resp {
-                    Ok(_) => {}
-                    Err(ref err) => error!("{}", err.err()),
-                }
-                report_to.push((Some(source.clone()), resp.into_progress_or_failure()));
-            }
+            // Request::ConnectPeer(addr) => {
+            //     info!(
+            //         "{} to remote peer {}",
+            //         "Connecting".bright_blue_bold(),
+            //         addr.bright_blue_italic()
+            //     );
+            //     let resp = self.connect_peer(source.clone(), &addr);
+            //     match resp {
+            //         Ok(_) => {}
+            //         Err(ref err) => error!("{}", err.err()),
+            //     }
+            //     report_to.push((Some(source.clone()), resp.into_progress_or_failure()));
+            // }
 
             // Request::OpenSwapWith(request::CreateSwap {
             //     swap_req,
@@ -513,25 +527,43 @@ impl Runtime {
             //         resp.into_progress_or_failure(),
             //     ));
             // }
-            Request::MakeOffer(request::ProtoPublicOffer { offer, remote_addr }) => {
-                if !self.listens.contains(&remote_addr) {
-                    self.listens.insert(remote_addr);
-                    info!(
-                        "{} for incoming LN peer connections on {}",
-                        "Starting listener".bright_blue_bold(),
-                        remote_addr.bright_blue_bold()
-                    );
-                    let resp = self.listen(&remote_addr);
-                    match resp {
-                        Ok(_) => info!(
-                            "Connection daemon {} for incoming LN peer connections on {}",
-                            "listens".bright_green_bold(),
-                            remote_addr
-                        ),
-                        Err(ref err) => error!("{}", err.err()),
+            Request::MakeOffer(request::ProtoPublicOffer {
+                offer,
+                remote_addr,
+                peer_secret_key,
+            }) => {
+                let resp = match (self.listens.contains(&remote_addr), peer_secret_key) {
+                    (false, None) => {
+                        trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
+                        return self.get_secret(senders, source, request);
                     }
-
-                    report_to.push((
+                    (false, Some(sk)) => {
+                        self.listens.insert(remote_addr);
+                        info!(
+                            "{} for incoming LN peer connections on {}",
+                            "Starting listener".bright_blue_bold(),
+                            remote_addr.bright_blue_bold()
+                        );
+                        self.listen(&remote_addr, sk)
+                    }
+                    (true, _) => {
+                        info!("Already listening on {}", &remote_addr);
+                        let msg = format!("Already listening on {}", &remote_addr);
+                        Ok(msg)
+                    }
+                };
+                match resp {
+                    Ok(_) => info!(
+                        "Connection daemon {} for incoming LN peer connections on {}",
+                        "listens".bright_green_bold(),
+                        remote_addr
+                    ),
+                    Err(err) => {
+                        error!("{}", err.err());
+                        return Err(err);
+                    }
+                }
+                report_to.push((
                         Some(source.clone()),
                         resp.into_progress_or_failure()
                         // Request::Progress(format!(
@@ -539,13 +571,15 @@ impl Runtime {
                         //     self.node_id, remote_addr
                         // )),
                     ));
-                } else {
-                    info!("Already listening on {}", &remote_addr);
-                    let msg = format!("Already listening on {}", &remote_addr);
-                    report_to.push((Some(source.clone()), Request::Progress(msg)));
+
+
+                let node_ids = self.node_ids();
+                if node_ids.len() != 1 {
+                        error!("{}", "Currently node supports only 1 node id");
+                        return Ok(())
                 }
                 let peer = internet2::RemoteNodeAddr {
-                    node_id: self.node_id()?,
+                    node_id: node_ids[0], // checked above
                     remote_addr: remote_addr.clone(),
                 };
                 let public_offer = offer.clone().to_public_v1(peer);
@@ -584,7 +618,10 @@ impl Runtime {
                 }
             }
 
-            Request::TakeOffer(public_offer) => {
+            Request::TakeOffer(request::PubOffer {
+                public_offer,
+                peer_secret_key,
+            }) => {
                 if self.making_offers.contains(&public_offer) {
                     let msg = format!(
                         "Offer {} already exists, ignoring request",
@@ -606,32 +643,37 @@ impl Runtime {
                         .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
                     // Connect
-                    let peer_connected_is_ok = if !self.connections.contains(&peer) {
-                        info!(
-                            "{} to remote peer {}",
-                            "Connecting".bright_blue_bold(),
-                            peer.bright_blue_italic()
-                        );
-                        let peer_connected = self.connect_peer(source.clone(), &peer);
+                    let peer_connected_is_ok =
+                        match (self.connections.contains(&peer), peer_secret_key) {
+                            (false, None) => return self.get_secret(senders, source, request),
+                            (false, Some(sk)) => {
+                                info!(
+                                    "{} to remote peer {}",
+                                    "Connecting".bright_blue_bold(),
+                                    peer.bright_blue_italic()
+                                );
+                                let peer_connected = self.connect_peer(source.clone(), &peer, sk);
 
-                        let peer_connected_is_ok = peer_connected.is_ok();
+                                let peer_connected_is_ok = peer_connected.is_ok();
 
-                        report_to.push((
-                            Some(source.clone()),
-                            peer_connected.into_progress_or_failure(),
-                        ));
-                        peer_connected_is_ok
-                    } else {
-                        let msg = format!(
-                            "Already connected to remote peer {}",
-                            peer.bright_blue_italic()
-                        );
+                                report_to.push((
+                                    Some(source.clone()),
+                                    peer_connected.into_progress_or_failure(),
+                                ));
+                                peer_connected_is_ok
+                            }
+                            (true, _) => {
+                                let msg = format!(
+                                    "Already connected to remote peer {}",
+                                    peer.bright_blue_italic()
+                                );
 
-                        warn!("{}", &msg);
+                                warn!("{}", &msg);
 
-                        report_to.push((Some(source.clone()), Request::Progress(msg)));
-                        true
-                    };
+                                report_to.push((Some(source.clone()), Request::Progress(msg)));
+                                true
+                            }
+                        };
 
                     if peer_connected_is_ok {
                         let offer_registered = format!(
@@ -647,13 +689,20 @@ impl Runtime {
                             Some(source.clone()),
                             Request::Success(OptionDetails(Some(offer_registered))),
                         ));
+                        // reconstruct original request, by drop peer_secret_key
+                        // from offer
+                        let request = Request::TakeOffer(PubOffer {
+                            public_offer,
+                            peer_secret_key: None,
+                        });
+                        senders.send_to(ServiceBus::Ctl, source, ServiceId::Wallet, request)?;
                     }
-                    senders.send_to(ServiceBus::Ctl, source, ServiceId::Wallet, request)?;
                 }
             }
             req => {
                 error!("Currently unsupported request: {}", req.err());
-                unimplemented!()},
+                unimplemented!()
+            }
         }
 
         let mut len = 0;
@@ -674,14 +723,13 @@ impl Runtime {
         Ok(())
     }
 
-    fn listen(&mut self, addr: &RemoteSocketAddr) -> Result<String, Error> {
+    fn listen(&mut self, addr: &RemoteSocketAddr, sk: SecretKey) -> Result<String, Error> {
         if let &RemoteSocketAddr::Ftcp(inet) = addr {
             let socket_addr = SocketAddr::try_from(inet)?;
             let ip = socket_addr.ip();
             let port = socket_addr.port();
 
             debug!("Instantiating peerd...");
-            // Start peerd
             let child = launch(
                 "peerd",
                 &[
@@ -690,7 +738,9 @@ impl Runtime {
                     "--port",
                     &port.to_string(),
                     "--peer-secret-key",
-                    &format!("{:x}", self.peerd_secret_key()?),
+                    &format!("{:x}", sk),
+                    "--wallet-token",
+                    &self.wallet_token.clone().to_string(),
                 ],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
@@ -703,7 +753,12 @@ impl Runtime {
         }
     }
 
-    fn connect_peer(&mut self, source: ServiceId, node_addr: &NodeAddr) -> Result<String, Error> {
+    fn connect_peer(
+        &mut self,
+        source: ServiceId,
+        node_addr: &NodeAddr,
+        sk: SecretKey,
+    ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
         if self.connections.contains(&node_addr) {
             return Err(Error::Other(format!(
@@ -711,6 +766,7 @@ impl Runtime {
                 node_addr
             )))?;
         }
+
         // Start peerd
         let child = launch(
             "peerd",
@@ -718,7 +774,9 @@ impl Runtime {
                 "--connect",
                 &node_addr.to_string(),
                 "--peer-secret-key",
-                &format!("{:x}", self.peerd_secret_key()?),
+                &format!("{:x}", sk),
+                "--wallet-token",
+                &format!("{}", self.wallet_token.clone().to_string()),
             ],
         );
 
@@ -745,18 +803,24 @@ impl Runtime {
     fn get_secret(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        context: Option<RuntimeContext>,
+        source: ServiceId,
+        request: Request,
     ) -> Result<(), Error> {
-        info!("node secrets not available yet - fetching and looping back.");
-        let get_secret = PeerSecret(self.walletd_token.clone(), context);
-        senders
-            .send_to(
-                ServiceBus::Ctl,
-                ServiceId::Farcasterd,
-                ServiceId::Wallet,
-                Request::PeerSecret(get_secret),
-            )
-            .map_err(Error::from)
+        trace!(
+            "Peer keys not available yet - waiting to receive them on Request::Keypair\
+                and then proceed with parent request"
+        );
+        let req_id = RequestId::rand();
+        self.pending_requests
+            .insert(req_id.clone(), (request, source));
+        let wallet_token = GetKeys(self.wallet_token.clone(), req_id);
+        senders.send_to(
+            ServiceBus::Ctl,
+            ServiceId::Farcasterd,
+            ServiceId::Wallet,
+            Request::GetKeys(wallet_token),
+        )?;
+        Ok(())
     }
 }
 

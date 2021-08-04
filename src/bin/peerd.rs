@@ -102,7 +102,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
 use bitcoin::secp256k1::PublicKey;
-use farcaster_node::peerd::{self, Opts};
+use farcaster_node::{peerd::{self, Opts}, rpc::request::Token};
 use farcaster_node::{Config, LogStyle};
 use internet2::{session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr};
 use microservices::peer::PeerConnection;
@@ -179,7 +179,7 @@ fn main() {
 
     let local_node = opts.peer_key_opts.local_node();
     let local_id = local_node.node_id();
-
+    let wallet_token = Token(opts.wallet_token.wallet_token.clone());
     info!(
         "{}: {}",
         "Local node id".bright_green_bold(),
@@ -265,6 +265,7 @@ fn main() {
         local_socket,
         remote_socket,
         connect,
+        wallet_token,
     )
     .expect("Error running peerd runtime");
 

@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::str::FromStr;
+use std::{str::FromStr, thread::sleep};
 use std::{convert::TryFrom, time::Duration};
 
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
@@ -124,7 +124,7 @@ impl Exec for Command {
                     maker_role,
                 };
                 let remote_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
-                let proto_offer = request::ProtoPublicOffer { offer, remote_addr };
+                let proto_offer = request::ProtoPublicOffer { offer, remote_addr, peer_secret_key: None };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success of failure of the request to cli
                 runtime.report_progress()?;
@@ -145,7 +145,7 @@ impl Exec for Command {
                 info!("{:?}", &public_offer);
 
                 // pass offer to farcasterd to initiate the swap
-                runtime.request(ServiceId::Farcasterd, Request::TakeOffer(public_offer))?;
+                runtime.request(ServiceId::Farcasterd, Request::TakeOffer(public_offer.into()))?;
                 // report success of failure of the request to cli
                 runtime.report_progress()?;
             }
