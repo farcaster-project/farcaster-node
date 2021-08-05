@@ -276,7 +276,19 @@ impl Runtime {
                         self.remote_commit = Some(commit.clone());
                         if let Some(local_params) = &self.local_params {
                             let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
-                            self.send_peer(senders, Msg::Reveal(reveal))?
+                            let next_state = match self.state {
+                                State::Alice(AliceState::CommitA) => {
+                                    Ok(State::Alice(AliceState::RevealA))
+                                }
+                                State::Bob(BobState::CommitB) => Ok(State::Bob(BobState::RevealB)),
+                                _ => Err(Error::Farcaster(
+                                    "Must be on Commit state"
+                                        .to_string(),
+                                )),
+                            }?;
+                            self.send_peer(senders, Msg::Reveal(reveal))?;
+                            self.state = next_state;
+
                         } else {
                             Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
                         };
@@ -297,7 +309,7 @@ impl Runtime {
                             );
                             Err(Error::Farcaster("remote_params already set".to_string()))?
                         } else {
-                            error!("{}", "remote_params not yet set");
+                            debug!("{}", "remote_params not yet set");
                         }
 
                         let next_state = match self.state {
@@ -305,8 +317,10 @@ impl Runtime {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
                             State::Bob(BobState::CommitB) => Ok(State::Bob(BobState::RevealB)),
+                            State::Alice(AliceState::RevealA) => Ok(State::Alice(AliceState::RevealA)),
+                            State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::RevealB)),
                             _ => Err(Error::Farcaster(
-                                "Must be on Commit state"
+                                "Must be on Commit or Reveal state"
                                     .to_string(),
                             )),
                         }?;
@@ -345,13 +359,18 @@ impl Runtime {
                         if self.state == State::Alice(AliceState::CommitA)
                             || self.state == State::Bob(BobState::CommitB)
                         {
-                            if let Some(local_params) = self.local_params.clone() {
-                                let reveal: Reveal = (self.swap_id(), local_params).into();
-                                self.send_peer(senders, Msg::Reveal(reveal))?
+
+                            if self.local_trade_role == TradeRole::Maker {
+                                if let Some(local_params) = self.local_params.clone() {
+                                    let reveal: Reveal = (self.swap_id(), local_params).into();
+                                    self.send_peer(senders, Msg::Reveal(reveal))?
+                                } else {
+                                    // maybe should not fail here because of the
+                                    Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
+                                };
                             } else {
-                                // maybe should not fail here because of the
-                                Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
-                            };
+                                debug!("You are the taker, which revealed first, nothing to reveal.")
+                            }
                         }
 
                         info!("!!!!!!!! {}", next_state.bright_blue_bold());
