@@ -55,7 +55,7 @@ pub fn run(
     swap_id: SwapId,
     chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
-    negotiation_role: TradeRole,
+    local_trade_role: TradeRole,
 ) -> Result<(), Error> {
     let Offer {
         network,
@@ -70,7 +70,7 @@ pub fn run(
     } = public_offer.offer.clone();
 
     // alice or bob
-    let local_role = match negotiation_role {
+    let local_swap_role = match local_trade_role {
         TradeRole::Maker => maker_role,
         TradeRole::Taker => maker_role.other(),
     };
@@ -84,13 +84,14 @@ pub fn run(
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
         chain,
-        state: init_state(&local_role),
+        state: init_state(&local_swap_role),
         // remote_state: init_state(local_role.other()),
         funding_outpoint: default!(),
         maker_peer: None,
         remote_commit: None,
         local_commit: None,
-        local_role,
+        local_swap_role,
+        local_trade_role,
         started: SystemTime::now(),
         local_params: none!(),
         remote_params: none!(),
@@ -134,7 +135,8 @@ pub struct Runtime {
     obscuring_factor: u64,
     remote_commit: Option<Commit>,
     local_commit: Option<Commit>,
-    local_role: SwapRole,
+    local_swap_role: SwapRole,
+    local_trade_role: TradeRole,
     accordant_amount: monero::Amount,
     arbitrating_amount: bitcoin::Amount,
     cancel_timelock: CSVTimelock,
