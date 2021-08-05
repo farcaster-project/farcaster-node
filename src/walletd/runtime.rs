@@ -597,7 +597,7 @@ pub fn create_funding() -> Result<Funding, Error> {
         compressed: true,
         key: pubkey,
     };
-    let mut funding = Funding::initialize(pubkey, farcaster_core::blockchain::Network::Mainnet)
+    let mut funding = Funding::initialize(pubkey, farcaster_core::blockchain::Network::Testnet)
         .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
     funding
         .update(funding_bundle.clone().funding.clone())
