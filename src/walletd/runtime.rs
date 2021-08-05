@@ -290,7 +290,7 @@ impl Runtime {
                                 public_offer,
                                 // TODO: set funding_bundle somewhere, its now
                                 Some(funding),
-                                Some(commit), /* reveal does not reach here, stops in swapd,
+                                _commit, /* None reveal does not reach here, stops in swapd,
                                                * cant verify commit */
                                 alice_params, // None
                                 core_arb_txs, // None
@@ -341,7 +341,7 @@ impl Runtime {
                         core_wallet,
                         public_offer,
                         Some(_funding_tx),
-                        Some(commit),
+                        _commit,
                         Some(alice_params),
                         Some(core_arbitrating_txs),
                     )) => {
@@ -370,7 +370,7 @@ impl Runtime {
                             Request::Protocol(buy_proc_sig),
                         )?
                     }
-                    _ => Err(Error::Farcaster("Unknow wallet and swap_id".to_string()))?,
+                    _ => Err(Error::Farcaster("Unknown wallet and swap_id".to_string()))?,
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
@@ -468,7 +468,7 @@ impl Runtime {
 
                 let swap_id: SwapId = SwapId::random().into();
                 self.swaps.insert(swap_id, None);
-                // since we're takers, we are on the other side
+                // since we're takers, we are on the other side of the trade
                 let taker_role = offer.maker_role.other();
                 let core_wallet = CoreWallet::new(self.node_secrets.wallet_seed);
                 match taker_role {
@@ -522,6 +522,7 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
                             // requests and store the state in there directly
+                            info!("Creating Alice Taker's Wallet");
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Alice(
