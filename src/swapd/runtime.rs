@@ -379,7 +379,7 @@ impl Runtime {
                     // alice receives, bob sends
                     // ProtocolMessages::BuyProcedureSignature(_) => {}
                     Msg::BuyProcedureSignature(_) => {
-                        if self.state == State::Alice(AliceState::RefundProcedureSignatures) {
+                        if self.state != State::Alice(AliceState::RefundProcedureSignatures) {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: must be RefundProcedureSignatures"
                             )))?
@@ -457,11 +457,16 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        if source != ServiceId::Farcasterd {
-            Err(Error::Farcaster(
-                "Permission Error: only Farcasterd can can control swapd".to_string(),
-            ))?
-        }
+        match (&request, &source) {
+            (Request::Hello, _) => {
+                info!("Source: {} is connected", source)
+            }
+            (_, ServiceId::Farcasterd | ServiceId::Wallet) => { }
+            _ => Err(Error::Farcaster(
+                "Permission Error: only Farcasterd and Wallet can can control swapd".to_string(),
+            ))?,
+        };
+
         let ctl_bus = ServiceBus::Ctl;
         match request {
             Request::TakeSwap(InitSwap {

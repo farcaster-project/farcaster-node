@@ -107,12 +107,14 @@ shellexpand = "2"
 configure_me_codegen = "0.4"
 
 [dependencies.microservices]
+# path = '../ext/rust-internet2'
 git = 'https://github.com/zkao/rust-internet2.git'
 branch = 'farcaster'
 default-features = false
 features = ['peer']
 
 [build-dependencies.microservices]
+# path = '../ext/rust-internet2'
 git = 'https://github.com/zkao/rust-internet2.git'
 branch = 'farcaster'
 default-features = false
