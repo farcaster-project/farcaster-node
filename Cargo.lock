@@ -703,7 +703,7 @@ dependencies = [
  "bitcoin",
  "log",
  "rustls",
- "serde 1.0.125",
+ "serde 1.0.127",
  "serde_json",
  "socks",
  "webpki",
@@ -744,7 +744,7 @@ dependencies = [
  "bitcoin",
  "fixed-hash",
  "hex",
- "internet2 0.3.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "internet2",
  "lightning_encoding",
  "monero",
  "serde 1.0.127",
@@ -775,7 +775,7 @@ dependencies = [
  "env_logger",
  "farcaster_core",
  "hex",
- "internet2 0.3.10 (git+https://github.com/zkao/rust-internet2?branch=farcaster)",
+ "internet2",
  "lazy_static",
  "lightning_encoding",
  "lnp-core",
@@ -1149,7 +1149,7 @@ dependencies = [
  "amplify_derive",
  "bitcoin",
  "descriptor-wallet",
- "internet2 0.3.10 (git+https://github.com/zkao/rust-internet2?branch=farcaster)",
+ "internet2",
  "lazy_static",
  "lightning_encoding",
  "lnpbp",
@@ -1243,7 +1243,7 @@ dependencies = [
  "clap",
  "config",
  "env_logger",
- "internet2 0.3.10 (git+https://github.com/zkao/rust-internet2?branch=farcaster)",
+ "internet2",
  "lightning_encoding",
  "lnp-core",
  "log",
@@ -2486,9 +2486,9 @@ dependencies = [
  "bumpalo",
  "lazy_static",
  "log",
- "proc-macro2 1.0.26",
+ "proc-macro2 1.0.28",
  "quote 1.0.9",
- "syn 1.0.70",
+ "syn 1.0.74",
  "wasm-bindgen-shared",
 ]
 
@@ -2508,9 +2508,9 @@ version = "0.2.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be2241542ff3d9f241f5e2cb6dd09b37efe786df8851c54957683a49f0987a97"
 dependencies = [
- "proc-macro2 1.0.26",
+ "proc-macro2 1.0.28",
  "quote 1.0.9",
- "syn 1.0.70",
+ "syn 1.0.74",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]

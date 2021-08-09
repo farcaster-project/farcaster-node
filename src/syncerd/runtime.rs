@@ -16,7 +16,6 @@ use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::bitcoin_syncer::Synclet;
 use amplify::Wrapper;
 use farcaster_core::blockchain::Network;
-use farcaster_core::chain::pairs::Coins;
 use farcaster_core::syncer::Abort;
 use farcaster_core::syncer::{Syncer, Task};
 use std::collections::{HashMap, HashSet};
