@@ -39,12 +39,12 @@ required-features = ["server"]
 
 [dependencies]
 # Farcaster crates
-# farcaster_core = { path = "../core" }
-farcaster_core = { git = "https://github.com/zkao/farcaster-core", branch = "align_deps" }
+# farcaster_core = { path = "../core", features = ["serde"] }
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
 
 # LNP/BP crates
 amplify = "3"
-amplify_derive = "2.4.3"
+amplify_derive = "2"
 lightning_encoding = "0.4.0-beta.1"
 lnpbp = {version = "0.4", features = ["all"]}
 slip132 = "0.3"
@@ -81,14 +81,14 @@ shellexpand = { version = "2", optional = true }
 zmq = "0.9"
 
 [build-dependencies]
-# farcaster_core = { path = "../core"}
-farcaster_core = { git = "https://github.com/zkao/farcaster-core", branch = "align_deps" }
+# farcaster_core = { path = "../core", features = ["serde"]}
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
 
 serde_yaml = { version = "0.8", optional = true }
 toml = { version = "0.5", optional = true }
 
 amplify = "3"
-amplify_derive = "2.4.3"
+amplify_derive = "2"
 lnpbp = { version = "0.4", features = ["all"] }
 lightning_encoding = "0.4.0-beta.1"
 # Bitcoin
