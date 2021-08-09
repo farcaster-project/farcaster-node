@@ -12,19 +12,28 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
+use crate::syncerd::bitcoin_syncer::Synclet;
 use amplify::Wrapper;
+use farcaster_core::blockchain::Network;
+use farcaster_core::syncer::Abort;
+use farcaster_core::syncer::{Syncer, Task};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::io;
 use std::net::SocketAddr;
 use std::process;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::time::{Duration, SystemTime};
 
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use farcaster_core::swap::SwapId;
-use internet2::{NodeAddr, RemoteSocketAddr, TypedEnum};
+use internet2::{
+    presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
+};
 use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
@@ -34,24 +43,52 @@ use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
+pub struct SyncerdTask {
+    pub task: Task,
+    pub source: ServiceId,
+}
+
 pub fn run(config: Config) -> Result<(), Error> {
-    let runtime = Runtime {
+    info!("creating a new syncer");
+    let syncer: Option<Box<dyn Synclet>>;
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
+    tx_event.connect("inproc://syncerdbridge")?;
+    rx_event.bind("inproc://syncerdbridge")?;
+
+    match config.chain {
+        Chain::Testnet3 => {
+            syncer = Some(Box::new(BitcoinSyncer::new()));
+        }
+        _ => {
+            syncer = none!();
+        }
+    }
+    let mut runtime = Runtime {
         identity: ServiceId::Syncer,
-        chain: config.chain.clone(),
         started: SystemTime::now(),
         tasks: none!(),
-        spawning_services: none!(),
+        syncer: syncer.unwrap(),
+        tx,
     };
+    runtime.syncer.run(rx, tx_event, runtime.identity().into());
 
-    Service::run(config, runtime, true)
+    let mut service = Service::service(config, runtime)?;
+    service.add_loopback(rx_event)?;
+    service.run_loop()?;
+    unreachable!()
 }
 
 pub struct Runtime {
     identity: ServiceId,
-    chain: Chain,
+    syncer: Box<dyn Synclet>,
     started: SystemTime,
     tasks: HashSet<u64>, // FIXME
-    spawning_services: HashMap<ServiceId, ServiceId>,
+    tx: Sender<SyncerdTask>,
+    // spawning_services: HashMap<ServiceId, ServiceId>,
+    // senders: HashMap<SwapId, &mut esb::SenderList<ServiceBus, ServiceId>>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -70,10 +107,11 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
+        // self.senders = senders;
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
+            ServiceBus::Bridge => self.handle_bridge(senders, source, request),
         }
     }
 
@@ -89,7 +127,7 @@ impl Runtime {
     fn handle_rpc_msg(
         &mut self,
         _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        source: ServiceId,
+        _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         match request {
@@ -112,9 +150,6 @@ impl Runtime {
     ) -> Result<(), Error> {
         let mut notify_cli = None;
         match (&request, &source) {
-            (Request::CreateTask(task), ServiceId::Swap(swapid)) => {
-                self.create_task(task, swapid)?;
-            }
             (Request::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
@@ -122,7 +157,14 @@ impl Runtime {
                     source.bright_green_bold(),
                     "connected".bright_green_bold()
                 );
-
+            }
+            (Request::SyncerTask(task), _) => {
+                self.tx
+                    .send(SyncerdTask {
+                        task: task.clone(),
+                        source,
+                    })
+                    .unwrap();
             }
             (Request::GetInfo, _) => {
                 senders.send_to(
@@ -166,37 +208,27 @@ impl Runtime {
 
         Ok(())
     }
-    // TODO
-    fn create_task(&mut self, task: &u64, swapid: &SwapId) -> Result<(), Error> {
+    fn handle_bridge(
+        &mut self,
+        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _source: ServiceId,
+        request: Request,
+    ) -> Result<(), Error> {
+        debug!("Syncerd BRIDGE RPC request: {}", request);
+        match request {
+            Request::SyncerdBridgeEvent(syncerd_bridge_event) => {
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    syncerd_bridge_event.source,
+                    Request::SyncerEvent(syncerd_bridge_event.event),
+                )?;
+            }
+
+            _ => {
+                debug!("bridge request {:?} not handled here", request);
+            }
+        }
         Ok(())
     }
-}
-
-fn launch(
-    name: &str,
-    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-) -> io::Result<process::Child> {
-    let mut bin_path = std::env::current_exe().map_err(|err| {
-        error!("Unable to detect binary directory: {}", err);
-        err
-    })?;
-    bin_path.pop();
-
-    bin_path.push(name);
-    #[cfg(target_os = "windows")]
-    bin_path.set_extension("exe");
-
-    debug!(
-        "Launching {} as a separate process using `{}` as binary",
-        name,
-        bin_path.to_string_lossy()
-    );
-
-    let mut cmd = process::Command::new(bin_path);
-    cmd.args(std::env::args().skip(1)).args(args);
-    trace!("Executing `{:?}`", cmd);
-    cmd.spawn().map_err(|err| {
-        error!("Error launching {}: {}", name, err);
-        err
-    })
 }

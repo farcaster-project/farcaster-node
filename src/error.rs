@@ -109,3 +109,9 @@ impl From<farcaster_core::Error> for Error {
         Error::FarcasterCore(err)
     }
 }
+
+impl From<farcaster_core::syncer::Error> for Error {
+    fn from(err: farcaster_core::syncer::Error) -> Self {
+        Error::Farcaster(err.to_string())
+    }
+}

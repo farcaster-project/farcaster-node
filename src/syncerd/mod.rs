@@ -12,6 +12,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+pub mod bitcoin_syncer;
+pub mod monero_syncer;
+pub mod syncer_state;
+
 #[cfg(feature = "shell")]
 mod opts;
 mod runtime;

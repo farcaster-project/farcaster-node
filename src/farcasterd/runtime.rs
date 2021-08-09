@@ -71,10 +71,7 @@ use farcaster_core::{
 use std::str::FromStr;
 
 pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
-    let _walletd = launch(
-        "walletd",
-        &["--wallet-token", &wallet_token.to_string()],
-    )?;
+    let _walletd = launch("walletd", &["--wallet-token", &wallet_token.to_string()])?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         chain: config.chain.clone(),
@@ -228,6 +225,7 @@ impl Runtime {
                     source.bright_green_bold(),
                     "connected".bright_green_bold()
                 );
+
                 match &source {
                     ServiceId::Farcasterd => {
                         error!(
@@ -572,11 +570,10 @@ impl Runtime {
                         // )),
                     ));
 
-
                 let node_ids = self.node_ids();
                 if node_ids.len() != 1 {
-                        error!("{}", "Currently node supports only 1 node id");
-                        return Ok(())
+                    error!("{}", "Currently node supports only 1 node id");
+                    return Ok(());
                 }
                 let peer = internet2::RemoteNodeAddr {
                     node_id: node_ids[0], // checked above

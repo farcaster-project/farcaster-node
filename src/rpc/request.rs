@@ -14,6 +14,14 @@
 
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
+use farcaster_core::syncer::Abort;
+use farcaster_core::syncer::BroadcastTransaction;
+use farcaster_core::syncer::Event;
+use farcaster_core::syncer::HeightChanged;
+use farcaster_core::syncer::Task;
+use farcaster_core::syncer::WatchAddress;
+use farcaster_core::syncer::WatchHeight;
+use farcaster_core::syncer::WatchTransaction;
 use internet2::addr::InetSocketAddr;
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
@@ -443,13 +451,35 @@ pub enum Request {
     // #[display("channel_funding({0})", alt = "{0:#}")]
     // #[from]
     // SwapFunding(PubkeyScript),
+    // #[api(type = 1300)]
+    // #[display("task({0})", alt = "{0:#}")]
+    // #[from]
+    // CreateTask(u64), // FIXME
     #[api(type = 1300)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
-    CreateTask(u64), // FIXME
+    SyncerTask(Task),
+
+    #[api(type = 1301)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SyncerEvent(Event),
+
+    #[api(type = 1302)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SyncerdBridgeEvent(SyncerdBridgeEvent),
 }
 
 impl rpc_connection::Request for Request {}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("syncerd event")]
+pub struct SyncerdBridgeEvent {
+    pub event: Event,
+    pub source: ServiceId,
+}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]

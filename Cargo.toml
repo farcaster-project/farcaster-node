@@ -33,14 +33,16 @@ required-features = ["cli"]
 name = "walletd"
 required-features = ["server"]
 
-# [[bin]]
-# name = "syncer"
-# required-features = ["server"]
+[[bin]]
+name = "syncerd"
+required-features = ["server"]
 
 [dependencies]
 # Farcaster crates
 # farcaster_core = { path = "../core", features = ["serde"] }
 farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
+
+hex = "^0.4.3"
 
 # LNP/BP crates
 amplify = "3"
@@ -79,6 +81,7 @@ colored = { version = "2", optional = true }
 shellexpand = { version = "2", optional = true }
 # IPC
 zmq = "0.9"
+electrum-client = { git = "https://github.com/TheCharlatan/rust-electrum-client", branch = "verboseTransactionGet" }
 
 [build-dependencies]
 # farcaster_core = { path = "../core", features = ["serde"]}
@@ -105,6 +108,7 @@ clap_generate = "3.0.0-beta.2"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 shellexpand = "2"
 configure_me_codegen = "0.4"
+electrum-client = { git = "https://github.com/TheCharlatan/rust-electrum-client", branch = "verboseTransactionGet" }
 
 [dependencies.microservices]
 # path = '../ext/rust-internet2'

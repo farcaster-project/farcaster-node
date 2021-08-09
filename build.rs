@@ -50,6 +50,7 @@ fn main() -> Result<(), configure_me_codegen::Error> {
         swapd::Opts::into_app(),
         cli::Opts::into_app(),
         walletd::Opts::into_app(),
+        syncerd::Opts::into_app(),
     ]
     .iter_mut()
     {

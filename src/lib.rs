@@ -67,9 +67,9 @@ mod service;
 #[cfg(feature = "node")]
 pub mod swapd;
 #[cfg(feature = "node")]
-pub mod walletd;
-
 pub mod syncerd;
+#[cfg(feature = "node")]
+pub mod walletd;
 
 #[cfg(feature = "_rpc")]
 pub use config::Config;

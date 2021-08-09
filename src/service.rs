@@ -104,6 +104,9 @@ pub enum ServiceId {
     #[display("syncer")]
     Syncer,
 
+    #[display("syncernotif")]
+    SyncerNotif(u64),
+
     #[display("walletd")]
     Wallet,
 
@@ -119,6 +122,11 @@ impl ServiceId {
     pub fn client() -> ServiceId {
         use bitcoin::secp256k1::rand;
         ServiceId::Client(rand::random())
+    }
+
+    pub fn syncer_notif() -> ServiceId {
+        use bitcoin::secp256k1::rand;
+        ServiceId::SyncerNotif(rand::random())
     }
 }
 
