@@ -43,7 +43,7 @@ pub struct Opts {
 
     /// Trade role of participant (Maker or Taker)
     #[clap(parse(try_from_str = FromStr::from_str))]
-    pub negotiation_role: TradeRole,
+    pub trade_role: TradeRole,
 
     /// These params can be read also from the configuration file, not just
     /// Command-line args or environment variables
