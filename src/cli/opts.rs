@@ -120,7 +120,7 @@ pub enum Command {
         accordant_blockchain: Monero,
 
         /// Amount of arbitrating assets to exchanged
-        #[clap(default_value = "100 BTC")]
+        #[clap(default_value = "0.15 BTC")]
         arbitrating_amount: bitcoin::Amount,
 
         /// Amount of accordant assets to exchanged

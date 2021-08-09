@@ -9,7 +9,7 @@ participant m_cli
 participant m_farcasterd
 participant m_swap
 participant m_wallet
-
+==Bob and Alice can be on both sides==
 m_farcasterd -> m_farcasterd : launch farcasterd\nmanually
 m_farcasterd -> m_farcasterd : launch walletd
 m_farcasterd<-m_wallet:Ctl Hello
@@ -18,8 +18,6 @@ m_farcasterd->m_wallet:Ctl GetKeys
 m_farcasterd<-m_wallet:Ctl Keys (not to be held on state)
 m_farcasterd->m_farcasterd:MakeOffer (continues)
 m_farcasterd->m_farcasterd:launch\npeerd listen
-peerd->m_farcasterd:Ctl Hello
-m_farcasterd->m_farcasterd:activate offer
 t_farcasterd -> t_farcasterd : launch farcasterd\nmanually
 t_farcasterd -> t_farcasterd : launch walletd
 t_wallet->t_farcasterd:Ctl Hello
@@ -28,8 +26,6 @@ t_wallet<-t_farcasterd:Ctl GetKeys
 t_wallet->t_farcasterd:Ctl Keys (not to be held on state)
 t_farcasterd<-t_farcasterd:Ctl TakeOffer (continues)
 t_farcasterd -> t_farcasterd : launch\npeerd connect
-t_farcasterd<-peerd:Ctl Hello
-t_farcasterd->t_farcasterd:activate offer
 t_wallet<-t_farcasterd:Ctl TakeOffer
 t_wallet->t_wallet:create taker wallet
 t_wallet->t_farcasterd:Ctl LaunchSwap
@@ -53,7 +49,7 @@ m_swap -> m_wallet : Msg Params
 peerd -> t_swap : Msg Reveal (maker is sender)
 t_swap -> t_wallet : Msg Params
 ==End of Commit-Reveal act==
-==Protocol==
+==Bob is Maker (right side)==
 m_wallet -> m_swap : Ctl CoreArbitratingSetup
 peerd <- m_swap : Msg CoreArbitratingSetup
 t_swap <- peerd : Msg CoreArbitratingSetup
@@ -66,5 +62,19 @@ m_wallet -> m_swap : Ctl BuyProcedureSignature
 peerd <- m_swap : Msg BuyProcedureSignature
 t_swap <- peerd : Msg BuyProcedureSignature
 t_swap -> t_wallet : Msg BuyProcedureSignature
+
+==Alice is Maker (right side)==
+t_wallet -> t_swap : Ctl CoreArbitratingSetup
+peerd <- t_swap : Msg CoreArbitratingSetup
+m_swap <- peerd : Msg CoreArbitratingSetup
+m_wallet <- m_swap : Msg CoreArbitratingSetup
+m_wallet -> m_swap : Ctl RefundProcedureSignatures
+m_swap -> peerd : Msg RefundProcedureSignatures
+peerd -> t_swap : Msg RefundProcedureSignatures
+t_wallet <- t_swap : Msg RefundProcedureSignatures
+t_wallet -> t_swap : Ctl BuyProcedureSignature
+peerd <- t_swap : Msg BuyProcedureSignature
+m_swap <- peerd : Msg BuyProcedureSignature
+m_swap -> m_wallet : Msg BuyProcedureSignature
 ==End of Swap-Setup act==
 
