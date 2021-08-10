@@ -14,43 +14,44 @@ participant m_syncer
 ==Bob and Alice can be on both sides==
 m_farcasterd -> m_farcasterd : launch farcasterd\nmanually
 m_farcasterd -> m_farcasterd : launch walletd
-m_farcasterd<-m_wallet:Ctl Hello
+m_farcasterd <- m_wallet : Ctl Hello
 m_cli -> m_farcasterd : MakeOffer (deferred)
-m_farcasterd->m_wallet:Ctl GetKeys
-m_farcasterd<-m_wallet:Ctl Keys (not to be held on state)
-m_farcasterd->m_farcasterd:MakeOffer (continues)
-m_farcasterd->m_farcasterd:launch\npeerd listen
+m_farcasterd -> m_wallet : Ctl GetKeys
+m_farcasterd <- m_wallet : Ctl Keys (not to be held on state)
+m_farcasterd -> m_farcasterd : MakeOffer (continues)
+m_farcasterd -> m_farcasterd : launch\npeerd listen
 t_farcasterd -> t_farcasterd : launch farcasterd\nmanually
 t_farcasterd -> t_farcasterd : launch walletd
-t_wallet->t_farcasterd:Ctl Hello
+t_wallet -> t_farcasterd : Ctl Hello
 t_cli -> t_farcasterd : Ctl TakeOffer (deferred)
-t_wallet<-t_farcasterd:Ctl GetKeys
-t_wallet->t_farcasterd:Ctl Keys (not to be held on state)
-t_farcasterd<-t_farcasterd:Ctl TakeOffer (continues)
+t_wallet <- t_farcasterd : Ctl GetKeys
+t_wallet -> t_farcasterd : Ctl Keys (not to be held on state)
+t_farcasterd <- t_farcasterd : Ctl TakeOffer (continues)
 t_farcasterd -> t_farcasterd : launch\npeerd connect
-t_wallet<-t_farcasterd:Ctl TakeOffer
-t_wallet->t_wallet:create taker wallet
-t_wallet->t_farcasterd:Ctl LaunchSwap
+t_wallet <- t_farcasterd : Ctl TakeOffer
+t_wallet -> t_wallet : create taker wallet
+t_wallet -> t_farcasterd : Ctl LaunchSwap
 t_swap -> t_farcasterd : Ctl Hello
 t_swap <- t_farcasterd : Ctl TakeSwap
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
 m_farcasterd -> m_wallet : Msg TakerCommit
-m_wallet->m_wallet:create maker wallet
+m_wallet -> m_wallet : create maker wallet
 m_wallet -> m_farcasterd : Ctl LaunchSwap
 m_swap -> m_farcasterd : Ctl Hello
 m_farcasterd -> m_swap : Ctl MakeSwap
 
 m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
-t_swap -> peerd : Msg Reveal
-peerd -> m_swap : Msg Reveal (taker is the sender)
+t_swap -> peerd : Msg Reveal (taker is sender)
+peerd -> m_swap : Msg Reveal (taker is sender)
 
 peerd <- m_swap : Msg Reveal (maker is sender)
-m_swap -> m_wallet : Msg Params
+m_swap -> m_wallet : Msg Params (taker params)
 peerd -> t_swap : Msg Reveal (maker is sender)
-t_swap -> t_wallet : Msg Params
-==End of Commit-Reveal act==
+t_swap -> t_wallet : Msg Params (maker params)
+==Commit-Reveal Complete==
+
 ==Bob is Maker (right side)==
 m_wallet -> m_swap : Ctl CoreArbitratingSetup
 peerd <- m_swap : Msg CoreArbitratingSetup
@@ -86,18 +87,21 @@ t_swap -> t_swap : Checkpoint
 t_syncer <- t_swap : Broadcast Arbitrating Lock
 t_wallet <- t_swap : Msg RefundProcedureSignatures
 t_wallet -> t_swap : Ctl BuyProcedureSignature
+
 parallel
 t_syncer ->  t_swap : Arbitrating Lock final
 m_swap <- m_syncer : Arbitrating Lock final
 parallel off
+
 m_swap -> m_swap : Checkpoint
 m_swap -> m_syncer : Broadcast Accordant Lock
+
 parallel
 m_swap <- m_syncer : Accordant Lock final
 t_swap <- t_syncer : Accordant Lock final
 parallel off
+
 peerd <- t_swap : Msg BuyProcedureSignature
 m_swap <- peerd : Msg BuyProcedureSignature
 m_swap -> m_wallet : Msg BuyProcedureSignature
-==End of Swap-Setup act==
-
+==Swap Setup Complete==
