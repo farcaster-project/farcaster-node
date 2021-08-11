@@ -312,9 +312,7 @@ impl Runtime {
                             State::Alice(AliceState::CommitA(_)) => {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
-                            State::Bob(BobState::CommitB(_)) => {
-                                Ok(State::Bob(BobState::RevealB))
-                            }
+                            State::Bob(BobState::CommitB(_)) => Ok(State::Bob(BobState::RevealB)),
                             State::Alice(AliceState::RevealA) => {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
@@ -362,7 +360,7 @@ impl Runtime {
                             if let Some(local_params) = self.local_params.clone() {
                                 let reveal: Reveal = (self.swap_id(), local_params).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
-                                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                                info!("State transition: {}", next_state.bright_blue_bold());
                                 self.state = next_state;
                             } else {
                                 Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
@@ -379,6 +377,8 @@ impl Runtime {
                                  through peer connection at state RevealA"
                             )))?
                         }
+                        // FIXME subscribe syncer to Accordant + arbitrating locks and buy + cancel
+                        // txs
                         self.send_wallet(msg_bus, senders, request.clone())?
                     }
                     // bob receives, alice sends
@@ -390,6 +390,8 @@ impl Runtime {
                                     .to_string(),
                             ))?
                         }
+                        // FIXME subscribe syncer to Accordant + arbitrating locks and buy + cancel
+                        // txs
                         self.send_wallet(msg_bus, senders, request.clone())?
                     }
                     // alice receives, bob sends
@@ -496,7 +498,8 @@ impl Runtime {
                     error!(
                         "{}: {}",
                         "This swapd instance is not reponsible for swap_id", swap_id
-                    )
+                    );
+                    return Ok(())
                 };
                 let next_state = match self.state {
                     State::Bob(BobState::StartB(trade_role)) => {
@@ -532,7 +535,7 @@ impl Runtime {
                     swap_id,
                 };
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -580,8 +583,8 @@ impl Runtime {
                 trace!("setting commit_remote and commit_local msg");
                 self.remote_commit = Some(remote_commit);
                 self.local_commit = Some(local_commit.clone());
-                trace!("sending peer MakerCommit msg");
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                trace!("sending peer MakerCommit msg {}", &local_commit);
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
                 self.state = next_state;
             }
@@ -591,9 +594,9 @@ impl Runtime {
                     State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::CorearbB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
-                trace!("sending peer CoreArbitratingSetup msg");
+                trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -610,7 +613,7 @@ impl Runtime {
                 }
                 trace!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -622,7 +625,7 @@ impl Runtime {
 
                 trace!("sending peer BuyProcedureSignature msg");
                 self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
             // Request::FundSwap(funding_outpoint) => {
