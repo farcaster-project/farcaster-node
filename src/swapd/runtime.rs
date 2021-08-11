@@ -95,7 +95,6 @@ pub fn run(
         local_params: none!(),
         remote_params: none!(),
         is_maker: false,
-        obscuring_factor: 0,
         accordant_amount,
         arbitrating_amount,
         cancel_timelock,
@@ -131,7 +130,6 @@ pub struct Runtime {
     local_params: Option<Params>,
     remote_params: Option<Params>,
     is_maker: bool,
-    obscuring_factor: u64,
     remote_commit: Option<Commit>,
     local_commit: Option<Commit>,
     local_swap_role: SwapRole,
@@ -745,8 +743,6 @@ impl Runtime {
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
         self.is_maker = true;
-        // self.params = payment::channel::Params::with(channel_req)?;
-        // self.remote_keys = payment::channel::Keyset::from(channel_req);
 
         let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
@@ -759,28 +755,6 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params),
             ),
         };
-        // let accept_channel = message::AcceptChannel {
-        //     temporary_channel_id: channel_req.temporary_channel_id,
-        //     dust_limit_satoshis: channel_req.dust_limit_satoshis,
-        //     max_htlc_value_in_flight_msat: channel_req
-        //         .max_htlc_value_in_flight_msat,
-        //     channel_reserve_satoshis: channel_req.channel_reserve_satoshis,
-        //     htlc_minimum_msat: channel_req.htlc_minimum_msat,
-        //     minimum_depth: 3, // TODO: take from config options
-        //     to_self_delay: channel_req.to_self_delay,
-        //     max_accepted_htlcs: channel_req.max_accepted_htlcs,
-        //     funding_pubkey: dumb_key,
-        //     revocation_basepoint: dumb_key,
-        //     payment_point: dumb_key,
-        //     delayed_payment_basepoint: dumb_key,
-        //     htlc_basepoint: dumb_key,
-        //     first_per_commitment_point: dumb_key,
-        //     /* shutdown_scriptpubkey: None,
-        //      * unknown_tlvs: none!(), */
-        // };
-
-        // self.params.updated(&accept_channel, None)?;
-        // self.local_keys = payment::channel::Keyset::from(&accept_channel);
 
         let msg = format!(
             "{} swap {:#} from remote peer Taker {}",
@@ -792,49 +766,6 @@ impl Runtime {
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
         // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
         Ok(commitment.clone())
-    }
-
-    pub fn channel_accepted(
-        &mut self,
-        senders: &mut Senders,
-        accept_channel: &message::AcceptChannel,
-        peerd: &ServiceId,
-    ) -> Result<(), payment::channel::NegotiationError> {
-        info!(
-            "Channel {:#} {} by the remote peer {}",
-            accept_channel.temporary_channel_id.bright_green_italic(),
-            "was accepted".bright_green_bold(),
-            peerd.bright_green_italic()
-        );
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the channel just because the client disconnected
-        let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(
-            senders,
-            &enquirer,
-            "Channel was accepted by the remote peer",
-        );
-
-        let msg = format!(
-            "{} returned parameters for the channel {:#}",
-            "Verifying".bright_blue_bold(),
-            accept_channel.temporary_channel_id.bright_blue_italic()
-        );
-        info!("{}", msg);
-
-        // TODO: Add a reasonable min depth bound
-        // self.params.updated(accept_channel, None)?;
-        // self.remote_keys = payment::channel::Keyset::from(accept_channel);
-
-        let msg = format!(
-            "Channel {:#} is {}",
-            accept_channel.temporary_channel_id.bright_green_italic(),
-            "ready for funding".bright_green_bold()
-        );
-        info!("{}", msg);
-        let _ = self.report_success_to(senders, &enquirer, Some(msg));
-
-        Ok(())
     }
 
     // pub fn fund_swap(
