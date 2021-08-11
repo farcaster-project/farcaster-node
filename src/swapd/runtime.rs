@@ -287,7 +287,7 @@ impl Runtime {
                             Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
                         };
                     }
-                    Msg::TakerCommit(TakeCommit { commit, .. }) => {
+                    Msg::TakerCommit(_) => {
                         unreachable!(
                             "msg handled by farcasterd/walletd, and indirectly here by \
                              Ctl Request::MakeSwap"
