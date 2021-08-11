@@ -94,7 +94,6 @@ pub fn run(
         started: SystemTime::now(),
         local_params: none!(),
         remote_params: none!(),
-        is_maker: false,
         accordant_amount,
         arbitrating_amount,
         cancel_timelock,
@@ -129,7 +128,6 @@ pub struct Runtime {
     started: SystemTime,
     local_params: Option<Params>,
     remote_params: Option<Params>,
-    is_maker: bool,
     remote_commit: Option<Commit>,
     local_commit: Option<Commit>,
     local_swap_role: SwapRole,
@@ -667,7 +665,6 @@ impl Runtime {
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap_or(Duration::from_secs(0))
                         .as_secs(),
-                    is_maker: self.is_maker,
                     // params: self.params, // FIXME
                     // serde::Serialize/Deserialize missing
                     local_keys: dumb!(),
@@ -714,7 +711,6 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg)?;
 
-        self.is_maker = false;
         self.local_params = Some(params);
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
@@ -741,8 +737,6 @@ impl Runtime {
         // halt the channel just because the client disconnected
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg);
-
-        self.is_maker = true;
 
         let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {

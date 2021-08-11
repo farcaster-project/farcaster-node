@@ -588,7 +588,6 @@ pub struct SwapInfo {
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    pub is_maker: bool,
     //// FIXME serde::Serialize/Deserialize missing
     // #[serde_as(as = "Option<DisplayFromStr)>")]
     // pub params: Option<Params>,
