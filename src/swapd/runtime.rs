@@ -92,7 +92,6 @@ pub fn run(
         local_commit: None,
         local_swap_role,
         started: SystemTime::now(),
-        local_params: none!(),
         remote_params: none!(),
         accordant_amount,
         arbitrating_amount,
@@ -126,7 +125,6 @@ pub struct Runtime {
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    local_params: Option<Params>,
     remote_params: Option<Params>,
     remote_commit: Option<Commit>,
     local_commit: Option<Commit>,
@@ -145,12 +143,12 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
-#[derive(Eq, PartialEq, Display)]
+#[derive(Display)]
 pub enum AliceState {
     #[display("Start")]
     StartA(TradeRole),
     #[display("Commit")]
-    CommitA(TradeRole),
+    CommitA(TradeRole, Params),
     #[display("Reveal")]
     RevealA,
     #[display("RefundProcSigs")]
@@ -159,12 +157,12 @@ pub enum AliceState {
     FinishA,
 }
 
-#[derive(Eq, PartialEq, Display)]
+#[derive(Display)]
 pub enum BobState {
     #[display("Start")]
     StartB(TradeRole),
     #[display("Commit")]
-    CommitB(TradeRole),
+    CommitB(TradeRole, Params),
     #[display("Reveal")]
     RevealB,
     #[display("CoreArb")]
@@ -175,7 +173,7 @@ pub enum BobState {
     FinishB,
 }
 
-#[derive(Eq, PartialEq, Display)]
+#[derive(Display)]
 #[display(inner)]
 pub enum State {
     #[display("AliceState({0})")]
@@ -268,22 +266,18 @@ impl Runtime {
                         // bob and alice, we are taker, maker commited, now we reveal
                         trace!("received commitment from counterparty, can now reveal");
                         self.remote_commit = Some(commit.clone());
-                        if let Some(local_params) = &self.local_params {
-                            let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
-                            let next_state = match self.state {
-                                State::Alice(AliceState::CommitA(_)) => {
-                                    Ok(State::Alice(AliceState::RevealA))
-                                }
-                                State::Bob(BobState::CommitB(_)) => {
-                                    Ok(State::Bob(BobState::RevealB))
-                                }
-                                _ => Err(Error::Farcaster("Must be on Commit state".to_string())),
-                            }?;
-                            self.send_peer(senders, Msg::Reveal(reveal))?;
-                            self.state = next_state;
-                        } else {
-                            Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
-                        };
+                        let (next_state, local_params) = match &self.state {
+                            State::Alice(AliceState::CommitA(_, local_params)) => {
+                                Ok((State::Alice(AliceState::RevealA), local_params))
+                            }
+                            State::Bob(BobState::CommitB(_, local_params)) => {
+                                Ok((State::Bob(BobState::RevealB), local_params))
+                            }
+                            _ => Err(Error::Farcaster("Must be on Commit state".to_string())),
+                        }?;
+                        let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
+                        self.send_peer(senders, Msg::Reveal(reveal))?;
+                        self.state = next_state;
                     }
                     Msg::TakerCommit(_) => {
                         unreachable!(
@@ -305,10 +299,10 @@ impl Runtime {
                         }
 
                         let next_state = match self.state {
-                            State::Alice(AliceState::CommitA(_)) => {
+                            State::Alice(AliceState::CommitA(..)) => {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
-                            State::Bob(BobState::CommitB(_)) => Ok(State::Bob(BobState::RevealB)),
+                            State::Bob(BobState::CommitB(..)) => Ok(State::Bob(BobState::RevealB)),
                             State::Alice(AliceState::RevealA) => {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
@@ -350,55 +344,56 @@ impl Runtime {
 
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
-                        if self.state == State::Alice(AliceState::CommitA(TradeRole::Maker))
-                            || self.state == State::Bob(BobState::CommitB(TradeRole::Maker))
-                        {
-                            if let Some(local_params) = self.local_params.clone() {
-                                let reveal: Reveal = (self.swap_id(), local_params).into();
+                        match &self.state {
+                            State::Alice(AliceState::CommitA(TradeRole::Maker, local_params))
+                            | State::Bob(BobState::CommitB(TradeRole::Maker, local_params)) => {
+                                let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
                                 info!("State transition: {}", next_state.bright_blue_bold());
                                 self.state = next_state;
-                            } else {
-                                Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
-                            };
-                        } else {
-                            debug!("You are the Taker, which revealed already, nothing to reveal.")
+                            }
+                            _ => debug!(
+                                "You are the Taker, which revealed already, nothing to reveal."
+                            ),
                         }
                     }
                     // alice receives, bob sends
                     Msg::CoreArbitratingSetup(_) => {
-                        if self.state != State::Alice(AliceState::RevealA) {
+                        if let State::Alice(AliceState::RevealA) = self.state {
+                            // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
+                            // cancel txs
+                            self.send_wallet(msg_bus, senders, request.clone())?
+                        } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
                                  through peer connection at state RevealA"
                             )))?
                         }
-                        // FIXME subscribe syncer to Accordant + arbitrating locks and buy + cancel
-                        // txs
-                        self.send_wallet(msg_bus, senders, request.clone())?
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) => {
-                        if self.state != State::Bob(BobState::CorearbB) {
+                        if let State::Bob(BobState::CorearbB) = self.state {
+                            // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
+                            // cancel txs
+                            self.send_wallet(msg_bus, senders, request.clone())?
+                        } else {
                             Err(Error::Farcaster(
                                 "Wrong state: Bob receives RefundProcedureSignatures msg \\
                                  through peer connection in state CorearbB"
                                     .to_string(),
                             ))?
                         }
-                        // FIXME subscribe syncer to Accordant + arbitrating locks and buy + cancel
-                        // txs
-                        self.send_wallet(msg_bus, senders, request.clone())?
                     }
                     // alice receives, bob sends
                     // ProtocolMessages::BuyProcedureSignature(_) => {}
                     Msg::BuyProcedureSignature(_) => {
-                        if self.state != State::Alice(AliceState::RefundProcedureSignatures) {
+                        if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
+                            self.send_wallet(msg_bus, senders, request.clone())?
+                        } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: must be RefundProcedureSignatures"
                             )))?
                         }
-                        self.send_wallet(msg_bus, senders, request.clone())?
                     }
 
                     // bob and alice
@@ -495,20 +490,20 @@ impl Runtime {
                         "{}: {}",
                         "This swapd instance is not reponsible for swap_id", swap_id
                     );
-                    return Ok(())
+                    return Ok(());
                 };
                 let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role)) => {
-                        Ok(State::Bob(BobState::CommitB(trade_role)))
-                    }
-                    State::Alice(AliceState::StartA(trade_role)) => {
-                        Ok(State::Alice(AliceState::CommitA(trade_role)))
-                    }
+                    State::Bob(BobState::StartB(trade_role)) => Ok(State::Bob(BobState::CommitB(
+                        trade_role,
+                        local_params.clone(),
+                    ))),
+                    State::Alice(AliceState::StartA(trade_role)) => Ok(State::Alice(
+                        AliceState::CommitA(trade_role, local_params.clone()),
+                    )),
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
                 }?;
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
-                self.local_params = Some(local_params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
@@ -542,20 +537,17 @@ impl Runtime {
                 swap_id,
                 remote_commit: Some(remote_commit),
             }) => {
-                if self.local_params.is_some() {
-                    Err(Error::Farcaster("local_params already set".to_string()))?
-                }
-                self.local_params = Some(local_params.clone());
                 if self.remote_commit.is_some() {
                     Err(Error::Farcaster("remote commit already set".to_string()))?
                 }
                 let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role)) => {
-                        Ok(State::Bob(BobState::CommitB(trade_role)))
-                    }
-                    State::Alice(AliceState::StartA(trade_role)) => {
-                        Ok(State::Alice(AliceState::CommitA(trade_role)))
-                    }
+                    State::Bob(BobState::StartB(trade_role)) => Ok(State::Bob(BobState::CommitB(
+                        trade_role,
+                        local_params.clone(),
+                    ))),
+                    State::Alice(AliceState::StartA(trade_role)) => Ok(State::Alice(
+                        AliceState::CommitA(trade_role, local_params.clone()),
+                    )),
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
                 }?;
                 self.peer_service = peerd.clone();
@@ -711,7 +703,6 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg)?;
 
-        self.local_params = Some(params);
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
 
