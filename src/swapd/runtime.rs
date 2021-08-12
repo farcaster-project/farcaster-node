@@ -30,9 +30,9 @@ use bitcoin::{OutPoint, SigHashType, Transaction};
 
 use farcaster_core::{
     blockchain::{self, FeeStrategy},
-    chain::bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
-    chain::monero::Monero,
-    chain::pairs::btcxmr::{BtcXmr, Wallet as CoreWallet},
+    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
+    monero::Monero,
+    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     negotiation::{Offer, PublicOffer},
     protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
     role::{Arbitrating, SwapRole, TradeRole},

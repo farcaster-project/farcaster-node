@@ -36,7 +36,7 @@ use std::time::Duration;
 
 use hex;
 
-use farcaster_core::chain::bitcoin::tasks::BtcAddressAddendum;
+use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
 use farcaster_core::syncer::*;
 
 pub trait Rpc {

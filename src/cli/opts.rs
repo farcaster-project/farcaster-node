@@ -22,9 +22,9 @@ use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 
 use farcaster_core::{
     blockchain::{FeeStrategy, Network},
-    chain::bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
-    chain::monero::Monero,
-    chain::pairs::btcxmr::BtcXmr,
+    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
+    monero::Monero,
+    swap::btcxmr::BtcXmr,
     negotiation::PublicOffer,
     role::SwapRole,
 };

@@ -50,9 +50,9 @@ use farcaster_core::{
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
     },
-    chain::bitcoin::Bitcoin,
-    chain::monero::Monero,
-    chain::pairs::btcxmr::BtcXmr,
+    bitcoin::Bitcoin,
+    monero::Monero,
+    swap::btcxmr::BtcXmr,
     negotiation::{Offer, PublicOffer},
     protocol_message::{self, RevealAliceParameters, RevealBobParameters},
     protocol_message::{CommitAliceParameters, CommitBobParameters},

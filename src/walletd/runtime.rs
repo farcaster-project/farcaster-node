@@ -18,9 +18,9 @@ use colored::Colorize;
 use farcaster_core::{
     blockchain::FeePolitic,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
-    chain::bitcoin::{transaction::Funding, Bitcoin},
-    chain::monero::Monero,
-    chain::pairs::btcxmr::{BtcXmr, Wallet as CoreWallet},
+    bitcoin::{segwitv0::FundingTx, Bitcoin},
+    monero::Monero,
+    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     negotiation::PublicOffer,
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CoreArbitratingSetup,
