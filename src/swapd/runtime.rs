@@ -276,6 +276,7 @@ impl Runtime {
                             _ => Err(Error::Farcaster("Must be on Commit state".to_string())),
                         }?;
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
+                        self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
                         self.state = next_state;
                     }
@@ -286,7 +287,7 @@ impl Runtime {
                         )
                     }
                     // bob and alice
-                    Msg::Reveal(role) => {
+                    Msg::Reveal(reveal) => {
                         if self.remote_params.is_some() {
                             error!(
                                 "{}: {}",
@@ -313,7 +314,7 @@ impl Runtime {
                         }?;
 
                         let core_wallet = CoreWallet::new_keyless();
-                        let remote_params = match role {
+                        let remote_params = match reveal {
                             Reveal::Alice(reveal) => match &self.remote_commit {
                                 Some(Commit::Alice(commit)) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
@@ -339,7 +340,7 @@ impl Runtime {
                         };
                         self.remote_params = Some(remote_params.clone());
                         // self.send_peer(senders, msg)?;
-                        self.send_wallet(msg_bus, senders, Request::Params(remote_params))?;
+                        self.send_wallet(msg_bus, senders, request)?;
                         // up to here for both maker and taker, following only Maker
 
                         // if did not yet reveal, maker only. on the msg flow as

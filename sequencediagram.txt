@@ -46,13 +46,14 @@ m_farcasterd -> m_swap : Ctl MakeSwap
 
 m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
+t_wallet<-t_swap:Msg MakerCommit
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg Reveal (taker is sender)
 
 peerd <- m_swap : Msg Reveal (maker is sender)
-m_swap -> m_wallet : Msg Params (taker params)
+m_swap -> m_wallet : Msg Reveal (taker params)
 peerd -> t_swap : Msg Reveal (maker is sender)
-t_swap -> t_wallet : Msg Params (maker params)
+t_swap -> t_wallet : Msg Reveal (maker params)
 ==Commit-Reveal Complete==
 
 ==Bob is Maker (right side)==
