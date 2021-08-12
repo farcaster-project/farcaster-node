@@ -30,7 +30,7 @@ use bitcoin::{OutPoint, SigHashType, Transaction};
 
 use farcaster_core::{
     blockchain::{self, FeeStrategy},
-    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
+    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin, segwitv0::SegwitV0},
     monero::Monero,
     swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     negotiation::{Offer, PublicOffer},
@@ -141,7 +141,7 @@ pub struct Runtime {
     punish_timelock: CSVTimelock,
     fee_strategy: FeeStrategy<SatPerVByte>,
     network: blockchain::Network,
-    arbitrating_blockchain: Bitcoin,
+    arbitrating_blockchain: Bitcoin<SegwitV0>,
     accordant_blockchain: Monero,
     public_offer: PublicOffer<BtcXmr>, // TODO: replace by pub offer id
     enquirer: Option<ServiceId>,

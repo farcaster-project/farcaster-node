@@ -21,12 +21,12 @@ use internet2::{FramingProtocol, PartialNodeAddr};
 use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 
 use farcaster_core::{
+    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin, segwitv0::SegwitV0},
     blockchain::{FeeStrategy, Network},
-    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin},
     monero::Monero,
-    swap::btcxmr::BtcXmr,
     negotiation::PublicOffer,
     role::SwapRole,
+    swap::btcxmr::BtcXmr,
 };
 
 /// Command-line tool for working with Farcaster node
@@ -112,8 +112,8 @@ pub enum Command {
         network: Network,
 
         /// The chosen arbitrating blockchain
-        #[clap(default_value = "Bitcoin")]
-        arbitrating_blockchain: Bitcoin,
+        #[clap(default_value = "ECDSA")]
+        arbitrating_blockchain: Bitcoin<SegwitV0>,
 
         /// The chosen accordant blockchain
         #[clap(default_value = "Monero")]
