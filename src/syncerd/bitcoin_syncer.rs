@@ -189,6 +189,24 @@ impl ElectrumRpc {
         }
         txs
     }
+
+    fn query_txs(&self, state: &mut SyncerState) {
+        for (_, watched_tx) in state.transactions.clone().iter() {
+            let tx_id: bitcoin::Txid =
+                bitcoin::Txid::from_hex(&hex::encode(watched_tx.hash.clone())).unwrap();
+            let tx = self
+                .client
+                .transaction_get_verbose(&tx_id)
+                .expect("transaction_ge_verbose");
+
+            let blockhash = match tx.blockhash {
+                Some(bh) => Some(bh.to_vec()),
+                None => none!(),
+            };
+
+            state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
+        }
+    }
 }
 
 impl Rpc for ElectrumRpc {
@@ -304,34 +322,24 @@ impl Synclet for BitcoinSyncer {
                 let new_block = rpc.new_block_check();
                 if let Some(block_notif) = new_block {
                     state.change_height(block_notif.height, block_notif.block_hash.to_vec());
-
-                    for (_, watched_tx) in state.transactions.clone().iter() {
-                        let tx_id: bitcoin::Txid =
-                            bitcoin::Txid::from_hex(&hex::encode(watched_tx.hash.clone())).unwrap();
-                        let tx = rpc.client.transaction_get_verbose(&tx_id).unwrap();
-
-                        let blockhash = match tx.blockhash {
-                            Some(bh) => Some(bh.to_vec()),
-                            None => none!(),
-                        };
-
-                        state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
-                    }
                 }
-                trace!("pending events: {:?}", state.events);
-
-                // now consume the requests
-                for (event, source) in state.events.drain(..) {
-                    let request = Request::SyncerdBridgeEvent(SyncerdBridgeEvent { event, source });
-                    trace!("sending request over syncerd bridge: {:?}", request);
-                    writer
-                        .send_routed(
-                            &syncer_address,
-                            &syncer_address,
-                            &syncer_address,
-                            &transcoder.encrypt(request.serialize()),
-                        )
-                        .unwrap();
+                if !state.events.is_empty() {
+                    trace!("pending events: {:?}\n emmiting them now", state.events);
+                    rpc.query_txs(&mut state);
+                    // now consume the requests
+                    for (event, source) in state.events.drain(..) {
+                        let request =
+                            Request::SyncerdBridgeEvent(SyncerdBridgeEvent { event, source });
+                        trace!("sending request over syncerd bridge: {:?}", request);
+                        writer
+                            .send_routed(
+                                &syncer_address,
+                                &syncer_address,
+                                &syncer_address,
+                                &transcoder.encrypt(request.serialize()),
+                            )
+                            .unwrap();
+                    }
                 }
 
                 thread::sleep(std::time::Duration::from_secs(1));
