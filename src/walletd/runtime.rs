@@ -273,11 +273,22 @@ impl Runtime {
                             _public_offer,
                             bob_params,
                         )) => {
-                            *bob_params = Some(params);
-                            // nothing to do yet, waiting for Msg
-                            // CoreArbitratingSetup to proceed
+                            if let Some(remote_params) = bob_params {
+                                error!("bob_params were previously set to: {}", remote_params);
+                                return Ok(());
+                            } else {
+                                trace!("Setting bob params: {}", params);
+                                *bob_params = Some(params);
+                                // nothing to do yet, waiting for Msg
+                                // CoreArbitratingSetup to proceed
+                                return Ok(());
+                            }
                         }
-                        _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
+
+                        _ => {
+                            error!("only Some(Wallet::Alice)");
+                            return Ok(());
+                        }
                     },
                     // getting paramaters from counterparty alice routed through
                     // swapd, thus im bob on this swap, Bob can proceed
@@ -291,7 +302,7 @@ impl Runtime {
                                 // TODO: set funding_bundle somewhere, its now
                                 Some(funding),
                                 _commit, /* None reveal does not reach here, stops in swapd,
-                                               * cant verify commit */
+                                          * cant verify commit */
                                 alice_params, // None
                                 core_arb_txs, // None
                             )) => {
