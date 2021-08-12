@@ -148,7 +148,7 @@ pub enum AliceState {
     #[display("Start")]
     StartA(TradeRole),
     #[display("Commit")]
-    CommitA(TradeRole, Params),
+    CommitA(TradeRole, Params), // local, local
     #[display("Reveal")]
     RevealA,
     #[display("RefundProcSigs")]
@@ -162,7 +162,7 @@ pub enum BobState {
     #[display("Start")]
     StartB(TradeRole),
     #[display("Commit")]
-    CommitB(TradeRole, Params),
+    CommitB(TradeRole, Params), // local, local
     #[display("Reveal")]
     RevealB,
     #[display("CoreArb")]
@@ -493,12 +493,12 @@ impl Runtime {
                     return Ok(());
                 };
                 let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role)) => Ok(State::Bob(BobState::CommitB(
-                        trade_role,
+                    State::Bob(BobState::StartB(local_trade_role)) => Ok(State::Bob(BobState::CommitB(
+                        local_trade_role,
                         local_params.clone(),
                     ))),
-                    State::Alice(AliceState::StartA(trade_role)) => Ok(State::Alice(
-                        AliceState::CommitA(trade_role, local_params.clone()),
+                    State::Alice(AliceState::StartA(local_trade_role)) => Ok(State::Alice(
+                        AliceState::CommitA(local_trade_role, local_params.clone()),
                     )),
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
                 }?;
