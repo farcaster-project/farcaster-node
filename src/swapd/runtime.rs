@@ -16,6 +16,7 @@
 use std::convert::TryFrom;
 use std::time::{Duration, SystemTime};
 use std::{collections::BTreeMap, convert::TryInto};
+use std::{convert::TryFrom, str::FromStr};
 
 use super::storage::{self, Driver};
 use crate::rpc::{
@@ -24,6 +25,7 @@ use crate::rpc::{
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
 use bitcoin::hashes::{sha256, Hash, HashEngine};
+use bitcoin::hashes::{hex::FromHex, sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
 use bitcoin::{OutPoint, SigHashType, Transaction};
@@ -37,6 +39,7 @@ use farcaster_core::{
     protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
     role::{Arbitrating, SwapRole, TradeRole},
     swap::SwapId,
+    syncer::{Event, Task, TransactionConfirmations, WatchTransaction},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -103,6 +106,7 @@ pub fn run(
         network,
         public_offer,
         enquirer: None,
+        tx_finality_thr: 1,
         storage: Box::new(storage::DiskDriver::init(
             swap_id,
             Box::new(storage::DiskConfig {
@@ -115,7 +119,7 @@ pub fn run(
 }
 
 // FIXME: State enum should carry over the data that is accumulated over time,
-// and corresponding files should be removed from Runtime
+// and corresponding lines should be removed from Runtime
 pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
@@ -139,6 +143,7 @@ pub struct Runtime {
     accordant_blockchain: Monero,
     public_offer: PublicOffer<BtcXmr>, // TODO: replace by pub offer id
     enquirer: Option<ServiceId>,
+    tx_finality_thr: i32,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
