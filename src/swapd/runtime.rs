@@ -476,9 +476,9 @@ impl Runtime {
             (Request::Hello, _) => {
                 info!("Source: {} is connected", source)
             }
-            (_, ServiceId::Farcasterd | ServiceId::Wallet) => {}
+            (_, ServiceId::Farcasterd | ServiceId::Wallet | ServiceId::Syncer) => {}
             _ => Err(Error::Farcaster(
-                "Permission Error: only Farcasterd and Wallet can can control swapd".to_string(),
+                "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd".to_string(),
             ))?,
         };
 
