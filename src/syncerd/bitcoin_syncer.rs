@@ -12,14 +12,14 @@ use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::ServiceId;
-use bitcoin::hashes::hex::FromHex;
+use bitcoin::hashes::{hex::FromHex, Hash};
 use bitcoin::BlockHash;
 use bitcoin::Script;
 use electrum_client::raw_client::ElectrumSslStream;
 use electrum_client::raw_client::RawClient;
 use electrum_client::Hex32Bytes;
 use electrum_client::{Client, ElectrumApi};
-use farcaster_core::consensus::{self};
+use farcaster_core::consensus;
 use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
@@ -157,14 +157,18 @@ impl ElectrumRpc {
     ) -> Vec<AddressTx> {
         self.addresses.remove_entry(&address);
         self.addresses.insert(address.clone(), digest);
-        // now that we have established _something_ has changed get the full transaction history of the address
+        // now that we have established _something_ has changed get the full transaction
+        // history of the address
         let script = bitcoin::Script::from(address.script_pubkey);
         let tx_history = self.client.script_get_history(&script).unwrap();
         for hist in tx_history.iter() {
             let mut our_amount: u64 = 0;
             let txid = hist.tx_hash;
             // get the full transaction to calculate our_amount
-            let tx = self.client.transaction_get(&txid).unwrap();
+            let tx = self
+                .client
+                .transaction_get(&txid)
+                .expect("cant get transaction");
             for output in tx.output.iter() {
                 if output.script_pubkey == script {
                     our_amount += output.value
@@ -190,15 +194,14 @@ impl ElectrumRpc {
         txs
     }
 
-    fn query_txs(&self, state: &mut SyncerState) {
+    fn query_transactions(&self, state: &mut SyncerState) {
         for (_, watched_tx) in state.transactions.clone().iter() {
-            let tx_id: bitcoin::Txid =
-                bitcoin::Txid::from_hex(&hex::encode(watched_tx.hash.clone())).unwrap();
+            let tx_id: bitcoin::Txid = bitcoin::Txid::from_slice(&watched_tx.hash).unwrap();
             let tx = self
                 .client
                 .transaction_get_verbose(&tx_id)
                 .expect("transaction_ge_verbose");
-
+            info!("Updated tx: {:?}", &tx);
             let blockhash = match tx.blockhash {
                 Some(bh) => Some(bh.to_vec()),
                 None => none!(),
@@ -211,9 +214,9 @@ impl ElectrumRpc {
 
 impl Rpc for ElectrumRpc {
     fn new() -> Self {
-        let client = Client::new("ssl://electrum.blockstream.info:50002").unwrap();
+        let client = Client::new("tcp://localhost:50001").unwrap();
         let header = client.block_headers_subscribe().unwrap();
-        trace!("New ElectrumRpc at height {:?}", header.height);
+        info!("New ElectrumRpc at height {:?}", header.height);
 
         Self {
             client,
@@ -234,7 +237,7 @@ impl Rpc for ElectrumRpc {
     }
 
     fn ping(&mut self) -> Result<(), Error> {
-        if self.ping_count % 10 == 0 {
+        if self.ping_count % 30 == 0 {
             if self.client.ping().is_err() {
                 return Err(Error::Other("ping failed".to_string()));
             }
@@ -273,6 +276,8 @@ impl Synclet for BitcoinSyncer {
             let writer = connection.as_sender();
 
             state.change_height(rpc.height, rpc.block_hash.to_vec());
+            info!("Entering bitcoin_syncer event loop");
+            let mut i = 0;
             loop {
                 // check if the server can still be reached
                 rpc.ping().unwrap();
@@ -300,10 +305,12 @@ impl Synclet for BitcoinSyncer {
                                 state.watch_height(task, syncerd_task.source);
                             }
                             Task::WatchTransaction(task) => {
+                                info!("Watch tx task: {}", task);
                                 state.watch_transaction(task, syncerd_task.source);
                             }
                         }
-                        // added data to state, check if we received more from the channel before sending out events
+                        // added data to state, check if we received more from the channel before
+                        // sending out events
                         continue;
                     }
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
@@ -323,26 +330,26 @@ impl Synclet for BitcoinSyncer {
                 if let Some(block_notif) = new_block {
                     state.change_height(block_notif.height, block_notif.block_hash.to_vec());
                 }
-                if !state.events.is_empty() {
+                if !state.events.is_empty() || i == 0 || i % 25 == 0 {
                     trace!("pending events: {:?}\n emmiting them now", state.events);
-                    rpc.query_txs(&mut state);
-                    // now consume the requests
-                    for (event, source) in state.events.drain(..) {
-                        let request =
-                            Request::SyncerdBridgeEvent(SyncerdBridgeEvent { event, source });
-                        trace!("sending request over syncerd bridge: {:?}", request);
-                        writer
-                            .send_routed(
-                                &syncer_address,
-                                &syncer_address,
-                                &syncer_address,
-                                &transcoder.encrypt(request.serialize()),
-                            )
-                            .unwrap();
-                    }
+                    rpc.query_transactions(&mut state);
+                }
+                // now consume the requests
+                for (event, source) in state.events.drain(..) {
+                    let request = Request::SyncerdBridgeEvent(SyncerdBridgeEvent { event, source });
+                    trace!("sending request over syncerd bridge: {:?}", request);
+                    writer
+                        .send_routed(
+                            &syncer_address,
+                            &syncer_address,
+                            &syncer_address,
+                            &transcoder.encrypt(request.serialize()),
+                        )
+                        .unwrap();
                 }
 
                 thread::sleep(std::time::Duration::from_secs(1));
+                i += 1;
             }
         });
     }
