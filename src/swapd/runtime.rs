@@ -582,7 +582,31 @@ impl Runtime {
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
                 self.state = next_state;
             }
-
+            Request::SyncerEvent(event) => match event {
+                Event::HeightChanged(_) => {}
+                Event::AddressTransaction(_) => {}
+                Event::TransactionConfirmations(TransactionConfirmations {
+                    id,
+                    block,
+                    confirmations,
+                }) if confirmations >= self.tx_finality_thr => {
+                    info!(
+                        "tx {} is now final after {} confirmations",
+                        id, confirmations
+                    );
+                    // TODO abort task, inject into final_txs state
+                }
+                Event::TransactionConfirmations(TransactionConfirmations {
+                    id,
+                    block,
+                    confirmations,
+                }) => {
+                    info!("tx {} now has {} confirmations", id, confirmations);
+                }
+                Event::TransactionBroadcasted(_) => {}
+                Event::TaskAborted(_) => {}
+                _ => {}
+            },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
                     State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::CorearbB)),
