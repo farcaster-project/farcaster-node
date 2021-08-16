@@ -11,7 +11,7 @@ use std::marker::{Send, Sized};
 use crate::serde::Deserialize;
 use hex;
 
-use farcaster_core::chain::bitcoin::tasks::BtcAddressAddendum;
+use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
 use farcaster_core::syncer::*;
 
 pub struct WatchedTransaction {

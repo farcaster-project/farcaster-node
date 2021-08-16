@@ -59,7 +59,7 @@ use farcaster_core::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
         SignedArbitratingLock,
     },
-    chain::pairs::btcxmr::{BtcXmr, Wallet},
+    swap::btcxmr::{BtcXmr, KeyManager},
     negotiation::PublicOffer,
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,

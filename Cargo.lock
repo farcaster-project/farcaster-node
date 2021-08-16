@@ -160,6 +160,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dabbe35f96fb9507f7330793dc490461b2962659ac5d427181e451a623751d1"
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde 1.0.127",
+]
+
+[[package]]
 name = "bitcoin"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -532,6 +541,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "curve25519-dalek-ng"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "574d8b2cd0bae5434fd50d53280f8299d95557a978686555880aaf5b8f4f81e9"
+dependencies = [
+ "byteorder",
+ "digest 0.9.0",
+ "rand_core 0.6.3",
+ "serde 1.0.127",
+ "subtle-ng",
+ "zeroize",
+]
+
+[[package]]
 name = "darling"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -667,6 +690,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56899898ce76aaf4a0f24d914c97ea6ed976d42fec6ad33fcbb0a1103e07b2b0"
 
 [[package]]
+name = "ecdsa_fun"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea99ad3d59f205b965ca57200ae285c14404965a2d752a5046e37b09bbd1e0f5"
+dependencies = [
+ "bincode",
+ "rand_chacha 0.3.1",
+ "secp256kfun",
+ "serde 1.0.127",
+ "sigma_fun",
+]
+
+[[package]]
 name = "ed25519"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -738,16 +774,21 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "farcaster_core"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#f2e08201a472b254808c7fe9f542d2d2cdf78c68"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#46362028affa8ef8ab5cb75bf07bac6dd8b5c262"
 dependencies = [
  "amplify",
+ "bincode",
  "bitcoin",
+ "ecdsa_fun",
  "fixed-hash",
  "hex",
  "internet2",
  "lightning_encoding",
  "monero",
+ "rand 0.8.4",
+ "rand_chacha 0.3.1",
  "serde 1.0.127",
+ "sha2 0.9.5",
  "strict_encoding",
  "strict_encoding_derive",
  "thiserror",
@@ -866,6 +907,7 @@ version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "501466ecc8a30d1d3b7fc9229b122b2ce8ed6e9d9223f1138d4babb253e51817"
 dependencies = [
+ "serde 1.0.127",
  "typenum",
  "version_check",
 ]
@@ -1590,6 +1632,7 @@ dependencies = [
  "libc",
  "rand_chacha 0.3.1",
  "rand_core 0.6.3",
+ "rand_hc 0.3.1",
 ]
 
 [[package]]
@@ -1671,6 +1714,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3129af7b92a17112d59ad498c6f81eaf463253766b90396d39ea7a39d6613c"
 dependencies = [
  "rand_core 0.5.1",
+]
+
+[[package]]
+name = "rand_hc"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d51e9f596de227fda2ea6c84607f5558e196eeaf43c986b724ba4fb8fdf497e7"
+dependencies = [
+ "rand_core 0.6.3",
 ]
 
 [[package]]
@@ -1900,6 +1952,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "secp256kfun"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34697f9a5a65f6ff9c2e86f6ff0b092dbdf3e4bd2a4f2ca5450710389187e07f"
+dependencies = [
+ "digest 0.9.0",
+ "rand_core 0.6.3",
+ "secp256k1",
+ "secp256kfun_parity_backend",
+ "serde 1.0.127",
+ "subtle-ng",
+]
+
+[[package]]
+name = "secp256kfun_parity_backend"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6012a8b1fdbf0716bfd4cf14486ddcad7e1e8b60bc492c5d8940573ab23e5809"
+dependencies = [
+ "crunchy",
+ "subtle-ng",
+]
+
+[[package]]
 name = "semver"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2082,6 +2158,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sigma_fun"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f66b1d91d54eea2c30682d3dc5d9d4ba72538e968343b99d66e9f4ddc4a9fa7b"
+dependencies = [
+ "curve25519-dalek-ng",
+ "digest 0.9.0",
+ "generic-array 0.14.4",
+ "rand_core 0.6.3",
+ "secp256kfun",
+ "serde 1.0.127",
+]
+
+[[package]]
 name = "signature"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2183,6 +2273,12 @@ name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
+
+[[package]]
+name = "subtle-ng"
+version = "2.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8049cf85f0e715d6af38dde439cb0ccb91f67fb9f5f63c80f8b43e48356e1a3f"
 
 [[package]]
 name = "syn"
