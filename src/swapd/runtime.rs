@@ -726,7 +726,6 @@ impl Runtime {
                 let info = request::SwapInfo {
                     swap_id,
                     // state: self.state, // FIXME serde missing
-                    assets: none!(),
                     maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
