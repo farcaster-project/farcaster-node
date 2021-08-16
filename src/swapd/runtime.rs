@@ -639,6 +639,28 @@ impl Runtime {
                     State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::CorearbB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
+                let CoreArbitratingSetup {
+                    swap_id,
+                    lock,
+                    cancel,
+                    refund,
+                    cancel_sig,
+                } = core_arb_setup.clone();
+                for tx in [lock, cancel, refund] {
+                    let txid = tx.clone().extract_tx().txid();
+                    let task = Task::WatchTransaction(WatchTransaction {
+                        id: task_id(txid),
+                        lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                        hash: txid.to_vec(),
+                        confirmation_bound: self.confirmation_bound,
+                    });
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer,
+                        Request::SyncerTask(task),
+                    )?;
+                }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
