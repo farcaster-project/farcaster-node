@@ -23,19 +23,22 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
-use bitcoin::hashes::{hex::FromHex, sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
+use bitcoin::{
+    hashes::{hex::FromHex, sha256, Hash, HashEngine},
+    Txid,
+};
 use bitcoin::{OutPoint, SigHashType, Transaction};
 
 use farcaster_core::{
+    bitcoin::{fee::SatPerVByte, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin},
     blockchain::{self, FeeStrategy},
-    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin, segwitv0::SegwitV0},
     monero::Monero,
-    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     negotiation::{Offer, PublicOffer},
     protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
     role::{Arbitrating, SwapRole, TradeRole},
+    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
     syncer::{Event, Task, TransactionConfirmations, WatchTransaction},
 };
@@ -379,7 +382,7 @@ impl Runtime {
                             for tx in [lock, cancel, refund] {
                                 let txid = tx.clone().extract_tx().txid();
                                 let task = Task::WatchTransaction(WatchTransaction {
-                                    id: 0,
+                                    id: task_id(txid),
                                     lifetime: self.task_lifetime.expect("task_lifetime is None"),
                                     hash: txid.to_vec(),
                                     confirmation_bound: self.confirmation_bound,
@@ -939,4 +942,9 @@ pub fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
     } else {
         Err(Error::Farcaster("Not swapd".to_string()))
     }
+}
+
+pub fn task_id(txid: Txid) -> i32 {
+    let buf: [u8; 4] = txid.to_vec()[0..4].try_into().expect("task_id");
+    i32::from_le_bytes(buf)
 }
