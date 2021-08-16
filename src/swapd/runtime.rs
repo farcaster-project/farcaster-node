@@ -13,7 +13,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::convert::TryFrom;
 use std::time::{Duration, SystemTime};
 use std::{collections::BTreeMap, convert::TryInto};
 use std::{convert::TryFrom, str::FromStr};
@@ -24,7 +23,6 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
-use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::hashes::{hex::FromHex, sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
@@ -113,6 +111,9 @@ pub fn run(
                 path: Default::default(),
             }),
         )?),
+        confirmation_bound: 10000,
+        // TODO: query syncer to set this value (start with None)
+        task_lifetime: Some(795458),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -144,6 +145,8 @@ pub struct Runtime {
     public_offer: PublicOffer<BtcXmr>, // TODO: replace by pub offer id
     enquirer: Option<ServiceId>,
     tx_finality_thr: i32,
+    confirmation_bound: u16,
+    task_lifetime: Option<u64>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -364,11 +367,33 @@ impl Runtime {
                         }
                     }
                     // alice receives, bob sends
-                    Msg::CoreArbitratingSetup(_) => {
+                    Msg::CoreArbitratingSetup(CoreArbitratingSetup {
+                        swap_id,
+                        lock,
+                        cancel,
+                        refund,
+                        cancel_sig,
+                    }) => {
                         if let State::Alice(AliceState::RevealA) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
-                            // cancel txs
-                            self.send_wallet(msg_bus, senders, request.clone())?
+                            for tx in [lock, cancel, refund] {
+                                let txid = tx.clone().extract_tx().txid();
+                                let task = Task::WatchTransaction(WatchTransaction {
+                                    id: 0,
+                                    lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                                    hash: txid.to_vec(),
+                                    confirmation_bound: self.confirmation_bound,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Syncer,
+                                    Request::SyncerTask(task),
+                                )?;
+                            }
+                            error!("FIXME comment out");
+                            // self.send_wallet(msg_bus, senders,
+                            // request.clone())?
                         } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
@@ -499,10 +524,9 @@ impl Runtime {
                     return Ok(());
                 };
                 let next_state = match self.state {
-                    State::Bob(BobState::StartB(local_trade_role)) => Ok(State::Bob(BobState::CommitB(
-                        local_trade_role,
-                        local_params.clone(),
-                    ))),
+                    State::Bob(BobState::StartB(local_trade_role)) => Ok(State::Bob(
+                        BobState::CommitB(local_trade_role, local_params.clone()),
+                    )),
                     State::Alice(AliceState::StartA(local_trade_role)) => Ok(State::Alice(
                         AliceState::CommitA(local_trade_role, local_params.clone()),
                     )),
