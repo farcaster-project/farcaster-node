@@ -584,7 +584,7 @@ pub struct SwapInfo {
     // #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
     // pub funding_outpoint: OutPoint,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub remote_peers: Vec<NodeAddr>,
+    pub maker_peer: Vec<NodeAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,

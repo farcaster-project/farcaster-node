@@ -727,7 +727,7 @@ impl Runtime {
                     swap_id,
                     // state: self.state, // FIXME serde missing
                     assets: none!(),
-                    remote_peers: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
+                    maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or(Duration::from_secs(0)),
