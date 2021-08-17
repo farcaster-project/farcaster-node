@@ -36,7 +36,9 @@ use farcaster_core::{
     blockchain::{self, FeeStrategy},
     monero::Monero,
     negotiation::{Offer, PublicOffer},
-    protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
+    protocol_message::{
+        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+    },
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
@@ -303,18 +305,22 @@ impl Runtime {
                         }
 
                         let (next_state, remote_commit) = match self.state.clone() {
-                            State::Alice(AliceState::CommitA(.., Some(remote_commit))) => {
-                                Ok((State::Alice(AliceState::RevealA(remote_commit.clone())), remote_commit))
-                            }
-                            State::Bob(BobState::CommitB(.., Some(remote_commit))) => {
-                                Ok((State::Bob(BobState::RevealB(remote_commit.clone())), remote_commit))
-                            }
-                            State::Alice(AliceState::RevealA(remote_commit)) => {
-                                Ok((State::Alice(AliceState::RevealA(remote_commit.clone())), remote_commit))
-                            }
-                            State::Bob(BobState::RevealB(remote_commit)) => {
-                                Ok((State::Bob(BobState::RevealB(remote_commit.clone())), remote_commit))
-                            }
+                            State::Alice(AliceState::CommitA(.., Some(remote_commit))) => Ok((
+                                State::Alice(AliceState::RevealA(remote_commit.clone())),
+                                remote_commit,
+                            )),
+                            State::Bob(BobState::CommitB(.., Some(remote_commit))) => Ok((
+                                State::Bob(BobState::RevealB(remote_commit.clone())),
+                                remote_commit,
+                            )),
+                            State::Alice(AliceState::RevealA(remote_commit)) => Ok((
+                                State::Alice(AliceState::RevealA(remote_commit.clone())),
+                                remote_commit,
+                            )),
+                            State::Bob(BobState::RevealB(remote_commit)) => Ok((
+                                State::Bob(BobState::RevealB(remote_commit.clone())),
+                                remote_commit,
+                            )),
                             _ => Err(Error::Farcaster(
                                 "Must be on Commit or Reveal state".to_string(),
                             )),
@@ -398,8 +404,7 @@ impl Runtime {
                                     Request::SyncerTask(task),
                                 )?;
                             }
-                            self.send_wallet(msg_bus, senders,
-                            request.clone())?
+                            self.send_wallet(msg_bus, senders, request.clone())?
                         } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
@@ -412,6 +417,7 @@ impl Runtime {
                         if let State::Bob(BobState::CorearbB) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
+
                             self.send_wallet(msg_bus, senders, request.clone())?
                         } else {
                             Err(Error::Farcaster(
@@ -738,6 +744,7 @@ impl Runtime {
                     ServiceId::Syncer,
                     Request::SyncerTask(task),
                 )?;
+
                 trace!("sending peer BuyProcedureSignature msg");
                 self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
