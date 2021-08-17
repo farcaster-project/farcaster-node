@@ -418,9 +418,21 @@ impl Runtime {
                         }
                     }
                     // alice receives, bob sends
-                    // ProtocolMessages::BuyProcedureSignature(_) => {}
-                    Msg::BuyProcedureSignature(_) => {
+                    Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. }) => {
                         if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
+                            let txid = buy.clone().extract_tx().txid();
+                            let task = Task::WatchTransaction(WatchTransaction {
+                                id: task_id(txid),
+                                lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                                hash: txid.to_vec(),
+                                confirmation_bound: self.confirmation_bound,
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Syncer,
+                                Request::SyncerTask(task),
+                            )?;
                             self.send_wallet(msg_bus, senders, request.clone())?
                         } else {
                             Err(Error::Farcaster(s!(
@@ -709,6 +721,19 @@ impl Runtime {
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
 
+                let txid = buy_proc_sig.buy.clone().extract_tx().txid();
+                let task = Task::WatchTransaction(WatchTransaction {
+                    id: task_id(txid),
+                    lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                    hash: txid.to_vec(),
+                    confirmation_bound: self.confirmation_bound,
+                });
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Syncer,
+                    Request::SyncerTask(task),
+                )?;
                 trace!("sending peer BuyProcedureSignature msg");
                 self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
