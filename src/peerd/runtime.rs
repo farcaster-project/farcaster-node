@@ -26,7 +26,10 @@ use microservices::esb::{self, Handler};
 use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 
-use crate::rpc::{Request, ServiceBus, request::{self, Msg, PeerInfo, TakeCommit, Token}};
+use crate::rpc::{
+    request::{self, Msg, PeerInfo, TakeCommit, Token},
+    Request, ServiceBus,
+};
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceId};
 pub fn run(
     config: Config,

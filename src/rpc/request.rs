@@ -46,17 +46,17 @@ use bitcoin::{
     OutPoint, PublicKey,
 };
 use farcaster_core::{
+    bitcoin::Bitcoin,
     blockchain::FeePolitic,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
     },
-    bitcoin::Bitcoin,
     monero::Monero,
-    swap::btcxmr::BtcXmr,
     negotiation::{Offer, PublicOffer},
     protocol_message::{self, RevealAliceParameters, RevealBobParameters},
     protocol_message::{CommitAliceParameters, CommitBobParameters},
     role::TradeRole,
+    swap::btcxmr::BtcXmr,
     swap::SwapId,
 };
 use internet2::Api;
