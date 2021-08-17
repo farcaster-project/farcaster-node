@@ -89,12 +89,8 @@ pub fn run(
         peer_service: ServiceId::Loopback,
         chain,
         state: init_state,
-        // remote_state: init_state(local_role.other()),
         funding_outpoint: default!(),
         maker_peer: None,
-        remote_commit: None,
-        local_commit: None,
-        local_swap_role,
         started: SystemTime::now(),
         remote_params: none!(),
         accordant_amount,
@@ -133,9 +129,6 @@ pub struct Runtime {
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
     remote_params: Option<Params>,
-    remote_commit: Option<Commit>,
-    local_commit: Option<Commit>,
-    local_swap_role: SwapRole,
     accordant_amount: monero::Amount,
     arbitrating_amount: bitcoin::Amount,
     cancel_timelock: CSVTimelock,
@@ -157,9 +150,9 @@ pub enum AliceState {
     #[display("Start")]
     StartA(TradeRole, PublicOffer<BtcXmr>),
     #[display("Commit")]
-    CommitA(TradeRole, Params), // local, local
+    CommitA(TradeRole, Params, Commit, Option<Commit>), // local, local, local, remote
     #[display("Reveal")]
-    RevealA,
+    RevealA(Commit), // remote
     #[display("RefundProcSigs")]
     RefundProcedureSignatures,
     #[display("Finish")]
@@ -171,9 +164,9 @@ pub enum BobState {
     #[display("Start")]
     StartB(TradeRole, PublicOffer<BtcXmr>),
     #[display("Commit")]
-    CommitB(TradeRole, Params), // local, local
+    CommitB(TradeRole, Params, Commit, Option<Commit>), // local, local, local, remote
     #[display("Reveal")]
-    RevealB,
+    RevealB(Commit), // remote
     #[display("CoreArb")]
     CorearbB,
     #[display("BuyProcSig")]
@@ -271,17 +264,18 @@ impl Runtime {
                     )))?
                 }
                 match &msg {
-                    Msg::MakerCommit(commit) => {
+                    Msg::MakerCommit(remote_commit) => {
                         // bob and alice, we are taker, maker commited, now we reveal
                         trace!("received commitment from counterparty, can now reveal");
-                        self.remote_commit = Some(commit.clone());
                         let (next_state, local_params) = match &self.state {
-                            State::Alice(AliceState::CommitA(_, local_params)) => {
-                                Ok((State::Alice(AliceState::RevealA), local_params))
-                            }
-                            State::Bob(BobState::CommitB(_, local_params)) => {
-                                Ok((State::Bob(BobState::RevealB), local_params))
-                            }
+                            State::Alice(AliceState::CommitA(_, local_params, _, None)) => Ok((
+                                State::Alice(AliceState::RevealA(remote_commit.clone())),
+                                local_params,
+                            )),
+                            State::Bob(BobState::CommitB(_, local_params, _, None)) => Ok((
+                                State::Bob(BobState::RevealB(remote_commit.clone())),
+                                local_params,
+                            )),
                             _ => Err(Error::Farcaster("Must be on Commit state".to_string())),
                         }?;
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
@@ -308,15 +302,19 @@ impl Runtime {
                             debug!("{}", "remote_params not yet set");
                         }
 
-                        let next_state = match self.state {
-                            State::Alice(AliceState::CommitA(..)) => {
-                                Ok(State::Alice(AliceState::RevealA))
+                        let (next_state, remote_commit) = match self.state.clone() {
+                            State::Alice(AliceState::CommitA(.., Some(remote_commit))) => {
+                                Ok((State::Alice(AliceState::RevealA(remote_commit.clone())), remote_commit))
                             }
-                            State::Bob(BobState::CommitB(..)) => Ok(State::Bob(BobState::RevealB)),
-                            State::Alice(AliceState::RevealA) => {
-                                Ok(State::Alice(AliceState::RevealA))
+                            State::Bob(BobState::CommitB(.., Some(remote_commit))) => {
+                                Ok((State::Bob(BobState::RevealB(remote_commit.clone())), remote_commit))
                             }
-                            State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::RevealB)),
+                            State::Alice(AliceState::RevealA(remote_commit)) => {
+                                Ok((State::Alice(AliceState::RevealA(remote_commit.clone())), remote_commit))
+                            }
+                            State::Bob(BobState::RevealB(remote_commit)) => {
+                                Ok((State::Bob(BobState::RevealB(remote_commit.clone())), remote_commit))
+                            }
                             _ => Err(Error::Farcaster(
                                 "Must be on Commit or Reveal state".to_string(),
                             )),
@@ -324,8 +322,8 @@ impl Runtime {
 
                         let core_wallet = CoreWallet::new_keyless();
                         let remote_params = match reveal {
-                            Reveal::Alice(reveal) => match &self.remote_commit {
-                                Some(Commit::Alice(commit)) => {
+                            Reveal::Alice(reveal) => match &remote_commit {
+                                Commit::Alice(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Params::Alice(reveal.clone().into())
                                 }
@@ -335,8 +333,8 @@ impl Runtime {
                                     Err(Error::Farcaster(err_msg.to_string()))?
                                 }
                             },
-                            Reveal::Bob(reveal) => match &self.remote_commit {
-                                Some(Commit::Bob(commit)) => {
+                            Reveal::Bob(reveal) => match &remote_commit {
+                                Commit::Bob(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Params::Bob(reveal.clone().into())
                                 }
@@ -355,8 +353,12 @@ impl Runtime {
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
                         match &self.state {
-                            State::Alice(AliceState::CommitA(TradeRole::Maker, local_params))
-                            | State::Bob(BobState::CommitB(TradeRole::Maker, local_params)) => {
+                            State::Alice(AliceState::CommitA(
+                                TradeRole::Maker,
+                                local_params,
+                                ..,
+                            ))
+                            | State::Bob(BobState::CommitB(TradeRole::Maker, local_params, ..)) => {
                                 let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
                                 info!("State transition: {}", next_state.bright_blue_bold());
@@ -375,7 +377,7 @@ impl Runtime {
                         refund,
                         cancel_sig,
                     }) => {
-                        if let State::Alice(AliceState::RevealA) = self.state {
+                        if let State::Alice(AliceState::RevealA(_)) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             for tx in [lock, cancel, refund] {
                                 let txid = tx.clone().extract_tx().txid();
@@ -392,9 +394,8 @@ impl Runtime {
                                     Request::SyncerTask(task),
                                 )?;
                             }
-                            error!("FIXME comment out");
-                            // self.send_wallet(msg_bus, senders,
-                            // request.clone())?
+                            self.send_wallet(msg_bus, senders,
+                            request.clone())?
                         } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
@@ -504,7 +505,8 @@ impl Runtime {
             }
             (_, ServiceId::Farcasterd | ServiceId::Wallet | ServiceId::Syncer) => {}
             _ => Err(Error::Farcaster(
-                "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd".to_string(),
+                "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd"
+                    .to_string(),
             ))?,
         };
 
@@ -524,37 +526,48 @@ impl Runtime {
                     );
                     return Ok(());
                 };
-                let (next_state, public_offer) = match self.state.clone() {
-                    State::Bob(BobState::StartB(local_trade_role, public_offer)) => Ok((
-                        (State::Bob(BobState::CommitB(local_trade_role, local_params.clone()))),
-                        public_offer,
-                    )),
-                    State::Alice(AliceState::StartA(local_trade_role, public_offer)) => Ok((
-                        (State::Alice(AliceState::CommitA(local_trade_role, local_params.clone()))),
-                        public_offer,
-                    )),
-                    _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
-                }?;
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-                let commit = self.taker_commit(senders, local_params).map_err(|err| {
-                    self.report_failure_to(
-                        senders,
-                        &report_to,
-                        microservices::rpc::Failure {
-                            code: 0, // TODO: Create error type system
-                            info: err.to_string(),
-                        },
-                    )
-                })?;
-                self.local_commit = Some(commit.clone());
+                let local_commit =
+                    self.taker_commit(senders, local_params.clone())
+                        .map_err(|err| {
+                            self.report_failure_to(
+                                senders,
+                                &report_to,
+                                microservices::rpc::Failure {
+                                    code: 0, // TODO: Create error type system
+                                    info: err.to_string(),
+                                },
+                            )
+                        })?;
+                let (next_state, public_offer) = match self.state.clone() {
+                    State::Bob(BobState::StartB(local_trade_role, public_offer)) => Ok((
+                        (State::Bob(BobState::CommitB(
+                            local_trade_role,
+                            local_params.clone(),
+                            local_commit.clone(),
+                            None,
+                        ))),
+                        public_offer,
+                    )),
+                    State::Alice(AliceState::StartA(local_trade_role, public_offer)) => Ok((
+                        (State::Alice(AliceState::CommitA(
+                            local_trade_role,
+                            local_params.clone(),
+                            local_commit.clone(),
+                            None,
+                        ))),
+                        public_offer,
+                    )),
+                    _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
+                }?;
                 let public_offer_hex = public_offer.to_hex();
                 let take_swap = TakeCommit {
-                    commit,
+                    commit: local_commit,
                     public_offer_hex,
                     swap_id,
                 };
@@ -570,25 +583,13 @@ impl Runtime {
                 swap_id,
                 remote_commit: Some(remote_commit),
             }) => {
-                if self.remote_commit.is_some() {
-                    Err(Error::Farcaster("remote commit already set".to_string()))?
-                }
-                let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role, _)) => Ok(State::Bob(
-                        BobState::CommitB(trade_role, local_params.clone()),
-                    )),
-                    State::Alice(AliceState::StartA(trade_role, _)) => Ok(State::Alice(
-                        AliceState::CommitA(trade_role, local_params.clone()),
-                    )),
-                    _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
-                }?;
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
 
                 let local_commit = self
-                    .maker_commit(senders, &peerd, swap_id, local_params)
+                    .maker_commit(senders, &peerd, swap_id, &local_params)
                     .map_err(|err| {
                         self.report_failure_to(
                             senders,
@@ -600,12 +601,31 @@ impl Runtime {
                         )
                     })?;
 
-                trace!("setting commit_remote and commit_local msg");
-                self.remote_commit = Some(remote_commit);
-                self.local_commit = Some(local_commit.clone());
+                let next_state = match self.state {
+                    State::Bob(BobState::StartB(trade_role, _)) => {
+                        Ok(State::Bob(BobState::CommitB(
+                            trade_role,
+                            local_params.clone(),
+                            local_commit.clone(),
+                            Some(remote_commit.clone()),
+                        )))
+                    }
+                    State::Alice(AliceState::StartA(trade_role, _)) => {
+                        Ok(State::Alice(AliceState::CommitA(
+                            trade_role,
+                            local_params.clone(),
+                            local_commit.clone(),
+                            Some(remote_commit.clone()),
+                        )))
+                    }
+                    _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
+                }?;
+
                 trace!("sending peer MakerCommit msg {}", &local_commit);
-                info!("State transition: {}", next_state.bright_blue_bold());
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
+
+                info!("State transition: {}", next_state.bright_blue_bold());
+                trace!("setting commit_remote and commit_local msg");
                 self.state = next_state;
             }
             Request::SyncerEvent(event) => match event {
@@ -635,7 +655,7 @@ impl Runtime {
             },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
-                    State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::CorearbB)),
+                    State::Bob(BobState::RevealB(_)) => Ok(State::Bob(BobState::CorearbB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
                 let CoreArbitratingSetup {
@@ -669,7 +689,7 @@ impl Runtime {
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 // must have received params before
                 let next_state = match self.state {
-                    State::Alice(AliceState::RevealA) => {
+                    State::Alice(AliceState::RevealA(_)) => {
                         Ok(State::Alice(AliceState::RefundProcedureSignatures))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
@@ -791,7 +811,7 @@ impl Runtime {
         senders: &mut Senders,
         peerd: &ServiceId,
         swap_id: SwapId,
-        params: Params,
+        params: &Params,
     ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} as Maker with swap id {:#} from Taker remote peer {}",
