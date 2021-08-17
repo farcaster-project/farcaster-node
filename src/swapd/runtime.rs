@@ -121,7 +121,7 @@ pub fn run(
         confirmation_bound: 10000,
         // TODO: query syncer to set this value (start with None)
         task_lifetime: Some(795458),
-        final_txs: none!(),
+        txs_status: none!(),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -151,7 +151,7 @@ pub struct Runtime {
     tx_finality_thr: i32,
     confirmation_bound: u16,
     task_lifetime: Option<u64>,
-    final_txs: HashMap<i32, (TxId, TxStatus)>,
+    txs_status: HashMap<i32, (TxId, TxStatus)>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -415,7 +415,7 @@ impl Runtime {
                                 let txid = tx.clone().extract_tx().txid();
                                 let id = task_id(txid);
                                 if self
-                                    .final_txs
+                                    .txs_status
                                     .insert(id, (tx_label.clone(), TxStatus::Notfinal))
                                     .is_none()
                                 {
@@ -478,7 +478,7 @@ impl Runtime {
                             let txid = buy.clone().extract_tx().txid();
                             let id = task_id(txid);
                             if self
-                                .final_txs
+                                .txs_status
                                 .insert(id, (TxId::Buy, TxStatus::Notfinal))
                                 .is_none()
                             {
@@ -714,7 +714,7 @@ impl Runtime {
                     block,
                     confirmations,
                 }) if confirmations >= self.tx_finality_thr => {
-                    if let Some((txlabel, status)) = self.final_txs.get_mut(&id) {
+                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
                         info!("Transaction {} is now final", txlabel);
                         // FIXME: fill match arms
@@ -766,7 +766,7 @@ impl Runtime {
                     let txid = tx.clone().extract_tx().txid();
                     let id = task_id(txid);
                     if self
-                        .final_txs
+                        .txs_status
                         .insert(id, (tx_label, TxStatus::Notfinal))
                         .is_none()
                     {
