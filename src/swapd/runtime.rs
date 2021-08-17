@@ -377,6 +377,10 @@ impl Runtime {
                         refund,
                         cancel_sig,
                     }) => {
+                        if swap_id != &self.swap_id() {
+                            error!("Swapd not responsible for swap {}", swap_id);
+                            return Ok(());
+                        }
                         if let State::Alice(AliceState::RevealA(_)) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             for tx in [lock, cancel, refund] {
