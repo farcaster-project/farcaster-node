@@ -79,16 +79,16 @@ pub fn run(
         TradeRole::Taker => maker_role.other(),
     };
 
-    let init_state = |&role| match role {
-        SwapRole::Alice => State::Alice(AliceState::StartA(local_trade_role)),
-        SwapRole::Bob => State::Bob(BobState::StartB(local_trade_role)),
+    let init_state = match local_swap_role {
+        SwapRole::Alice => State::Alice(AliceState::StartA(local_trade_role, public_offer)),
+        SwapRole::Bob => State::Bob(BobState::StartB(local_trade_role, public_offer)),
     };
 
     let runtime = Runtime {
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
         chain,
-        state: init_state(&local_swap_role),
+        state: init_state,
         // remote_state: init_state(local_role.other()),
         funding_outpoint: default!(),
         maker_peer: None,
@@ -105,7 +105,6 @@ pub fn run(
         accordant_blockchain,
         arbitrating_blockchain,
         network,
-        public_offer,
         enquirer: None,
         tx_finality_thr: 1,
         storage: Box::new(storage::DiskDriver::init(
@@ -145,7 +144,6 @@ pub struct Runtime {
     network: blockchain::Network,
     arbitrating_blockchain: Bitcoin<SegwitV0>,
     accordant_blockchain: Monero,
-    public_offer: PublicOffer<BtcXmr>, // TODO: replace by pub offer id
     enquirer: Option<ServiceId>,
     tx_finality_thr: i32,
     confirmation_bound: u16,
@@ -154,10 +152,10 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
-#[derive(Display)]
+#[derive(Display, Clone)]
 pub enum AliceState {
     #[display("Start")]
-    StartA(TradeRole),
+    StartA(TradeRole, PublicOffer<BtcXmr>),
     #[display("Commit")]
     CommitA(TradeRole, Params), // local, local
     #[display("Reveal")]
@@ -168,10 +166,10 @@ pub enum AliceState {
     FinishA,
 }
 
-#[derive(Display)]
+#[derive(Display, Clone)]
 pub enum BobState {
     #[display("Start")]
-    StartB(TradeRole),
+    StartB(TradeRole, PublicOffer<BtcXmr>),
     #[display("Commit")]
     CommitB(TradeRole, Params), // local, local
     #[display("Reveal")]
@@ -184,7 +182,7 @@ pub enum BobState {
     FinishB,
 }
 
-#[derive(Display)]
+#[derive(Display, Clone)]
 #[display(inner)]
 pub enum State {
     #[display("AliceState({0})")]
@@ -526,12 +524,14 @@ impl Runtime {
                     );
                     return Ok(());
                 };
-                let next_state = match self.state {
-                    State::Bob(BobState::StartB(local_trade_role)) => Ok(State::Bob(
-                        BobState::CommitB(local_trade_role, local_params.clone()),
+                let (next_state, public_offer) = match self.state.clone() {
+                    State::Bob(BobState::StartB(local_trade_role, public_offer)) => Ok((
+                        (State::Bob(BobState::CommitB(local_trade_role, local_params.clone()))),
+                        public_offer,
                     )),
-                    State::Alice(AliceState::StartA(local_trade_role)) => Ok(State::Alice(
-                        AliceState::CommitA(local_trade_role, local_params.clone()),
+                    State::Alice(AliceState::StartA(local_trade_role, public_offer)) => Ok((
+                        (State::Alice(AliceState::CommitA(local_trade_role, local_params.clone()))),
+                        public_offer,
                     )),
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
                 }?;
@@ -552,7 +552,7 @@ impl Runtime {
                     )
                 })?;
                 self.local_commit = Some(commit.clone());
-                let public_offer_hex = self.public_offer.to_hex();
+                let public_offer_hex = public_offer.to_hex();
                 let take_swap = TakeCommit {
                     commit,
                     public_offer_hex,
@@ -574,11 +574,10 @@ impl Runtime {
                     Err(Error::Farcaster("remote commit already set".to_string()))?
                 }
                 let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role)) => Ok(State::Bob(BobState::CommitB(
-                        trade_role,
-                        local_params.clone(),
-                    ))),
-                    State::Alice(AliceState::StartA(trade_role)) => Ok(State::Alice(
+                    State::Bob(BobState::StartB(trade_role, _)) => Ok(State::Bob(
+                        BobState::CommitB(trade_role, local_params.clone()),
+                    )),
+                    State::Alice(AliceState::StartA(trade_role, _)) => Ok(State::Alice(
                         AliceState::CommitA(trade_role, local_params.clone()),
                     )),
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
