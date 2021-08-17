@@ -13,9 +13,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::time::{Duration, SystemTime};
 use std::{collections::BTreeMap, convert::TryInto};
 use std::{convert::TryFrom, str::FromStr};
+use std::{
+    io::Cursor,
+    time::{Duration, SystemTime},
+};
 
 use super::storage::{self, Driver};
 use crate::rpc::{
@@ -23,8 +26,8 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
-use bitcoin::secp256k1;
-use bitcoin::util::bip143::SigHashCache;
+use bitcoin::util::{bip143::SigHashCache, psbt::PartiallySignedTransaction};
+use bitcoin::{consensus::Encodable, secp256k1};
 use bitcoin::{
     hashes::{hex::FromHex, sha256, Hash, HashEngine},
     Txid,
@@ -42,7 +45,7 @@ use farcaster_core::{
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
-    syncer::{Event, Task, TransactionConfirmations, WatchTransaction},
+    syncer::{BroadcastTransaction, Event, Task, TransactionConfirmations, WatchTransaction},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -170,7 +173,7 @@ pub enum BobState {
     #[display("Reveal")]
     RevealB(Commit), // remote
     #[display("CoreArb")]
-    CorearbB,
+    CorearbB(PartiallySignedTransaction), // lock
     #[display("BuyProcSig")]
     BuyProcSigB,
     #[display("Finish")]
@@ -414,10 +417,22 @@ impl Runtime {
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) => {
-                        if let State::Bob(BobState::CorearbB) = self.state {
+                        if let State::Bob(BobState::CorearbB(lock)) = self.state.clone() {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
-
+                            let mut tx = Vec::new();
+                            let mut writer = Cursor::new(&mut tx);
+                            lock.consensus_encode(&mut writer)?;
+                            let id = task_id(lock.extract_tx().txid());
+                            let broadcast_arb_lock =
+                                Task::BroadcastTransaction(BroadcastTransaction { id, tx });
+                            info!("Broadcasting arbitrating lock");
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Syncer,
+                                Request::SyncerTask(broadcast_arb_lock),
+                            )?;
                             self.send_wallet(msg_bus, senders, request.clone())?
                         } else {
                             Err(Error::Farcaster(
@@ -677,7 +692,9 @@ impl Runtime {
             },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
-                    State::Bob(BobState::RevealB(_)) => Ok(State::Bob(BobState::CorearbB)),
+                    State::Bob(BobState::RevealB(_)) => {
+                        Ok(State::Bob(BobState::CorearbB(core_arb_setup.lock.clone())))
+                    }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
                 let CoreArbitratingSetup {
@@ -727,7 +744,7 @@ impl Runtime {
 
             Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
                 let next_state = match self.state {
-                    State::Bob(BobState::CorearbB) => Ok(State::Bob(BobState::BuyProcSigB)),
+                    State::Bob(BobState::CorearbB(..)) => Ok(State::Bob(BobState::BuyProcSigB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
 
