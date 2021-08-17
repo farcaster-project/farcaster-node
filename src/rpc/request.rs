@@ -95,9 +95,12 @@ pub enum Msg {
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
-    /* #[api(type = 29)]
-     * #[display("ping(...)")]
-     * Ping, */
+    #[api(type = 29)]
+    #[display(inner)]
+    Ping(message::Ping),
+    #[api(type = 30)]
+    #[display("pong(...)")]
+    Pong(Vec<u8>),
 }
 
 impl Msg {
@@ -123,6 +126,7 @@ impl Msg {
             Msg::BuyProcedureSignature(protocol_message::BuyProcedureSignature {
                 swap_id, ..
             }) => *swap_id,
+            Msg::Ping(_) | Msg::Pong(_) => unreachable!("Ping and Pong does not containt swapid"),
         }
     }
 }

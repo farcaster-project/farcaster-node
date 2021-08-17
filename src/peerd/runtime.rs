@@ -354,11 +354,7 @@ impl Runtime {
         }
 
         match &request {
-            Request::PeerMessage(Messages::Ping(message::Ping { pong_size, .. })) => {
-                self.pong(*pong_size)?;
-            }
-
-            Request::PeerMessage(Messages::Pong(noise)) => {
+            Request::Protocol(Msg::Pong(noise)) => {
                 match self.awaited_pong {
                     None => error!("Unexpected pong from the remote peer"),
                     Some(len) if len as usize != noise.len() => {
@@ -369,7 +365,9 @@ impl Runtime {
                 self.awaited_pong = None;
             }
 
-            // Request::Protocol(Msg::Ping) => self.ping()?,
+            Request::Protocol(Msg::Ping(message::Ping { pong_size, .. })) => {
+                self.pong(*pong_size)?
+            }
 
             // swap initiation message
             Request::Protocol(Msg::TakerCommit(_)) => {
