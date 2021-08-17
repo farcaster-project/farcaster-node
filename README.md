@@ -95,14 +95,14 @@ swap1-cli take 464353574150010002000000808000008008e80300000000000008c9000000000
 Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication. 
 
 ### Farcasterd (Server)
-Here the node public key of farcasterd is derived from its secretkey included in `key.dat` file. You can launch the node first WITHOUT `-x` and `-m` to retrieve the printed pubkey, and later again on the same `-d data_dir` passing `-x` and `-m`:
+Here the node public key of farcasterd is derived from its secretkey included in `key.dat` file. You can launch the node first WITHOUT `-x` and `-m` to retrieve the printed pubkey, and later again on the same `-d data_dir` passing Ctl bus `-x` and Msg bus `-m` arguments:
 ``` sh
 ./target/debug/farcasterd -vvvv -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" -d .data_dir_1
 ```
 
 
 ### Client
-And this is the client can instruct the above `farcasterd` to make a offer with:
+And the following client can instruct the above `farcasterd` to make a offer as follows:
 ``` sh
 ./target/debug/swap-cli -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" make
 ```
