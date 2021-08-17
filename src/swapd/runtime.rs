@@ -13,7 +13,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::{collections::BTreeMap, convert::TryInto};
+use std::{
+    collections::{BTreeMap, HashMap},
+    convert::TryInto,
+};
 use std::{convert::TryFrom, str::FromStr};
 use std::{
     io::Cursor,
@@ -46,6 +49,7 @@ use farcaster_core::{
     swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
     syncer::{BroadcastTransaction, Event, Task, TransactionConfirmations, WatchTransaction},
+    transaction::TxId,
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -117,6 +121,7 @@ pub fn run(
         confirmation_bound: 10000,
         // TODO: query syncer to set this value (start with None)
         task_lifetime: Some(795458),
+        final_txs: none!(),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -146,6 +151,7 @@ pub struct Runtime {
     tx_finality_thr: i32,
     confirmation_bound: u16,
     task_lifetime: Option<u64>,
+    final_txs: HashMap<i32, (TxId, TxStatus)>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -153,7 +159,7 @@ pub struct Runtime {
 #[derive(Display, Clone)]
 pub enum AliceState {
     #[display("Start")]
-    StartA(TradeRole, PublicOffer<BtcXmr>),
+    StartA(TradeRole, PublicOffer<BtcXmr>), // local, both
     #[display("Commit")]
     CommitA(TradeRole, Params, Commit, Option<Commit>), // local, local, local, remote
     #[display("Reveal")]
@@ -167,7 +173,7 @@ pub enum AliceState {
 #[derive(Display, Clone)]
 pub enum BobState {
     #[display("Start")]
-    StartB(TradeRole, PublicOffer<BtcXmr>),
+    StartB(TradeRole, PublicOffer<BtcXmr>), // local, both
     #[display("Commit")]
     CommitB(TradeRole, Params, Commit, Option<Commit>), // local, local, local, remote
     #[display("Reveal")]
@@ -392,20 +398,33 @@ impl Runtime {
                         }
                         if let State::Alice(AliceState::RevealA(_)) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
-                            for tx in [lock, cancel, refund] {
+                            for (&tx, tx_label) in [lock, cancel, refund].iter().zip([
+                                TxId::Lock,
+                                TxId::Cancel,
+                                TxId::Refund,
+                            ]) {
                                 let txid = tx.clone().extract_tx().txid();
-                                let task = Task::WatchTransaction(WatchTransaction {
-                                    id: task_id(txid),
-                                    lifetime: self.task_lifetime.expect("task_lifetime is None"),
-                                    hash: txid.to_vec(),
-                                    confirmation_bound: self.confirmation_bound,
-                                });
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Syncer,
-                                    Request::SyncerTask(task),
-                                )?;
+                                let id = task_id(txid);
+                                if self
+                                    .final_txs
+                                    .insert(id, (tx_label.clone(), TxStatus::Notfinal))
+                                    .is_none()
+                                {
+                                    let task = Task::WatchTransaction(WatchTransaction {
+                                        id,
+                                        lifetime: self
+                                            .task_lifetime
+                                            .expect("task_lifetime is None"),
+                                        hash: txid.to_vec(),
+                                        confirmation_bound: self.confirmation_bound,
+                                    });
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        ServiceId::Syncer,
+                                        Request::SyncerTask(task),
+                                    )?;
+                                }
                             }
                             self.send_wallet(msg_bus, senders, request.clone())?
                         } else {
@@ -420,10 +439,11 @@ impl Runtime {
                         if let State::Bob(BobState::CorearbB(lock)) = self.state.clone() {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
+                            let lock_tx = lock.extract_tx();
                             let mut tx = Vec::new();
                             let mut writer = Cursor::new(&mut tx);
-                            lock.consensus_encode(&mut writer)?;
-                            let id = task_id(lock.extract_tx().txid());
+                            lock_tx.consensus_encode(&mut writer)?;
+                            let id = task_id(lock_tx.txid());
                             let broadcast_arb_lock =
                                 Task::BroadcastTransaction(BroadcastTransaction { id, tx });
                             info!("Broadcasting arbitrating lock");
@@ -446,19 +466,26 @@ impl Runtime {
                     Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. }) => {
                         if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
                             let txid = buy.clone().extract_tx().txid();
-                            let task = Task::WatchTransaction(WatchTransaction {
-                                id: task_id(txid),
-                                lifetime: self.task_lifetime.expect("task_lifetime is None"),
-                                hash: txid.to_vec(),
-                                confirmation_bound: self.confirmation_bound,
-                            });
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                ServiceId::Syncer,
-                                Request::SyncerTask(task),
-                            )?;
-                            self.send_wallet(msg_bus, senders, request.clone())?
+                            let id = task_id(txid);
+                            if self
+                                .final_txs
+                                .insert(id, (TxId::Buy, TxStatus::Notfinal))
+                                .is_none()
+                            {
+                                let task = Task::WatchTransaction(WatchTransaction {
+                                    id,
+                                    lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                                    hash: txid.to_vec(),
+                                    confirmation_bound: self.confirmation_bound,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Syncer,
+                                    Request::SyncerTask(task),
+                                )?;
+                                self.send_wallet(msg_bus, senders, request.clone())?
+                            }
                         } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: must be RefundProcedureSignatures"
@@ -666,13 +693,28 @@ impl Runtime {
                 self.state = next_state;
             }
             Request::SyncerEvent(event) => match event {
-                Event::HeightChanged(_) => {}
+                Event::HeightChanged(h) => {
+                    info!("height changed {}", h)
+                }
                 Event::AddressTransaction(_) => {}
                 Event::TransactionConfirmations(TransactionConfirmations {
                     id,
                     block,
                     confirmations,
                 }) if confirmations >= self.tx_finality_thr => {
+                    if let Some((txlabel, status)) = self.final_txs.get_mut(&id) {
+                        *status = TxStatus::Final;
+                        info!("Transaction {} is now final", txlabel);
+                        // FIXME: fill match arms
+                        match txlabel {
+                            TxId::Funding => {}
+                            TxId::Lock => {}
+                            TxId::Buy => {}
+                            TxId::Cancel => {}
+                            TxId::Refund => {}
+                            TxId::Punish => {}
+                        }
+                    }
                     info!(
                         "tx {} is now final after {} confirmations",
                         id, confirmations
@@ -704,20 +746,31 @@ impl Runtime {
                     refund,
                     cancel_sig,
                 } = core_arb_setup.clone();
-                for tx in [lock, cancel, refund] {
+                for (tx, tx_label) in
+                    [lock, cancel, refund]
+                        .iter()
+                        .zip([TxId::Lock, TxId::Cancel, TxId::Refund])
+                {
                     let txid = tx.clone().extract_tx().txid();
-                    let task = Task::WatchTransaction(WatchTransaction {
-                        id: task_id(txid),
-                        lifetime: self.task_lifetime.expect("task_lifetime is None"),
-                        hash: txid.to_vec(),
-                        confirmation_bound: self.confirmation_bound,
-                    });
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        ServiceId::Syncer,
-                        Request::SyncerTask(task),
-                    )?;
+                    let id = task_id(txid);
+                    if self
+                        .final_txs
+                        .insert(id, (tx_label, TxStatus::Notfinal))
+                        .is_none()
+                    {
+                        let task = Task::WatchTransaction(WatchTransaction {
+                            id: task_id(txid),
+                            lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                            hash: txid.to_vec(),
+                            confirmation_bound: self.confirmation_bound,
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Syncer,
+                            Request::SyncerTask(task),
+                        )?;
+                    }
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
@@ -1040,4 +1093,9 @@ pub fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
 pub fn task_id(txid: Txid) -> i32 {
     let buf: [u8; 4] = txid.to_vec()[0..4].try_into().expect("task_id");
     i32::from_le_bytes(buf)
+}
+
+enum TxStatus {
+    Final,
+    Notfinal,
 }
