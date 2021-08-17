@@ -166,7 +166,7 @@ impl peer::Handler<Msg> for ListenerRuntime {
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
                 //
-                // self.send_over_bridge(Arc::new(Msg::Ping)) // FIXME: uncomment
+                self.send_over_bridge(Arc::new(Msg::PingPeer))?;
                 Ok(())
             }
             // for all other error types, indicating internal errors, we
@@ -333,9 +333,6 @@ impl Runtime {
                 self.send_ctl(senders, source, Request::PeerInfo(info))?;
             }
 
-            Request::PingPeer => {
-                self.ping()?;
-            }
             _ => {
                 error!("Request is not supported by the CTL interface");
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
@@ -357,6 +354,12 @@ impl Runtime {
         }
 
         match &request {
+            Request::Protocol(Msg::PingPeer) => self.ping()?,
+
+            Request::Protocol(Msg::Ping(message::Ping { pong_size, .. })) => {
+                self.pong(*pong_size)?
+            }
+
             Request::Protocol(Msg::Pong(noise)) => {
                 match self.awaited_pong {
                     None => error!("Unexpected pong from the remote peer"),
@@ -366,10 +369,6 @@ impl Runtime {
                     _ => trace!("Got pong reply, exiting pong await mode"),
                 }
                 self.awaited_pong = None;
-            }
-
-            Request::Protocol(Msg::Ping(message::Ping { pong_size, .. })) => {
-                self.pong(*pong_size)?
             }
 
             // swap initiation message
@@ -476,7 +475,7 @@ impl Runtime {
         }
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.sender.send_message(Messages::Ping(message::Ping {
+        self.sender.send_message(Msg::Ping(message::Ping {
             ignored: noise,
             pong_size,
         }))?;
@@ -492,7 +491,7 @@ impl Runtime {
             noise[i] = rng.gen();
         }
         self.messages_sent += 1;
-        self.sender.send_message(Messages::Pong(noise))?;
+        self.sender.send_message(Msg::Pong(noise))?;
         Ok(())
     }
 }

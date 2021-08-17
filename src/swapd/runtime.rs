@@ -506,7 +506,7 @@ impl Runtime {
 
                     // bob and alice
                     Msg::Abort(_) => Err(Error::Farcaster("Abort not yet supported".to_string()))?,
-                    Msg::Ping(_) | Msg::Pong(_) => {
+                    Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
                         unreachable!("ping/pong must remain in peerd, and unreachable in swapd")
                     }
                 }
