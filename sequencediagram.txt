@@ -1,5 +1,5 @@
 title Farcaster node
-
+// to display the diagram, go to sequencediagram.org
 participant t_syncer
 participant t_wallet
 participant t_swap
@@ -46,53 +46,52 @@ m_farcasterd -> m_swap : Ctl MakeSwap
 
 m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
-t_wallet<-t_swap:Msg MakerCommit
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg Reveal (taker is sender)
 
 peerd <- m_swap : Msg Reveal (maker is sender)
-m_swap -> m_wallet : Msg Reveal (taker params)
+m_swap -> m_wallet : Msg Params (taker params)
 peerd -> t_swap : Msg Reveal (maker is sender)
-t_swap -> t_wallet : Msg Reveal (maker params)
+t_swap -> t_wallet : Msg Params (maker params)
 ==Commit-Reveal Complete==
 
 ==Bob is Maker (right side)==
 m_wallet -> m_swap : Ctl CoreArbitratingSetup
+m_swap -> m_syncer : Watch Arbitrating Lock
+m_swap -> m_syncer : Watch Cancel
+m_swap -> m_syncer : Watch Refund
 peerd <- m_swap : Msg CoreArbitratingSetup
 t_swap <- peerd : Msg CoreArbitratingSetup
-t_swap -> t_syncer : Watch Accordant Lock
 t_swap -> t_syncer : Watch Arbitrating Lock
-t_swap -> t_syncer : Watch Buy
 t_swap -> t_syncer : Watch Cancel
+t_swap -> t_syncer : Watch Refund
 t_wallet <- t_swap : Msg CoreArbitratingSetup
 t_wallet -> t_swap : Ctl RefundProcedureSignatures
 t_swap -> peerd : Msg RefundProcedureSignatures
 peerd -> m_swap : Msg RefundProcedureSignatures
-m_swap -> m_syncer : Watch Accordant Lock
-m_swap -> m_syncer : Watch Arbitrating Lock
-m_swap -> m_syncer : Watch Buy
-m_swap -> m_syncer : Watch Cancel
-m_swap -> m_swap : Checkpoint Bob_0
-m_syncer <- m_swap : Broadcast Arbitrating Lock
+m_swap --> m_syncer : Watch Accordant Lock
 
-m_wallet <- m_swap : Msg RefundProcedureSignatures
+m_swap --> m_swap : Checkpoint Bob_0
+m_syncer <- m_swap : Broadcast Arbitrating Lock
 m_wallet -> m_swap : Ctl BuyProcedureSignature
 
 parallel
-m_syncer ->  m_swap : Arbitrating Lock final
-t_swap <- t_syncer : Arbitrating Lock final
+m_syncer -->  m_swap : Arbitrating Lock final
+t_swap <-- t_syncer : Arbitrating Lock final
 parallel off
 
-t_swap -> t_swap : Checkpoint Alice 0
-t_swap -> t_syncer : Broadcast Accordant Lock
+t_swap --> t_swap : Checkpoint Alice 0
+t_swap --> t_syncer : Broadcast Accordant Lock
 
 parallel
-t_swap <- t_syncer : Accordant Lock final
-m_swap <- m_syncer : Accordant Lock final
+t_swap <-- t_syncer : Accordant Lock final
+m_swap <-- m_syncer : Accordant Lock final
 parallel off
 
+m_swap->m_syncer:Watch Buy
 peerd <- m_swap : Msg BuyProcedureSignature
 t_swap <- peerd : Msg BuyProcedureSignature
+t_syncer<-t_swap:Watch Buy
 t_swap -> t_wallet : Msg BuyProcedureSignature
 
 ==Alice is Maker (right side)==
