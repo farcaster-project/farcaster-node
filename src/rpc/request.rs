@@ -63,7 +63,6 @@ use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
 use lnp::{message, Messages, TempChannelId as TempSwapId};
-use lnpbp::chain::AssetId;
 use lnpbp::strict_encoding::{
     strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
 };
@@ -579,16 +578,13 @@ pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub swap_id: Option<SwapId>,
     // pub state: crate::swapd::State,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub assets: Vec<AssetId>,
     // #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
     // pub funding_outpoint: OutPoint,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub remote_peers: Vec<NodeAddr>,
+    pub maker_peer: Vec<NodeAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    pub is_maker: bool,
     //// FIXME serde::Serialize/Deserialize missing
     // #[serde_as(as = "Option<DisplayFromStr)>")]
     // pub params: Option<Params>,

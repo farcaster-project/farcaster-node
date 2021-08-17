@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::rpc::{
-    request::{self, Keys, Msg, Params, Reveal, Token},
+    request::{self, Commit, Keys, Msg, Params, Reveal, Token},
     Request, ServiceBus,
 };
 use crate::swapd::swap_id;
@@ -23,7 +23,7 @@ use farcaster_core::{
     swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     negotiation::PublicOffer,
     protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CoreArbitratingSetup,
+        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
     },
     role::{Alice, Bob, SwapRole, TradeRole},
@@ -68,6 +68,7 @@ pub enum Wallet {
         AliceParameters<BtcXmr>,
         CoreWallet,
         PublicOffer<BtcXmr>,
+        Option<CommitBobParameters<BtcXmr>>,
         Option<BobParameters<BtcXmr>>,
     ),
     Bob(
@@ -226,34 +227,37 @@ impl Runtime {
                         let params = alice.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             info!("Creating {}", "Wallet::Alice".bright_yellow());
-                            if self.wallets.get(&swap_id).is_none() {
-                                self.wallets.insert(
+                            if let request::Commit::Bob(bob_commit) = remote_commit.clone() {
+                                if self.wallets.get(&swap_id).is_none() {
+                                    self.wallets.insert(
+                                        swap_id,
+                                        Wallet::Alice(
+                                            alice,
+                                            params.clone(),
+                                            core_wallet,
+                                            public_offer.clone(),
+                                            Some(bob_commit),
+                                            None,
+                                        ),
+                                    );
+                                }
+                                let launch_swap = LaunchSwap {
+                                    peer: peer.into(),
+                                    local_trade_role: TradeRole::Maker,
+                                    public_offer,
+                                    local_params: Params::Alice(params),
                                     swap_id,
-                                    Wallet::Alice(
-                                        alice,
-                                        params.clone(),
-                                        core_wallet,
-                                        public_offer.clone(),
-                                        None,
-                                    ),
+                                    remote_commit: Some(remote_commit),
+                                };
+                                self.send_ctl(
+                                    senders,
+                                    ServiceId::Farcasterd,
+                                    Request::LaunchSwap(launch_swap),
                                 )
                             } else {
-                                error!("Wallet already exists");
+                                error!("Not Commit::Bob");
                                 return Ok(());
-                            };
-                            let launch_swap = LaunchSwap {
-                                peer: peer.into(),
-                                local_trade_role: TradeRole::Maker,
-                                public_offer,
-                                local_params: Params::Alice(params),
-                                swap_id,
-                                remote_commit: Some(remote_commit),
-                            };
-                            self.send_ctl(
-                                senders,
-                                ServiceId::Farcasterd,
-                                Request::LaunchSwap(launch_swap),
-                            )
+                            }
                         } else {
                             error!("Wallet already existed");
                             return Ok(());
@@ -261,37 +265,102 @@ impl Runtime {
                     }
                 }?
             }
-            Request::Params(role) => {
+            Request::Protocol(Msg::MakerCommit(commit)) => {
+                if swap_id(source)? == Msg::MakerCommit(commit.clone()).swap_id() {
+                    match commit {
+                        Commit::Bob(CommitBobParameters { swap_id, .. }) => {
+                            match self.wallets.get_mut(&swap_id) {
+                                Some(Wallet::Alice(
+                                    _alice,
+                                    _alice_params,
+                                    core_wallet,
+                                    _public_offer,
+                                    bob_commit,
+                                    bob_params, // None
+                                )) => {
+                                    if let Some(_) = bob_commit {
+                                        error!("Bob commit (remote) already set");
+                                    } else if let Commit::Bob(commit) = commit {
+                                        trace!("Setting bob commit");
+                                        *bob_commit = Some(commit);
+                                    }
+                                }
+                                _ => {
+                                    error!("Wallet not found or not on correct state");
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        Commit::Alice(CommitAliceParameters { swap_id, .. }) => {
+                            match self.wallets.get_mut(&swap_id) {
+                                Some(Wallet::Bob(
+                                    bob,
+                                    bob_params,
+                                    core_wallet,
+                                    public_offer,
+                                    funding,
+                                    alice_commit, // None
+                                    alice_params, // None
+                                    core_arb_txs, // None
+                                )) => {
+                                    if let Some(_) = alice_commit {
+                                        error!("Alice commit (remote) already set");
+                                    } else if let Commit::Alice(commit) = commit {
+                                        trace!("Setting alice commit");
+                                        *alice_commit = Some(commit);
+                                    }
+                                }
+                                _ => {
+                                    error!("Wallet not found or not on correct state");
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Request::Protocol(Msg::Reveal(reveal)) => {
                 let swap_id = swap_id(source.clone())?;
-                match role {
+                match reveal {
                     // receiving from counterparty Bob, thus im Alice Maker or Taker
-                    Params::Bob(params) => match self.wallets.get_mut(&swap_id) {
+                    Reveal::Bob(reveal) => match self.wallets.get_mut(&swap_id) {
                         Some(Wallet::Alice(
                             _alice,
                             _alice_params,
-                            _,
+                            core_wallet,
                             _public_offer,
-                            bob_params,
+                            Some(bob_commit),
+                            bob_params, // None
                         )) => {
-                            *bob_params = Some(params);
-                            // nothing to do yet, waiting for Msg
-                            // CoreArbitratingSetup to proceed
+                            if let Some(remote_params) = bob_params {
+                                error!("bob_params were previously set to: {}", remote_params);
+                                return Ok(());
+                            } else {
+                                trace!("Setting bob params: {}", reveal);
+                                bob_commit.verify_with_reveal(&*core_wallet, reveal.clone())?;
+                                *bob_params = Some(reveal.into());
+                                // nothing to do yet, waiting for Msg
+                                // CoreArbitratingSetup to proceed
+                                return Ok(());
+                            }
                         }
-                        _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
+
+                        _ => {
+                            error!("only Some(Wallet::Alice)");
+                            return Ok(());
+                        }
                     },
                     // getting paramaters from counterparty alice routed through
                     // swapd, thus im bob on this swap, Bob can proceed
-                    Params::Alice(params) => {
+                    Reveal::Alice(reveal) => {
                         match self.wallets.get_mut(&swap_id) {
                             Some(Wallet::Bob(
                                 bob,
                                 bob_params,
                                 core_wallet,
                                 public_offer,
-                                // TODO: set funding_bundle somewhere, its now
                                 Some(funding),
-                                _commit, /* None reveal does not reach here, stops in swapd,
-                                               * cant verify commit */
+                                Some(commit),
                                 alice_params, // None
                                 core_arb_txs, // None
                             )) => {
@@ -299,7 +368,7 @@ impl Runtime {
                                 if alice_params.is_some() {
                                     Err(Error::Farcaster("Alice params already set".to_string()))?
                                 }
-                                *alice_params = Some(params.clone());
+                                *alice_params = Some(reveal.into());
 
                                 // set wallet core_arb_txs
                                 if core_arb_txs.is_some() {
@@ -307,7 +376,7 @@ impl Runtime {
                                 }
                                 // FIXME should be set before
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
-                                    &params,
+                                    &alice_params.clone().expect("alice_params set above"),
                                     bob_params,
                                     funding.clone(),
                                     public_offer,
@@ -382,6 +451,7 @@ impl Runtime {
                         alice_params,
                         core_wallet,
                         public_offer,
+                        _bob_commit,
                         Some(bob_parameters),
                     )) => {
                         let signed_adaptor_refund = alice.sign_adaptor_refund(
@@ -413,7 +483,7 @@ impl Runtime {
                             Request::Protocol(refund_proc_signatures),
                         )?
                     }
-                    _ => Err(Error::Farcaster("only Wallet::Alice".to_string()))?,
+                    _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
                 }
             }
             Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
@@ -530,6 +600,7 @@ impl Runtime {
                                     local_params.clone(),
                                     core_wallet,
                                     public_offer.clone(),
+                                    None,
                                     None,
                                 ),
                             );

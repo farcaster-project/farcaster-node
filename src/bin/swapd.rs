@@ -62,7 +62,7 @@ fn main() {
         opts.swap_id,
         opts.shared.chain,
         opts.public_offer,
-        opts.negotiation_role,
+        opts.trade_role,
     )
     .expect("Error running swapd runtime");
 

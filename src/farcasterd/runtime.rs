@@ -286,6 +286,8 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
 
+                    launch("syncerd", &Vec::<String>::new())?;
+
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -307,6 +309,8 @@ impl Runtime {
                         swap_params.report_to.clone(), // walletd
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
+
+                    launch("syncerd", &Vec::<String>::new())?;
 
                     // FIXME msgs should go to walletd?
                     senders.send_to(

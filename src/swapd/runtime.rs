@@ -13,9 +13,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::convert::TryFrom;
 use std::time::{Duration, SystemTime};
 use std::{collections::BTreeMap, convert::TryInto};
+use std::{convert::TryFrom, str::FromStr};
 
 use super::storage::{self, Driver};
 use crate::rpc::{
@@ -23,20 +23,24 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
-use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1;
 use bitcoin::util::bip143::SigHashCache;
+use bitcoin::{
+    hashes::{hex::FromHex, sha256, Hash, HashEngine},
+    Txid,
+};
 use bitcoin::{OutPoint, SigHashType, Transaction};
 
 use farcaster_core::{
+    bitcoin::{fee::SatPerVByte, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin},
     blockchain::{self, FeeStrategy},
-    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock, Bitcoin, segwitv0::SegwitV0},
     monero::Monero,
-    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     negotiation::{Offer, PublicOffer},
     protocol_message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
     role::{Arbitrating, SwapRole, TradeRole},
+    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
+    syncer::{Event, Task, TransactionConfirmations, WatchTransaction},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -92,10 +96,7 @@ pub fn run(
         local_commit: None,
         local_swap_role,
         started: SystemTime::now(),
-        local_params: none!(),
         remote_params: none!(),
-        is_maker: false,
-        obscuring_factor: 0,
         accordant_amount,
         arbitrating_amount,
         cancel_timelock,
@@ -106,19 +107,23 @@ pub fn run(
         network,
         public_offer,
         enquirer: None,
+        tx_finality_thr: 1,
         storage: Box::new(storage::DiskDriver::init(
             swap_id,
             Box::new(storage::DiskConfig {
                 path: Default::default(),
             }),
         )?),
+        confirmation_bound: 10000,
+        // TODO: query syncer to set this value (start with None)
+        task_lifetime: Some(795458),
     };
     let broker = false;
     Service::run(config, runtime, broker)
 }
 
 // FIXME: State enum should carry over the data that is accumulated over time,
-// and corresponding files should be removed from Runtime
+// and corresponding lines should be removed from Runtime
 pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
@@ -128,10 +133,7 @@ pub struct Runtime {
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    local_params: Option<Params>,
     remote_params: Option<Params>,
-    is_maker: bool,
-    obscuring_factor: u64,
     remote_commit: Option<Commit>,
     local_commit: Option<Commit>,
     local_swap_role: SwapRole,
@@ -145,16 +147,19 @@ pub struct Runtime {
     accordant_blockchain: Monero,
     public_offer: PublicOffer<BtcXmr>, // TODO: replace by pub offer id
     enquirer: Option<ServiceId>,
+    tx_finality_thr: i32,
+    confirmation_bound: u16,
+    task_lifetime: Option<u64>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
 
-#[derive(Eq, PartialEq, Display)]
+#[derive(Display)]
 pub enum AliceState {
     #[display("Start")]
     StartA(TradeRole),
     #[display("Commit")]
-    CommitA(TradeRole),
+    CommitA(TradeRole, Params), // local, local
     #[display("Reveal")]
     RevealA,
     #[display("RefundProcSigs")]
@@ -163,12 +168,12 @@ pub enum AliceState {
     FinishA,
 }
 
-#[derive(Eq, PartialEq, Display)]
+#[derive(Display)]
 pub enum BobState {
     #[display("Start")]
     StartB(TradeRole),
     #[display("Commit")]
-    CommitB(TradeRole),
+    CommitB(TradeRole, Params), // local, local
     #[display("Reveal")]
     RevealB,
     #[display("CoreArb")]
@@ -179,7 +184,7 @@ pub enum BobState {
     FinishB,
 }
 
-#[derive(Eq, PartialEq, Display)]
+#[derive(Display)]
 #[display(inner)]
 pub enum State {
     #[display("AliceState({0})")]
@@ -272,31 +277,28 @@ impl Runtime {
                         // bob and alice, we are taker, maker commited, now we reveal
                         trace!("received commitment from counterparty, can now reveal");
                         self.remote_commit = Some(commit.clone());
-                        if let Some(local_params) = &self.local_params {
-                            let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
-                            let next_state = match self.state {
-                                State::Alice(AliceState::CommitA(_)) => {
-                                    Ok(State::Alice(AliceState::RevealA))
-                                }
-                                State::Bob(BobState::CommitB(_)) => {
-                                    Ok(State::Bob(BobState::RevealB))
-                                }
-                                _ => Err(Error::Farcaster("Must be on Commit state".to_string())),
-                            }?;
-                            self.send_peer(senders, Msg::Reveal(reveal))?;
-                            self.state = next_state;
-                        } else {
-                            Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
-                        };
+                        let (next_state, local_params) = match &self.state {
+                            State::Alice(AliceState::CommitA(_, local_params)) => {
+                                Ok((State::Alice(AliceState::RevealA), local_params))
+                            }
+                            State::Bob(BobState::CommitB(_, local_params)) => {
+                                Ok((State::Bob(BobState::RevealB), local_params))
+                            }
+                            _ => Err(Error::Farcaster("Must be on Commit state".to_string())),
+                        }?;
+                        let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
+                        self.send_wallet(msg_bus, senders, request)?;
+                        self.send_peer(senders, Msg::Reveal(reveal))?;
+                        self.state = next_state;
                     }
-                    Msg::TakerCommit(TakeCommit { commit, .. }) => {
+                    Msg::TakerCommit(_) => {
                         unreachable!(
                             "msg handled by farcasterd/walletd, and indirectly here by \
                              Ctl Request::MakeSwap"
                         )
                     }
                     // bob and alice
-                    Msg::Reveal(role) => {
+                    Msg::Reveal(reveal) => {
                         if self.remote_params.is_some() {
                             error!(
                                 "{}: {}",
@@ -309,12 +311,10 @@ impl Runtime {
                         }
 
                         let next_state = match self.state {
-                            State::Alice(AliceState::CommitA(_)) => {
+                            State::Alice(AliceState::CommitA(..)) => {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
-                            State::Bob(BobState::CommitB(_)) => {
-                                Ok(State::Bob(BobState::RevealB))
-                            }
+                            State::Bob(BobState::CommitB(..)) => Ok(State::Bob(BobState::RevealB)),
                             State::Alice(AliceState::RevealA) => {
                                 Ok(State::Alice(AliceState::RevealA))
                             }
@@ -325,7 +325,7 @@ impl Runtime {
                         }?;
 
                         let core_wallet = CoreWallet::new_keyless();
-                        let remote_params = match role {
+                        let remote_params = match reveal {
                             Reveal::Alice(reveal) => match &self.remote_commit {
                                 Some(Commit::Alice(commit)) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
@@ -351,56 +351,83 @@ impl Runtime {
                         };
                         self.remote_params = Some(remote_params.clone());
                         // self.send_peer(senders, msg)?;
-                        self.send_wallet(msg_bus, senders, Request::Params(remote_params))?;
+                        self.send_wallet(msg_bus, senders, request)?;
                         // up to here for both maker and taker, following only Maker
 
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
-                        if self.state == State::Alice(AliceState::CommitA(TradeRole::Maker))
-                            || self.state == State::Bob(BobState::CommitB(TradeRole::Maker))
-                        {
-                            if let Some(local_params) = self.local_params.clone() {
-                                let reveal: Reveal = (self.swap_id(), local_params).into();
+                        match &self.state {
+                            State::Alice(AliceState::CommitA(TradeRole::Maker, local_params))
+                            | State::Bob(BobState::CommitB(TradeRole::Maker, local_params)) => {
+                                let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
-                                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                                info!("State transition: {}", next_state.bright_blue_bold());
                                 self.state = next_state;
-                            } else {
-                                Err(Error::Farcaster(s!("local_params is None, did not reveal")))?
-                            };
-                        } else {
-                            debug!("You are the Taker, which revealed already, nothing to reveal.")
+                            }
+                            _ => debug!(
+                                "You are the Taker, which revealed already, nothing to reveal."
+                            ),
                         }
                     }
                     // alice receives, bob sends
-                    Msg::CoreArbitratingSetup(_) => {
-                        if self.state != State::Alice(AliceState::RevealA) {
+                    Msg::CoreArbitratingSetup(CoreArbitratingSetup {
+                        swap_id,
+                        lock,
+                        cancel,
+                        refund,
+                        cancel_sig,
+                    }) => {
+                        if let State::Alice(AliceState::RevealA) = self.state {
+                            // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
+                            for tx in [lock, cancel, refund] {
+                                let txid = tx.clone().extract_tx().txid();
+                                let task = Task::WatchTransaction(WatchTransaction {
+                                    id: task_id(txid),
+                                    lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                                    hash: txid.to_vec(),
+                                    confirmation_bound: self.confirmation_bound,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Syncer,
+                                    Request::SyncerTask(task),
+                                )?;
+                            }
+                            error!("FIXME comment out");
+                            // self.send_wallet(msg_bus, senders,
+                            // request.clone())?
+                        } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
                                  through peer connection at state RevealA"
                             )))?
                         }
-                        self.send_wallet(msg_bus, senders, request.clone())?
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) => {
-                        if self.state != State::Bob(BobState::CorearbB) {
+                        if let State::Bob(BobState::CorearbB) = self.state {
+                            // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
+                            // cancel txs
+                            self.send_wallet(msg_bus, senders, request.clone())?
+                        } else {
                             Err(Error::Farcaster(
                                 "Wrong state: Bob receives RefundProcedureSignatures msg \\
                                  through peer connection in state CorearbB"
                                     .to_string(),
                             ))?
                         }
-                        self.send_wallet(msg_bus, senders, request.clone())?
                     }
                     // alice receives, bob sends
                     // ProtocolMessages::BuyProcedureSignature(_) => {}
                     Msg::BuyProcedureSignature(_) => {
-                        if self.state != State::Alice(AliceState::RefundProcedureSignatures) {
+                        if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
+                            self.send_wallet(msg_bus, senders, request.clone())?
+                        } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: must be RefundProcedureSignatures"
                             )))?
                         }
-                        self.send_wallet(msg_bus, senders, request.clone())?
                     }
 
                     // bob and alice
@@ -477,9 +504,9 @@ impl Runtime {
             (Request::Hello, _) => {
                 info!("Source: {} is connected", source)
             }
-            (_, ServiceId::Farcasterd | ServiceId::Wallet) => {}
+            (_, ServiceId::Farcasterd | ServiceId::Wallet | ServiceId::Syncer) => {}
             _ => Err(Error::Farcaster(
-                "Permission Error: only Farcasterd and Wallet can can control swapd".to_string(),
+                "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd".to_string(),
             ))?,
         };
 
@@ -496,20 +523,20 @@ impl Runtime {
                     error!(
                         "{}: {}",
                         "This swapd instance is not reponsible for swap_id", swap_id
-                    )
+                    );
+                    return Ok(());
                 };
                 let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role)) => {
-                        Ok(State::Bob(BobState::CommitB(trade_role)))
-                    }
-                    State::Alice(AliceState::StartA(trade_role)) => {
-                        Ok(State::Alice(AliceState::CommitA(trade_role)))
-                    }
+                    State::Bob(BobState::StartB(local_trade_role)) => Ok(State::Bob(
+                        BobState::CommitB(local_trade_role, local_params.clone()),
+                    )),
+                    State::Alice(AliceState::StartA(local_trade_role)) => Ok(State::Alice(
+                        AliceState::CommitA(local_trade_role, local_params.clone()),
+                    )),
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
                 }?;
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
-                self.local_params = Some(local_params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
@@ -532,7 +559,7 @@ impl Runtime {
                     swap_id,
                 };
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -543,20 +570,17 @@ impl Runtime {
                 swap_id,
                 remote_commit: Some(remote_commit),
             }) => {
-                if self.local_params.is_some() {
-                    Err(Error::Farcaster("local_params already set".to_string()))?
-                }
-                self.local_params = Some(local_params.clone());
                 if self.remote_commit.is_some() {
                     Err(Error::Farcaster("remote commit already set".to_string()))?
                 }
                 let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role)) => {
-                        Ok(State::Bob(BobState::CommitB(trade_role)))
-                    }
-                    State::Alice(AliceState::StartA(trade_role)) => {
-                        Ok(State::Alice(AliceState::CommitA(trade_role)))
-                    }
+                    State::Bob(BobState::StartB(trade_role)) => Ok(State::Bob(BobState::CommitB(
+                        trade_role,
+                        local_params.clone(),
+                    ))),
+                    State::Alice(AliceState::StartA(trade_role)) => Ok(State::Alice(
+                        AliceState::CommitA(trade_role, local_params.clone()),
+                    )),
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
                 }?;
                 self.peer_service = peerd.clone();
@@ -580,20 +604,66 @@ impl Runtime {
                 trace!("setting commit_remote and commit_local msg");
                 self.remote_commit = Some(remote_commit);
                 self.local_commit = Some(local_commit.clone());
-                trace!("sending peer MakerCommit msg");
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                trace!("sending peer MakerCommit msg {}", &local_commit);
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
                 self.state = next_state;
             }
-
+            Request::SyncerEvent(event) => match event {
+                Event::HeightChanged(_) => {}
+                Event::AddressTransaction(_) => {}
+                Event::TransactionConfirmations(TransactionConfirmations {
+                    id,
+                    block,
+                    confirmations,
+                }) if confirmations >= self.tx_finality_thr => {
+                    info!(
+                        "tx {} is now final after {} confirmations",
+                        id, confirmations
+                    );
+                    // TODO abort task, inject into final_txs state
+                }
+                Event::TransactionConfirmations(TransactionConfirmations {
+                    id,
+                    block,
+                    confirmations,
+                }) => {
+                    info!("tx {} now has {} confirmations", id, confirmations);
+                }
+                Event::TransactionBroadcasted(_) => {}
+                Event::TaskAborted(_) => {}
+                _ => {}
+            },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
                     State::Bob(BobState::RevealB) => Ok(State::Bob(BobState::CorearbB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
-                trace!("sending peer CoreArbitratingSetup msg");
+                let CoreArbitratingSetup {
+                    swap_id,
+                    lock,
+                    cancel,
+                    refund,
+                    cancel_sig,
+                } = core_arb_setup.clone();
+                for tx in [lock, cancel, refund] {
+                    let txid = tx.clone().extract_tx().txid();
+                    let task = Task::WatchTransaction(WatchTransaction {
+                        id: task_id(txid),
+                        lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                        hash: txid.to_vec(),
+                        confirmation_bound: self.confirmation_bound,
+                    });
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer,
+                        Request::SyncerTask(task),
+                    )?;
+                }
+                trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -610,7 +680,7 @@ impl Runtime {
                 }
                 trace!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
 
@@ -622,7 +692,7 @@ impl Runtime {
 
                 trace!("sending peer BuyProcedureSignature msg");
                 self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
-                info!("!!!!!!!! {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
             // Request::FundSwap(funding_outpoint) => {
@@ -656,8 +726,7 @@ impl Runtime {
                 let info = request::SwapInfo {
                     swap_id,
                     // state: self.state, // FIXME serde missing
-                    assets: none!(),
-                    remote_peers: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
+                    maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or(Duration::from_secs(0)),
@@ -666,7 +735,6 @@ impl Runtime {
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap_or(Duration::from_secs(0))
                         .as_secs(),
-                    is_maker: self.is_maker,
                     // params: self.params, // FIXME
                     // serde::Serialize/Deserialize missing
                     local_keys: dumb!(),
@@ -713,8 +781,6 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg)?;
 
-        self.is_maker = false;
-        self.local_params = Some(params);
         // self.params = payment::channel::Params::with(&swap_req)?;
         // self.local_keys = payment::channel::Keyset::from(swap_req);
 
@@ -741,10 +807,6 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
-        self.is_maker = true;
-        // self.params = payment::channel::Params::with(channel_req)?;
-        // self.remote_keys = payment::channel::Keyset::from(channel_req);
-
         let core_wallet = CoreWallet::new_keyless();
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
@@ -756,28 +818,6 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params),
             ),
         };
-        // let accept_channel = message::AcceptChannel {
-        //     temporary_channel_id: channel_req.temporary_channel_id,
-        //     dust_limit_satoshis: channel_req.dust_limit_satoshis,
-        //     max_htlc_value_in_flight_msat: channel_req
-        //         .max_htlc_value_in_flight_msat,
-        //     channel_reserve_satoshis: channel_req.channel_reserve_satoshis,
-        //     htlc_minimum_msat: channel_req.htlc_minimum_msat,
-        //     minimum_depth: 3, // TODO: take from config options
-        //     to_self_delay: channel_req.to_self_delay,
-        //     max_accepted_htlcs: channel_req.max_accepted_htlcs,
-        //     funding_pubkey: dumb_key,
-        //     revocation_basepoint: dumb_key,
-        //     payment_point: dumb_key,
-        //     delayed_payment_basepoint: dumb_key,
-        //     htlc_basepoint: dumb_key,
-        //     first_per_commitment_point: dumb_key,
-        //     /* shutdown_scriptpubkey: None,
-        //      * unknown_tlvs: none!(), */
-        // };
-
-        // self.params.updated(&accept_channel, None)?;
-        // self.local_keys = payment::channel::Keyset::from(&accept_channel);
 
         let msg = format!(
             "{} swap {:#} from remote peer Taker {}",
@@ -789,49 +829,6 @@ impl Runtime {
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
         // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
         Ok(commitment.clone())
-    }
-
-    pub fn channel_accepted(
-        &mut self,
-        senders: &mut Senders,
-        accept_channel: &message::AcceptChannel,
-        peerd: &ServiceId,
-    ) -> Result<(), payment::channel::NegotiationError> {
-        info!(
-            "Channel {:#} {} by the remote peer {}",
-            accept_channel.temporary_channel_id.bright_green_italic(),
-            "was accepted".bright_green_bold(),
-            peerd.bright_green_italic()
-        );
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the channel just because the client disconnected
-        let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(
-            senders,
-            &enquirer,
-            "Channel was accepted by the remote peer",
-        );
-
-        let msg = format!(
-            "{} returned parameters for the channel {:#}",
-            "Verifying".bright_blue_bold(),
-            accept_channel.temporary_channel_id.bright_blue_italic()
-        );
-        info!("{}", msg);
-
-        // TODO: Add a reasonable min depth bound
-        // self.params.updated(accept_channel, None)?;
-        // self.remote_keys = payment::channel::Keyset::from(accept_channel);
-
-        let msg = format!(
-            "Channel {:#} is {}",
-            accept_channel.temporary_channel_id.bright_green_italic(),
-            "ready for funding".bright_green_bold()
-        );
-        info!("{}", msg);
-        let _ = self.report_success_to(senders, &enquirer, Some(msg));
-
-        Ok(())
     }
 
     // pub fn fund_swap(
@@ -966,4 +963,9 @@ pub fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
     } else {
         Err(Error::Farcaster("Not swapd".to_string()))
     }
+}
+
+pub fn task_id(txid: Txid) -> i32 {
+    let buf: [u8; 4] = txid.to_vec()[0..4].try_into().expect("task_id");
+    i32::from_le_bytes(buf)
 }
