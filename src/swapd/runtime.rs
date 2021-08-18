@@ -496,11 +496,13 @@ impl Runtime {
                                     Request::SyncerTask(task),
                                 )?;
                                 self.send_wallet(msg_bus, senders, request.clone())?
+                            } else {
+                                error!("Task already registered for this swapd");
+                                return Ok(());
                             }
                         } else {
-                            Err(Error::Farcaster(s!(
-                                "Wrong state: must be RefundProcedureSignatures"
-                            )))?
+                            error!("Wrong state: must be RefundProcedureSignatures");
+                            return Ok(());
                         }
                     }
 
