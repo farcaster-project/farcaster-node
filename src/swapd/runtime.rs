@@ -441,7 +441,7 @@ impl Runtime {
                             let id = task_id(lock_tx.txid());
                             let broadcast_arb_lock =
                                 Task::BroadcastTransaction(BroadcastTransaction { id, tx });
-                            info!("Broadcasting arbitrating lock");
+                            info!("Broadcasting arbitrating lock {}", broadcast_arb_lock);
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
