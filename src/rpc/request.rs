@@ -46,17 +46,17 @@ use bitcoin::{
     OutPoint, PublicKey,
 };
 use farcaster_core::{
+    bitcoin::Bitcoin,
     blockchain::FeePolitic,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
     },
-    bitcoin::Bitcoin,
     monero::Monero,
-    swap::btcxmr::BtcXmr,
     negotiation::{Offer, PublicOffer},
     protocol_message::{self, RevealAliceParameters, RevealBobParameters},
     protocol_message::{CommitAliceParameters, CommitBobParameters},
     role::TradeRole,
+    swap::btcxmr::BtcXmr,
     swap::SwapId,
 };
 use internet2::Api;
@@ -95,9 +95,15 @@ pub enum Msg {
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
-    /* #[api(type = 29)]
-     * #[display("ping(...)")]
-     * Ping, */
+    #[api(type = 29)]
+    #[display(inner)]
+    Ping(message::Ping),
+    #[api(type = 31)]
+    #[display("pong(...)")]
+    Pong(Vec<u8>),
+    #[api(type = 33)]
+    #[display("ping_peer")]
+    PingPeer,
 }
 
 impl Msg {
@@ -123,6 +129,9 @@ impl Msg {
             Msg::BuyProcedureSignature(protocol_message::BuyProcedureSignature {
                 swap_id, ..
             }) => *swap_id,
+            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
+                unreachable!("Ping and Pong does not containt swapid")
+            }
         }
     }
 }
