@@ -101,7 +101,6 @@ pub fn run(
         funding_outpoint: default!(),
         maker_peer: None,
         started: SystemTime::now(),
-        remote_params: none!(),
         accordant_amount,
         arbitrating_amount,
         cancel_timelock,
@@ -138,7 +137,6 @@ pub struct Runtime {
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    remote_params: Option<Params>,
     accordant_amount: monero::Amount,
     arbitrating_amount: bitcoin::Amount,
     cancel_timelock: CSVTimelock,
@@ -305,17 +303,6 @@ impl Runtime {
                     // store parameters from counterparty if we have not received them yet.
                     // if we're maker, also reveal to taker if their commitment is valid.
                     Msg::Reveal(reveal) => {
-                        if self.remote_params.is_some() {
-                            error!(
-                                "{}: {}",
-                                "remote_params already set",
-                                self.remote_params.clone().expect("Checked above")
-                            );
-                            Err(Error::Farcaster("remote_params already set".to_string()))?
-                        } else {
-                            debug!("{}", "remote_params not yet set");
-                        }
-
                         let (next_state, remote_commit) = match self.state.clone() {
                             // counterparty has already revealed commitment, i.e. we're
                             // maker and counterparty is taker. now proceed to reveal state.
@@ -368,7 +355,6 @@ impl Runtime {
                                 }
                             },
                         };
-                        self.remote_params = Some(remote_params.clone());
                         // self.send_peer(senders, msg)?;
                         // pass request on to wallet daemon so that it can set remote params
                         self.send_wallet(msg_bus, senders, request)?;
@@ -718,7 +704,10 @@ impl Runtime {
                 }) if confirmations >= self.tx_finality_thr => {
                     if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
-                        info!("Transaction {} is now final", txlabel);
+                        info!(
+                            "Transaction {} is now final after {} confirmations",
+                            txlabel, confirmations
+                        );
                         // FIXME: fill match arms
                         match txlabel {
                             TxId::Funding => {}
@@ -800,9 +789,6 @@ impl Runtime {
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
                 }?;
-                if self.remote_params.is_none() {
-                    Err(Error::Farcaster(s!("remote_params is none")))?
-                }
                 trace!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
