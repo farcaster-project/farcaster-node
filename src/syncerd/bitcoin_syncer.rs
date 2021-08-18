@@ -33,6 +33,7 @@ use std::sync::mpsc::Sender;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
+use tokio::runtime::Runtime;
 
 use hex;
 
@@ -196,7 +197,7 @@ impl ElectrumRpc {
 
     fn query_transactions(&self, state: &mut SyncerState) {
         for (_, watched_tx) in state.transactions.clone().iter() {
-            let tx_id: bitcoin::Txid = bitcoin::Txid::from_slice(&watched_tx.hash).unwrap();
+            let tx_id: bitcoin::Txid = bitcoin::Txid::from_slice(&watched_tx.task.hash).unwrap();
             let tx = self
                 .client
                 .transaction_get_verbose(&tx_id)
@@ -274,6 +275,8 @@ impl Synclet for BitcoinSyncer {
             let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
+
+            let runtime = Runtime::new().expect("Unable to create the syncer tokio runtime");
 
             state.change_height(rpc.height, rpc.block_hash.to_vec());
             info!("Entering bitcoin_syncer event loop");

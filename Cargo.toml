@@ -39,7 +39,7 @@ required-features = ["server"]
 
 [dependencies]
 # Farcaster crates
-# farcaster_core = { path = "../core", features = ["serde"] }
+# farcaster_core = { path = "../farcaster-core", features = ["serde"] }
 farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
 
 hex = "^0.4.3"
@@ -81,10 +81,15 @@ colored = { version = "2", optional = true }
 shellexpand = { version = "2", optional = true }
 # IPC
 zmq = "0.9"
+# Async
+tokio = { version = "1.9.0", features = ["full"] }
+# Coin clients
 electrum-client = { git = "https://github.com/TheCharlatan/rust-electrum-client", branch = "verboseTransactionGet" }
+monero-rpc = { git = "https://github.com/TheCharlatan/monero-rpc-rs", branch = "changes" }
+# monero-rpc = { path = "../monero-rpc-rs/" }
 
 [build-dependencies]
-# farcaster_core = { path = "../core", features = ["serde"]}
+# farcaster_core = { path = "../farcaster-core", features = ["serde"]}
 farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
 
 serde_yaml = { version = "0.8", optional = true }
