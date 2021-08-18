@@ -487,10 +487,11 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+                // TODO: verify signature and if valid create & publish lock transaction
                 info!("received buyproceduresignature")
             }
             _ => {
-                error!("MSG RPC can only be used for farwarding LNPBP messages")
+                error!("MSG RPC can only be used for forwarding LNPBP messages")
             }
         }
         Ok(())

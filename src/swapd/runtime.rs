@@ -473,6 +473,7 @@ impl Runtime {
                     }
                     // alice receives, bob sends
                     Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. }) => {
+                        // Alice verifies that she has sent refund procedure signatures before processing the buy signatures from Bob
                         if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
                             let txid = buy.clone().extract_tx().txid();
                             let id = task_id(txid);
@@ -481,6 +482,7 @@ impl Runtime {
                                 .insert(id, (TxId::Buy, TxStatus::Notfinal))
                                 .is_none()
                             {
+                                // notify the syncer to watch for the buy transaction
                                 let task = Task::WatchTransaction(WatchTransaction {
                                     id,
                                     lifetime: self.task_lifetime.expect("task_lifetime is None"),
