@@ -276,7 +276,8 @@ impl Runtime {
                 }
                 match &msg {
                     Msg::MakerCommit(remote_commit) => {
-                        // bob and alice, we are taker, maker commited, now we reveal
+                        // we are taker and the maker committed, now we reveal after checking
+                        // whether we're Bob or Alice and that we're on a compatible state
                         trace!("received commitment from counterparty, can now reveal");
                         let (next_state, local_params) = match &self.state {
                             State::Alice(AliceState::CommitA(_, local_params, _, None)) => Ok((
@@ -301,6 +302,8 @@ impl Runtime {
                         )
                     }
                     // bob and alice
+                    // store parameters from counterparty if we have not received them yet.
+                    // if we're maker, also reveal to taker if their commitment is valid.
                     Msg::Reveal(reveal) => {
                         if self.remote_params.is_some() {
                             error!(
@@ -314,6 +317,8 @@ impl Runtime {
                         }
 
                         let (next_state, remote_commit) = match self.state.clone() {
+                            // counterparty has already revealed commitment, i.e. we're
+                            // maker and counterparty is taker. now proceed to reveal state.
                             State::Alice(AliceState::CommitA(.., Some(remote_commit))) => Ok((
                                 State::Alice(AliceState::RevealA(remote_commit.clone())),
                                 remote_commit,
@@ -322,6 +327,8 @@ impl Runtime {
                                 State::Bob(BobState::RevealB(remote_commit.clone())),
                                 remote_commit,
                             )),
+                            // we're already in reveal state, i.e. we're taker, so don't change
+                            // state once counterparty reveals too.
                             State::Alice(AliceState::RevealA(remote_commit)) => Ok((
                                 State::Alice(AliceState::RevealA(remote_commit.clone())),
                                 remote_commit,
@@ -335,6 +342,7 @@ impl Runtime {
                             )),
                         }?;
 
+                        // parameter processing irrespective of maker & taker role
                         let core_wallet = CoreWallet::new_keyless();
                         let remote_params = match reveal {
                             Reveal::Alice(reveal) => match &remote_commit {
@@ -362,6 +370,7 @@ impl Runtime {
                         };
                         self.remote_params = Some(remote_params.clone());
                         // self.send_peer(senders, msg)?;
+                        // pass request on to wallet daemon so that it can set remote params
                         self.send_wallet(msg_bus, senders, request)?;
                         // up to here for both maker and taker, following only Maker
 
