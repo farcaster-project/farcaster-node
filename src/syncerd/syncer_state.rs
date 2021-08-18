@@ -14,11 +14,6 @@ use hex;
 use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
 use farcaster_core::syncer::*;
 
-pub struct WatchedTransaction {
-    pub hash: Vec<u8>,
-    pub confirmation_bound: u16,
-}
-
 pub struct SyncerState {
     block_height: u64,
     block_hash: Vec<u8>,
@@ -26,18 +21,24 @@ pub struct SyncerState {
     watch_height: HashMap<u32, WatchHeight>,
     lifetimes: HashMap<u64, HashSet<u32>>,
     pub addresses: HashMap<u32, AddressTransactions>,
-    pub transactions: HashMap<u32, WatchTransaction>,
+    pub transactions: HashMap<u32, WatchedTransaction>,
     pub events: Vec<(Event, ServiceId)>,
     task_count: u32,
 }
 
 #[derive(Clone)]
-pub struct AddressTransactions {
-    task: WatchAddress,
-    txs: Vec<AddressTx>,
+pub struct WatchedTransaction {
+    pub task: WatchTransaction,
+    pub transaction_confirmations: TransactionConfirmations,
 }
 
 #[derive(Clone)]
+pub struct AddressTransactions {
+    pub task: WatchAddress,
+    txs: Vec<AddressTx>,
+}
+
+#[derive(Clone, PartialEq)]
 pub struct AddressTx {
     pub our_amount: u64,
     pub tx_id: Vec<u8>,
@@ -129,57 +130,78 @@ impl SyncerState {
         // increment the count to use it as a unique internal id
         self.task_count += 1;
 
-        let _tx = WatchedTransaction {
-            hash: task.hash.clone(),
-            confirmation_bound: task.confirmation_bound,
-        };
         if self.add_lifetime(task.lifetime, self.task_count).is_err() {
             return;
         };
         self.tasks_sources.insert(self.task_count, source);
-        self.transactions.insert(self.task_count, task);
+        self.transactions.insert(
+            self.task_count,
+            WatchedTransaction {
+                task: task.clone(),
+                transaction_confirmations: TransactionConfirmations {
+                    id: task.id,
+                    block: none!(),
+                    confirmations: 0,
+                },
+            },
+        );
     }
 
     pub fn change_height(&mut self, height: u64, block: Vec<u8>) {
-        self.block_height = height;
-        self.block_hash = block.clone();
+        if self.block_height != height || self.block_hash != block {
+            self.block_height = height;
+            self.block_hash = block.clone();
 
-        self.drop_lifetimes();
+            self.drop_lifetimes();
 
-        // Emit a height_changed event
-        for (id, task) in self.watch_height.iter() {
-            self.events.push((
-                Event::HeightChanged(HeightChanged {
-                    id: task.id,
-                    block: block.clone(),
-                    height: self.block_height,
-                }),
-                self.tasks_sources.get(id).unwrap().clone(),
-            ));
+            // Emit a height_changed event
+            for (id, task) in self.watch_height.iter() {
+                self.events.push((
+                    Event::HeightChanged(HeightChanged {
+                        id: task.id,
+                        block: block.clone(),
+                        height: self.block_height,
+                    }),
+                    self.tasks_sources.get(id).unwrap().clone(),
+                ));
+            }
         }
     }
 
     pub fn change_address(&mut self, address_addendum: Vec<u8>, txs: Vec<AddressTx>) {
         self.drop_lifetimes();
 
-        for (id, addr) in self.addresses.iter_mut() {
-            if address_addendum == addr.task.addendum {
-                for tx in txs.iter() {
-                    if !addr.txs.iter().any(|i| i.tx_id == tx.tx_id) {
-                        self.events.push((
-                            Event::AddressTransaction(AddressTransaction {
+        self.addresses = self
+            .addresses
+            .clone()
+            .iter()
+            .map(|(id, addr)| {
+                if address_addendum == addr.task.addendum && txs != addr.txs {
+                    for tx in txs.iter() {
+                        if !addr.txs.iter().any(|i| i.tx_id == tx.tx_id) {
+                            let address_transaction = AddressTransaction {
                                 id: addr.task.id,
                                 hash: tx.tx_id.clone(),
                                 amount: tx.our_amount,
                                 block: tx.block_hash.clone(),
-                            }),
-                            self.tasks_sources.get(id).unwrap().clone(),
-                        ));
+                            };
+                            self.events.push((
+                                Event::AddressTransaction(address_transaction.clone()),
+                                self.tasks_sources.get(id).unwrap().clone(),
+                            ));
+                            return (
+                                id.clone(),
+                                AddressTransactions {
+                                    task: addr.task.clone(),
+                                    txs: txs.clone(),
+                                },
+                            );
+                        }
                     }
                 }
-                addr.txs = txs.clone();
-            }
-        }
+                return (id.clone(), addr.clone());
+            })
+            .collect();
     }
 
     pub fn change_transaction(
@@ -201,22 +223,39 @@ impl SyncerState {
             None => -1,
         };
 
-        for (id, watched_tx) in self.transactions.clone().iter() {
-            if watched_tx.hash == tx_id {
-                self.events.push((
-                    Event::TransactionConfirmations(TransactionConfirmations {
-                        id: watched_tx.id,
+        self.transactions = self
+            .transactions
+            .clone()
+            .iter()
+            .map(|(id, watched_tx)| {
+                if watched_tx.task.hash == tx_id
+                    && (watched_tx.transaction_confirmations.block != block
+                        || watched_tx.transaction_confirmations.confirmations != confs)
+                {
+                    let transaction_confirmations = TransactionConfirmations {
+                        id: watched_tx.task.id,
                         block: block.clone(),
                         confirmations: confs,
-                    }),
-                    self.tasks_sources.get(id).unwrap().clone(),
-                ));
-                // prune the task once it has reached its confirmation bound
-                if confs >= watched_tx.confirmation_bound as i32 {
-                    self.remove_transaction(watched_tx.lifetime, *id);
+                    };
+                    self.events.push((
+                        Event::TransactionConfirmations(transaction_confirmations.clone()),
+                        self.tasks_sources.get(id).unwrap().clone(),
+                    ));
+                    // prune the task once it has reached its confirmation bound
+                    if confs >= watched_tx.task.confirmation_bound as i32 {
+                        self.remove_transaction(watched_tx.task.lifetime, *id);
+                    }
+                    return (
+                        id.clone(),
+                        WatchedTransaction {
+                            task: watched_tx.task.clone(),
+                            transaction_confirmations: transaction_confirmations.clone(),
+                        },
+                    );
                 }
-            }
-        }
+                return (id.clone(), watched_tx.clone());
+            })
+            .collect();
     }
 
     fn remove_transaction(&mut self, transaction_lifetime: u64, id: u32) {
@@ -314,6 +353,18 @@ fn syncer_state_transaction() {
     assert_eq!(state.tasks_sources.len(), 3);
     assert_eq!(state.events.len(), 3);
 
+    state.change_transaction(vec![0], none!(), Some(0));
+    assert_eq!(state.lifetimes.len(), 3);
+    assert_eq!(state.transactions.len(), 2);
+    assert_eq!(state.tasks_sources.len(), 3);
+    assert_eq!(state.events.len(), 3);
+
+    state.change_transaction(vec![0], Some(vec![1]), Some(1));
+    assert_eq!(state.lifetimes.len(), 3);
+    assert_eq!(state.transactions.len(), 2);
+    assert_eq!(state.tasks_sources.len(), 3);
+    assert_eq!(state.events.len(), 4);
+
     state.change_transaction(vec![0], Some(vec![1]), Some(1));
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -381,6 +432,15 @@ fn syncer_state_address() {
     assert_eq!(state.addresses.len(), 1);
     assert_eq!(state.events.len(), 2);
 
+    state.change_address(
+        vec![0],
+        vec![address_tx_one.clone(), address_tx_two.clone()],
+    );
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.addresses.len(), 1);
+    assert_eq!(state.events.len(), 2);
+
     let height_task = WatchHeight {
         id: 0,
         lifetime: 3,
@@ -428,6 +488,12 @@ fn syncer_state_height() {
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);
     assert_eq!(state.events.len(), 3);
+
+    state.change_height(3, vec![0]);
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.watch_height.len(), 1);
+    assert_eq!(state.events.len(), 4);
 
     state.change_height(3, vec![0]);
     assert_eq!(state.lifetimes.len(), 1);
