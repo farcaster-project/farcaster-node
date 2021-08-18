@@ -46,6 +46,7 @@ m_farcasterd -> m_swap : Ctl MakeSwap
 
 m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
+t_walletd <- t_swap : Msg MakerCommit
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg Reveal (taker is sender)
 
