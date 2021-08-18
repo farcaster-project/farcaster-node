@@ -13,9 +13,9 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, ArgGroup, Clap, ValueHint};
-use std::{io, net::IpAddr};
 use std::path::PathBuf;
 use std::{fs, io::Read};
+use std::{io, net::IpAddr};
 
 use internet2::{FramingProtocol, LocalNode, RemoteNodeAddr};
 use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
@@ -99,7 +99,6 @@ impl Opts {
         self.shared.process();
     }
 }
-
 
 /// Node key configuration
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]

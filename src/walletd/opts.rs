@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{opts::FARCASTER_NODE_KEY_FILE};
+use crate::opts::FARCASTER_NODE_KEY_FILE;
 use clap::{AppSettings, Clap, ValueHint};
 use std::path::PathBuf;
 use std::{fs, io::Read};

@@ -16,7 +16,7 @@ use clap::{AppSettings, Clap, ValueHint};
 
 use bitcoin::hashes::hex::FromHex;
 use farcaster_core::swap::SwapId;
-use farcaster_core::{swap::btcxmr::BtcXmr, negotiation::PublicOffer, role::TradeRole};
+use farcaster_core::{negotiation::PublicOffer, role::TradeRole, swap::btcxmr::BtcXmr};
 use internet2::PartialNodeAddr;
 use std::str::FromStr;
 

@@ -59,13 +59,13 @@ use farcaster_core::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
         SignedArbitratingLock,
     },
-    swap::btcxmr::{BtcXmr, KeyManager},
     negotiation::PublicOffer,
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
     },
     role::{Alice, Bob, SwapRole, TradeRole},
+    swap::btcxmr::{BtcXmr, KeyManager},
 };
 
 use std::str::FromStr;

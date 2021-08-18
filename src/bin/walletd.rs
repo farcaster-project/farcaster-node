@@ -31,7 +31,10 @@ extern crate log;
 
 use clap::Clap;
 
-use farcaster_node::{rpc::request::Token, walletd::{self, Opts}};
+use farcaster_node::{
+    rpc::request::Token,
+    walletd::{self, Opts},
+};
 use farcaster_node::{Config, LogStyle};
 
 fn main() {
@@ -55,7 +58,6 @@ fn main() {
         "Local node id".bright_green_bold(),
         node_id.bright_yellow_bold()
     );
-
 
     debug!("Starting runtime ...");
     walletd::run(config, wallet_token, opts.key_opts.node_secrets(), node_id)
