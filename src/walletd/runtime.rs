@@ -152,7 +152,7 @@ impl Runtime {
                 let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)
                     .map_err(|_| {
                         Error::Farcaster(
-                            "The offer received on peer conection is not parsable".to_string(),
+                            "The offer received on peer connection is not parsable".to_string(),
                         )
                     })?;
                 trace!(
@@ -322,7 +322,7 @@ impl Runtime {
             Request::Protocol(Msg::Reveal(reveal)) => {
                 let swap_id = swap_id(source.clone())?;
                 match reveal {
-                    // receiving from counterparty Bob, thus im Alice Maker or Taker
+                    // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
                     Reveal::Bob(reveal) => match self.wallets.get_mut(&swap_id) {
                         Some(Wallet::Alice(
                             _alice,
@@ -350,8 +350,8 @@ impl Runtime {
                             return Ok(());
                         }
                     },
-                    // getting paramaters from counterparty alice routed through
-                    // swapd, thus im bob on this swap, Bob can proceed
+                    // getting parameters from counterparty alice routed through
+                    // swapd, thus I'm Bob on this swap: Bob can proceed
                     Reveal::Alice(reveal) => {
                         match self.wallets.get_mut(&swap_id) {
                             Some(Wallet::Bob(
@@ -487,10 +487,11 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+                // TODO: verify signature and if valid create & publish lock transaction
                 info!("received buyproceduresignature")
             }
             _ => {
-                error!("MSG RPC can only be used for farwarding LNPBP messages")
+                error!("MSG RPC can only be used for forwarding LNPBP messages")
             }
         }
         Ok(())
