@@ -35,8 +35,11 @@ use bitcoin::secp256k1::rand::RngCore;
 
 use clap::Clap;
 
-use farcaster_node::{farcasterd::{self, Opts}, rpc::request::Token};
 use farcaster_node::Config;
+use farcaster_node::{
+    farcasterd::{self, Opts},
+    rpc::request::Token,
+};
 
 fn main() {
     println!("farcasterd: farcaster node management microservice");

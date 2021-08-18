@@ -16,17 +16,17 @@ use crate::{Config, CtlServer, Error, Service, ServiceId};
 use bitcoin::{hashes::hex::FromHex, secp256k1, util::psbt::serialize::Deserialize, Transaction};
 use colored::Colorize;
 use farcaster_core::{
+    bitcoin::{segwitv0::FundingTx, segwitv0::SegwitV0, Bitcoin},
     blockchain::FeePolitic,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
-    bitcoin::{segwitv0::FundingTx, Bitcoin, segwitv0::SegwitV0},
     monero::Monero,
-    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     negotiation::PublicOffer,
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
     },
     role::{Alice, Bob, SwapRole, TradeRole},
+    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
     transaction::Fundable,
 };
@@ -666,8 +666,9 @@ pub fn create_funding() -> Result<FundingTx, Error> {
 
     let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
     let (_, pubkey) = (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
-    let mut funding = FundingTx::initialize(pubkey, farcaster_core::blockchain::Network::Testnet)
-        .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
+    let mut funding =
+        FundingTx::initialize(pubkey, farcaster_core::blockchain::Network::Testnet)
+            .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
     funding
         .update(funding_bundle.clone().funding.clone())
         .map_err(|_| Error::Farcaster(s!("Could not update funding")))?;
