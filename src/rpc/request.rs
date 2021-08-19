@@ -230,6 +230,7 @@ pub struct LaunchSwap {
     pub local_params: Params,
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
+    pub funding_address: Option<bitcoin::Address>,
 }
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
@@ -498,6 +499,7 @@ pub struct InitSwap {
     pub local_params: Params,
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
+    pub funding_address: Option<bitcoin::Address>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

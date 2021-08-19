@@ -344,6 +344,7 @@ impl Runtime {
                 local_params,
                 swap_id,
                 remote_commit,
+                funding_address,
             }) => {
                 if self.offers.remove(&public_offer) {
                     trace!(
@@ -361,6 +362,7 @@ impl Runtime {
                         local_params,
                         swap_id,
                         remote_commit,
+                        funding_address,
                     )?;
                 } else {
                     let msg = "unknown public_offer".to_string();
@@ -834,6 +836,7 @@ fn launch_swapd(
     local_params: Params,
     swap_id: SwapId,
     remote_commit: Option<Commit>,
+    funding_address: Option<bitcoin::Address>
 ) -> Result<String, Error> {
     debug!("Instantiating swapd...");
     let child = launch(
@@ -859,6 +862,7 @@ fn launch_swapd(
             local_params,
             swap_id,
             remote_commit,
+            funding_address,
         },
     );
 

@@ -459,7 +459,8 @@ impl Runtime {
                     }
                     // alice receives, bob sends
                     Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. }) => {
-                        // Alice verifies that she has sent refund procedure signatures before processing the buy signatures from Bob
+                        // Alice verifies that she has sent refund procedure signatures before
+                        // processing the buy signatures from Bob
                         if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
                             let txid = buy.clone().extract_tx().txid();
                             let id = task_id(txid);
@@ -582,6 +583,7 @@ impl Runtime {
                 local_params,
                 swap_id,
                 remote_commit: None,
+                funding_address, // Some(_) for Bob, None for Alice
             }) => {
                 if &ServiceId::Swap(swap_id) != &self.identity {
                     error!(
@@ -608,25 +610,29 @@ impl Runtime {
                                 },
                             )
                         })?;
-                let (next_state, public_offer) = match self.state.clone() {
-                    State::Bob(BobState::StartB(local_trade_role, public_offer)) => Ok((
-                        (State::Bob(BobState::CommitB(
-                            local_trade_role,
-                            local_params.clone(),
-                            local_commit.clone(),
-                            None,
-                        ))),
-                        public_offer,
-                    )),
-                    State::Alice(AliceState::StartA(local_trade_role, public_offer)) => Ok((
-                        (State::Alice(AliceState::CommitA(
-                            local_trade_role,
-                            local_params.clone(),
-                            local_commit.clone(),
-                            None,
-                        ))),
-                        public_offer,
-                    )),
+                let (next_state, public_offer) = match (self.state.clone(), funding_address) {
+                    (State::Bob(BobState::StartB(local_trade_role, public_offer)), Some(_)) => {
+                        Ok((
+                            (State::Bob(BobState::CommitB(
+                                local_trade_role,
+                                local_params.clone(),
+                                local_commit.clone(),
+                                None,
+                            ))),
+                            public_offer,
+                        ))
+                    }
+                    (State::Alice(AliceState::StartA(local_trade_role, public_offer)), None) => {
+                        Ok((
+                            (State::Alice(AliceState::CommitA(
+                                local_trade_role,
+                                local_params.clone(),
+                                local_commit.clone(),
+                                None,
+                            ))),
+                            public_offer,
+                        ))
+                    }
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start state"))),
                 }?;
                 let public_offer_hex = public_offer.to_hex();
@@ -646,6 +652,7 @@ impl Runtime {
                 local_params,
                 swap_id,
                 remote_commit: Some(remote_commit),
+                funding_address, // Some(_) for Bob, None for Alice
             }) => {
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
@@ -665,18 +672,18 @@ impl Runtime {
                         )
                     })?;
 
-                let next_state = match self.state {
-                    State::Bob(BobState::StartB(trade_role, _)) => {
+                let next_state = match (&self.state, funding_address) {
+                    (State::Bob(BobState::StartB(trade_role, _)), Some(_)) => {
                         Ok(State::Bob(BobState::CommitB(
-                            trade_role,
+                            *trade_role,
                             local_params.clone(),
                             local_commit.clone(),
                             Some(remote_commit.clone()),
                         )))
                     }
-                    State::Alice(AliceState::StartA(trade_role, _)) => {
+                    (State::Alice(AliceState::StartA(trade_role, _)), None) => {
                         Ok(State::Alice(AliceState::CommitA(
-                            trade_role,
+                            *trade_role,
                             local_params.clone(),
                             local_commit.clone(),
                             Some(remote_commit.clone()),

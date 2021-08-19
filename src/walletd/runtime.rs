@@ -184,12 +184,10 @@ impl Runtime {
                         let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             let funding = create_funding(&self.node_secrets)?;
+                            let funding_addr = funding.get_address().expect("funding get_address");
                             info!(
-                                "Send money to address: {}",
-                                funding
-                                    .get_address()
-                                    .expect("funding get_address")
-                                    .bright_yellow_bold()
+                                "Bob, please send Btc to address: {}",
+                                &funding_addr.bright_yellow_bold()
                             );
                             info!("Creating {}", "Wallet::Bob".bright_yellow());
                             if let request::Commit::Alice(remote_commit) = remote_commit.clone() {
@@ -222,6 +220,7 @@ impl Runtime {
                                 local_params: Params::Bob(local_params.clone()),
                                 swap_id,
                                 remote_commit: Some(remote_commit),
+                                funding_address: Some(funding_addr),
                             };
                             self.swaps.insert(swap_id, None);
                             self.send_ctl(
@@ -263,6 +262,7 @@ impl Runtime {
                                     local_params: Params::Alice(params),
                                     swap_id,
                                     remote_commit: Some(remote_commit),
+                                    funding_address: None,
                                 };
                                 self.send_ctl(
                                     senders,
@@ -563,12 +563,10 @@ impl Runtime {
                         let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                         let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         let funding = create_funding(&self.node_secrets)?;
+                        let funding_addr = funding.get_address().expect("funding get_address");
                         info!(
                             "Send money to address: {}",
-                            funding
-                                .get_address()
-                                .expect("funding get_address")
-                                .bright_yellow_bold()
+                            funding_addr.bright_yellow_bold()
                         );
                         info!("Creating {}", "Wallet::Bob".bright_yellow());
                         if self.wallets.get(&swap_id).is_none() {
@@ -595,6 +593,7 @@ impl Runtime {
                             local_params: Params::Bob(local_params),
                             swap_id,
                             remote_commit: None,
+                            funding_address: Some(funding_addr),
                         };
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -637,6 +636,7 @@ impl Runtime {
                             local_params: Params::Alice(local_params),
                             swap_id,
                             remote_commit: None,
+                            funding_address: None,
                         };
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -675,7 +675,7 @@ impl Runtime {
 }
 
 fn address() -> bitcoin::Address {
-    bitcoin::Address::from_str("bc1qesgvtyx9y6lax0x34napc2m7t5zdq6s7xxwpvk")
+    bitcoin::Address::from_str("tb1qdk49um4fyc7306lp9mhhlkacxz9cmhnr6k8e37")
         .expect("Parsable address")
 }
 
@@ -698,7 +698,6 @@ pub fn funding_update(funding: &mut FundingTx) {
     // FIXME: this should be received from syncer
     let funding_tx_hex = Vec::from_hex("02000000000101ac0ac2cf357fc5dcb629e9ccdc96ce97cac14cd8c5b97fb6dc0c965d0d698f460100000000fdffffff01d2410f00000000001600142194a75350083e3218d0817ec95be4e043d702bf024730440220160c02a1e23b4eb2e0030d491dbab10c9f73bd63f28c9031e9b0e5405c34f127022030c3fd6fe7da4fb51330c97142d8e9ad8d3da9c731b60099e7a11d71577f57b1012102de38374957449db58aa087abf37fdd8d5722fa00b508afda30513dac2616eb18f2831f00").unwrap();
     let funding_tx = Transaction::deserialize(&funding_tx_hex).unwrap();
-    let txid = funding_tx.txid();
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> {
         funding: funding_tx,
     };
