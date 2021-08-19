@@ -101,7 +101,6 @@ pub fn run(
         funding_outpoint: default!(),
         maker_peer: None,
         started: SystemTime::now(),
-        remote_params: none!(),
         accordant_amount,
         arbitrating_amount,
         cancel_timelock,
@@ -121,7 +120,7 @@ pub fn run(
         confirmation_bound: 10000,
         // TODO: query syncer to set this value (start with None)
         task_lifetime: Some(795458),
-        final_txs: none!(),
+        txs_status: none!(),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -138,7 +137,6 @@ pub struct Runtime {
     funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    remote_params: Option<Params>,
     accordant_amount: monero::Amount,
     arbitrating_amount: bitcoin::Amount,
     cancel_timelock: CSVTimelock,
@@ -151,7 +149,7 @@ pub struct Runtime {
     tx_finality_thr: i32,
     confirmation_bound: u16,
     task_lifetime: Option<u64>,
-    final_txs: HashMap<i32, (TxId, TxStatus)>,
+    txs_status: HashMap<i32, (TxId, TxStatus)>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -305,17 +303,6 @@ impl Runtime {
                     // store parameters from counterparty if we have not received them yet.
                     // if we're maker, also reveal to taker if their commitment is valid.
                     Msg::Reveal(reveal) => {
-                        if self.remote_params.is_some() {
-                            error!(
-                                "{}: {}",
-                                "remote_params already set",
-                                self.remote_params.clone().expect("Checked above")
-                            );
-                            Err(Error::Farcaster("remote_params already set".to_string()))?
-                        } else {
-                            debug!("{}", "remote_params not yet set");
-                        }
-
                         let (next_state, remote_commit) = match self.state.clone() {
                             // counterparty has already revealed commitment, i.e. we're
                             // maker and counterparty is taker. now proceed to reveal state.
@@ -368,7 +355,6 @@ impl Runtime {
                                 }
                             },
                         };
-                        self.remote_params = Some(remote_params.clone());
                         // self.send_peer(senders, msg)?;
                         // pass request on to wallet daemon so that it can set remote params
                         self.send_wallet(msg_bus, senders, request)?;
@@ -415,7 +401,7 @@ impl Runtime {
                                 let txid = tx.clone().extract_tx().txid();
                                 let id = task_id(txid);
                                 if self
-                                    .final_txs
+                                    .txs_status
                                     .insert(id, (tx_label.clone(), TxStatus::Notfinal))
                                     .is_none()
                                 {
@@ -455,7 +441,7 @@ impl Runtime {
                             let id = task_id(lock_tx.txid());
                             let broadcast_arb_lock =
                                 Task::BroadcastTransaction(BroadcastTransaction { id, tx });
-                            info!("Broadcasting arbitrating lock");
+                            info!("Broadcasting arbitrating lock {}", broadcast_arb_lock);
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
@@ -478,7 +464,7 @@ impl Runtime {
                             let txid = buy.clone().extract_tx().txid();
                             let id = task_id(txid);
                             if self
-                                .final_txs
+                                .txs_status
                                 .insert(id, (TxId::Buy, TxStatus::Notfinal))
                                 .is_none()
                             {
@@ -496,11 +482,13 @@ impl Runtime {
                                     Request::SyncerTask(task),
                                 )?;
                                 self.send_wallet(msg_bus, senders, request.clone())?
+                            } else {
+                                error!("Task already registered for this swapd");
+                                return Ok(());
                             }
                         } else {
-                            Err(Error::Farcaster(s!(
-                                "Wrong state: must be RefundProcedureSignatures"
-                            )))?
+                            error!("Wrong state: must be RefundProcedureSignatures");
+                            return Ok(());
                         }
                     }
 
@@ -714,9 +702,12 @@ impl Runtime {
                     block,
                     confirmations,
                 }) if confirmations >= self.tx_finality_thr => {
-                    if let Some((txlabel, status)) = self.final_txs.get_mut(&id) {
+                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
-                        info!("Transaction {} is now final", txlabel);
+                        info!(
+                            "Transaction {} is now final after {} confirmations",
+                            txlabel, confirmations
+                        );
                         // FIXME: fill match arms
                         match txlabel {
                             TxId::Funding => {}
@@ -766,7 +757,7 @@ impl Runtime {
                     let txid = tx.clone().extract_tx().txid();
                     let id = task_id(txid);
                     if self
-                        .final_txs
+                        .txs_status
                         .insert(id, (tx_label, TxStatus::Notfinal))
                         .is_none()
                     {
@@ -798,9 +789,6 @@ impl Runtime {
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
                 }?;
-                if self.remote_params.is_none() {
-                    Err(Error::Farcaster(s!("remote_params is none")))?
-                }
                 trace!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
