@@ -14,7 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
 };
 use std::{convert::TryFrom, str::FromStr};
@@ -127,6 +127,7 @@ pub fn run(
         // TODO: query syncer to set this value (start with None)
         task_lifetime: Some(795458),
         txs_status: none!(),
+        pending_requests: none!(),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -158,6 +159,7 @@ pub struct Runtime {
     txs_status: HashMap<i32, (TxId, TxStatus)>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
+    pending_requests: Vec<(Request, ServiceId)>,
 }
 
 #[derive(Display, Clone)]
@@ -293,11 +295,13 @@ impl Runtime {
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
                                 let watch_addr =
                                     watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
-                                self.send_ctl(
-                                    senders,
-                                    ServiceId::Syncer,
-                                    Request::SyncerTask(Task::WatchAddress(watch_addr)),
-                                )?;
+                                // deferred to when syncer comes online
+                                self.pending_requests.push((watch_addr, ServiceId::Syncer));
+                                // self.send_ctl(
+                                //         senders,
+                                //         ServiceId::Syncer,
+                                //         Request::SyncerTask(watch_addr),
+                                //     )?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     local_params,
@@ -330,11 +334,9 @@ impl Runtime {
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
                                 let watch_addr =
                                     watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
-                                self.send_ctl(
-                                    senders,
-                                    ServiceId::Syncer,
-                                    Request::SyncerTask(Task::WatchAddress(watch_addr)),
-                                )?;
+                                // deferred to when syncer comes online
+                                self.pending_requests.push((watch_addr, ServiceId::Syncer));
+                                // self.send_ctl(senders, ServiceId::Syncer, watch_addr)?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     remote_commit,
@@ -591,8 +593,17 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
+            (Request::Hello, ServiceId::Syncer) => {
+                info!("Source: {} is connected", source);
+                while let Some((req, dest)) = self.pending_requests.clone().pop() {
+                    if dest == source {
+                        self.send_ctl(senders, ServiceId::Syncer, req)?;
+                    }
+                }
+            }
+
             (Request::Hello, _) => {
-                info!("Source: {} is connected", source)
+                info!("Source: {} is connected", source);
             }
             (_, ServiceId::Farcasterd | ServiceId::Wallet | ServiceId::Syncer) => {}
             _ => Err(Error::Farcaster(
@@ -1137,7 +1148,7 @@ enum TxStatus {
     Notfinal,
 }
 
-fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> WatchAddress {
+fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> Request {
     let addendum = BtcAddressAddendum {
         address: addr.to_string(),
         from_height: 0,
@@ -1147,9 +1158,9 @@ fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> WatchAddress {
     let buf: [u8; 4] = addendum[4..8].try_into().expect("task_id");
     let id = i32::from_le_bytes(buf);
 
-    WatchAddress {
+    Request::SyncerTask(Task::WatchAddress(WatchAddress {
         id,
         lifetime,
         addendum,
-    }
+    }))
 }
