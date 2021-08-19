@@ -26,7 +26,7 @@ pub struct SyncerState {
     task_count: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WatchedTransaction {
     pub task: WatchTransaction,
     pub transaction_confirmations: TransactionConfirmations,
@@ -141,7 +141,7 @@ impl SyncerState {
                 transaction_confirmations: TransactionConfirmations {
                     id: task.id,
                     block: none!(),
-                    confirmations: 0,
+                    confirmations: -1,
                 },
             },
         );
