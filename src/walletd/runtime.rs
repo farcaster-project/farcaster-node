@@ -13,7 +13,15 @@ use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
-use bitcoin::{hashes::hex::FromHex, secp256k1, util::psbt::serialize::Deserialize, Transaction};
+use bitcoin::{
+    hashes::hex::FromHex,
+    secp256k1,
+    util::{
+        bip32::{DerivationPath, ExtendedPrivKey},
+        psbt::serialize::Deserialize,
+    },
+    PrivateKey, PublicKey, Transaction,
+};
 use colored::Colorize;
 use farcaster_core::{
     bitcoin::{segwitv0::FundingTx, segwitv0::SegwitV0, Bitcoin},
@@ -175,7 +183,14 @@ impl Runtime {
                         let core_wallet = CoreWallet::new(self.node_secrets.wallet_seed);
                         let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            let funding = create_funding()?;
+                            let funding = create_funding(&self.node_secrets)?;
+                            info!(
+                                "Send money to address: {}",
+                                funding
+                                    .get_address()
+                                    .expect("funding get_address")
+                                    .bright_yellow_bold()
+                            );
                             info!("Creating {}", "Wallet::Bob".bright_yellow());
                             if let request::Commit::Alice(remote_commit) = remote_commit.clone() {
                                 if self.wallets.get(&swap_id).is_none() {
@@ -547,7 +562,14 @@ impl Runtime {
                         let address = address();
                         let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
                         let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
-                        let funding = create_funding()?;
+                        let funding = create_funding(&self.node_secrets)?;
+                        info!(
+                            "Send money to address: {}",
+                            funding
+                                .get_address()
+                                .expect("funding get_address")
+                                .bright_yellow_bold()
+                        );
                         info!("Creating {}", "Wallet::Bob".bright_yellow());
                         if self.wallets.get(&swap_id).is_none() {
                             self.wallets.insert(
@@ -657,20 +679,31 @@ fn address() -> bitcoin::Address {
         .expect("Parsable address")
 }
 
-pub fn create_funding() -> Result<FundingTx, Error> {
-    let tx_hex = Vec::from_hex("01000000000105979237e926bc57c319d98b9c89a929aa404b65ea5a0ab45c9f058377e5ecf5750000000000ffffffffc91bd1d4b3d4fb45aa72fc7d49dd5a3c0a0213f527c58fb5b534ddeb2a9f51130000000000ffffffff5f714adfbad928150c2f22756c024b5282e273be414a74050c9672b146be23000100000000ffffffff2344ae6f3dbee616af09cc039d58fb2826cc46fa995bd48b91e507510c9ed48e0000000000ffffffff29826e5abd7d4b551803a31e07e69c7e7bc72b383b7bf8a95ef62297565d9ed40000000000ffffffff015a17f000000000001600145585e364d7bfe44b0508033c206e4773ad5e8b6d02473044022053a2e2e49c0c8827bf7db07f5f60e2f1320f8fea14fac289e844f221e8f4cd33022036be86e6edabf98d6e6de3581654d51671a3bdee55ed7a969f3c35ca8c9b759001210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49302483045022100b47cb32ed0a7764069f688363d1f2619eaa60c73eb929870d02a43c0b818d33102201d2321c14f70d81854377ecc253ad3f935fbf86d0cac7541af254296a3a4180c01210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c4930247304402201c88d188f4157bec6f8ac4c8b5cb8cf64d0d7af8c338f92a1be5e481221b97340220049d19ac7631b66c127ff660faabc8c70ea41efa4b8ce005ee083f339783f80001210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49302483045022100ad73bbba162803c61c5b196d29b05d4e34d4e1524bc37f095f027b4734fcccb602201ee014653f617ca99479be2c506c815d5b5532f252958caa6ba7409a4ed37f2b01210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49302483045022100d43abb60f4d4f1d6efc2cd3ab5d8504d54394dec27351b715ad5d307fb90087a022058812c60a378821866208b91ae25eedd4966e371d7af162839308d2a2e98eca901210288bb60d6a8a18df1dc1dd9653251d472133410551f0720caa57286b87192c49300000000").unwrap();
-    let funding_tx = Transaction::deserialize(&tx_hex).unwrap();
+pub fn create_funding(node_secrets: &NodeSecrets) -> Result<FundingTx, Error> {
+    let secp = secp256k1::Secp256k1::new();
+    let seed = node_secrets.wallet_seed;
+    // let master_key =
+    //     ExtendedPrivKey::new_master(bitcoin::Network::Bitcoin,
+    // &seed).expect("extendedprivkey"); let sk = master_key.derive_priv(&secp,
+    // &DerivationPath::from_str("m/0/1'/99").unwrap());
+    let sk =
+        PrivateKey::from_slice(&seed, bitcoin::Network::Testnet).expect("PrivateKey::from_slice");
+    let pk = PublicKey::from_private_key(&secp, &sk);
+    let funding = FundingTx::initialize(pk.key, farcaster_core::blockchain::Network::Testnet)
+        .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
+    Ok(funding)
+}
+
+pub fn funding_update(funding: &mut FundingTx) {
+    // FIXME: this should be received from syncer
+    let funding_tx_hex = Vec::from_hex("02000000000101ac0ac2cf357fc5dcb629e9ccdc96ce97cac14cd8c5b97fb6dc0c965d0d698f460100000000fdffffff01d2410f00000000001600142194a75350083e3218d0817ec95be4e043d702bf024730440220160c02a1e23b4eb2e0030d491dbab10c9f73bd63f28c9031e9b0e5405c34f127022030c3fd6fe7da4fb51330c97142d8e9ad8d3da9c731b60099e7a11d71577f57b1012102de38374957449db58aa087abf37fdd8d5722fa00b508afda30513dac2616eb18f2831f00").unwrap();
+    let funding_tx = Transaction::deserialize(&funding_tx_hex).unwrap();
+    let txid = funding_tx.txid();
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> {
         funding: funding_tx,
     };
-
-    let mut rng = secp256k1::rand::rngs::OsRng::new().expect("OsRng");
-    let (_, pubkey) = (secp256k1::Secp256k1::new()).generate_keypair(&mut rng);
-    let mut funding =
-        FundingTx::initialize(pubkey, farcaster_core::blockchain::Network::Testnet)
-            .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
     funding
         .update(funding_bundle.clone().funding.clone())
-        .map_err(|_| Error::Farcaster(s!("Could not update funding")))?;
-    Ok(funding)
+        .map_err(|_| Error::Farcaster(s!("Could not update funding")))
+        .unwrap();
 }
