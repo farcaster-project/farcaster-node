@@ -27,6 +27,7 @@ use farcaster_core::{
     bitcoin::{segwitv0::FundingTx, segwitv0::SegwitV0, Bitcoin},
     blockchain::FeePolitic,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
+    crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
     negotiation::PublicOffer,
     protocol_message::{
@@ -34,7 +35,7 @@ use farcaster_core::{
         RefundProcedureSignatures,
     },
     role::{Alice, Bob, SwapRole, TradeRole},
-    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
+    swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
     transaction::Fundable,
 };
@@ -74,7 +75,7 @@ pub enum Wallet {
     Alice(
         Alice<BtcXmr>,
         AliceParameters<BtcXmr>,
-        CoreWallet,
+        KeyManager,
         PublicOffer<BtcXmr>,
         Option<CommitBobParameters<BtcXmr>>,
         Option<BobParameters<BtcXmr>>,
@@ -82,7 +83,7 @@ pub enum Wallet {
     Bob(
         Bob<BtcXmr>,
         BobParameters<BtcXmr>,
-        CoreWallet,
+        KeyManager,
         PublicOffer<BtcXmr>,
         Option<FundingTx>,
         Option<CommitAliceParameters<BtcXmr>>,
@@ -180,10 +181,10 @@ impl Runtime {
                         let external_address = address();
                         let bob =
                             Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
-                        let core_wallet = CoreWallet::new(self.node_secrets.wallet_seed);
-                        let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
+                        let key_manager = KeyManager::new(self.node_secrets.wallet_seed);
+                        let local_params = bob.generate_parameters(&key_manager, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            let funding = create_funding(&self.node_secrets)?;
+                            let funding = create_funding(&key_manager)?;
                             let funding_addr = funding.get_address().expect("funding get_address");
                             info!(
                                 "Bob, please send Btc to address: {}",
@@ -197,7 +198,7 @@ impl Runtime {
                                         Wallet::Bob(
                                             bob,
                                             local_params.clone(),
-                                            core_wallet,
+                                            key_manager,
                                             public_offer.clone(),
                                             Some(funding),
                                             Some(remote_commit),
@@ -237,8 +238,8 @@ impl Runtime {
                         let alice: Alice<BtcXmr> =
                             Alice::new(external_address.into(), FeePolitic::Aggressive);
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let core_wallet = CoreWallet::new(wallet_seed);
-                        let params = alice.generate_parameters(&core_wallet, &public_offer)?;
+                        let key_manager = KeyManager::new(wallet_seed);
+                        let params = alice.generate_parameters(&key_manager, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             info!("Creating {}", "Wallet::Alice".bright_yellow());
                             if let request::Commit::Bob(bob_commit) = remote_commit.clone() {
@@ -248,7 +249,7 @@ impl Runtime {
                                         Wallet::Alice(
                                             alice,
                                             params.clone(),
-                                            core_wallet,
+                                            key_manager,
                                             public_offer.clone(),
                                             Some(bob_commit),
                                             None,
@@ -288,7 +289,7 @@ impl Runtime {
                                 Some(Wallet::Alice(
                                     _alice,
                                     _alice_params,
-                                    core_wallet,
+                                    key_manager,
                                     _public_offer,
                                     bob_commit,
                                     bob_params, // None
@@ -311,7 +312,7 @@ impl Runtime {
                                 Some(Wallet::Bob(
                                     bob,
                                     bob_params,
-                                    core_wallet,
+                                    key_manager,
                                     public_offer,
                                     funding,
                                     alice_commit, // None
@@ -342,7 +343,7 @@ impl Runtime {
                         Some(Wallet::Alice(
                             _alice,
                             _alice_params,
-                            core_wallet,
+                            key_manager,
                             _public_offer,
                             Some(bob_commit),
                             bob_params, // None
@@ -352,7 +353,7 @@ impl Runtime {
                                 return Ok(());
                             } else {
                                 trace!("Setting bob params: {}", reveal);
-                                bob_commit.verify_with_reveal(&*core_wallet, reveal.clone())?;
+                                bob_commit.verify_with_reveal(&*key_manager, reveal.clone())?;
                                 *bob_params = Some(reveal.into());
                                 // nothing to do yet, waiting for Msg
                                 // CoreArbitratingSetup to proceed
@@ -372,7 +373,7 @@ impl Runtime {
                             Some(Wallet::Bob(
                                 bob,
                                 bob_params,
-                                core_wallet,
+                                key_manager,
                                 public_offer,
                                 Some(funding),
                                 Some(commit),
@@ -398,7 +399,7 @@ impl Runtime {
                                 )?;
                                 *core_arb_txs = Some(core_arbitrating_txs.clone());
                                 let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
-                                    core_wallet,
+                                    key_manager,
                                     bob_params,
                                     &core_arbitrating_txs,
                                 )?;
@@ -422,7 +423,7 @@ impl Runtime {
                     Some(Wallet::Bob(
                         bob,
                         bob_params,
-                        core_wallet,
+                        key_manager,
                         public_offer,
                         Some(_funding_tx),
                         _commit,
@@ -431,15 +432,15 @@ impl Runtime {
                     )) => {
                         // *refund_sigs = Some(refund_proc_sigs);
                         let signed_adaptor_buy = bob.sign_adaptor_buy(
-                            core_wallet,
+                            key_manager,
                             alice_params,
                             bob_params,
                             core_arbitrating_txs,
                             public_offer,
                         )?;
                         let signed_arb_lock = bob.sign_arbitrating_lock(
-                            core_wallet,
-                            core_wallet,
+                            key_manager,
+                            key_manager,
                             core_arbitrating_txs,
                         )?;
 
@@ -464,20 +465,20 @@ impl Runtime {
                     Some(Wallet::Alice(
                         alice,
                         alice_params,
-                        core_wallet,
+                        key_manager,
                         public_offer,
                         _bob_commit,
                         Some(bob_parameters),
                     )) => {
                         let signed_adaptor_refund = alice.sign_adaptor_refund(
-                            core_wallet,
+                            key_manager,
                             alice_params,
                             bob_parameters,
                             &core_arb_txs,
                             public_offer,
                         )?;
                         let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
-                            core_wallet,
+                            key_manager,
                             alice_params,
                             bob_parameters,
                             &core_arb_txs,
@@ -556,13 +557,13 @@ impl Runtime {
                 self.swaps.insert(swap_id, None);
                 // since we're takers, we are on the other side of the trade
                 let taker_role = offer.maker_role.other();
-                let core_wallet = CoreWallet::new(self.node_secrets.wallet_seed);
+                let key_manager = KeyManager::new(self.node_secrets.wallet_seed);
                 match taker_role {
                     SwapRole::Bob => {
                         let address = address();
                         let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
-                        let local_params = bob.generate_parameters(&core_wallet, &public_offer)?;
-                        let funding = create_funding(&self.node_secrets)?;
+                        let local_params = bob.generate_parameters(&key_manager, &public_offer)?;
+                        let funding = create_funding(&key_manager)?;
                         let funding_addr = funding.get_address().expect("funding get_address");
                         info!(
                             "Send money to address: {}",
@@ -575,7 +576,7 @@ impl Runtime {
                                 Wallet::Bob(
                                     bob,
                                     local_params.clone(),
-                                    core_wallet,
+                                    key_manager,
                                     public_offer.clone(),
                                     Some(funding),
                                     None,
@@ -607,9 +608,9 @@ impl Runtime {
                         let alice: Alice<BtcXmr> =
                             Alice::new(address.into(), FeePolitic::Aggressive);
                         let local_params =
-                            alice.generate_parameters(&core_wallet, &public_offer)?;
+                            alice.generate_parameters(&key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let core_wallet = CoreWallet::new(wallet_seed);
+                        let key_manager = KeyManager::new(wallet_seed);
 
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
@@ -620,7 +621,7 @@ impl Runtime {
                                 Wallet::Alice(
                                     alice,
                                     local_params.clone(),
-                                    core_wallet,
+                                    key_manager,
                                     public_offer.clone(),
                                     None,
                                     None,
@@ -679,17 +680,11 @@ fn address() -> bitcoin::Address {
         .expect("Parsable address")
 }
 
-pub fn create_funding(node_secrets: &NodeSecrets) -> Result<FundingTx, Error> {
-    let secp = secp256k1::Secp256k1::new();
-    let seed = node_secrets.wallet_seed;
-    // let master_key =
-    //     ExtendedPrivKey::new_master(bitcoin::Network::Bitcoin,
-    // &seed).expect("extendedprivkey"); let sk = master_key.derive_priv(&secp,
-    // &DerivationPath::from_str("m/0/1'/99").unwrap());
-    let sk =
-        PrivateKey::from_slice(&seed, bitcoin::Network::Testnet).expect("PrivateKey::from_slice");
-    let pk = PublicKey::from_private_key(&secp, &sk);
-    let funding = FundingTx::initialize(pk.key, farcaster_core::blockchain::Network::Testnet)
+pub fn create_funding(
+    key_manager: &KeyManager,
+) -> Result<FundingTx, Error> {
+    let pk = key_manager.get_pubkey(ArbitratingKeyId::Fund).unwrap();
+    let funding = FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)
         .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
     Ok(funding)
 }
