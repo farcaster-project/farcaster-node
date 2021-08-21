@@ -70,6 +70,7 @@ pub struct Block {
     block_hash: Vec<u8>,
 }
 
+#[derive(Debug)]
 pub struct AddressNotif {
     address: XmrAddressAddendum,
     txs: Vec<AddressTx>,
@@ -148,7 +149,6 @@ impl MoneroRpc {
                 block_hash: None,
             }));
         }
-        println!("transactions: {:?}", transactions);
         transactions
     }
 
@@ -172,10 +172,11 @@ impl MoneroRpc {
         &mut self,
         address_addendum: XmrAddressAddendum,
     ) -> Result<AddressNotif, Error> {
-        let network = monero::Network::default();
+        // TODO: Get network type from configuration
+        let network = monero::Network::Stagenet;
         let keypair = monero::ViewPair {
-            view: monero::PrivateKey::from_slice(&address_addendum.view_key.clone()).unwrap(),
             spend: monero::PublicKey::from_slice(&address_addendum.spend_key.clone()).unwrap(),
+            view: monero::PrivateKey::from_slice(&address_addendum.view_key.clone()).unwrap(),
         };
         let address = monero::Address::from_viewpair(network, &keypair);
         let wallet_client = monero_rpc::RpcClient::new(self.wallet_rpc_url.clone());
@@ -185,11 +186,15 @@ impl MoneroRpc {
             .open_wallet(address.to_string(), Some("pass".to_string()))
             .await
         {
-            Err(_) => {
+            Err(err) => {
+                trace!(
+                    "error opening wallet: {:?}, falling back to generating a new wallet",
+                    err
+                );
                 wallet
                     .generate_from_keys(GenerateFromKeysArgs {
-                        restore_height: Some(2425400),
-                        filename: "test".to_string(),
+                        restore_height: Some(address_addendum.from_height),
+                        filename: address.to_string(),
                         address,
                         spendkey: none!(),
                         viewkey: keypair.view,
@@ -206,15 +211,21 @@ impl MoneroRpc {
             _ => {}
         }
 
+        wallet
+            .refresh(Some(address_addendum.from_height))
+            .await
+            .unwrap();
+
         let mut category_selector: HashMap<GetTransfersCategory, bool> = HashMap::new();
         category_selector.insert(GetTransfersCategory::In, true);
         category_selector.insert(GetTransfersCategory::Out, true);
         category_selector.insert(GetTransfersCategory::Pending, true);
+        category_selector.insert(GetTransfersCategory::Pool, true);
 
         let selector = GetTransfersSelector::<Range<u64>> {
             category_selector,
-            subaddr_indices: Some(vec![0]),
-            account_index: Some(0),
+            subaddr_indices: None,
+            account_index: None,
             filter_by_height: none!(),
         };
 
@@ -347,7 +358,6 @@ impl Synclet for MoneroSyncer {
                         }
                     }
                     trace!("pending events: {:?}", state.events);
-                    println!("pending events: {:?}", state.events);
 
                     // now consume the requests
                     for (event, source) in state.events.drain(..) {
@@ -363,13 +373,56 @@ impl Synclet for MoneroSyncer {
                             )
                             .unwrap();
                     }
-
-                    thread::sleep(std::time::Duration::from_secs(1));
+                    thread::sleep(std::time::Duration::from_secs(2));
                 }
             });
         });
     }
 }
+
+// #[test]
+// pub fn monero_syncer_address_test() {
+// let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+// let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+// let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+// tx_event.connect("inproc://xmrsyncerdbridge").unwrap();
+// rx_event.bind("inproc://xmrsyncerdbridge").unwrap();
+//
+// let viewkey: monero::PrivateKey = monero::PrivateKey::from_str(
+// "08b90e56278a92c6b937cb73080d2d09c8c7525531a5432d310098b295a09301",
+// )
+// .unwrap();
+// let spendkey: monero::PublicKey = monero::PublicKey::from_str(
+// "08c9ed3ab1efef7b56919603489aed4133e9f42f8a2be8078b645ae9cd93228e",
+// )
+// .unwrap();
+//
+// let addendum = XmrAddressAddendum {
+// spend_key: spendkey.as_bytes().try_into().unwrap(),
+// view_key: viewkey.as_bytes().try_into().unwrap(),
+// from_height: 902000,
+// };
+// let mut syncer = MoneroSyncer::new();
+// syncer.run(rx, tx_event, ServiceId::Syncer.into());
+// let task = SyncerdTask {
+// task: Task::WatchAddress(WatchAddress {
+// id: 0,
+// lifetime: 100000000,
+// addendum: consensus::serialize(&addendum),
+// }),
+// source: ServiceId::Syncer,
+// };
+// tx.send(task).unwrap();
+// let message = rx_event.recv_multipart(0);
+// assert!(message.is_ok());
+// println!("message received: {:?}", message);
+// let message = rx_event.recv_multipart(0);
+// assert!(message.is_ok());
+// println!("message received: {:?}", message);
+// let message = rx_event.recv_multipart(0);
+// assert!(message.is_ok());
+// println!("message received: {:?}", message);
+// }
 
 // #[test]
 // pub fn monero_syncer_state_transaction_event() {
@@ -433,67 +486,4 @@ impl Synclet for MoneroSyncer {
 //     let message = rx_event.recv_multipart(0);
 //     assert!(message.is_ok());
 //     println!("message received: {:?}", message);
-// }
-
-// #[tokio::test]
-// async fn monero_rpc_test() {
-// let client = monero_rpc::RpcClient::new("http://127.0.0.1:18083".to_string());
-// let wallet = client.wallet();
-// let height = wallet.get_height().await;
-// println!("{:?}", height);
-// let key_images = wallet.export_key_images().await;
-// println!("{:?}", key_images);
-//
-// let viewkey: monero::PrivateKey = monero::PrivateKey::from_str(
-// "4ed383d30ed2872b5f8c8e2cb917be4a08e261ae5cb1a93f8c641c40a380880e",
-// )
-// .unwrap();
-// let address = monero::Address::from_str("4BJHyDE7Sz4UebEJ8vM4rqYt2rtGqV7bX4DcCKDjs1BX9tmjAHKbwk8F3kHVi5k64nXF3bpuEHPQVHWb7TUNgE7B7ykocFy").unwrap();
-// let password = "pass";
-// let spendkey: Option<monero::PrivateKey> = none!();
-//
-// let wallet_create = wallet
-// .generate_from_keys(
-// Some(2425400),
-// "test".to_string(),
-// address,
-// spendkey,
-// viewkey,
-// password.to_string(),
-// Some(true),
-// )
-// .await;
-// println!("{:?}", wallet_create);
-//
-// let wallet_open = wallet
-// .open_wallet("test".to_string(), Some("pass".to_string()))
-// .await;
-// println!("{:?}", wallet_open);
-// }
-//
-// #[tokio::test]
-// async fn monero_daemon_test() {
-// let daemon_client =
-// monero_rpc::RpcClient::new("http://node.monerooutreach.org:18081".to_string());
-// let daemon = daemon_client.daemon();
-// let height = daemon.get_block_count().await;
-// println!("{:?}", height);
-// }
-//
-// #[tokio::test]
-// async fn monero_daemon_transactions_test() {
-// let tx_id = "7c50844eced8ab78a8f26a126fbc1f731134e0ae3e6f9ba0f205f98c1426ff60".to_string();
-// let daemon_client =
-// monero_rpc::RpcClient::new("http://node.monerooutreach.org:18081".to_string());
-// let daemon = daemon_client.daemon_rpc();
-// let mut fixed_hash: [u8; 32] = [0; 32];
-// hex::decode_to_slice(tx_id, &mut fixed_hash).unwrap();
-// let tx = daemon
-// .get_transactions(vec![fixed_hash.into()], Some(true), Some(true))
-// .await;
-// println!("{:?}", tx);
-// println!(
-// "unlock time: {:?}",
-// serde_json::from_str::<JsonTransaction>(&tx.unwrap().txs_as_json.unwrap()[0])
-// );
 // }
