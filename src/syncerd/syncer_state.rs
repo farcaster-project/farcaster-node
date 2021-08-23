@@ -38,7 +38,7 @@ pub struct AddressTransactions {
     txs: Vec<AddressTx>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AddressTx {
     pub our_amount: u64,
     pub tx_id: Vec<u8>,
@@ -189,15 +189,15 @@ impl SyncerState {
                                 Event::AddressTransaction(address_transaction.clone()),
                                 self.tasks_sources.get(id).unwrap().clone(),
                             ));
-                            return (
-                                id.clone(),
-                                AddressTransactions {
-                                    task: addr.task.clone(),
-                                    txs: txs.clone(),
-                                },
-                            );
                         }
                     }
+                    return (
+                        id.clone(),
+                        AddressTransactions {
+                            task: addr.task.clone(),
+                            txs: txs.clone(),
+                        },
+                    );
                 }
                 return (id.clone(), addr.clone());
             })
@@ -379,7 +379,7 @@ fn syncer_state_transaction() {
 }
 
 #[test]
-fn syncer_state_address() {
+fn syncer_state_addresses() {
     let mut state = SyncerState::new();
     let address_task = WatchAddress {
         id: 0,
@@ -398,6 +398,16 @@ fn syncer_state_address() {
     let address_tx_two = AddressTx {
         our_amount: 1,
         tx_id: vec![1; 32],
+        block_hash: vec![0],
+    };
+    let address_tx_three = AddressTx {
+        our_amount: 1,
+        tx_id: vec![2; 32],
+        block_hash: vec![0],
+    };
+    let address_tx_four = AddressTx {
+        our_amount: 1,
+        tx_id: vec![3; 32],
         block_hash: vec![0],
     };
 
@@ -441,6 +451,15 @@ fn syncer_state_address() {
     assert_eq!(state.addresses.len(), 1);
     assert_eq!(state.events.len(), 2);
 
+    state.change_address(
+        vec![0],
+        vec![address_tx_three.clone(), address_tx_four.clone()],
+    );
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.addresses.len(), 1);
+    assert_eq!(state.events.len(), 4);
+
     let height_task = WatchHeight {
         id: 0,
         lifetime: 3,
@@ -449,7 +468,7 @@ fn syncer_state_address() {
     state.watch_height(height_task, ServiceId::Syncer);
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
-    assert_eq!(state.events.len(), 3);
+    assert_eq!(state.events.len(), 5);
 
     state.change_height(2, vec![0]);
     state.change_address(
@@ -459,7 +478,7 @@ fn syncer_state_address() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 0);
-    assert_eq!(state.events.len(), 4);
+    assert_eq!(state.events.len(), 6);
 }
 
 #[test]
