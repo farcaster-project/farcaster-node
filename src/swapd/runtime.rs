@@ -159,7 +159,7 @@ pub struct Runtime {
     txs_status: HashMap<i32, (TxId, TxStatus)>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    pending_requests: Vec<(Request, ServiceId)>,
+    pending_requests: HashMap<ServiceId, Vec<Request>>,
 }
 
 #[derive(Display, Clone)]
@@ -293,10 +293,11 @@ impl Runtime {
                                 local_params,
                             )),
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
-                                let watch_addr =
+                                let watch_addr_req =
                                     watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
                                 // deferred to when syncer comes online
-                                self.pending_requests.push((watch_addr, ServiceId::Syncer));
+                                self.pending_requests
+                                    .insert(ServiceId::Syncer, vec![watch_addr_req]);
                                 // self.send_ctl(
                                 //         senders,
                                 //         ServiceId::Syncer,
@@ -335,7 +336,8 @@ impl Runtime {
                                 let watch_addr =
                                     watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
                                 // deferred to when syncer comes online
-                                self.pending_requests.push((watch_addr, ServiceId::Syncer));
+                                self.pending_requests
+                                    .insert(ServiceId::Syncer, vec![watch_addr]);
                                 // self.send_ctl(senders, ServiceId::Syncer, watch_addr)?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
@@ -595,8 +597,8 @@ impl Runtime {
         match (&request, &source) {
             (Request::Hello, ServiceId::Syncer) => {
                 info!("Source: {} is connected", source);
-                while let Some((req, dest)) = self.pending_requests.clone().pop() {
-                    if dest == source {
+                if let Some(requests) = self.pending_requests.remove(&source) {
+                    for req in requests {
                         self.send_ctl(senders, ServiceId::Syncer, req)?;
                     }
                 }
@@ -744,7 +746,9 @@ impl Runtime {
                 Event::HeightChanged(h) => {
                     info!("height changed {}", h)
                 }
-                Event::AddressTransaction(_) => {}
+                Event::AddressTransaction(_) => {
+                    error!("AddressTransaction doesnt expose the transaction yet");
+                }
                 Event::TransactionConfirmations(TransactionConfirmations {
                     id,
                     block,
