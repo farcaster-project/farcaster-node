@@ -55,7 +55,7 @@ slip132 = "0.3"
 lnp-core = { git = "https://github.com/zkao/lnp-core", branch = "farcaster", optional = true }
 internet2 = { git = "https://github.com/zkao/rust-internet2", branch = "farcaster" }
 bitcoin = "0.26"
-monero = "0.13"
+monero = "0.14"
 # Rust language
 lazy_static = "1.4"
 chrono = "0.4"
@@ -102,7 +102,7 @@ lightning_encoding = "0.4.0-beta.1"
 # Bitcoin
 bitcoin = "0.26"
 # Monero
-monero = "0.13"
+monero = "0.14"
 # lnp-core =  { path = "../ext/lnp-core" }
 # internet2 = { path = "../ext/rust-internet2" }
 lnp-core = { git = "https://github.com/zkao/lnp-core", branch = "farcaster", optional = true }

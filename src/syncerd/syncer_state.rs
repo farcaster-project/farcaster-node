@@ -183,6 +183,7 @@ impl SyncerState {
                                 hash: tx.tx_id.clone(),
                                 amount: tx.our_amount,
                                 block: tx.block_hash.clone(),
+                                tx: vec![0],
                             };
                             self.events.push((
                                 Event::AddressTransaction(address_transaction.clone()),
@@ -384,6 +385,7 @@ fn syncer_state_addresses() {
         id: 0,
         lifetime: 1,
         addendum: vec![0],
+        include_tx: Boolean::False,
     };
     state.watch_address(address_task, ServiceId::Syncer);
     assert_eq!(state.lifetimes.len(), 1);

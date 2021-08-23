@@ -805,7 +805,7 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "farcaster_core"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#46362028affa8ef8ab5cb75bf07bac6dd8b5c262"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#d4ba7f258f1347d78cb4fc929805255d27bce848"
 dependencies = [
  "amplify",
  "bincode",
@@ -1592,15 +1592,16 @@ dependencies = [
 
 [[package]]
 name = "monero"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a7038b6ba92588189248fbb4f8b2744d4918a9732f826e414814a50c168dca3"
+checksum = "68106ed713fc19d2b169ce5a2510927950e466e7032704af5b61cc2f7b59763d"
 dependencies = [
  "base58-monero",
  "curve25519-dalek",
  "fixed-hash",
  "hex",
  "hex-literal",
+ "sealed",
  "serde 1.0.127",
  "serde-big-array",
  "thiserror",
@@ -1610,7 +1611,7 @@ dependencies = [
 [[package]]
 name = "monero-rpc"
 version = "0.1.0"
-source = "git+https://github.com/TheCharlatan/monero-rpc-rs?branch=changes#3befe27d157f4dd3cb6df3bd93040e91358fdbad"
+source = "git+https://github.com/TheCharlatan/monero-rpc-rs?branch=changes#b0236d8b0cb9477169413d5ce9ffc2f07c9bcfe6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2353,6 +2354,18 @@ checksum = "b362b83898e0e69f38515b82ee15aa80636befe47c3b6d3d89a911e78fc228ce"
 dependencies = [
  "ring",
  "untrusted",
+]
+
+[[package]]
+name = "sealed"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "636b9882a0f4cc2039488df89a10eb4b7976d4b6c1917fc0518f3f0f5e2c72ca"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.74",
 ]
 
 [[package]]
