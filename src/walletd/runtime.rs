@@ -396,20 +396,30 @@ impl Runtime {
                                     bob_params,
                                     funding.clone(),
                                     public_offer,
-                                )?;
-                                *core_arb_txs = Some(core_arbitrating_txs.clone());
-                                let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
-                                    key_manager,
-                                    bob_params,
-                                    &core_arbitrating_txs,
-                                )?;
-                                let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from((
-                                    swap_id,
-                                    core_arbitrating_txs,
-                                    cosign_arbitrating_cancel,
-                                ));
-                                let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
-                                self.send_ctl(senders, source, Request::Protocol(core_arb_setup))?;
+                                );
+                                if let Ok(core_arbitrating_txs) = core_arbitrating_txs {
+                                    *core_arb_txs = Some(core_arbitrating_txs.clone());
+                                    let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
+                                        key_manager,
+                                        bob_params,
+                                        &core_arbitrating_txs,
+                                    )?;
+                                    let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from((
+                                        swap_id,
+                                        core_arbitrating_txs,
+                                        cosign_arbitrating_cancel,
+                                    ));
+                                    let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
+                                    self.send_ctl(
+                                        senders,
+                                        source,
+                                        Request::Protocol(core_arb_setup),
+                                    )?;
+                                } else {
+                                    error!(
+                                        "Did not yet receive the funding transaction from Syncer"
+                                    )
+                                }
                             }
                             _ => Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?,
                         }
@@ -680,9 +690,7 @@ fn address() -> bitcoin::Address {
         .expect("Parsable address")
 }
 
-pub fn create_funding(
-    key_manager: &KeyManager,
-) -> Result<FundingTx, Error> {
+pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Fund).unwrap();
     let funding = FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)
         .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
