@@ -1160,7 +1160,7 @@ fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> Request {
         script_pubkey: addr.script_pubkey().to_bytes(),
     };
     let addendum = consensus::serialize(&addendum);
-    let buf: [u8; 32] = addendum.clone().try_into().expect("watch_addr");
+    let buf: Vec<u8> = addendum.clone().try_into().expect("watch_addr");
     let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
     let id = i32::from_le_bytes(id_buf);
 
