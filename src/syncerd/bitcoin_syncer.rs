@@ -276,8 +276,6 @@ impl Synclet for BitcoinSyncer {
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
 
-            let runtime = Runtime::new().expect("Unable to create the syncer tokio runtime");
-
             state.change_height(rpc.height, rpc.block_hash.to_vec());
             info!("Entering bitcoin_syncer event loop");
             let mut i = 0;
@@ -289,7 +287,7 @@ impl Synclet for BitcoinSyncer {
                     Ok(syncerd_task) => {
                         match syncerd_task.task {
                             Task::Abort(task) => {
-                                state.abort(task, syncerd_task.source).unwrap();
+                                state.abort(task.id, syncerd_task.source);
                             }
                             Task::BroadcastTransaction(task) => {
                                 // TODO: match error and emit event with fail code
@@ -297,12 +295,21 @@ impl Synclet for BitcoinSyncer {
                             }
                             Task::WatchAddress(task) => {
                                 let mut res = std::io::Cursor::new(task.addendum.clone());
-                                let address_addendum =
-                                    BtcAddressAddendum::consensus_decode(&mut res).unwrap();
-                                state.watch_address(task.clone(), syncerd_task.source);
-                                let address_transactions =
-                                    rpc.subscribe_script(address_addendum).unwrap();
-                                state.change_address(task.addendum, address_transactions.txs);
+                                match BtcAddressAddendum::consensus_decode(&mut res) {
+                                    Err(_e) => {
+                                        error!("Aborting watch address task - unable to decode address addendum");
+                                        state.abort(task.id, syncerd_task.source);
+                                    }
+                                    Ok(address_addendum) => {
+                                        state.watch_address(task.clone(), syncerd_task.source);
+                                        let address_transactions =
+                                            rpc.subscribe_script(address_addendum).unwrap();
+                                        state.change_address(
+                                            task.addendum,
+                                            address_transactions.txs,
+                                        );
+                                    }
+                                }
                             }
                             Task::WatchHeight(task) => {
                                 state.watch_height(task, syncerd_task.source);

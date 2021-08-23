@@ -262,7 +262,12 @@ impl MoneroSyncer {
 }
 
 impl Synclet for MoneroSyncer {
-    fn run(&mut self, rx: Receiver<SyncerdTask>, tx: zmq::Socket, syncer_address: Vec<u8>) {
+    fn run(
+        &mut self,
+        receive_task_channel: Receiver<SyncerdTask>,
+        tx: zmq::Socket,
+        syncer_address: Vec<u8>,
+    ) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = MoneroRpc::new(
@@ -279,24 +284,32 @@ impl Synclet for MoneroSyncer {
                 state.change_height(block.height, block.block_hash);
 
                 loop {
-                    match rx.try_recv() {
+                    match receive_task_channel.try_recv() {
                         Ok(syncerd_task) => {
-                            // rt.spawn(async {
                             match syncerd_task.task {
                                 Task::Abort(task) => {
-                                    state.abort(task, syncerd_task.source).unwrap();
+                                    state.abort(task.id, syncerd_task.source);
                                 }
                                 Task::BroadcastTransaction(_task) => {
                                     error!("broadcast transaction not available for Monero");
                                 }
                                 Task::WatchAddress(task) => {
                                     let mut res = std::io::Cursor::new(task.addendum.clone());
-                                    let address_addendum =
-                                        XmrAddressAddendum::consensus_decode(&mut res).unwrap();
-                                    state.watch_address(task.clone(), syncerd_task.source);
-                                    let address_transactions =
-                                        rpc.check_address(address_addendum).await.unwrap();
-                                    state.change_address(task.addendum, address_transactions.txs);
+                                    match XmrAddressAddendum::consensus_decode(&mut res) {
+                                        Err(_e) => {
+                                            error!("Aborting watch address task - unable to decode address addendum");
+                                            state.abort(task.id, syncerd_task.source);
+                                        }
+                                        Ok(address_addendum) => {
+                                            state.watch_address(task.clone(), syncerd_task.source);
+                                            let address_transactions =
+                                                rpc.check_address(address_addendum).await.unwrap();
+                                            state.change_address(
+                                                task.addendum,
+                                                address_transactions.txs,
+                                            );
+                                        }
+                                    }
                                 }
                                 Task::WatchHeight(task) => {
                                     state.watch_height(task, syncerd_task.source);

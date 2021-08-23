@@ -60,7 +60,7 @@ impl SyncerState {
         }
     }
 
-    pub fn abort(&mut self, task: Abort, source: ServiceId) -> Result<(), Error> {
+    pub fn abort(&mut self, task_id: i32, source: ServiceId) {
         let status = 0;
         // match self.tasks.remove(&task.id) {
         //     None => {}
@@ -88,12 +88,11 @@ impl SyncerState {
         // Emit the task_aborted event
         self.events.push((
             Event::TaskAborted(TaskAborted {
-                id: task.id,
+                id: task_id,
                 success_abort: status,
             }),
             source,
         ));
-        Ok(())
     }
 
     pub fn watch_height(&mut self, task: WatchHeight, source: ServiceId) {
