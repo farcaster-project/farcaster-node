@@ -67,6 +67,7 @@ use lnp::payment::{self, AssetsBalance, Lifecycle};
 use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
+use monero::cryptonote::hash::keccak_256;
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
 
 pub fn run(
@@ -1159,8 +1160,9 @@ fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> Request {
         script_pubkey: addr.script_pubkey().to_bytes(),
     };
     let addendum = consensus::serialize(&addendum);
-    let buf: [u8; 4] = addendum[4..8].try_into().expect("task_id");
-    let id = i32::from_le_bytes(buf);
+    let buf: [u8; 32] = addendum.clone().try_into().expect("watch_addr");
+    let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
+    let id = i32::from_le_bytes(id_buf);
 
     Request::SyncerTask(Task::WatchAddress(WatchAddress {
         id,
