@@ -53,9 +53,10 @@ use farcaster_core::{
     swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
     syncer::{
-        BroadcastTransaction, Event, Task, TransactionConfirmations, WatchAddress, WatchTransaction,
+        Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations, WatchAddress,
+        WatchTransaction,
     },
-    transaction::TxId,
+    transaction::TxLabel,
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -157,7 +158,7 @@ pub struct Runtime {
     tx_finality_thr: i32,
     confirmation_bound: u16,
     task_lifetime: Option<u64>,
-    txs_status: HashMap<i32, (TxId, TxStatus)>,
+    txs_status: HashMap<i32, (TxLabel, TxStatus)>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
     pending_requests: HashMap<ServiceId, Vec<Request>>,
@@ -425,9 +426,9 @@ impl Runtime {
                         if let State::Alice(AliceState::RevealA(_)) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             for (&tx, tx_label) in [lock, cancel, refund].iter().zip([
-                                TxId::Lock,
-                                TxId::Cancel,
-                                TxId::Refund,
+                                TxLabel::Lock,
+                                TxLabel::Cancel,
+                                TxLabel::Refund,
                             ]) {
                                 let txid = tx.clone().extract_tx().txid();
                                 let id = task_id(txid);
@@ -497,7 +498,7 @@ impl Runtime {
                             let id = task_id(txid);
                             if self
                                 .txs_status
-                                .insert(id, (TxId::Buy, TxStatus::Notfinal))
+                                .insert(id, (TxLabel::Buy, TxStatus::Notfinal))
                                 .is_none()
                             {
                                 // notify the syncer to watch for the buy transaction
@@ -763,12 +764,12 @@ impl Runtime {
                         );
                         // FIXME: fill match arms
                         match txlabel {
-                            TxId::Funding => {}
-                            TxId::Lock => {}
-                            TxId::Buy => {}
-                            TxId::Cancel => {}
-                            TxId::Refund => {}
-                            TxId::Punish => {}
+                            TxLabel::Funding => {}
+                            TxLabel::Lock => {}
+                            TxLabel::Buy => {}
+                            TxLabel::Cancel => {}
+                            TxLabel::Refund => {}
+                            TxLabel::Punish => {}
                         }
                     }
                     info!(
@@ -802,11 +803,11 @@ impl Runtime {
                     refund,
                     cancel_sig,
                 } = core_arb_setup.clone();
-                for (tx, tx_label) in
-                    [lock, cancel, refund]
-                        .iter()
-                        .zip([TxId::Lock, TxId::Cancel, TxId::Refund])
-                {
+                for (tx, tx_label) in [lock, cancel, refund].iter().zip([
+                    TxLabel::Lock,
+                    TxLabel::Cancel,
+                    TxLabel::Refund,
+                ]) {
                     let txid = tx.clone().extract_tx().txid();
                     let id = task_id(txid);
                     if self
@@ -1168,5 +1169,6 @@ fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> Request {
         id,
         lifetime,
         addendum,
+        include_tx: Boolean::False,
     }))
 }
