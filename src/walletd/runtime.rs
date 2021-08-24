@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
+    ptr::swap_nonoverlapping,
     str::FromStr,
 };
 
@@ -37,6 +38,7 @@ use farcaster_core::{
     role::{Alice, Bob, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
+    syncer::{AddressTransaction, Event},
     transaction::Fundable,
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
@@ -85,7 +87,8 @@ pub enum Wallet {
         BobParameters<BtcXmr>,
         KeyManager,
         PublicOffer<BtcXmr>,
-        Option<FundingTx>,
+        Option<(FundingTx, bool)>, /* bool indicates whether funding was updated, check should
+                                    * be at core level */
         Option<CommitAliceParameters<BtcXmr>>,
         Option<AliceParameters<BtcXmr>>,
         Option<CoreArbitratingTransactions<Bitcoin<SegwitV0>>>,
@@ -200,7 +203,7 @@ impl Runtime {
                                             local_params.clone(),
                                             key_manager,
                                             public_offer.clone(),
-                                            Some(funding),
+                                            Some((funding, false)),
                                             Some(remote_commit),
                                             None,
                                             None,
@@ -375,7 +378,7 @@ impl Runtime {
                                 bob_params,
                                 key_manager,
                                 public_offer,
-                                Some(funding),
+                                Some((funding, true)),
                                 Some(commit),
                                 alice_params, // None
                                 core_arb_txs, // None
@@ -389,6 +392,10 @@ impl Runtime {
                                 // set wallet core_arb_txs
                                 if core_arb_txs.is_some() {
                                     Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
+                                }
+                                if !funding.was_seen() {
+                                    error!("Funding not yet seen");
+                                    return Ok(());
                                 }
                                 // FIXME should be set before
                                 let core_arbitrating_txs = bob.core_arbitrating_transactions(
@@ -588,7 +595,7 @@ impl Runtime {
                                     local_params.clone(),
                                     key_manager,
                                     public_offer.clone(),
-                                    Some(funding),
+                                    Some((funding, false)),
                                     None,
                                     None,
                                     None,
@@ -658,8 +665,34 @@ impl Runtime {
                     }
                 };
             }
+            Request::SyncerEvent(Event::AddressTransaction(AddressTransaction {
+                id,
+                hash,
+                amount,
+                block,
+                tx,
+            })) => {
+                let swap_id = swap_id(source)?;
+                if let Some(Wallet::Bob(
+                    bob,
+                    local_params,
+                    key_manager,
+                    public_offer,
+                    Some((funding, funding_updated)),
+                    remote_commit,
+                    None,
+                    None,
+                )) = self.wallets.get_mut(&swap_id)
+                {
+                    if funding_updated == &mut false {
+                        funding_update(funding, tx)?;
+                        *funding_updated = true;
+                    } else {
+                        error!("funding not yet updated");
+                    }
+                }
+            }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
-                // eprintln!("inside PeerSecret handler");
                 if wallet_token != self.wallet_token {
                     Err(Error::InvalidToken)?
                 }
@@ -697,9 +730,7 @@ pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
     Ok(funding)
 }
 
-pub fn funding_update(funding: &mut FundingTx) {
-    // FIXME: this should be received from syncer
-    let funding_tx_hex = Vec::from_hex("02000000000101ac0ac2cf357fc5dcb629e9ccdc96ce97cac14cd8c5b97fb6dc0c965d0d698f460100000000fdffffff01d2410f00000000001600142194a75350083e3218d0817ec95be4e043d702bf024730440220160c02a1e23b4eb2e0030d491dbab10c9f73bd63f28c9031e9b0e5405c34f127022030c3fd6fe7da4fb51330c97142d8e9ad8d3da9c731b60099e7a11d71577f57b1012102de38374957449db58aa087abf37fdd8d5722fa00b508afda30513dac2616eb18f2831f00").unwrap();
+pub fn funding_update(funding: &mut FundingTx, funding_tx_hex: Vec<u8>) -> Result<(), Error> {
     let funding_tx = Transaction::deserialize(&funding_tx_hex).unwrap();
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> {
         funding: funding_tx,
@@ -707,5 +738,4 @@ pub fn funding_update(funding: &mut FundingTx) {
     funding
         .update(funding_bundle.clone().funding.clone())
         .map_err(|_| Error::Farcaster(s!("Could not update funding")))
-        .unwrap();
 }
