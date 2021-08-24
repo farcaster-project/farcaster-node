@@ -87,8 +87,7 @@ pub enum Wallet {
         BobParameters<BtcXmr>,
         KeyManager,
         PublicOffer<BtcXmr>,
-        Option<(FundingTx, bool)>, /* bool indicates whether funding was updated, check should
-                                    * be at core level */
+        Option<FundingTx>,
         Option<CommitAliceParameters<BtcXmr>>,
         Option<AliceParameters<BtcXmr>>,
         Option<CoreArbitratingTransactions<Bitcoin<SegwitV0>>>,
@@ -213,7 +212,7 @@ impl Runtime {
                                             local_params.clone(),
                                             key_manager,
                                             public_offer.clone(),
-                                            Some((funding, false)),
+                                            Some(funding),
                                             Some(remote_commit),
                                             None,
                                             None,
@@ -388,7 +387,7 @@ impl Runtime {
                                 bob_params,
                                 key_manager,
                                 public_offer,
-                                Some((funding, true)),
+                                Some(funding),
                                 Some(commit),
                                 alice_params, // None
                                 core_arb_txs, // None
@@ -613,7 +612,7 @@ impl Runtime {
                                     local_params.clone(),
                                     key_manager,
                                     public_offer.clone(),
-                                    Some((funding, false)),
+                                    Some(funding),
                                     None,
                                     None,
                                     None,
@@ -696,17 +695,16 @@ impl Runtime {
                     local_params,
                     key_manager,
                     public_offer,
-                    Some((funding, funding_updated)),
+                    Some(funding),
                     remote_commit,
                     None,
                     None,
                 )) = self.wallets.get_mut(&swap_id)
                 {
-                    if funding_updated == &mut false {
+                    if !funding.was_seen() {
                         funding_update(funding, tx)?;
-                        *funding_updated = true;
                     } else {
-                        error!("funding not yet updated");
+                        error!("funding was already seen and updated");
                     }
                 }
             }
