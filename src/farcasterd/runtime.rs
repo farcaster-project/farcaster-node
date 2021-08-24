@@ -54,7 +54,7 @@ use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 use farcaster_core::{
-    blockchain::FeePolitic,
+    blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
         SignedArbitratingLock,

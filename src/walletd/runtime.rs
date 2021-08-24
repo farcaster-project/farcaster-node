@@ -26,7 +26,7 @@ use bitcoin::{
 use colored::Colorize;
 use farcaster_core::{
     bitcoin::{segwitv0::FundingTx, segwitv0::SegwitV0, Bitcoin},
-    blockchain::FeePolitic,
+    blockchain::FeePriority,
     bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
     crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
@@ -193,7 +193,7 @@ impl Runtime {
                     SwapRole::Bob => {
                         let external_address = address();
                         let bob =
-                            Bob::<BtcXmr>::new(external_address.into(), FeePolitic::Aggressive);
+                            Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
                         let key_manager = KeyManager::new(self.node_secrets.wallet_seed);
                         let local_params = bob.generate_parameters(&key_manager, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
@@ -249,7 +249,7 @@ impl Runtime {
                     SwapRole::Alice => {
                         let external_address = address();
                         let alice: Alice<BtcXmr> =
-                            Alice::new(external_address.into(), FeePolitic::Aggressive);
+                            Alice::new(external_address.into(), FeePriority::Low);
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let key_manager = KeyManager::new(wallet_seed);
                         let params = alice.generate_parameters(&key_manager, &public_offer)?;
@@ -596,7 +596,7 @@ impl Runtime {
                 match taker_role {
                     SwapRole::Bob => {
                         let address = address();
-                        let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePolitic::Aggressive);
+                        let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePriority::Low);
                         let local_params = bob.generate_parameters(&key_manager, &public_offer)?;
                         let funding = create_funding(&key_manager)?;
                         let funding_addr = funding.get_address().expect("funding get_address");
@@ -641,7 +641,7 @@ impl Runtime {
                     SwapRole::Alice => {
                         let address = address();
                         let alice: Alice<BtcXmr> =
-                            Alice::new(address.into(), FeePolitic::Aggressive);
+                            Alice::new(address.into(), FeePriority::Low);
                         let local_params =
                             alice.generate_parameters(&key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
