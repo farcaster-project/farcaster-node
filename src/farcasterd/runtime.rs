@@ -21,7 +21,6 @@ use crate::{
 };
 use amplify::Wrapper;
 use request::{Commit, Params};
-use std::ffi::OsStr;
 use std::hash::Hash;
 use std::io;
 use std::net::SocketAddr;
@@ -32,6 +31,7 @@ use std::{
     io::Read,
 };
 use std::{convert::TryFrom, thread::sleep};
+use std::{convert::TryInto, ffi::OsStr};
 
 use bitcoin::secp256k1::{
     self,
@@ -41,7 +41,7 @@ use bitcoin::{
     hashes::hex::ToHex,
     secp256k1::{PublicKey, SecretKey},
 };
-use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
+use internet2::{addr::InetSocketAddr, NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::Chain;
 use microservices::esb::{self, Handler};
@@ -54,7 +54,7 @@ use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 use farcaster_core::{
-    blockchain::FeePolitic,
+    blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
         SignedArbitratingLock,
@@ -585,7 +585,8 @@ impl Runtime {
                     node_id: node_ids[0], // checked above
                     remote_addr: remote_addr.clone(),
                 };
-                let public_offer = offer.clone().to_public_v1(peer);
+
+                let public_offer = offer.clone().to_public_v1(node_ids[0], remote_addr.into());
                 let hex_public_offer = public_offer.to_hex();
                 if self.offers.insert(public_offer) {
                     let msg = format!(
@@ -639,8 +640,14 @@ impl Runtime {
                     let PublicOffer {
                         version,
                         offer,
-                        daemon_service,
+                        node_id, // bitcoin::Pubkey
+                        peer_address, // InetSocketAddr
                     } = public_offer.clone();
+
+                    let daemon_service = internet2::RemoteNodeAddr {
+                        node_id, // checked above
+                        remote_addr: RemoteSocketAddr::Ftcp(peer_address), // expected RemoteSocketAddr
+                    };
                     let peer = daemon_service
                         .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
                         .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
@@ -836,7 +843,7 @@ fn launch_swapd(
     local_params: Params,
     swap_id: SwapId,
     remote_commit: Option<Commit>,
-    funding_address: Option<bitcoin::Address>
+    funding_address: Option<bitcoin::Address>,
 ) -> Result<String, Error> {
     debug!("Instantiating swapd...");
     let child = launch(

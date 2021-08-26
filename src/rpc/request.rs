@@ -47,7 +47,7 @@ use bitcoin::{
 };
 use farcaster_core::{
     bitcoin::Bitcoin,
-    blockchain::FeePolitic,
+    blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
     },
