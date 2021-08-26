@@ -53,8 +53,8 @@ use farcaster_core::{
     swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
     swap::SwapId,
     syncer::{
-        Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations, WatchAddress,
-        WatchTransaction,
+        AddressTransaction, Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations,
+        WatchAddress, WatchTransaction,
     },
     transaction::TxLabel,
 };
@@ -744,18 +744,33 @@ impl Runtime {
                 trace!("setting commit_remote and commit_local msg");
                 self.state = next_state;
             }
-            Request::SyncerEvent(event) => match event {
+
+            Request::SyncerEvent(ref event) => match event {
                 Event::HeightChanged(h) => {
                     info!("height changed {}", h)
                 }
-                Event::AddressTransaction(_) => {
-                    error!("AddressTransaction doesnt expose the transaction yet");
+                Event::AddressTransaction(AddressTransaction {
+                    id,
+                    hash,
+                    amount,
+                    block,
+                    tx,
+                }) => {
+                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
+                        match txlabel {
+                            TxLabel::Funding => {
+                                info!("Seen funding transaction");
+                                self.send_wallet(ServiceBus::Ctl, senders, request)?
+                            }
+                            _ => {}
+                        }
+                    }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
                     id,
                     block,
                     confirmations,
-                }) if confirmations >= self.tx_finality_thr => {
+                }) if confirmations >= &self.tx_finality_thr => {
                     if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
                         info!(
