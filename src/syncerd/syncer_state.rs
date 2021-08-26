@@ -43,6 +43,7 @@ pub struct AddressTx {
     pub our_amount: u64,
     pub tx_id: Vec<u8>,
     pub block_hash: Vec<u8>,
+    pub tx: Vec<u8>,
 }
 
 impl SyncerState {
@@ -114,15 +115,14 @@ impl SyncerState {
         ));
     }
 
-    pub fn watch_address(&mut self, task: WatchAddress, source: ServiceId) {
+    pub fn watch_address(&mut self, task: WatchAddress, source: ServiceId) -> Result<(), Error> {
         // increment the count to use it as a unique internal id
         self.task_count += 1;
-        if self.add_lifetime(task.lifetime, self.task_count).is_err() {
-            return;
-        }
+        self.add_lifetime(task.lifetime, self.task_count)?; // FIXME turned off because it errors here
         self.tasks_sources.insert(self.task_count, source);
         let address_tx = AddressTransactions { task, txs: vec![] };
         self.addresses.insert(self.task_count, address_tx);
+        Ok(())
     }
 
     pub fn watch_transaction(&mut self, task: WatchTransaction, source: ServiceId) {
@@ -169,7 +169,10 @@ impl SyncerState {
 
     pub fn change_address(&mut self, address_addendum: Vec<u8>, txs: Vec<AddressTx>) {
         self.drop_lifetimes();
-
+        if self.addresses.is_empty() {
+            info!("no addresses here");
+        }
+        info!("inside change_address");
         self.addresses = self
             .addresses
             .clone()
@@ -183,7 +186,7 @@ impl SyncerState {
                                 hash: tx.tx_id.clone(),
                                 amount: tx.our_amount,
                                 block: tx.block_hash.clone(),
-                                tx: vec![0],
+                                tx: tx.tx.clone(),
                             };
                             self.events.push((
                                 Event::AddressTransaction(address_transaction.clone()),
@@ -387,7 +390,9 @@ fn syncer_state_addresses() {
         addendum: vec![0],
         include_tx: Boolean::False,
     };
-    state.watch_address(address_task, ServiceId::Syncer);
+    state
+        .watch_address(address_task, ServiceId::Syncer)
+        .unwrap();
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -395,21 +400,25 @@ fn syncer_state_addresses() {
         our_amount: 1,
         tx_id: vec![0; 32],
         block_hash: vec![0],
+        tx: vec![0],
     };
     let address_tx_two = AddressTx {
         our_amount: 1,
         tx_id: vec![1; 32],
         block_hash: vec![0],
+        tx: vec![0],
     };
     let address_tx_three = AddressTx {
         our_amount: 1,
         tx_id: vec![2; 32],
         block_hash: vec![0],
+        tx: vec![0],
     };
     let address_tx_four = AddressTx {
         our_amount: 1,
         tx_id: vec![3; 32],
         block_hash: vec![0],
+        tx: vec![0],
     };
 
     state.change_address(vec![0], vec![address_tx_one.clone()]);
