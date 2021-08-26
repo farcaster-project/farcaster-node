@@ -127,9 +127,8 @@ pub fn run(
         )?),
         confirmation_bound: 10000,
         // TODO: query syncer to set this value (start with None)
-        task_lifetime: Some(795458),
+        task_lifetime: Some(2066175 + 10000),
         txs_status: none!(),
-        pending_requests: none!(),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -161,7 +160,6 @@ pub struct Runtime {
     txs_status: HashMap<i32, (TxLabel, TxStatus)>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    pending_requests: HashMap<ServiceId, Vec<Request>>,
 }
 
 #[derive(Display, Clone)]
@@ -295,16 +293,15 @@ impl Runtime {
                                 local_params,
                             )),
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
-                                let watch_addr_req =
-                                    watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
+                                let tx_label = TxLabel::Funding;
+                                let (watch_addr_req, id) = watch_addr(
+                                    addr,
+                                    self.task_lifetime.expect("task_lifetime"),
+                                );
+                                self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
                                 // deferred to when syncer comes online
-                                self.pending_requests
-                                    .insert(ServiceId::Syncer, vec![watch_addr_req]);
-                                // self.send_ctl(
-                                //         senders,
-                                //         ServiceId::Syncer,
-                                //         Request::SyncerTask(watch_addr),
-                                //     )?;
+                                // FIXME
+                                self.send_ctl(senders, ServiceId::Syncer, watch_addr_req)?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     local_params,
@@ -335,12 +332,18 @@ impl Runtime {
                                 remote_commit,
                             )),
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
-                                let watch_addr =
-                                    watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
+                                let tx_label = TxLabel::Funding;
+                                let (watch_addr_req, id) = watch_addr(
+                                    addr,
+                                    self.task_lifetime.expect("task_lifetime"),
+                                );
+                                self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
+
+                                // FIXME
                                 // deferred to when syncer comes online
-                                self.pending_requests
-                                    .insert(ServiceId::Syncer, vec![watch_addr]);
-                                // self.send_ctl(senders, ServiceId::Syncer, watch_addr)?;
+                                // self.pending_requests
+                                //     .insert(ServiceId::Syncer, vec![watch_addr]);
+                                self.send_ctl(senders, ServiceId::Syncer, watch_addr_req)?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     remote_commit,
@@ -387,9 +390,17 @@ impl Runtime {
                                 }
                             },
                         };
-                        // self.send_peer(senders, msg)?;
                         // pass request on to wallet daemon so that it can set remote params
-                        self.send_wallet(msg_bus, senders, request)?;
+                        match self.state {
+                            State::Alice(..) => self.send_wallet(msg_bus, senders, request)?,
+                            State::Bob(..) => {
+                                // sending this request will initialize the
+                                // arbitrating setup, that can be only performed
+                                // after the funding tx was seen
+                                // self.pending_requests.insert(request::
+                                // RequestId::rand(), v)
+                            }
+                        }
                         // up to here for both maker and taker, following only Maker
 
                         // if did not yet reveal, maker only. on the msg flow as
@@ -599,11 +610,6 @@ impl Runtime {
         match (&request, &source) {
             (Request::Hello, ServiceId::Syncer) => {
                 info!("Source: {} is connected", source);
-                if let Some(requests) = self.pending_requests.remove(&source) {
-                    for req in requests {
-                        self.send_ctl(senders, ServiceId::Syncer, req)?;
-                    }
-                }
             }
 
             (Request::Hello, _) => {
@@ -744,8 +750,7 @@ impl Runtime {
                 trace!("setting commit_remote and commit_local msg");
                 self.state = next_state;
             }
-
-            Request::SyncerEvent(ref event) => match event {
+            Request::SyncerEvent(ref event) => match &event {
                 Event::HeightChanged(h) => {
                     info!("height changed {}", h)
                 }
@@ -756,14 +761,20 @@ impl Runtime {
                     block,
                     tx,
                 }) => {
+                    // FIXME where to wait for a few confs?
+                    info!("Received AddressTransaction, processing {:?}: ", tx);
                     if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         match txlabel {
                             TxLabel::Funding => {
-                                info!("Seen funding transaction");
+                                info!("Funding transaction received, forwarding to wallet");
                                 self.send_wallet(ServiceBus::Ctl, senders, request)?
                             }
-                            _ => {}
+                            _ => {
+                                error!("event not funding tx")
+                            }
                         }
+                    } else {
+                        error!("Transaction about unknow transaction");
                     }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
@@ -802,7 +813,6 @@ impl Runtime {
                 }
                 Event::TransactionBroadcasted(_) => {}
                 Event::TaskAborted(_) => {}
-                _ => {}
             },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
@@ -1169,7 +1179,10 @@ enum TxStatus {
     Notfinal,
 }
 
-fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> Request {
+fn watch_addr(
+    addr: bitcoin::Address,
+    lifetime: u64,
+) -> (Request, i32) {
     let addendum = BtcAddressAddendum {
         address: addr.to_string(),
         from_height: 0,
@@ -1180,10 +1193,18 @@ fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> Request {
     let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
     let id = i32::from_le_bytes(id_buf);
 
-    Request::SyncerTask(Task::WatchAddress(WatchAddress {
+    (Request::SyncerTask(Task::WatchAddress(WatchAddress {
         id,
         lifetime,
         addendum,
-        include_tx: Boolean::False,
-    }))
+        include_tx: Boolean::True,
+    })), id)
+}
+
+struct DeferredRequest {
+    awaiting: Request,
+    from: ServiceId,
+    then_submit: Request,
+    to: ServiceId,
+    on_bus: ServiceBus,
 }
