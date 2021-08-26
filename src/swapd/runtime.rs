@@ -129,6 +129,7 @@ pub fn run(
         // TODO: query syncer to set this value (start with None)
         task_lifetime: Some(2066175 + 10000),
         txs_status: none!(),
+        pending_requests: none!(),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -158,6 +159,7 @@ pub struct Runtime {
     confirmation_bound: u16,
     task_lifetime: Option<u64>,
     txs_status: HashMap<i32, (TxLabel, TxStatus)>,
+    pending_requests: HashMap<ServiceId, PendingRequest>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -294,10 +296,8 @@ impl Runtime {
                             )),
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
                                 let tx_label = TxLabel::Funding;
-                                let (watch_addr_req, id) = watch_addr(
-                                    addr,
-                                    self.task_lifetime.expect("task_lifetime"),
-                                );
+                                let (watch_addr_req, id) =
+                                    watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
                                 self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
                                 // deferred to when syncer comes online
                                 // FIXME
@@ -333,10 +333,8 @@ impl Runtime {
                             )),
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
                                 let tx_label = TxLabel::Funding;
-                                let (watch_addr_req, id) = watch_addr(
-                                    addr,
-                                    self.task_lifetime.expect("task_lifetime"),
-                                );
+                                let (watch_addr_req, id) =
+                                    watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
                                 self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
 
                                 // FIXME
@@ -392,13 +390,26 @@ impl Runtime {
                         };
                         // pass request on to wallet daemon so that it can set remote params
                         match self.state {
+                            // validaded state above, no need to check again
                             State::Alice(..) => self.send_wallet(msg_bus, senders, request)?,
                             State::Bob(..) => {
                                 // sending this request will initialize the
                                 // arbitrating setup, that can be only performed
                                 // after the funding tx was seen
-                                // self.pending_requests.insert(request::
-                                // RequestId::rand(), v)
+                                let pending_request = PendingRequest {
+                                    request,
+                                    dest: ServiceId::Wallet,
+                                    bus_id: ServiceBus::Msg,
+                                };
+                                // when receiving from wallet
+                                if let None = self
+                                    .pending_requests
+                                    .insert(ServiceId::Wallet, pending_request)
+                                {
+                                    trace!("Pending request will be called later")
+                                } else {
+                                    error!("A pending request was removed, FIXME")
+                                }
                             }
                         }
                         // up to here for both maker and taker, following only Maker
@@ -749,6 +760,33 @@ impl Runtime {
                 info!("State transition: {}", next_state.bright_blue_bold());
                 trace!("setting commit_remote and commit_local msg");
                 self.state = next_state;
+            }
+            Request::FundingUpdated => {
+                if source != ServiceId::Wallet {
+                    error!("Only wallet permited");
+                    return Ok(());
+                }
+                trace!("funding updated received from wallet");
+                if let Some(PendingRequest {
+                    request,
+                    dest,
+                    bus_id,
+                }) = self.pending_requests.remove(&source)
+                {
+                    if let Request::Protocol(Msg::Reveal(Reveal::Bob(_))) = &request {
+                        trace!(
+                            "sending request {} to {} on bus {}",
+                            &request,
+                            &dest,
+                            &bus_id
+                        );
+                        senders.send_to(bus_id, source, dest, request)?
+                    } {
+                        error!("Not the expected request")
+                    }
+                } else {
+                    error!("pending request not found")
+                }
             }
             Request::SyncerEvent(ref event) => match &event {
                 Event::HeightChanged(h) => {
@@ -1179,10 +1217,7 @@ enum TxStatus {
     Notfinal,
 }
 
-fn watch_addr(
-    addr: bitcoin::Address,
-    lifetime: u64,
-) -> (Request, i32) {
+fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> (Request, i32) {
     let addendum = BtcAddressAddendum {
         address: addr.to_string(),
         from_height: 0,
@@ -1193,18 +1228,19 @@ fn watch_addr(
     let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
     let id = i32::from_le_bytes(id_buf);
 
-    (Request::SyncerTask(Task::WatchAddress(WatchAddress {
+    (
+        Request::SyncerTask(Task::WatchAddress(WatchAddress {
+            id,
+            lifetime,
+            addendum,
+            include_tx: Boolean::True,
+        })),
         id,
-        lifetime,
-        addendum,
-        include_tx: Boolean::True,
-    })), id)
+    )
 }
 
-struct DeferredRequest {
-    awaiting: Request,
-    from: ServiceId,
-    then_submit: Request,
-    to: ServiceId,
-    on_bus: ServiceBus,
+struct PendingRequest {
+    request: Request,
+    dest: ServiceId,
+    bus_id: ServiceBus,
 }
