@@ -774,15 +774,16 @@ impl Runtime {
                 }) = self.pending_requests.remove(&source)
                 {
                     if let Request::Protocol(Msg::Reveal(Reveal::Bob(_))) = &request {
+                    if let Request::Protocol(Msg::Reveal(Reveal::Alice(_))) = &request {
                         trace!(
                             "sending request {} to {} on bus {}",
                             &request,
                             &dest,
                             &bus_id
                         );
-                        senders.send_to(bus_id, source, dest, request)?
-                    } {
-                        error!("Not the expected request")
+                        senders.send_to(bus_id, self.identity(), dest, request)?
+                    } else {
+                        error!("Not the expected request: found {:?}", request);
                     }
                 } else {
                     error!("pending request not found")
