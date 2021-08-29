@@ -338,6 +338,10 @@ pub enum Request {
     #[display("keys({0})")]
     Keys(Keys),
 
+    #[api(type = 45)]
+    #[display("funding_updated()")]
+    FundingUpdated,
+
     #[api(type = 5)]
     #[display("send_message({0})")]
     Protocol(Msg),

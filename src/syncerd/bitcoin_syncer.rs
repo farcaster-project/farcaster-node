@@ -296,7 +296,10 @@ impl Synclet for BitcoinSyncer {
                             }
                             Task::BroadcastTransaction(task) => {
                                 // TODO: match error and emit event with fail code
-                                rpc.send_raw_transaction(task.tx).unwrap();
+                                match rpc.send_raw_transaction(task.tx) {
+                                    Ok(_) => info!("successfully broadcasted tx"),
+                                    Err(e) => error!("failed to broadcast tx: {}", e),
+                                }
                             }
                             Task::WatchAddress(task) => {
                                 state

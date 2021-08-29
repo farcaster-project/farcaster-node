@@ -38,7 +38,7 @@ use farcaster_core::{
     role::{Alice, Bob, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
-    syncer::{AddressTransaction, Event},
+    syncer::{AddressTransaction, Boolean, Event},
     transaction::Fundable,
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
@@ -411,30 +411,20 @@ impl Runtime {
                                     bob_params,
                                     funding.clone(),
                                     public_offer,
-                                );
-                                if let Ok(core_arbitrating_txs) = core_arbitrating_txs {
-                                    *core_arb_txs = Some(core_arbitrating_txs.clone());
-                                    let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
-                                        key_manager,
-                                        bob_params,
-                                        &core_arbitrating_txs,
-                                    )?;
-                                    let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from((
-                                        swap_id,
-                                        core_arbitrating_txs,
-                                        cosign_arbitrating_cancel,
-                                    ));
-                                    let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
-                                    self.send_ctl(
-                                        senders,
-                                        source,
-                                        Request::Protocol(core_arb_setup),
-                                    )?;
-                                } else {
-                                    error!(
-                                        "Did not yet receive the funding transaction from Syncer"
-                                    )
-                                }
+                                )?;
+                                *core_arb_txs = Some(core_arbitrating_txs.clone());
+                                let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
+                                    key_manager,
+                                    bob_params,
+                                    &core_arbitrating_txs,
+                                )?;
+                                let core_arb_setup = CoreArbitratingSetup::<BtcXmr>::from((
+                                    swap_id,
+                                    core_arbitrating_txs,
+                                    cosign_arbitrating_cancel,
+                                ));
+                                let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
+                                self.send_ctl(senders, source, Request::Protocol(core_arb_setup))?;
                             }
                             _ => Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?,
                         }
@@ -680,34 +670,19 @@ impl Runtime {
                     }
                 };
             }
-            Request::SyncerEvent(Event::AddressTransaction(AddressTransaction {
-                id,
-                hash,
-                amount,
-                block,
-                tx,
-            })) => {
-                info!("wallet received Syncer event {}", id);
-                let swap_id = swap_id(source)?;
-                if let Some(Wallet::Bob(
-                    bob,
-                    local_params,
-                    key_manager,
-                    public_offer,
-                    Some(funding),
-                    remote_commit,
-                    None,
-                    None,
-                )) = self.wallets.get_mut(&swap_id)
+            Request::SyncerEvent(Event::AddressTransaction(AddressTransaction { tx, .. })) => {
+                if let Some(Wallet::Bob(.., Some(funding), _, _, _)) =
+                    self.wallets.get_mut(&swap_id(source.clone())?)
                 {
-                    if !funding.was_seen() {
-                        funding_update(funding, tx)?;
-                        info!("funding updated")
-                    } else {
-                        error!("funding was already seen and updated");
-                    }
-                } else {
-                    error!("no wallet for available")
+                    funding_update(funding, tx)?;
+                    info!("funding updated");
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Wallet,
+                        source,
+                        Request::FundingUpdated,
+                    )?;
+                    info!("sent funding updated req")
                 }
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
@@ -723,28 +698,6 @@ impl Runtime {
                         request_id,
                     )),
                 )?
-            }
-            Request::SyncerEvent(Event::AddressTransaction(AddressTransaction {
-                id,
-                hash,
-                amount,
-                block,
-                tx,
-            })) => {
-                if let Some(Wallet::Bob(
-                    bob,
-                    bob_params,
-                    key_manager,
-                    public_offer,
-                    Some(funding),
-                    alice_commit,
-                    alice_params,
-                    core_arb_txs,
-                )) = self.wallets.get_mut(&swap_id(source)?)
-                {
-                    info!("updating funding tx");
-                    funding_update(funding, tx)?;
-                }
             }
 
             _ => {
@@ -771,9 +724,7 @@ pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
 
 pub fn funding_update(funding: &mut FundingTx, funding_tx_hex: Vec<u8>) -> Result<(), Error> {
     let tx = Transaction::deserialize(&funding_tx_hex)?;
-    let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> {
-        funding: tx,
-    };
+    let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> { funding: tx };
     funding
         .update(funding_bundle.clone().funding.clone())
         .map_err(|_| Error::Farcaster(s!("Could not update funding")))
