@@ -14,6 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use std::{
+    any::Any,
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
 };
@@ -489,9 +490,7 @@ impl Runtime {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
                             let lock_tx = lock.extract_tx();
-                            let mut tx = Vec::new();
-                            let mut writer = Cursor::new(&mut tx);
-                            lock_tx.consensus_encode(&mut writer)?;
+                            let tx = bitcoin::consensus::serialize(&lock_tx);
                             let id = task_id(lock_tx.txid());
                             let broadcast_arb_lock =
                                 Task::BroadcastTransaction(BroadcastTransaction { id, tx });
@@ -773,7 +772,7 @@ impl Runtime {
                     bus_id,
                 }) = self.pending_requests.remove(&source)
                 {
-                    if let Request::Protocol(Msg::Reveal(Reveal::Bob(_))) = &request {
+                    // FIXME state management
                     if let Request::Protocol(Msg::Reveal(Reveal::Alice(_))) = &request {
                         trace!(
                             "sending request {} to {} on bus {}",
