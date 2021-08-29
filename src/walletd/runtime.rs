@@ -87,8 +87,7 @@ pub enum Wallet {
         BobParameters<BtcXmr>,
         KeyManager,
         PublicOffer<BtcXmr>,
-        Option<(FundingTx, bool)>, /* bool indicates whether funding was updated, check should
-                                    * be at core level */
+        Option<FundingTx>,
         Option<CommitAliceParameters<BtcXmr>>,
         Option<AliceParameters<BtcXmr>>,
         Option<CoreArbitratingTransactions<Bitcoin<SegwitV0>>>,
@@ -192,8 +191,7 @@ impl Runtime {
                 match offer.maker_role {
                     SwapRole::Bob => {
                         let external_address = address();
-                        let bob =
-                            Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
+                        let bob = Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
                         let key_manager = KeyManager::new(self.node_secrets.wallet_seed);
                         let local_params = bob.generate_parameters(&key_manager, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
@@ -213,7 +211,7 @@ impl Runtime {
                                             local_params.clone(),
                                             key_manager,
                                             public_offer.clone(),
-                                            Some((funding, false)),
+                                            Some(funding),
                                             Some(remote_commit),
                                             None,
                                             None,
@@ -388,7 +386,7 @@ impl Runtime {
                                 bob_params,
                                 key_manager,
                                 public_offer,
-                                Some((funding, true)),
+                                Some(funding),
                                 Some(commit),
                                 alice_params, // None
                                 core_arb_txs, // None
@@ -578,8 +576,8 @@ impl Runtime {
                     peer_address,
                 } = public_offer.clone();
                 let daemon_service = internet2::RemoteNodeAddr {
-                    node_id, // checked above
-                    remote_addr: internet2::RemoteSocketAddr::Ftcp(peer_address), // expected RemoteSocketAddr
+                    node_id,                                                      // checked above
+                    remote_addr: internet2::RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
                 };
                 let peer = daemon_service
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
@@ -613,7 +611,7 @@ impl Runtime {
                                     local_params.clone(),
                                     key_manager,
                                     public_offer.clone(),
-                                    Some((funding, false)),
+                                    Some(funding),
                                     None,
                                     None,
                                     None,
@@ -640,8 +638,7 @@ impl Runtime {
                     }
                     SwapRole::Alice => {
                         let address = address();
-                        let alice: Alice<BtcXmr> =
-                            Alice::new(address.into(), FeePriority::Low);
+                        let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePriority::Low);
                         let local_params =
                             alice.generate_parameters(&key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
@@ -690,24 +687,27 @@ impl Runtime {
                 block,
                 tx,
             })) => {
+                info!("wallet received Syncer event {}", id);
                 let swap_id = swap_id(source)?;
                 if let Some(Wallet::Bob(
                     bob,
                     local_params,
                     key_manager,
                     public_offer,
-                    Some((funding, funding_updated)),
+                    Some(funding),
                     remote_commit,
                     None,
                     None,
                 )) = self.wallets.get_mut(&swap_id)
                 {
-                    if funding_updated == &mut false {
+                    if !funding.was_seen() {
                         funding_update(funding, tx)?;
-                        *funding_updated = true;
+                        info!("funding updated")
                     } else {
-                        error!("funding not yet updated");
+                        error!("funding was already seen and updated");
                     }
+                } else {
+                    error!("no wallet for available")
                 }
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
@@ -723,6 +723,28 @@ impl Runtime {
                         request_id,
                     )),
                 )?
+            }
+            Request::SyncerEvent(Event::AddressTransaction(AddressTransaction {
+                id,
+                hash,
+                amount,
+                block,
+                tx,
+            })) => {
+                if let Some(Wallet::Bob(
+                    bob,
+                    bob_params,
+                    key_manager,
+                    public_offer,
+                    Some(funding),
+                    alice_commit,
+                    alice_params,
+                    core_arb_txs,
+                )) = self.wallets.get_mut(&swap_id(source)?)
+                {
+                    info!("updating funding tx");
+                    funding_update(funding, tx)?;
+                }
             }
 
             _ => {
@@ -743,15 +765,14 @@ fn address() -> bitcoin::Address {
 
 pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Fund).unwrap();
-    let funding = FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)
-        .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))?;
-    Ok(funding)
+    FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)
+        .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))
 }
 
 pub fn funding_update(funding: &mut FundingTx, funding_tx_hex: Vec<u8>) -> Result<(), Error> {
-    let funding_tx = Transaction::deserialize(&funding_tx_hex).unwrap();
+    let tx = Transaction::deserialize(&funding_tx_hex)?;
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> {
-        funding: funding_tx,
+        funding: tx,
     };
     funding
         .update(funding_bundle.clone().funding.clone())

@@ -238,10 +238,12 @@ impl MoneroRpc {
                 if let TransferHeight::Confirmed(height) = tx.height {
                     block_hash = self.get_block_hash(height.into()).await;
                 }
+                error!("FIXME: tx set to vec![0]");
                 address_txs.push(AddressTx {
                     our_amount: tx.amount,
                     tx_id: tx.txid.0.clone(),
                     block_hash,
+                    tx: vec![0],
                 });
             }
         }
@@ -301,7 +303,7 @@ impl Synclet for MoneroSyncer {
                                             state.abort(task.id, syncerd_task.source);
                                         }
                                         Ok(address_addendum) => {
-                                            state.watch_address(task.clone(), syncerd_task.source);
+                                            state.watch_address(task.clone(), syncerd_task.source).expect("Task::WatchAddress");
                                             let address_transactions =
                                                 rpc.check_address(address_addendum).await.unwrap();
                                             state.change_address(
