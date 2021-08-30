@@ -65,6 +65,15 @@ impl FromStr for Coin {
     }
 }
 
+impl ToString for Coin {
+    fn to_string(&self) -> String {
+        match self {
+            Coin::Bitcoin => "bitcoin".to_string(),
+            Coin::Monero => "monero".to_string(),
+        }
+    }
+}
+
 impl Opts {
     pub fn process(&mut self) {
         self.shared.process();
