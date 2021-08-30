@@ -75,14 +75,14 @@ pub fn run(config: Config, coin: Coin) -> Result<(), Error> {
             }
         }
     }
+
     let mut runtime = Runtime {
-        identity: ServiceId::Syncer,
+        identity: ServiceId::Syncer(coin),
         started: SystemTime::now(),
         tasks: none!(),
         syncer: syncer.unwrap(),
         tx,
     };
-    runtime.syncer.run(rx, tx_event, runtime.identity().into());
 
     runtime.syncer.run(rx, tx_event, runtime.identity().into());
     let mut service = Service::service(config, runtime)?;
@@ -179,7 +179,7 @@ impl Runtime {
             (Request::GetInfo, _) => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Syncer,
+                    self.identity(),
                     source,
                     Request::SyncerInfo(SyncerInfo {
                         uptime: SystemTime::now()
@@ -198,7 +198,7 @@ impl Runtime {
             (Request::ListTasks, ServiceId::Client(_)) => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Syncer,
+                    self.identity(),
                     source.clone(),
                     Request::TaskList(self.tasks.iter().cloned().collect()),
                 )?;
@@ -213,7 +213,7 @@ impl Runtime {
         }
 
         if let Some((Some(respond_to), resp)) = notify_cli {
-            senders.send_to(ServiceBus::Ctl, ServiceId::Syncer, respond_to, resp)?;
+            senders.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
         }
 
         Ok(())

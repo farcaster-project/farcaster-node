@@ -1,6 +1,5 @@
-// #![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
-
 use crate::error::Error;
+use crate::syncerd::opts::Coin;
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
@@ -180,7 +179,7 @@ impl ElectrumRpc {
                 let block_hash = if hist.height > 0 {
                     self.client
                         .transaction_get_verbose(&txid)
-                        .unwrap()
+                        .expect("transaction_get_verbose")
                         .blockhash
                         .unwrap()
                         .to_vec()
@@ -388,14 +387,14 @@ pub fn syncer_state() {
     rx_event.bind("inproc://syncerdbridge").unwrap();
 
     let mut syncer = BitcoinSyncer::new();
-    syncer.run(rx, tx_event, ServiceId::Syncer.into());
+    syncer.run(rx, tx_event, ServiceId::Syncer(Coin::Bitcoin).into());
     let task = SyncerdTask {
         task: Task::WatchHeight(WatchHeight {
             id: 0,
             lifetime: 100000000,
             addendum: vec![],
         }),
-        source: ServiceId::Syncer,
+        source: ServiceId::Syncer(Coin::Bitcoin),
     };
     tx.send(task).unwrap();
     let message = rx_event.recv_multipart(0);

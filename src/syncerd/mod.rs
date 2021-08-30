@@ -17,8 +17,8 @@ pub mod monero_syncer;
 pub mod syncer_state;
 
 #[cfg(feature = "shell")]
-mod opts;
-mod runtime;
+pub mod opts;
+pub mod runtime;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;
