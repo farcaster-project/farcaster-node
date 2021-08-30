@@ -27,7 +27,10 @@ use colored::Colorize;
 use farcaster_core::{
     bitcoin::{segwitv0::FundingTx, segwitv0::SegwitV0, Bitcoin},
     blockchain::FeePriority,
-    bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
+    bundle::{
+        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
+        SignedArbitratingLock,
+    },
     crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
     negotiation::PublicOffer,
@@ -457,6 +460,13 @@ impl Runtime {
                             key_manager,
                             key_manager,
                             core_arbitrating_txs,
+                        )?;
+
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            source.clone(), // destination swapd
+                            Request::Datum(request::Datum::SignedArbitratingLock(signed_arb_lock)),
                         )?;
 
                         // TODO: here subscribe to all transactions with syncerd, and publish lock

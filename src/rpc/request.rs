@@ -14,7 +14,7 @@
 
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::syncer::Abort;
+use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::syncer::Event;
 use farcaster_core::syncer::HeightChanged;
@@ -272,6 +272,17 @@ pub enum Params {
     Bob(BobParameters<BtcXmr>),
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("datum")]
+pub enum Datum {
+    SignedArbitratingLock(
+        SignedArbitratingLock<
+            farcaster_core::bitcoin::Bitcoin<farcaster_core::bitcoin::segwitv0::SegwitV0>,
+        >,
+    ),
+}
+
 use crate::{Error, ServiceId};
 
 #[derive(Clone, Debug, Display, From, Api)]
@@ -401,6 +412,10 @@ pub enum Request {
     #[api(type = 197)]
     #[display("params({0:#})")]
     Params(Params),
+
+    #[api(type = 196)]
+    #[display("datum({0})")]
+    Datum(Datum),
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]

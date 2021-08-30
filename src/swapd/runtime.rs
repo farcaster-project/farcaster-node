@@ -127,9 +127,9 @@ pub fn run(
                 path: Default::default(),
             }),
         )?),
-        confirmation_bound: 10000,
+        confirmation_bound: 50000,
         // TODO: query syncer to set this value (start with None)
-        task_lifetime: Some(2066175 + 10000),
+        task_lifetime: Some(2066175 + 50000),
         txs_status: none!(),
         pending_requests: none!(),
     };
@@ -191,7 +191,7 @@ pub enum BobState {
     #[display("Reveal")]
     RevealB(Commit), // remote
     #[display("CoreArb")]
-    CorearbB(PartiallySignedTransaction), // lock
+    CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
     #[display("BuyProcSig")]
     BuyProcSigB,
     #[display("Finish")]
@@ -487,10 +487,10 @@ impl Runtime {
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) => {
-                        if let State::Bob(BobState::CorearbB(lock)) = self.state.clone() {
+                        if let State::Bob(BobState::CorearbB(core_arb)) = self.state.clone() {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
-                            let lock_tx = lock.extract_tx();
+                            let lock_tx = core_arb.lock.extract_tx();
                             let tx = bitcoin::consensus::serialize(&lock_tx);
                             let id = task_id(lock_tx.txid());
                             let broadcast_arb_lock =
@@ -856,7 +856,8 @@ impl Runtime {
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
                     State::Bob(BobState::RevealB(_)) => {
-                        Ok(State::Bob(BobState::CorearbB(core_arb_setup.lock.clone())))
+                        // below tx is unsigned
+                        Ok(State::Bob(BobState::CorearbB(core_arb_setup.clone())))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
@@ -897,6 +898,18 @@ impl Runtime {
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
+            }
+
+            Request::Datum(request::Datum::SignedArbitratingLock(lock_sig)) => {
+                let next_state = match self.state.clone() {
+                    State::Bob(BobState::CorearbB(core_arb)) => {
+                        // tx is unsigned
+                        // core_arb.lock.add_witness(lock_sig);
+                        error!("add witness sig");
+                        Ok(())
+                    }
+                    _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
+                }?;
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
