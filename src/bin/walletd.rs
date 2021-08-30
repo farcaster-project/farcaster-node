@@ -61,7 +61,7 @@ fn main() {
 
     debug!("Starting runtime ...");
     walletd::run(config, wallet_token, opts.key_opts.node_secrets(), node_id)
-        .expect("Error running syncerd runtime");
+        .expect("Error running walletd runtime");
 
     unreachable!()
 }
