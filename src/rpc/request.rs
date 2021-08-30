@@ -14,7 +14,7 @@
 
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::syncer::Abort;
+use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::syncer::Event;
 use farcaster_core::syncer::HeightChanged;
@@ -411,6 +411,10 @@ pub enum Request {
     #[api(type = 197)]
     #[display("params({0:#})")]
     Params(Params),
+
+    #[api(type = 196)]
+    #[display("datum({0})")]
+    Datum(Datum),
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]

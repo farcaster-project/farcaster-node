@@ -12,7 +12,7 @@ use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::ServiceId;
-use bitcoin::hashes::{hex::FromHex, Hash};
+use bitcoin::hashes::{Hash, hex::{FromHex, ToHex}};
 use bitcoin::BlockHash;
 use bitcoin::Script;
 use electrum_client::raw_client::RawClient;
@@ -302,6 +302,7 @@ impl Synclet for BitcoinSyncer {
                             }
                             Task::BroadcastTransaction(task) => {
                                 // TODO: match error and emit event with fail code
+                                trace!("trying to broadcast tx: {:?}", task.tx.to_hex());
                                 match rpc.send_raw_transaction(task.tx) {
                                     Ok(_) => info!("successfully broadcasted tx"),
                                     Err(e) => error!("failed to broadcast tx: {}", e),

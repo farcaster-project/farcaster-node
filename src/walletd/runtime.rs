@@ -27,7 +27,10 @@ use colored::Colorize;
 use farcaster_core::{
     bitcoin::{segwitv0::FundingTx, segwitv0::SegwitV0, Bitcoin},
     blockchain::FeePriority,
-    bundle::{AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction},
+    bundle::{
+        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
+        SignedArbitratingLock,
+    },
     crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
     negotiation::PublicOffer,
