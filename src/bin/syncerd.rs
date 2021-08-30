@@ -57,7 +57,7 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    syncerd::run(config).expect("Error running syncerd runtime");
+    syncerd::run(config, opts.coin).expect("Error running syncerd runtime");
 
     unreachable!()
 }
