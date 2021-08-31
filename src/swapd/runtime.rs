@@ -71,7 +71,7 @@ use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
-use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
+use request::{Commit, Datum, InitSwap, Params, Reveal, TakeCommit};
 
 pub fn run(
     config: Config,
@@ -826,7 +826,24 @@ impl Runtime {
                         // FIXME: fill match arms
                         match txlabel {
                             TxLabel::Funding => {}
-                            TxLabel::Lock => {}
+                            TxLabel::Lock => {
+                                error!("this should be in Accordant lock, not Arbitrating lock finality");
+                                info!("send Msg BuyProcedureSignature");
+                                if let Some(PendingRequest {
+                                    request,
+                                    dest,
+                                    bus_id,
+                                }) = self.pending_requests.remove(&source)
+                                {
+                                    if let Request::Protocol(Msg::BuyProcedureSignature(_)) =
+                                        request
+                                    {
+                                        senders.send_to(bus_id, self.identity(), dest, request)?;
+                                    } else {
+                                        error!("Not buyproceduresignatures");
+                                    }
+                                }
+                            }
                             TxLabel::Buy => {}
                             TxLabel::Cancel => {}
                             TxLabel::Refund => {}
@@ -896,11 +913,11 @@ impl Runtime {
                 self.state = next_state;
             }
 
-            Request::Datum(request::Datum::SignedArbitratingLock((lock_sig, pubkey))) => {
-                let next_state = match self.state.clone() {
-                    State::Bob(BobState::CorearbB(core_arb)) => {
+            Request::Datum(Datum::SignedArbitratingLock((lock_sig, pubkey))) => {
+                match self.state {
+                    State::Bob(BobState::CorearbB(ref core_arb)) => {
                         let sig = lock_sig.lock_sig;
-                        let tx = core_arb.lock;
+                        let tx = core_arb.lock.clone();
                         let mut lock_tx = LockTx::from_partial(tx);
                         // FIXME: remove unwraps here
                         lock_tx.add_witness(pubkey, sig).unwrap();
@@ -940,12 +957,12 @@ impl Runtime {
                 self.state = next_state;
             }
 
-            Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+            Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig)) => {
                 let next_state = match self.state {
                     State::Bob(BobState::CorearbB(..)) => Ok(State::Bob(BobState::BuyProcSigB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
-
+                trace!("subscribing with syncer for buy tx");
                 let txid = buy_proc_sig.buy.clone().extract_tx().txid();
                 let task = Task::WatchTransaction(WatchTransaction {
                     id: task_id(txid),
@@ -959,9 +976,16 @@ impl Runtime {
                     ServiceId::Syncer(Coin::Bitcoin),
                     Request::SyncerTask(task),
                 )?;
+                let pending_request = PendingRequest {
+                    request,
+                    dest: self.peer_service.clone(),
+                    bus_id: ServiceBus::Msg,
+                };
+                self.pending_requests
+                    .insert(ServiceId::Syncer(Coin::Bitcoin), pending_request);
+                trace!("deferring BuyProcedureSignature msg");
+                // self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
 
-                trace!("sending peer BuyProcedureSignature msg");
-                self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
