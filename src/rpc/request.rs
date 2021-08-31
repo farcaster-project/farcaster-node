@@ -46,7 +46,7 @@ use bitcoin::{
     OutPoint, PublicKey,
 };
 use farcaster_core::{
-    bitcoin::Bitcoin,
+    bitcoin::BitcoinSegwitV0,
     blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
@@ -270,6 +270,16 @@ pub enum Reveal {
 pub enum Params {
     Alice(AliceParameters<BtcXmr>),
     Bob(BobParameters<BtcXmr>),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+#[display("datum")]
+pub enum Datum {
+    SignedArbitratingLock((
+        SignedArbitratingLock<BitcoinSegwitV0>,
+        bitcoin::secp256k1::PublicKey,
+    )),
 }
 
 use crate::{Error, ServiceId};

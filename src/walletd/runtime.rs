@@ -459,6 +459,14 @@ impl Runtime {
                             core_arbitrating_txs,
                         )?;
 
+                        let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Fund).unwrap();
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            source.clone(), // destination swapd
+                            Request::Datum(request::Datum::SignedArbitratingLock((signed_arb_lock, lock_pubkey))),
+                        )?;
+
                         // TODO: here subscribe to all transactions with syncerd, and publish lock
                         let buy_proc_sig =
                             BuyProcedureSignature::<BtcXmr>::from((swap_id, signed_adaptor_buy));

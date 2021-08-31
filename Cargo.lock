@@ -756,7 +756,7 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 [[package]]
 name = "electrum-client"
 version = "0.7.0"
-source = "git+https://github.com/TheCharlatan/rust-electrum-client?branch=verboseTransactionGet#6c4d49ea67fd4cb9e57c48ac11dc44a61e4ed518"
+source = "git+https://github.com/TheCharlatan/rust-electrum-client?branch=verboseTransactionGet#c488f4ae895d81bbf4cf77bc59aedaf29aff1548"
 dependencies = [
  "bitcoin",
  "log",
