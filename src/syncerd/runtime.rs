@@ -12,10 +12,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::opts::Coin;
-use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::bitcoin_syncer::Synclet;
+use crate::syncerd::monero_syncer::MoneroSyncer;
+use crate::syncerd::opts::Coin;
 use amplify::Wrapper;
 use farcaster_core::blockchain::Network;
 use farcaster_core::syncer::Abort;
@@ -70,16 +70,14 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
         Coin::Monero => {
             syncer = Some(Box::new(MoneroSyncer::new()));
         }
-        Coin::Bitcoin => {
-            match config.chain {
-                Chain::Testnet3 => {
-                    syncer = Some(Box::new(BitcoinSyncer::new()));
-                }
-                _ => {
-                    syncer = none!();
-                }
+        Coin::Bitcoin => match config.chain {
+            Chain::Testnet3 => {
+                syncer = Some(Box::new(BitcoinSyncer::new()));
             }
-        }
+            _ => {
+                syncer = none!();
+            }
+        },
     }
 
     let mut runtime = Runtime {
@@ -90,12 +88,9 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
         tx,
     };
 
-    runtime.syncer.run(
-        rx, 
-        tx_event, 
-        runtime.identity().into(), 
-        syncer_servers,
-    );
+    runtime
+        .syncer
+        .run(rx, tx_event, runtime.identity().into(), syncer_servers);
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
     service.run_loop()?;

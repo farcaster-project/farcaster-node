@@ -1,12 +1,12 @@
-use crate::syncerd::runtime::SyncerServers;
 use crate::error::Error;
-use crate::syncerd::opts::Coin;
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
+use crate::syncerd::opts::Coin;
+use crate::syncerd::runtime::SyncerServers;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
@@ -256,10 +256,10 @@ impl Rpc for ElectrumRpc {
 
 pub trait Synclet {
     fn run(
-        &mut self, 
-        rx: Receiver<SyncerdTask>, 
-        tx: zmq::Socket, 
-        syncer_address: Vec<u8>, 
+        &mut self,
+        rx: Receiver<SyncerdTask>,
+        tx: zmq::Socket,
+        syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
     );
 }
@@ -274,13 +274,12 @@ impl BitcoinSyncer {
 
 impl Synclet for BitcoinSyncer {
     fn run(
-        &mut self, 
-        rx: Receiver<SyncerdTask>, 
-        tx: zmq::Socket, 
-        syncer_address: Vec<u8>, 
+        &mut self,
+        rx: Receiver<SyncerdTask>,
+        tx: zmq::Socket,
+        syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
-    ) 
-        {
+    ) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = ElectrumRpc::new(syncer_servers.electrum_server);

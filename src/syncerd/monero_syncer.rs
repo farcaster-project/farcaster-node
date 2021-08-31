@@ -1,4 +1,3 @@
-use crate::syncerd::runtime::SyncerServers;
 use crate::error::Error;
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
@@ -7,6 +6,7 @@ use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
 use crate::syncerd::bitcoin_syncer::Synclet;
+use crate::syncerd::runtime::SyncerServers;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
