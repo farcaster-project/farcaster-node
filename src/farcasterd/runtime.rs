@@ -313,7 +313,6 @@ impl Runtime {
 
                     launch("syncerd", &[Coin::Bitcoin.to_string()])?;
 
-
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -642,12 +641,12 @@ impl Runtime {
                     let PublicOffer {
                         version,
                         offer,
-                        node_id, // bitcoin::Pubkey
+                        node_id,      // bitcoin::Pubkey
                         peer_address, // InetSocketAddr
                     } = public_offer.clone();
 
                     let daemon_service = internet2::RemoteNodeAddr {
-                        node_id, // checked above
+                        node_id,                                           // checked above
                         remote_addr: RemoteSocketAddr::Ftcp(peer_address), // expected RemoteSocketAddr
                     };
                     let peer = daemon_service

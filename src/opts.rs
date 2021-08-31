@@ -42,6 +42,10 @@ pub const FARCASTER_NODE_CONFIG: &'static str = "{data_dir}/farcaster.toml";
 pub const FARCASTER_NODE_TOR_PROXY: &'static str = "127.0.0.1:9050";
 pub const FARCASTER_NODE_KEY_FILE: &'static str = "{data_dir}/key.dat";
 
+pub const ELECTRUM_SERVER: &'static str = "tcp://localhost:50001";
+pub const MONERO_DAEMON: &'static str = "http://node.monerooutreach.org:18081";
+pub const MONERO_RPC_WALLET: &'static str = "http://localhost:18083";
+
 /// Shared options used by different binaries
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 pub struct Opts {
@@ -137,6 +141,33 @@ pub struct Opts {
     // TODO: Put it back to `signet` default network once rust-bitcoin will
     //       release signet support
     pub chain: Chain,
+
+    /// Electrum server to use
+    #[clap(
+        long,
+        global = true,
+        default_value = "tcp://localhost:50001",
+        env = "ELECTRUM_SERVER"
+    )]
+    pub electrum_server: String,
+
+    /// Monero daemon to use
+    #[clap(
+        long,
+        global = true,
+        default_value = "http://node.monerooutreach.org:18081",
+        env = "MONERO_DAEMON"
+    )]
+    pub monero_daemon: String,
+
+    /// Monero rpc wallet to use
+    #[clap(
+        long,
+        global = true,
+        default_value = "http://localhost:18083",
+        env = "MONERO_RPC_WALLET"
+    )]
+    pub monero_rpc_wallet: String,
 }
 
 impl Opts {

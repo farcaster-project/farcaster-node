@@ -6,6 +6,7 @@ use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
 use crate::syncerd::bitcoin_syncer::Synclet;
+use crate::syncerd::runtime::SyncerServers;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
@@ -269,12 +270,13 @@ impl Synclet for MoneroSyncer {
         receive_task_channel: Receiver<SyncerdTask>,
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
+        syncer_servers: SyncerServers,
     ) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = MoneroRpc::new(
-                "http://node.monerooutreach.org:18081".into(),
-                "http://127.0.0.1:18083".into(),
+                syncer_servers.monero_daemon,
+                syncer_servers.monero_rpc_wallet,
             );
             let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
             let mut transcoder = PlainTranscoder {};

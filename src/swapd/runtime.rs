@@ -13,6 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::syncerd::opts::Coin;
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -23,7 +24,6 @@ use std::{
     io::Cursor,
     time::{Duration, SystemTime},
 };
-use crate::syncerd::opts::Coin;
 
 use super::storage::{self, Driver};
 use crate::rpc::{
@@ -303,7 +303,11 @@ impl Runtime {
                                 self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
                                 // deferred to when syncer comes online
                                 // FIXME
-                                self.send_ctl(senders, ServiceId::Syncer(Coin::Bitcoin), watch_addr_req)?;
+                                self.send_ctl(
+                                    senders,
+                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    watch_addr_req,
+                                )?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     local_params,
@@ -343,7 +347,11 @@ impl Runtime {
                                 // deferred to when syncer comes online
                                 // self.pending_requests
                                 //     .insert(ServiceId::Syncer, vec![watch_addr]);
-                                self.send_ctl(senders, ServiceId::Syncer(Coin::Bitcoin), watch_addr_req)?;
+                                self.send_ctl(
+                                    senders,
+                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    watch_addr_req,
+                                )?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     remote_commit,

@@ -1,5 +1,5 @@
-use crate::syncerd::opts::Coin;
 use crate::farcaster_core::consensus::Decodable;
+use crate::syncerd::opts::Coin;
 use crate::ServiceId;
 use microservices::rpc_connection::Request;
 use std::collections::{HashMap, HashSet};

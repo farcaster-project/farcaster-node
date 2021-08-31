@@ -13,8 +13,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, Clap};
+use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
 use std::str::FromStr;
-use lnpbp::strict_encoding::{StrictEncode, StrictDecode};
 
 /// Syncer blockchain management daemon; part of Farcaster Node
 ///
@@ -51,7 +51,7 @@ pub enum Coin {
 #[derive(Error, Debug, Display)]
 #[display("invalid coin")]
 pub enum SyncerCoinError {
-    InvalidCoin
+    InvalidCoin,
 }
 
 impl FromStr for Coin {
