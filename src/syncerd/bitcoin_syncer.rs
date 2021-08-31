@@ -1,3 +1,4 @@
+use crate::syncerd::runtime::SyncerServers;
 use crate::error::Error;
 use crate::syncerd::opts::Coin;
 use crate::farcaster_core::consensus::Decodable;
@@ -40,7 +41,7 @@ use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
 use farcaster_core::syncer::*;
 
 pub trait Rpc {
-    fn new() -> Self;
+    fn new(electrum_server: String) -> Self;
 
     fn get_height(&mut self) -> Result<u64, Error>;
 
@@ -218,8 +219,8 @@ impl ElectrumRpc {
 }
 
 impl Rpc for ElectrumRpc {
-    fn new() -> Self {
-        let client = Client::new("tcp://localhost:50001").unwrap();
+    fn new(electrum_server: String) -> Self {
+        let client = Client::new(&electrum_server).unwrap();
         let header = client.block_headers_subscribe().unwrap();
         info!("New ElectrumRpc at height {:?}", header.height);
 
@@ -254,7 +255,13 @@ impl Rpc for ElectrumRpc {
 }
 
 pub trait Synclet {
-    fn run(&mut self, rx: Receiver<SyncerdTask>, tx: zmq::Socket, syncer_address: Vec<u8>);
+    fn run(
+        &mut self, 
+        rx: Receiver<SyncerdTask>, 
+        tx: zmq::Socket, 
+        syncer_address: Vec<u8>, 
+        syncer_servers: SyncerServers,
+    );
 }
 
 pub struct BitcoinSyncer {}
@@ -266,10 +273,17 @@ impl BitcoinSyncer {
 }
 
 impl Synclet for BitcoinSyncer {
-    fn run(&mut self, rx: Receiver<SyncerdTask>, tx: zmq::Socket, syncer_address: Vec<u8>) {
+    fn run(
+        &mut self, 
+        rx: Receiver<SyncerdTask>, 
+        tx: zmq::Socket, 
+        syncer_address: Vec<u8>, 
+        syncer_servers: SyncerServers,
+    ) 
+        {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
-            let mut rpc = ElectrumRpc::new();
+            let mut rpc = ElectrumRpc::new(syncer_servers.electrum_server);
             let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
@@ -379,7 +393,6 @@ impl Synclet for BitcoinSyncer {
 //     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
 //     tx_event.connect("inproc://syncerdbridge").unwrap();
 //     rx_event.bind("inproc://syncerdbridge").unwrap();
-
 //     let mut syncer = BitcoinSyncer::new();
 //     syncer.run(rx, tx_event, ServiceId::Syncer(Coin::Bitcoin).into());
 //     let task = SyncerdTask {

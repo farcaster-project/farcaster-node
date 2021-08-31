@@ -23,3 +23,4 @@ pub mod runtime;
 #[cfg(feature = "shell")]
 pub use opts::Opts;
 pub use runtime::run;
+pub use runtime::SyncerServers;

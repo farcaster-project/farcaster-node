@@ -47,17 +47,13 @@ fn main() {
     debug!("MSG RPC socket {}", &config.msg_endpoint);
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
-    /*
-    use self::internal::ResultExt;
-    let (config_from_file, _) =
-        internal::Config::custom_args_and_optional_files(std::iter::empty::<
-            &str,
-        >())
-        .unwrap_or_exit();
-     */
-
     debug!("Starting runtime ...");
-    syncerd::run(config, opts.coin).expect("Error running syncerd runtime");
+    let syncer_servers = syncerd::SyncerServers {
+        electrum_server: opts.shared.electrum_server,
+        monero_daemon: opts.shared.monero_daemon,
+        monero_rpc_wallet: opts.shared.monero_rpc_wallet,
+    };
+    syncerd::run(config, opts.coin, syncer_servers).expect("Error running syncerd runtime");
 
     unreachable!()
 }

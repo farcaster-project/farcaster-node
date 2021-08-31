@@ -50,7 +50,13 @@ pub struct SyncerdTask {
     pub source: ServiceId,
 }
 
-pub fn run(config: Config, coin: Coin) -> Result<(), Error> {
+pub struct SyncerServers {
+    pub electrum_server: String,
+    pub monero_daemon: String,
+    pub monero_rpc_wallet: String,
+}
+
+pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<(), Error> {
     info!("creating a new syncer");
     let syncer: Option<Box<dyn Synclet>>;
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -84,7 +90,12 @@ pub fn run(config: Config, coin: Coin) -> Result<(), Error> {
         tx,
     };
 
-    runtime.syncer.run(rx, tx_event, runtime.identity().into());
+    runtime.syncer.run(
+        rx, 
+        tx_event, 
+        runtime.identity().into(), 
+        syncer_servers,
+    );
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
     service.run_loop()?;
@@ -97,8 +108,6 @@ pub struct Runtime {
     started: SystemTime,
     tasks: HashSet<u64>, // FIXME
     tx: Sender<SyncerdTask>,
-    // spawning_services: HashMap<ServiceId, ServiceId>,
-    // senders: HashMap<SwapId, &mut esb::SenderList<ServiceBus, ServiceId>>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -117,7 +126,6 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
-        // self.senders = senders;
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),

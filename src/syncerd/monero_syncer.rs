@@ -1,3 +1,4 @@
+use crate::syncerd::runtime::SyncerServers;
 use crate::error::Error;
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
@@ -269,12 +270,13 @@ impl Synclet for MoneroSyncer {
         receive_task_channel: Receiver<SyncerdTask>,
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
+        syncer_servers: SyncerServers,
     ) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = MoneroRpc::new(
-                "http://node.monerooutreach.org:18081".into(),
-                "http://127.0.0.1:18083".into(),
+                syncer_servers.monero_daemon,
+                syncer_servers.monero_rpc_wallet,
             );
             let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
             let mut transcoder = PlainTranscoder {};

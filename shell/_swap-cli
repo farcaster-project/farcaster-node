@@ -27,6 +27,9 @@ _swap-cli() {
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -62,6 +65,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -84,6 +90,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -107,6 +116,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -130,6 +142,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -153,6 +168,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -175,6 +193,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -197,6 +218,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
@@ -231,6 +255,9 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
 '-n+[Blockchain to use]' \
 '--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 '-h[Prints help information]' \
