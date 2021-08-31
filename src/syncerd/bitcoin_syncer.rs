@@ -1,6 +1,5 @@
-// #![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
-
 use crate::error::Error;
+use crate::syncerd::opts::Coin;
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
@@ -180,7 +179,7 @@ impl ElectrumRpc {
                 let block_hash = if hist.height > 0 {
                     self.client
                         .transaction_get_verbose(&txid)
-                        .unwrap()
+                        .expect("transaction_get_verbose")
                         .blockhash
                         .unwrap()
                         .to_vec()
@@ -252,12 +251,6 @@ impl Rpc for ElectrumRpc {
         self.ping_count += 1;
         Ok(())
     }
-}
-
-#[test]
-fn test_electrumrpc() {
-    let mut rpc = ElectrumRpc::new();
-    rpc.new_block_check();
 }
 
 pub trait Synclet {
@@ -379,25 +372,25 @@ impl Synclet for BitcoinSyncer {
     }
 }
 
-#[test]
-pub fn syncer_state() {
-    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://syncerdbridge").unwrap();
-    rx_event.bind("inproc://syncerdbridge").unwrap();
+// #[test]
+// pub fn syncer_state() {
+//     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+//     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+//     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+//     tx_event.connect("inproc://syncerdbridge").unwrap();
+//     rx_event.bind("inproc://syncerdbridge").unwrap();
 
-    let mut syncer = BitcoinSyncer::new();
-    syncer.run(rx, tx_event, ServiceId::Syncer.into());
-    let task = SyncerdTask {
-        task: Task::WatchHeight(WatchHeight {
-            id: 0,
-            lifetime: 100000000,
-            addendum: vec![],
-        }),
-        source: ServiceId::Syncer,
-    };
-    tx.send(task).unwrap();
-    let message = rx_event.recv_multipart(0);
-    assert!(message.is_ok());
-}
+//     let mut syncer = BitcoinSyncer::new();
+//     syncer.run(rx, tx_event, ServiceId::Syncer(Coin::Bitcoin).into());
+//     let task = SyncerdTask {
+//         task: Task::WatchHeight(WatchHeight {
+//             id: 0,
+//             lifetime: 100000000,
+//             addendum: vec![],
+//         }),
+//         source: ServiceId::Syncer(Coin::Bitcoin),
+//     };
+//     tx.send(task).unwrap();
+//     let message = rx_event.recv_multipart(0);
+//     assert!(message.is_ok());
+// }

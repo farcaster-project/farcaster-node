@@ -13,6 +13,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, Clap};
+use std::str::FromStr;
+use lnpbp::strict_encoding::{StrictEncode, StrictDecode};
 
 /// Syncer blockchain management daemon; part of Farcaster Node
 ///
@@ -31,6 +33,45 @@ pub struct Opts {
     /// command-line args or environment variables
     #[clap(flatten)]
     pub shared: crate::opts::Opts,
+
+    /// Which coin this syncer should target
+    #[clap(parse(try_from_str = Coin::from_str))]
+    pub coin: Coin,
+}
+
+#[derive(Clap, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
+#[strict_encoding_crate(lnpbp::strict_encoding)]
+pub enum Coin {
+    /// Launches a bitcoin syncer
+    Bitcoin,
+    /// Launches a monero syncer
+    Monero,
+}
+
+#[derive(Error, Debug, Display)]
+#[display("invalid coin")]
+pub enum SyncerCoinError {
+    InvalidCoin
+}
+
+impl FromStr for Coin {
+    type Err = SyncerCoinError;
+    fn from_str(input: &str) -> Result<Coin, Self::Err> {
+        match input {
+            "bitcoin" => Ok(Coin::Bitcoin),
+            "monero" => Ok(Coin::Monero),
+            _ => Err(SyncerCoinError::InvalidCoin),
+        }
+    }
+}
+
+impl ToString for Coin {
+    fn to_string(&self) -> String {
+        match self {
+            Coin::Bitcoin => "bitcoin".to_string(),
+            Coin::Monero => "monero".to_string(),
+        }
+    }
 }
 
 impl Opts {

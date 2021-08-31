@@ -12,6 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::syncerd::opts::Coin;
+use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::bitcoin_syncer::Synclet;
 use amplify::Wrapper;
@@ -48,7 +50,7 @@ pub struct SyncerdTask {
     pub source: ServiceId,
 }
 
-pub fn run(config: Config) -> Result<(), Error> {
+pub fn run(config: Config, coin: Coin) -> Result<(), Error> {
     info!("creating a new syncer");
     let syncer: Option<Box<dyn Synclet>>;
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -58,23 +60,31 @@ pub fn run(config: Config) -> Result<(), Error> {
     tx_event.connect("inproc://syncerdbridge")?;
     rx_event.bind("inproc://syncerdbridge")?;
 
-    match config.chain {
-        Chain::Testnet3 => {
-            syncer = Some(Box::new(BitcoinSyncer::new()));
+    match coin {
+        Coin::Monero => {
+            syncer = Some(Box::new(MoneroSyncer::new()));
         }
-        _ => {
-            syncer = none!();
+        Coin::Bitcoin => {
+            match config.chain {
+                Chain::Testnet3 => {
+                    syncer = Some(Box::new(BitcoinSyncer::new()));
+                }
+                _ => {
+                    syncer = none!();
+                }
+            }
         }
     }
+
     let mut runtime = Runtime {
-        identity: ServiceId::Syncer,
+        identity: ServiceId::Syncer(coin),
         started: SystemTime::now(),
         tasks: none!(),
         syncer: syncer.unwrap(),
         tx,
     };
-    runtime.syncer.run(rx, tx_event, runtime.identity().into());
 
+    runtime.syncer.run(rx, tx_event, runtime.identity().into());
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
     service.run_loop()?;
@@ -169,7 +179,7 @@ impl Runtime {
             (Request::GetInfo, _) => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Syncer,
+                    self.identity(),
                     source,
                     Request::SyncerInfo(SyncerInfo {
                         uptime: SystemTime::now()
@@ -188,7 +198,7 @@ impl Runtime {
             (Request::ListTasks, ServiceId::Client(_)) => {
                 senders.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Syncer,
+                    self.identity(),
                     source.clone(),
                     Request::TaskList(self.tasks.iter().cloned().collect()),
                 )?;
@@ -203,7 +213,7 @@ impl Runtime {
         }
 
         if let Some((Some(respond_to), resp)) = notify_cli {
-            senders.send_to(ServiceBus::Ctl, ServiceId::Syncer, respond_to, resp)?;
+            senders.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
         }
 
         Ok(())

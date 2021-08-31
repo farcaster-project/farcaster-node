@@ -23,6 +23,7 @@ use std::{
     io::Cursor,
     time::{Duration, SystemTime},
 };
+use crate::syncerd::opts::Coin;
 
 use super::storage::{self, Driver};
 use crate::rpc::{
@@ -302,7 +303,7 @@ impl Runtime {
                                 self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
                                 // deferred to when syncer comes online
                                 // FIXME
-                                self.send_ctl(senders, ServiceId::Syncer, watch_addr_req)?;
+                                self.send_ctl(senders, ServiceId::Syncer(Coin::Bitcoin), watch_addr_req)?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     local_params,
@@ -342,7 +343,7 @@ impl Runtime {
                                 // deferred to when syncer comes online
                                 // self.pending_requests
                                 //     .insert(ServiceId::Syncer, vec![watch_addr]);
-                                self.send_ctl(senders, ServiceId::Syncer, watch_addr_req)?;
+                                self.send_ctl(senders, ServiceId::Syncer(Coin::Bitcoin), watch_addr_req)?;
                                 Ok((
                                     State::Bob(BobState::RevealB(remote_commit.clone())),
                                     remote_commit,
@@ -471,7 +472,7 @@ impl Runtime {
                                     senders.send_to(
                                         ServiceBus::Ctl,
                                         self.identity(),
-                                        ServiceId::Syncer,
+                                        ServiceId::Syncer(Coin::Bitcoin),
                                         Request::SyncerTask(task),
                                     )?;
                                 }
@@ -498,7 +499,7 @@ impl Runtime {
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
-                                ServiceId::Syncer,
+                                ServiceId::Syncer(Coin::Bitcoin),
                                 Request::SyncerTask(broadcast_arb_lock),
                             )?;
                             self.send_wallet(msg_bus, senders, request.clone())?
@@ -532,7 +533,7 @@ impl Runtime {
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
-                                    ServiceId::Syncer,
+                                    ServiceId::Syncer(Coin::Bitcoin),
                                     Request::SyncerTask(task),
                                 )?;
                                 self.send_wallet(msg_bus, senders, request.clone())?
@@ -618,14 +619,14 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, ServiceId::Syncer) => {
+            (Request::Hello, ServiceId::Syncer(Coin::Bitcoin)) => {
                 info!("Source: {} is connected", source);
             }
 
             (Request::Hello, _) => {
                 info!("Source: {} is connected", source);
             }
-            (_, ServiceId::Farcasterd | ServiceId::Wallet | ServiceId::Syncer) => {}
+            (_, ServiceId::Farcasterd | ServiceId::Wallet | ServiceId::Syncer(Coin::Bitcoin)) => {}
             _ => Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd"
                     .to_string(),
@@ -887,7 +888,7 @@ impl Runtime {
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
-                            ServiceId::Syncer,
+                            ServiceId::Syncer(Coin::Bitcoin),
                             Request::SyncerTask(task),
                         )?;
                     }
@@ -928,7 +929,7 @@ impl Runtime {
                 senders.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
-                    ServiceId::Syncer,
+                    ServiceId::Syncer(Coin::Bitcoin),
                     Request::SyncerTask(task),
                 )?;
 

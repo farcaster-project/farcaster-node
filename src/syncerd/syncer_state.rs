@@ -1,5 +1,4 @@
-// #![allow(dead_code, unused_must_use, path_statements, unreachable_code)]
-
+use crate::syncerd::opts::Coin;
 use crate::farcaster_core::consensus::Decodable;
 use crate::ServiceId;
 use microservices::rpc_connection::Request;
@@ -336,9 +335,9 @@ fn syncer_state_transaction() {
         lifetime: 4,
         addendum: vec![],
     };
-    state.watch_transaction(transaction_task_one, ServiceId::Syncer);
-    state.watch_transaction(transaction_task_two, ServiceId::Syncer);
-    state.watch_height(height_task, ServiceId::Syncer);
+    state.watch_transaction(transaction_task_one, ServiceId::Syncer(Coin::Bitcoin));
+    state.watch_transaction(transaction_task_two, ServiceId::Syncer(Coin::Bitcoin));
+    state.watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin));
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -391,7 +390,7 @@ fn syncer_state_addresses() {
         include_tx: Boolean::False,
     };
     state
-        .watch_address(address_task, ServiceId::Syncer)
+        .watch_address(address_task, ServiceId::Syncer(Coin::Bitcoin))
         .unwrap();
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
@@ -475,7 +474,7 @@ fn syncer_state_addresses() {
         lifetime: 3,
         addendum: vec![],
     };
-    state.watch_height(height_task, ServiceId::Syncer);
+    state.watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin));
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
     assert_eq!(state.events.len(), 5);
@@ -505,8 +504,8 @@ fn syncer_state_height() {
         addendum: vec![],
     };
 
-    state.watch_height(height_task, ServiceId::Syncer);
-    state.watch_height(another_height_task, ServiceId::Syncer);
+    state.watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin));
+    state.watch_height(another_height_task, ServiceId::Syncer(Coin::Bitcoin));
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
     assert_eq!(state.watch_height.len(), 2);

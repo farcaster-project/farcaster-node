@@ -16,6 +16,7 @@
 use crate::{
     rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token},
     swapd::swap_id,
+    syncerd::opts::Coin,
     walletd::NodeSecrets,
     Senders,
 };
@@ -286,7 +287,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
 
-                    launch("syncerd", &Vec::<String>::new())?;
+                    launch("syncerd", &[Coin::Bitcoin.to_string()])?;
 
                     // FIXME msgs should go to walletd?
                     senders.send_to(
@@ -310,7 +311,8 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
 
-                    launch("syncerd", &Vec::<String>::new())?;
+                    launch("syncerd", &[Coin::Bitcoin.to_string()])?;
+
 
                     // FIXME msgs should go to walletd?
                     senders.send_to(

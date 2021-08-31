@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::syncerd::opts::Coin;
 use std::convert::TryInto;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -102,10 +103,7 @@ pub enum ServiceId {
     Client(u64),
 
     #[display("syncer")]
-    Syncer,
-
-    #[display("syncernotif")]
-    SyncerNotif(u64),
+    Syncer(Coin),
 
     #[display("walletd")]
     Wallet,
@@ -122,11 +120,6 @@ impl ServiceId {
     pub fn client() -> ServiceId {
         use bitcoin::secp256k1::rand;
         ServiceId::Client(rand::random())
-    }
-
-    pub fn syncer_notif() -> ServiceId {
-        use bitcoin::secp256k1::rand;
-        ServiceId::SyncerNotif(rand::random())
     }
 }
 
