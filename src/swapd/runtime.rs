@@ -37,12 +37,13 @@ use bitcoin::{
     hashes::{hex::FromHex, sha256, Hash, HashEngine},
     Txid,
 };
-use bitcoin::{OutPoint, SigHashType, Transaction};
+use bitcoin::{OutPoint, SigHashType};
 
 use farcaster_core::{
     bitcoin::{
         fee::SatPerVByte, segwitv0::SegwitV0, tasks::BtcAddressAddendum, timelock::CSVTimelock,
-        Bitcoin,
+        Bitcoin, BitcoinSegwitV0,
+        segwitv0::LockTx,
     },
     blockchain::{self, FeeStrategy},
     consensus::{self, Encodable as FarEncodable},
@@ -58,7 +59,7 @@ use farcaster_core::{
         AddressTransaction, Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations,
         WatchAddress, WatchTransaction,
     },
-    transaction::TxLabel,
+    transaction::{TxLabel, Transaction, Witnessable, Broadcastable},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -900,12 +901,16 @@ impl Runtime {
                 self.state = next_state;
             }
 
-            Request::Datum(request::Datum::SignedArbitratingLock(lock_sig)) => {
+            Request::Datum(request::Datum::SignedArbitratingLock((lock_sig, pubkey))) => {
                 let next_state = match self.state.clone() {
                     State::Bob(BobState::CorearbB(core_arb)) => {
-                        // tx is unsigned
-                        // core_arb.lock.add_witness(lock_sig);
-                        error!("add witness sig");
+                        let sig = lock_sig.lock_sig;
+                        let tx = core_arb.lock;
+                        let mut lock_tx = LockTx::from_partial(tx);
+                        // FIXME: remove unwraps here
+                        lock_tx.add_witness(pubkey, sig).unwrap();
+                        let finalized_tx = Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx).unwrap();
+                        // TODO
                         Ok(())
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
