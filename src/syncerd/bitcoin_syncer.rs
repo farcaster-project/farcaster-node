@@ -203,17 +203,16 @@ impl ElectrumRpc {
     fn query_transactions(&self, state: &mut SyncerState) {
         for (_, watched_tx) in state.transactions.clone().iter() {
             let tx_id = bitcoin::Txid::from_slice(&watched_tx.task.hash).unwrap();
-            let tx = self
-                .client
-                .transaction_get_verbose(&tx_id)
-                .expect("transaction_get_verbose");
-            info!("Updated tx: {:?}", &tx);
-            let blockhash = match tx.blockhash {
-                Some(bh) => Some(bh.to_vec()),
-                None => none!(),
-            };
-
-            state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
+            match self.client.transaction_get_verbose(&tx_id) {
+                Ok(tx) => {
+                    info!("Updated tx: {}", &tx_id);
+                    let blockhash = tx.blockhash.map(|x| x.to_vec());
+                    state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
+                }
+                Err(err) => {
+                    error!("Failed: {}", err)
+                }
+            }
         }
     }
 }
