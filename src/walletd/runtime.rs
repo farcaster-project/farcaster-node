@@ -470,7 +470,6 @@ impl Runtime {
                             Request::Datum(request::Datum::SignedArbitratingLock((signed_arb_lock, lock_pubkey))),
                         )?;
 
-                        // TODO: here subscribe to all transactions with syncerd, and publish lock
                         let buy_proc_sig =
                             BuyProcedureSignature::<BtcXmr>::from((swap_id, signed_adaptor_buy));
                         let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
