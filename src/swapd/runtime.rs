@@ -1251,7 +1251,7 @@ impl Runtime {
     // }
 }
 
-pub fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
+pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
     if let ServiceId::Swap(swap_id) = source {
         Ok(swap_id)
     } else {

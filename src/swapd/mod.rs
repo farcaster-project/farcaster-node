@@ -21,5 +21,5 @@ pub(self) mod storage;
 #[cfg(feature = "shell")]
 pub use opts::Opts;
 pub use runtime::run;
-pub use runtime::swap_id;
+pub use runtime::get_swap_id;
 pub use runtime::State;

@@ -9,7 +9,7 @@ use crate::rpc::{
     request::{self, Commit, Keys, Msg, Params, Reveal, Token},
     Request, ServiceBus,
 };
-use crate::swapd::swap_id;
+use crate::swapd::get_swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::Senders;
@@ -296,7 +296,7 @@ impl Runtime {
                 }?
             }
             Request::Protocol(Msg::MakerCommit(commit)) => {
-                if swap_id(source)? == Msg::MakerCommit(commit.clone()).swap_id() {
+                if get_swap_id(source)? == Msg::MakerCommit(commit.clone()).swap_id() {
                     match commit {
                         Commit::Bob(CommitBobParameters { swap_id, .. }) => {
                             match self.wallets.get_mut(&swap_id) {
@@ -350,7 +350,7 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::Reveal(reveal)) => {
-                let swap_id = swap_id(source.clone())?;
+                let swap_id = get_swap_id(source.clone())?;
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
                     Reveal::Bob(reveal) => match self.wallets.get_mut(&swap_id) {
@@ -435,7 +435,7 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let swap_id = swap_id(source.clone())?;
+                let swap_id = get_swap_id(source.clone())?;
 
                 match self.wallets.get_mut(&swap_id) {
                     Some(Wallet::Bob(
@@ -487,6 +487,7 @@ impl Runtime {
                 let swap_id = swap_id(source.clone())?;
                 let core_arb_txs = core_arb_setup.into();
                 match self.wallets.get(&swap_id) {
+                let swap_id = get_swap_id(source.clone())?;
                     Some(Wallet::Alice(
                         alice,
                         alice_params,

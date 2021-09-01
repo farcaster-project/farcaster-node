@@ -15,7 +15,7 @@
 
 use crate::{
     rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token},
-    swapd::swap_id,
+    swapd::get_swap_id,
     syncerd::opts::Coin,
     walletd::NodeSecrets,
     Senders,
@@ -150,7 +150,7 @@ impl Runtime {
     }
 
     fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
-        let swap_id = swap_id(source)?;
+        let swap_id = get_swap_id(source)?;
         if self.running_swaps.contains(&swap_id) {
             Ok(swap_id)
         } else {
@@ -372,7 +372,7 @@ impl Runtime {
                 }
             }
             Request::Params(_) => {
-                swap_id(source)?;
+                get_swap_id(source)?;
                 self.send_walletd(senders, request)?
             }
 
