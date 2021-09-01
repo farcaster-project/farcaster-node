@@ -37,14 +37,11 @@ use std::{
 use std::{iter::FromIterator, str::FromStr};
 use std::{num::ParseIntError, time::Duration};
 
-use bitcoin::{
-    secp256k1::{
+use bitcoin::{OutPoint, PublicKey, Transaction, secp256k1::{
         self,
         rand::{thread_rng, RngCore},
         SecretKey,
-    },
-    OutPoint, PublicKey,
-};
+    }};
 use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
     blockchain::FeePriority,
@@ -280,6 +277,7 @@ pub enum Datum {
         SignedArbitratingLock<BitcoinSegwitV0>,
         bitcoin::secp256k1::PublicKey,
     )),
+    FullySignedBuy(Transaction)
 }
 
 use crate::{Error, ServiceId};
