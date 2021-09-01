@@ -550,12 +550,12 @@ impl Runtime {
                 buy,
                 buy_adaptor_sig,
             })) => {
+                info!("wallet received buyproceduresignature");
                 let sign_adaptor_buy = SignedAdaptorBuy {
                     buy: buy.clone(),
                     buy_adaptor_sig,
                 };
 
-                // TODO: verify signature and if valid create & publish lock transaction
                 if get_swap_id(source.clone())? == swap_id {
                     if let Some(Wallet::Alice(
                         alice,
@@ -589,16 +589,17 @@ impl Runtime {
                             public_offer,
                             &sign_adaptor_buy,
                         ) {
+                            buy_tx.add_witness(bob_parameters.buy, buy_sig).unwrap();
                             buy_tx
                                 .add_witness(
                                     key_manager.get_pubkey(ArbitratingKeyId::Buy).unwrap(),
-                                    buy_sig,
+                                    buy_adapted_sig,
                                 )
                                 .unwrap();
-                            buy_tx.add_witness(bob_parameters.buy, buy_sig).unwrap();
                             let tx =
                                 Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut buy_tx)
                                     .unwrap();
+                            trace!("wallet sends fullysignedbuy");
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
@@ -610,7 +611,8 @@ impl Runtime {
                     } else {
                         error!("could not get alice's wallet")
                     }
-                    info!("received buyproceduresignature")
+                } else {
+                    error!("wrong swapid");
                 };
             }
             _ => {
