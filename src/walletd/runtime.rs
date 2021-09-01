@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::rpc::{
-    request::{self, Commit, Keys, Msg, Params, Reveal, Token},
+    request::{self, Commit, Datum, Keys, Msg, Params, Reveal, Token},
     Request, ServiceBus,
 };
 use crate::swapd::get_swap_id;
@@ -21,15 +21,19 @@ use bitcoin::{
         bip32::{DerivationPath, ExtendedPrivKey},
         psbt::serialize::Deserialize,
     },
-    PrivateKey, PublicKey, Transaction,
+    PrivateKey, PublicKey,
 };
 use colored::Colorize;
 use farcaster_core::{
-    bitcoin::{segwitv0::FundingTx, segwitv0::SegwitV0, Bitcoin},
+    bitcoin::{
+        segwitv0::SegwitV0,
+        segwitv0::{BuyTx, FundingTx},
+        Bitcoin, BitcoinSegwitV0,
+    },
     blockchain::FeePriority,
     bundle::{
-        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
-        SignedArbitratingLock,
+        AliceParameters, BobParameters, CoreArbitratingTransactions, FullySignedBuy,
+        FundingTransaction, SignedAdaptorBuy, SignedArbitratingLock,
     },
     crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
@@ -42,7 +46,7 @@ use farcaster_core::{
     swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
     syncer::{AddressTransaction, Boolean, Event},
-    transaction::Fundable,
+    transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 // use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
@@ -84,6 +88,7 @@ pub enum Wallet {
         PublicOffer<BtcXmr>,
         Option<CommitBobParameters<BtcXmr>>,
         Option<BobParameters<BtcXmr>>,
+        Option<CoreArbitratingTransactions<Bitcoin<SegwitV0>>>,
     ),
     Bob(
         Bob<BtcXmr>,
@@ -267,6 +272,7 @@ impl Runtime {
                                             public_offer.clone(),
                                             Some(bob_commit),
                                             None,
+                                            None,
                                         ),
                                     );
                                 }
@@ -307,6 +313,7 @@ impl Runtime {
                                     _public_offer,
                                     bob_commit,
                                     bob_params, // None
+                                    _core_arb_txs,
                                 )) => {
                                     if let Some(_) = bob_commit {
                                         error!("Bob commit (remote) already set");
@@ -361,6 +368,7 @@ impl Runtime {
                             _public_offer,
                             Some(bob_commit),
                             bob_params, // None
+                            _core_arb_txs,
                         )) => {
                             if let Some(remote_params) = bob_params {
                                 error!("bob_params were previously set to: {}", remote_params);
@@ -467,7 +475,10 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             source.clone(), // destination swapd
-                            Request::Datum(request::Datum::SignedArbitratingLock((signed_arb_lock, lock_pubkey))),
+                            Request::Datum(request::Datum::SignedArbitratingLock((
+                                signed_arb_lock,
+                                lock_pubkey,
+                            ))),
                         )?;
 
                         let buy_proc_sig =
@@ -484,10 +495,8 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
-                let swap_id = swap_id(source.clone())?;
-                let core_arb_txs = core_arb_setup.into();
-                match self.wallets.get(&swap_id) {
                 let swap_id = get_swap_id(source.clone())?;
+                match self.wallets.get_mut(&swap_id) {
                     Some(Wallet::Alice(
                         alice,
                         alice_params,
@@ -495,19 +504,27 @@ impl Runtime {
                         public_offer,
                         _bob_commit,
                         Some(bob_parameters),
+                        core_arb_txs, // None
                     )) => {
+                        if core_arb_txs.is_some() {
+                            error!("core_arb_txs already set for alice");
+                            return Ok(());
+                        }
+                        let arb_txs: CoreArbitratingTransactions<Bitcoin<SegwitV0>> =
+                            core_arb_setup.into();
+                        *core_arb_txs = Some(arb_txs.clone());
                         let signed_adaptor_refund = alice.sign_adaptor_refund(
                             key_manager,
                             alice_params,
                             bob_parameters,
-                            &core_arb_txs,
+                            &arb_txs,
                             public_offer,
                         )?;
                         let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
                             key_manager,
                             alice_params,
                             bob_parameters,
-                            &core_arb_txs,
+                            &arb_txs,
                             public_offer,
                         )?;
                         let refund_proc_signatures = RefundProcedureSignatures::from((
@@ -528,9 +545,73 @@ impl Runtime {
                     _ => Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?,
                 }
             }
-            Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+            Request::Protocol(Msg::BuyProcedureSignature(BuyProcedureSignature {
+                swap_id,
+                buy,
+                buy_adaptor_sig,
+            })) => {
+                let sign_adaptor_buy = SignedAdaptorBuy {
+                    buy: buy.clone(),
+                    buy_adaptor_sig,
+                };
+
                 // TODO: verify signature and if valid create & publish lock transaction
-                info!("received buyproceduresignature")
+                if get_swap_id(source.clone())? == swap_id {
+                    if let Some(Wallet::Alice(
+                        alice,
+                        alice_params,
+                        key_manager,
+                        public_offer,
+                        _bob_commit,
+                        Some(bob_parameters),
+                        Some(core_arb_txs),
+                    )) = self.wallets.get(&swap_id)
+                    {
+                        let mut buy_tx = BuyTx::from_partial(buy);
+                        alice
+                            .validate_adaptor_buy(
+                                key_manager,
+                                alice_params,
+                                bob_parameters,
+                                core_arb_txs,
+                                public_offer,
+                                &sign_adaptor_buy,
+                            )
+                            .unwrap();
+                        if let Ok(FullySignedBuy {
+                            buy_sig,
+                            buy_adapted_sig,
+                        }) = alice.fully_sign_buy(
+                            key_manager,
+                            alice_params,
+                            bob_parameters,
+                            core_arb_txs,
+                            public_offer,
+                            &sign_adaptor_buy,
+                        ) {
+                            buy_tx
+                                .add_witness(
+                                    key_manager.get_pubkey(ArbitratingKeyId::Buy).unwrap(),
+                                    buy_sig,
+                                )
+                                .unwrap();
+                            buy_tx.add_witness(bob_parameters.buy, buy_sig).unwrap();
+                            let tx =
+                                Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut buy_tx)
+                                    .unwrap();
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                source,
+                                Request::Datum(Datum::FullySignedBuy(tx)),
+                            )?;
+                        }
+                        // buy_adaptor_sig
+                    } else {
+                        error!("could not get alice's wallet")
+                    }
+                    info!("received buyproceduresignature")
+                };
             }
             _ => {
                 error!("MSG RPC can only be used for forwarding LNPBP messages")
@@ -658,6 +739,7 @@ impl Runtime {
                                     public_offer.clone(),
                                     None,
                                     None,
+                                    None,
                                 ),
                             );
                         } else {
@@ -683,7 +765,7 @@ impl Runtime {
             }
             Request::SyncerEvent(Event::AddressTransaction(AddressTransaction { tx, .. })) => {
                 if let Some(Wallet::Bob(.., Some(funding), _, _, _)) =
-                    self.wallets.get_mut(&swap_id(source.clone())?)
+                    self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
                     funding_update(funding, tx)?;
                     info!("funding updated");
@@ -729,12 +811,13 @@ fn address() -> bitcoin::Address {
 
 pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Fund).unwrap();
+    debug!("bug to fix: not Fund, Lock^");
     FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)
         .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))
 }
 
 pub fn funding_update(funding: &mut FundingTx, funding_tx_hex: Vec<u8>) -> Result<(), Error> {
-    let tx = Transaction::deserialize(&funding_tx_hex)?;
+    let tx = bitcoin::Transaction::deserialize(&funding_tx_hex)?;
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> { funding: tx };
     funding
         .update(funding_bundle.clone().funding.clone())
