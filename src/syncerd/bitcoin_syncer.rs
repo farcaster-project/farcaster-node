@@ -12,7 +12,7 @@ use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::ServiceId;
-use bitcoin::hashes::{hex::FromHex, Hash};
+use bitcoin::hashes::{Hash, hex::{FromHex, ToHex}};
 use bitcoin::BlockHash;
 use bitcoin::Script;
 use electrum_client::raw_client::RawClient;
@@ -203,17 +203,16 @@ impl ElectrumRpc {
     fn query_transactions(&self, state: &mut SyncerState) {
         for (_, watched_tx) in state.transactions.clone().iter() {
             let tx_id = bitcoin::Txid::from_slice(&watched_tx.task.hash).unwrap();
-            let tx = self
-                .client
-                .transaction_get_verbose(&tx_id)
-                .expect("transaction_get_verbose");
-            info!("Updated tx: {:?}", &tx);
-            let blockhash = match tx.blockhash {
-                Some(bh) => Some(bh.to_vec()),
-                None => none!(),
-            };
-
-            state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
+            match self.client.transaction_get_verbose(&tx_id) {
+                Ok(tx) => {
+                    info!("Updated tx: {}", &tx_id);
+                    let blockhash = tx.blockhash.map(|x| x.to_vec());
+                    state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
+                }
+                Err(err) => {
+                    error!("Failed: {}", err)
+                }
+            }
         }
     }
 }
@@ -302,6 +301,7 @@ impl Synclet for BitcoinSyncer {
                             }
                             Task::BroadcastTransaction(task) => {
                                 // TODO: match error and emit event with fail code
+                                trace!("trying to broadcast tx: {:?}", task.tx.to_hex());
                                 match rpc.send_raw_transaction(task.tx) {
                                     Ok(_) => info!("successfully broadcasted tx"),
                                     Err(e) => error!("failed to broadcast tx: {}", e),

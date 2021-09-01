@@ -37,12 +37,12 @@ use bitcoin::{
     hashes::{hex::FromHex, sha256, Hash, HashEngine},
     Txid,
 };
-use bitcoin::{OutPoint, SigHashType, Transaction};
+use bitcoin::{OutPoint, SigHashType};
 
 use farcaster_core::{
     bitcoin::{
-        fee::SatPerVByte, segwitv0::SegwitV0, tasks::BtcAddressAddendum, timelock::CSVTimelock,
-        Bitcoin,
+        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, tasks::BtcAddressAddendum,
+        timelock::CSVTimelock, Bitcoin, BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
     consensus::{self, Encodable as FarEncodable},
@@ -52,13 +52,13 @@ use farcaster_core::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
     },
     role::{Arbitrating, SwapRole, TradeRole},
-    swap::btcxmr::{BtcXmr, KeyManager as CoreWallet},
+    swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
     syncer::{
         AddressTransaction, Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations,
         WatchAddress, WatchTransaction,
     },
-    transaction::TxLabel,
+    transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
@@ -71,7 +71,7 @@ use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
-use request::{Commit, InitSwap, Params, Reveal, TakeCommit};
+use request::{Commit, Datum, InitSwap, Params, Reveal, TakeCommit};
 
 pub fn run(
     config: Config,
@@ -127,9 +127,9 @@ pub fn run(
                 path: Default::default(),
             }),
         )?),
-        confirmation_bound: 10000,
+        confirmation_bound: 50000,
         // TODO: query syncer to set this value (start with None)
-        task_lifetime: Some(2066175 + 10000),
+        task_lifetime: Some(2066175 + 50000),
         txs_status: none!(),
         pending_requests: none!(),
     };
@@ -191,7 +191,7 @@ pub enum BobState {
     #[display("Reveal")]
     RevealB(Commit), // remote
     #[display("CoreArb")]
-    CorearbB(PartiallySignedTransaction), // lock
+    CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
     #[display("BuyProcSig")]
     BuyProcSigB,
     #[display("Finish")]
@@ -373,7 +373,7 @@ impl Runtime {
                         }?;
 
                         // parameter processing irrespective of maker & taker role
-                        let core_wallet = CoreWallet::new_keyless();
+                        let core_wallet = KeyManager::new_keyless();
                         let remote_params = match reveal {
                             Reveal::Alice(reveal) => match &remote_commit {
                                 Commit::Alice(commit) => {
@@ -495,21 +495,9 @@ impl Runtime {
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) => {
-                        if let State::Bob(BobState::CorearbB(lock)) = self.state.clone() {
+                        if let State::Bob(BobState::CorearbB(_)) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
-                            let lock_tx = lock.extract_tx();
-                            let tx = bitcoin::consensus::serialize(&lock_tx);
-                            let id = task_id(lock_tx.txid());
-                            let broadcast_arb_lock =
-                                Task::BroadcastTransaction(BroadcastTransaction { id, tx });
-                            info!("Broadcasting arbitrating lock {}", broadcast_arb_lock);
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                ServiceId::Syncer(Coin::Bitcoin),
-                                Request::SyncerTask(broadcast_arb_lock),
-                            )?;
                             self.send_wallet(msg_bus, senders, request.clone())?
                         } else {
                             Err(Error::Farcaster(
@@ -838,7 +826,24 @@ impl Runtime {
                         // FIXME: fill match arms
                         match txlabel {
                             TxLabel::Funding => {}
-                            TxLabel::Lock => {}
+                            TxLabel::Lock => {
+                                error!("this should be in Accordant lock, not Arbitrating lock finality");
+                                info!("send Msg BuyProcedureSignature");
+                                if let Some(PendingRequest {
+                                    request,
+                                    dest,
+                                    bus_id,
+                                }) = self.pending_requests.remove(&source)
+                                {
+                                    if let Request::Protocol(Msg::BuyProcedureSignature(_)) =
+                                        request
+                                    {
+                                        senders.send_to(bus_id, self.identity(), dest, request)?;
+                                    } else {
+                                        error!("Not buyproceduresignatures");
+                                    }
+                                }
+                            }
                             TxLabel::Buy => {}
                             TxLabel::Cancel => {}
                             TxLabel::Refund => {}
@@ -864,7 +869,8 @@ impl Runtime {
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
                     State::Bob(BobState::RevealB(_)) => {
-                        Ok(State::Bob(BobState::CorearbB(core_arb_setup.lock.clone())))
+                        // below tx is unsigned
+                        Ok(State::Bob(BobState::CorearbB(core_arb_setup.clone())))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
@@ -907,6 +913,36 @@ impl Runtime {
                 self.state = next_state;
             }
 
+            Request::Datum(Datum::SignedArbitratingLock((lock_sig, pubkey))) => {
+                match self.state {
+                    State::Bob(BobState::CorearbB(ref core_arb)) => {
+                        let sig = lock_sig.lock_sig;
+                        let tx = core_arb.lock.clone();
+                        let mut lock_tx = LockTx::from_partial(tx);
+                        // FIXME: remove unwraps here
+                        lock_tx.add_witness(pubkey, sig).unwrap();
+                        let finalized_tx =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)
+                                .unwrap();
+                        let req =
+                            Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
+                                id: task_id(finalized_tx.txid()),
+                                tx: bitcoin::consensus::serialize(&finalized_tx),
+                            }));
+
+                        info!("Broadcasting arbitrating lock {}", req);
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Syncer(Coin::Bitcoin),
+                            req,
+                        )?;
+                        Ok(())
+                    }
+                    _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
+                }?;
+            }
+
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 // must have received params before
                 let next_state = match self.state {
@@ -921,12 +957,12 @@ impl Runtime {
                 self.state = next_state;
             }
 
-            Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+            Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig)) => {
                 let next_state = match self.state {
                     State::Bob(BobState::CorearbB(..)) => Ok(State::Bob(BobState::BuyProcSigB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
-
+                trace!("subscribing with syncer for buy tx");
                 let txid = buy_proc_sig.buy.clone().extract_tx().txid();
                 let task = Task::WatchTransaction(WatchTransaction {
                     id: task_id(txid),
@@ -940,9 +976,16 @@ impl Runtime {
                     ServiceId::Syncer(Coin::Bitcoin),
                     Request::SyncerTask(task),
                 )?;
+                let pending_request = PendingRequest {
+                    request,
+                    dest: self.peer_service.clone(),
+                    bus_id: ServiceBus::Msg,
+                };
+                self.pending_requests
+                    .insert(ServiceId::Syncer(Coin::Bitcoin), pending_request);
+                trace!("deferring BuyProcedureSignature msg");
+                // self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
 
-                trace!("sending peer BuyProcedureSignature msg");
-                self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
@@ -1016,7 +1059,7 @@ impl Runtime {
             self.swap_id().bright_blue_italic()
         );
         info!("{}", &msg);
-        let core_wallet = CoreWallet::new_keyless();
+        let core_wallet = KeyManager::new_keyless();
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
                 self.swap_id(),
@@ -1058,7 +1101,7 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
-        let core_wallet = CoreWallet::new_keyless();
+        let core_wallet = KeyManager::new_keyless();
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
                 self.swap_id(),
