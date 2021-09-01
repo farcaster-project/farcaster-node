@@ -548,39 +548,39 @@ impl Runtime {
             Request::Protocol(Msg::BuyProcedureSignature(BuyProcedureSignature {
                 swap_id,
                 buy,
-                buy_adaptor_sig,
+                buy_adaptor_sig: buy_encrypted_sig,
             })) => {
                 info!("wallet received buyproceduresignature");
                 let sign_adaptor_buy = SignedAdaptorBuy {
                     buy: buy.clone(),
-                    buy_adaptor_sig,
+                    buy_adaptor_sig: buy_encrypted_sig,
                 };
-
-                if get_swap_id(source.clone())? == swap_id {
-                    if let Some(Wallet::Alice(
-                        alice,
-                        alice_params,
+                if get_swap_id(source.clone())? != swap_id {
+                    error!("wrong swapid");
+                    return Ok(());
+                };
+                if let Some(Wallet::Alice(
+                    alice,
+                    alice_params,
+                    key_manager,
+                    public_offer,
+                    _bob_commit,
+                    Some(bob_parameters),
+                    Some(core_arb_txs),
+                )) = self.wallets.get(&swap_id)
+                {
+                    let mut buy_tx = BuyTx::from_partial(buy);
+                    if let Ok(()) = alice.validate_adaptor_buy(
                         key_manager,
+                        alice_params,
+                        bob_parameters,
+                        core_arb_txs,
                         public_offer,
-                        _bob_commit,
-                        Some(bob_parameters),
-                        Some(core_arb_txs),
-                    )) = self.wallets.get(&swap_id)
-                    {
-                        let mut buy_tx = BuyTx::from_partial(buy);
-                        alice
-                            .validate_adaptor_buy(
-                                key_manager,
-                                alice_params,
-                                bob_parameters,
-                                core_arb_txs,
-                                public_offer,
-                                &sign_adaptor_buy,
-                            )
-                            .unwrap();
+                        &sign_adaptor_buy,
+                    ) {
                         if let Ok(FullySignedBuy {
                             buy_sig,
-                            buy_adapted_sig,
+                            buy_adapted_sig: buy_decrypted_sig,
                         }) = alice.fully_sign_buy(
                             key_manager,
                             alice_params,
@@ -589,12 +589,14 @@ impl Runtime {
                             public_offer,
                             &sign_adaptor_buy,
                         ) {
-                            buy_tx.add_witness(bob_parameters.buy, buy_sig).unwrap();
                             buy_tx
                                 .add_witness(
                                     key_manager.get_pubkey(ArbitratingKeyId::Buy).unwrap(),
-                                    buy_adapted_sig,
+                                    buy_sig,
                                 )
+                                .unwrap();
+                            buy_tx
+                                .add_witness(bob_parameters.buy, buy_decrypted_sig)
                                 .unwrap();
                             let tx =
                                 Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut buy_tx)
@@ -606,14 +608,15 @@ impl Runtime {
                                 source,
                                 Request::Datum(Datum::FullySignedBuy(tx)),
                             )?;
+                        } else {
+                            error!("not Ok(FullySingedBuy)")
                         }
-                        // buy_adaptor_sig
-                    } else {
-                        error!("could not get alice's wallet")
                     }
+
+                    // buy_adaptor_sig
                 } else {
-                    error!("wrong swapid");
-                };
+                    error!("could not get alice's wallet")
+                }
             }
             _ => {
                 error!("MSG RPC can only be used for forwarding LNPBP messages")
