@@ -609,7 +609,7 @@ impl Runtime {
                                 Request::Datum(Datum::FullySignedBuy(tx)),
                             )?;
                         } else {
-                            error!("not Ok(FullySingedBuy)")
+                            error!("not Ok(FullySignedBuy)")
                         }
                     }
 
@@ -635,7 +635,7 @@ impl Runtime {
             Request::Hello => match &source {
                 ServiceId::Swap(swap_id) => {
                     if let Some(option_req) = self.swaps.get_mut(&swap_id) {
-                        trace!("Know swapd, you launched it");
+                        trace!("Known swapd, you launched it");
                         if let Some(req) = option_req {
                             let request = req.clone();
                             *option_req = None;
@@ -768,8 +768,8 @@ impl Runtime {
                     }
                 };
             }
-            Request::SyncerEvent(Event::AddressTransaction(AddressTransaction { tx, .. })) => {
-                if let Some(Wallet::Bob(.., Some(funding), _, _, _)) =
+            Request::Datum(Datum::Funding(tx)) => {
+                if let Some(Wallet::Bob(.., Some(funding), _,_,_)) =
                     self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
                     funding_update(funding, tx)?;
@@ -781,6 +781,14 @@ impl Runtime {
                         Request::FundingUpdated,
                     )?;
                     info!("sent funding updated req")
+                }
+            }
+            Request::Datum(Datum::FullySignedBuy(tx)) => {
+                if let Some(Wallet::Bob(bob, .., Some(_), Some(_), Some(_), Some(_))) =
+                    self.wallets.get_mut(&get_swap_id(source.clone())?)
+                {
+                    info!("fully signed buy found on blockchain");
+                    bob.recover_accordant_assets().unwrap();
                 }
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
@@ -821,10 +829,9 @@ pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
         .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))
 }
 
-pub fn funding_update(funding: &mut FundingTx, funding_tx_hex: Vec<u8>) -> Result<(), Error> {
-    let tx = bitcoin::Transaction::deserialize(&funding_tx_hex)?;
+pub fn funding_update(funding: &mut FundingTx, tx: bitcoin::Transaction) -> Result<(), Error> {
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> { funding: tx };
     funding
-        .update(funding_bundle.clone().funding.clone())
+        .update(funding_bundle.funding.clone())
         .map_err(|_| Error::Farcaster(s!("Could not update funding")))
 }

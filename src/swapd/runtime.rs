@@ -31,7 +31,10 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
-use bitcoin::util::{bip143::SigHashCache, psbt::PartiallySignedTransaction};
+use bitcoin::util::{
+    bip143::SigHashCache,
+    psbt::{serialize::Deserialize, PartiallySignedTransaction},
+};
 use bitcoin::{consensus::Encodable, secp256k1};
 use bitcoin::{
     hashes::{hex::FromHex, sha256, Hash, HashEngine},
@@ -512,7 +515,9 @@ impl Runtime {
                         // Alice verifies that she has sent refund procedure signatures before
                         // processing the buy signatures from Bob
                         if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
-                            let txid = buy.clone().extract_tx().txid();
+                            let tx = buy.clone().extract_tx();
+
+                            let txid = tx.txid();
                             let id = task_id(txid);
                             if self
                                 .txs_status
@@ -805,14 +810,36 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding => {
                                 info!("Funding transaction received, forwarding to wallet");
-                                self.send_wallet(ServiceBus::Ctl, senders, request)?
+
+                                let req = Request::Datum(Datum::Funding(
+                                    bitcoin::Transaction::deserialize(tx).unwrap(),
+                                ));
+                                self.send_wallet(ServiceBus::Ctl, senders, req)?
+                            }
+                            TxLabel::Buy => {
+                                if let State::Bob(BobState::BuyProcSigB) = self.state {
+                                    info!("found buy tx in blockchain");
+                                    let req = Request::Datum(Datum::FullySignedBuy(
+                                        bitcoin::Transaction::deserialize(tx).unwrap(),
+                                    ));
+                                    self.send_wallet(ServiceBus::Ctl, senders, req)?
+                                }
                             }
                             _ => {
                                 error!("event not funding tx")
                             }
                         }
                     } else {
-                        error!("Transaction about unknow transaction");
+                        error!("Transaction about unknow address");
+                    }
+                }
+                Event::TransactionConfirmations(TransactionConfirmations {
+                    id,
+                    block,
+                    confirmations,
+                }) => {
+                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
+                        info!("tx: {} now has {} confirmations", txlabel, confirmations);
                     }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
@@ -847,10 +874,7 @@ impl Runtime {
                                     }
                                 }
                             }
-                            TxLabel::Buy => {}
-                            TxLabel::Cancel => {}
-                            TxLabel::Refund => {}
-                            TxLabel::Punish => {}
+                            tx_label => error!("tx label {} not supported", tx_label),
                         }
                     }
                     info!(
@@ -858,15 +882,6 @@ impl Runtime {
                         id, confirmations
                     );
                     // TODO abort task, inject into final_txs state
-                }
-                Event::TransactionConfirmations(TransactionConfirmations {
-                    id,
-                    block,
-                    confirmations,
-                }) => {
-                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
-                        info!("tx: {} now has {} confirmations", txlabel, confirmations);
-                    }
                 }
                 Event::TransactionBroadcasted(event) => {
                     info!("{}", event)
@@ -986,7 +1001,40 @@ impl Runtime {
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
                 trace!("subscribing with syncer for buy tx");
-                let txid = buy_proc_sig.buy.clone().extract_tx().txid();
+                let tx = buy_proc_sig.buy.clone().extract_tx();
+                let txid = tx.txid();
+
+                let script_pubkey = tx.output[0].script_pubkey.clone().to_bytes();
+                let address_addendum = BtcAddressAddendum {
+                    address: s!(""), // address doesnt seem to be used by bitcoin syncer
+                    from_height: 0,
+                    script_pubkey,
+                };
+                let addendum = consensus::serialize(&address_addendum);
+                let buf: Vec<u8> = addendum.clone().try_into().expect("watch_addr");
+                let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
+                let id = i32::from_le_bytes(id_buf);
+                let watch_addr_task = Task::WatchAddress(WatchAddress {
+                    id,
+                    lifetime: self.task_lifetime.unwrap(),
+                    addendum,
+                    include_tx: Boolean::True,
+                });
+                if self
+                    .txs_status
+                    .insert(id, (TxLabel::Buy, TxStatus::Notfinal))
+                    .is_none()
+                {
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer(Coin::Bitcoin),
+                        Request::SyncerTask(watch_addr_task),
+                    )?;
+                } else {
+                  error!("task already registered")
+                }
+
                 let task = Task::WatchTransaction(WatchTransaction {
                     id: task_id(txid),
                     lifetime: self.task_lifetime.expect("task_lifetime is None"),
