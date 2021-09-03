@@ -92,7 +92,12 @@ impl ElectrumRpc {
                 };
                 Ok(Some(notif))
             }
-            Ok(None) => Ok(None),
+            Ok(None) => {
+                let empty: [u8; 32] = [0; 32];
+                self.addresses
+                    .insert(address_addendum.clone(), empty.into());
+                Ok(None)
+            }
 
             Err(e) => Err(Error::Farcaster(e.to_string())),
         }

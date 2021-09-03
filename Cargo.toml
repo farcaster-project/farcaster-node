@@ -85,8 +85,9 @@ zmq = "0.9"
 tokio = { version = "1.9.0", features = ["full"] }
 # Coin clients
 electrum-client = { git = "https://github.com/TheCharlatan/rust-electrum-client", branch = "verboseTransactionGet" }
-monero-rpc = { git = "https://github.com/TheCharlatan/monero-rpc-rs", branch = "changes" }
-# monero-rpc = { path = "../monero-rpc-rs/" }
+bitcoincore-rpc = "0.13.0"
+# monero-rpc = { git = "https://github.com/TheCharlatan/monero-rpc-rs", branch = "changes" }
+monero-rpc = { path = "../monero-rpc-rs/" }
 
 [build-dependencies]
 # farcaster_core = { path = "../farcaster-core", features = ["serde"]}
