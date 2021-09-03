@@ -805,28 +805,27 @@ impl Runtime {
                     tx,
                 }) => {
                     // FIXME where to wait for a few confs?
-                    info!("Received AddressTransaction, processing {:?}: ", tx);
+                    let tx = bitcoin::Transaction::deserialize(tx)?;
+                    trace!("Received AddressTransaction, processing {:?}: ", tx);
                     if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         match txlabel {
                             TxLabel::Funding => {
                                 info!("Funding transaction received, forwarding to wallet");
-
-                                let req = Request::Datum(Datum::Funding(
-                                    bitcoin::Transaction::deserialize(tx).unwrap(),
-                                ));
+                                let req = Request::Datum(Datum::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
                             }
                             TxLabel::Buy => {
                                 if let State::Bob(BobState::BuyProcSigB) = self.state {
-                                    info!("found buy tx in blockchain");
-                                    let req = Request::Datum(Datum::FullySignedBuy(
-                                        bitcoin::Transaction::deserialize(tx).unwrap(),
-                                    ));
+                                    info!("found buy tx in mempool or blockchain: {:?}", tx);
+                                    let req = Request::Datum(Datum::FullySignedBuy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
+                                }
+                                else {
+                                    error!("not BuyProcSigB")
                                 }
                             }
                             _ => {
-                                error!("event not funding tx")
+                                error!("address transaction event not supported")
                             }
                         }
                     } else {
@@ -954,7 +953,7 @@ impl Runtime {
                                 tx: bitcoin::consensus::serialize(&finalized_tx),
                             }));
 
-                        info!("Broadcasting arbitrating lock {}", req);
+                        info!("Broadcasting btc lock {}", finalized_tx.txid());
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -967,12 +966,12 @@ impl Runtime {
                 }?;
             }
             Request::Datum(Datum::FullySignedBuy(buy_tx)) => {
-                trace!("received frullysigned from wallet");
+                trace!("received fullysigned from wallet");
                 let req = Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
                     id: task_id(buy_tx.txid()),
                     tx: bitcoin::consensus::serialize(&buy_tx),
                 }));
-                info!("broadcasting tx {}", buy_tx.txid());
+                info!("broadcasting buy tx {}", buy_tx.txid());
                 senders.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
@@ -1032,7 +1031,7 @@ impl Runtime {
                         Request::SyncerTask(watch_addr_task),
                     )?;
                 } else {
-                  error!("task already registered")
+                    error!("task already registered")
                 }
 
                 let task = Task::WatchTransaction(WatchTransaction {
