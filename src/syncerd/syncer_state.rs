@@ -41,7 +41,6 @@ pub struct AddressTransactions {
 pub struct AddressTx {
     pub our_amount: u64,
     pub tx_id: Vec<u8>,
-    pub block_hash: Vec<u8>,
     pub tx: Vec<u8>,
 }
 
@@ -180,7 +179,7 @@ impl SyncerState {
         trace!("inside change_address");
         self.drop_lifetimes();
         if self.addresses.is_empty() {
-            info!("no addresses here");
+            debug!("no addresses in change address");
         }
 
         inner(
@@ -230,7 +229,7 @@ impl SyncerState {
                             id: addr.task.id,
                             hash: new_tx.tx_id,
                             amount: new_tx.our_amount,
-                            block: new_tx.block_hash,
+                            block: vec![], // eventually this should be removed from the event
                             tx: new_tx.tx,
                         };
                         events.push((
@@ -468,25 +467,21 @@ fn syncer_state_addresses() {
     let address_tx_one = AddressTx {
         our_amount: 1,
         tx_id: vec![0; 32],
-        block_hash: vec![0],
         tx: vec![0],
     };
     let address_tx_two = AddressTx {
         our_amount: 1,
         tx_id: vec![1; 32],
-        block_hash: vec![0],
         tx: vec![0],
     };
     let address_tx_three = AddressTx {
         our_amount: 1,
         tx_id: vec![2; 32],
-        block_hash: vec![0],
         tx: vec![0],
     };
     let address_tx_four = AddressTx {
         our_amount: 1,
         tx_id: vec![3; 32],
-        block_hash: vec![0],
         tx: vec![0],
     };
 

@@ -70,6 +70,7 @@ impl From<&ElectrumRpc> for Vec<Script> {
     }
 }
 
+#[derive(Debug)]
 pub struct Block {
     height: u64,
     block_hash: BlockHash,
@@ -198,10 +199,15 @@ impl ElectrumRpc {
                 Ok(tx) => {
                     debug!("Updated tx: {}", &tx_id);
                     let blockhash = tx.blockhash.map(|x| x.to_vec());
-                    state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
+                    let confs = match tx.confirmations {
+                        Some(confs) => confs,
+                        None => 0,
+                    };
+                    state.change_transaction(tx.txid.to_vec(), blockhash, Some(confs))
                 }
                 Err(err) => {
-                    debug!("{}", err)
+                    debug!("error getting transaction, treating as not found: {}", err);
+                    state.change_transaction(tx_id.to_vec(), None, None)
                 }
             }
         }
@@ -222,25 +228,20 @@ fn query_addr_history(client: &mut Client, script: Script) -> Result<Vec<Address
         let txid = hist.tx_hash;
         // get the full transaction to calculate our_amount
         let tx = client.transaction_get(&txid)?;
+        let mut output_found = false;
         for output in tx.output.iter() {
             if output.script_pubkey == script {
-                our_amount += output.value
+                output_found = true;
+                our_amount += output.value;
             }
         }
-        // if the transaction is mined, get the blockhash of the block containing it
-        let block_hash = if hist.height > 0 {
-            client
-                .transaction_get_verbose(&txid)?
-                .blockhash
-                .map(|x| x.to_vec())
-                .unwrap_or_else(|| vec![])
-        } else {
-            vec![]
-        };
+        if !output_found {
+            debug!("ignoring outgoing transaction in handle address notification, continuing");
+            continue;
+        }
         addr_txs.push(AddressTx {
             our_amount,
             tx_id: txid.to_vec(),
-            block_hash,
             tx: bitcoin::consensus::serialize(&tx),
         })
     }
@@ -410,10 +411,11 @@ impl Synclet for BitcoinSyncer {
                 while let Some(block_notif) = new_blocks.pop() {
                     state.change_height(block_notif.height, block_notif.block_hash.to_vec());
                 }
-                if !state.events.is_empty() || i == 0 || i % 25 == 0 {
+                if !state.events.is_empty() || i == 0 || i % 5 == 0 {
                     trace!("pending events: {:?}\n emmiting them now", state.events);
                     rpc.query_transactions(&mut state);
                 }
+
                 // now consume the requests
                 while let Some((event, source)) = state.events.pop() {
                     debug!(

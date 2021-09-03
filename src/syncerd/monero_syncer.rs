@@ -233,15 +233,10 @@ impl MoneroRpc {
         let mut address_txs: Vec<AddressTx> = vec![];
         for (_category, txs) in transfers.iter() {
             for tx in txs.iter() {
-                let mut block_hash = vec![];
-                if let TransferHeight::Confirmed(height) = tx.height {
-                    block_hash = self.get_block_hash(height.into()).await;
-                }
                 error!("FIXME: tx set to vec![0]");
                 address_txs.push(AddressTx {
                     our_amount: tx.amount,
                     tx_id: tx.txid.0.clone(),
-                    block_hash,
                     tx: vec![0],
                 });
             }
