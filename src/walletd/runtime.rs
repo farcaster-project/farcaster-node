@@ -551,7 +551,7 @@ impl Runtime {
                 buy_adaptor_sig: buy_encrypted_sig,
             })) => {
                 info!("wallet received buyproceduresignature");
-                let sign_adaptor_buy = SignedAdaptorBuy {
+                let signed_adaptor_buy = SignedAdaptorBuy {
                     buy: buy.clone(),
                     buy_adaptor_sig: buy_encrypted_sig,
                 };
@@ -576,7 +576,7 @@ impl Runtime {
                         bob_parameters,
                         core_arb_txs,
                         public_offer,
-                        &sign_adaptor_buy,
+                        &signed_adaptor_buy,
                     ) {
                         if let Ok(FullySignedBuy {
                             buy_sig,
@@ -587,7 +587,7 @@ impl Runtime {
                             bob_parameters,
                             core_arb_txs,
                             public_offer,
-                            &sign_adaptor_buy,
+                            &signed_adaptor_buy,
                         ) {
                             buy_tx
                                 .add_witness(
@@ -773,21 +773,20 @@ impl Runtime {
                     self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
                     funding_update(funding, tx)?;
-                    info!("funding updated");
+                    info!("bob's wallet informs swapd that funding was succesfully updated");
                     senders.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
                         source,
                         Request::FundingUpdated,
                     )?;
-                    info!("sent funding updated req")
                 }
             }
             Request::Datum(Datum::FullySignedBuy(tx)) => {
                 if let Some(Wallet::Bob(bob, .., Some(_), Some(_), Some(_), Some(_))) =
                     self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
-                    info!("fully signed buy found on blockchain");
+                    info!("fully signed buy found on blockchain, now extracting the key");
                     bob.recover_accordant_assets().unwrap();
                 }
             }

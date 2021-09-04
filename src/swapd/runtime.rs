@@ -301,11 +301,11 @@ impl Runtime {
                             )),
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
                                 let tx_label = TxLabel::Funding;
-                                let (watch_addr_req, id) =
-                                    watch_addr(AddressOrScript::Address(addr), self.task_lifetime.expect("task_lifetime"));
+                                let (watch_addr_req, id) = watch_addr(
+                                    AddressOrScript::Address(addr),
+                                    self.task_lifetime.expect("task_lifetime"),
+                                );
                                 self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
-                                // deferred to when syncer comes online
-                                // FIXME
                                 self.send_ctl(
                                     senders,
                                     ServiceId::Syncer(Coin::Bitcoin),
@@ -341,15 +341,13 @@ impl Runtime {
                                 remote_commit,
                             )),
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
-                                let tx_label = TxLabel::Funding;
-                                let (watch_addr_req, id) =
-                                    watch_addr(AddressOrScript::Address(addr), self.task_lifetime.expect("task_lifetime"));
-                                self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
+                                let (watch_addr_req, id) = watch_addr(
+                                    AddressOrScript::Address(addr),
+                                    self.task_lifetime.expect("task_lifetime"),
+                                );
+                                self.txs_status
+                                    .insert(id, (TxLabel::Funding, TxStatus::Notfinal));
 
-                                // FIXME
-                                // deferred to when syncer comes online
-                                // self.pending_requests
-                                //     .insert(ServiceId::Syncer, vec![watch_addr]);
                                 self.send_ctl(
                                     senders,
                                     ServiceId::Syncer(Coin::Bitcoin),
@@ -415,11 +413,16 @@ impl Runtime {
                                     bus_id: ServiceBus::Msg,
                                 };
                                 // when receiving from wallet
-                                if let None = self
+
+                                trace!(
+                                    "This pending request will be called later: {:?}",
+                                    &pending_request
+                                );
+                                if self
                                     .pending_requests
                                     .insert(ServiceId::Wallet, pending_request)
+                                    .is_none()
                                 {
-                                    trace!("Pending request will be called later")
                                 } else {
                                     error!("A pending request was removed, FIXME")
                                 }
@@ -488,7 +491,7 @@ impl Runtime {
                                     )?;
                                 }
                             }
-                            self.send_wallet(msg_bus, senders, request.clone())?
+                            self.send_wallet(msg_bus, senders, request)?
                         } else {
                             Err(Error::Farcaster(s!(
                                 "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
@@ -501,7 +504,7 @@ impl Runtime {
                         if let State::Bob(BobState::CorearbB(_)) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
-                            self.send_wallet(msg_bus, senders, request.clone())?
+                            self.send_wallet(msg_bus, senders, request)?
                         } else {
                             Err(Error::Farcaster(
                                 "Wrong state: Bob receives RefundProcedureSignatures msg \\
@@ -537,7 +540,7 @@ impl Runtime {
                                     ServiceId::Syncer(Coin::Bitcoin),
                                     Request::SyncerTask(task),
                                 )?;
-                                self.send_wallet(msg_bus, senders, request.clone())?
+                                self.send_wallet(msg_bus, senders, request)?
                             } else {
                                 error!("Task already registered for this swapd");
                                 return Ok(());
@@ -775,6 +778,7 @@ impl Runtime {
                 }) = self.pending_requests.remove(&source)
                 {
                     // FIXME state management
+                    // if let State::Alice(AliceState::Re) =self.state {}
                     if let Request::Protocol(Msg::Reveal(Reveal::Alice(_))) = &request {
                         trace!(
                             "sending request {} to {} on bus {}",
@@ -819,8 +823,7 @@ impl Runtime {
                                     info!("found buy tx in mempool or blockchain: {:?}", tx);
                                     let req = Request::Datum(Datum::FullySignedBuy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
-                                }
-                                else {
+                                } else {
                                     error!("not BuyProcSigB")
                                 }
                             }
@@ -838,7 +841,7 @@ impl Runtime {
                     confirmations,
                 }) => {
                     if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
-                        info!("tx: {} now has {} confirmations", txlabel, confirmations);
+                        info!("tx {} has {} confirmations", txlabel, confirmations);
                     }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
@@ -1004,22 +1007,10 @@ impl Runtime {
                 let tx = buy_proc_sig.buy.clone().extract_tx();
                 let txid = tx.txid();
                 let script_pubkey = tx.output[0].script_pubkey.clone();
-                let (watch_addr_req, id) = watch_addr(AddressOrScript::Script(script_pubkey), self.task_lifetime.unwrap());
-                // let address_addendum = BtcAddressAddendum {
-                //     address: s!(""), // address doesnt seem to be used by bitcoin syncer
-                //     from_height: 0,
-                //     script_pubkey,
-                // };
-                // let addendum = consensus::serialize(&address_addendum);
-                // let buf: Vec<u8> = addendum.clone().try_into().expect("watch_addr");
-                // let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
-                // let id = i32::from_le_bytes(id_buf);
-                // let watch_addr_task = Task::WatchAddress(WatchAddress {
-                //     id,
-                //     lifetime: self.task_lifetime.unwrap(),
-                //     addendum,
-                //     include_tx: Boolean::True,
-                // });
+                let (watch_addr_req, id) = watch_addr(
+                    AddressOrScript::Script(script_pubkey),
+                    self.task_lifetime.unwrap(),
+                );
                 if self
                     .txs_status
                     .insert(id, (TxLabel::Buy, TxStatus::Notfinal))
@@ -1340,27 +1331,23 @@ enum TxStatus {
     Notfinal,
 }
 
-enum AddressOrScript{
+enum AddressOrScript {
     Address(bitcoin::Address),
     Script(bitcoin::Script),
 }
 
 fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64) -> (Request, i32) {
     let addendum = match addr_or_script {
-        AddressOrScript::Address(addr) => {
-            BtcAddressAddendum {
-                address: addr.to_string(),
-                from_height: 0,
-                script_pubkey: addr.script_pubkey().to_bytes(),
-            }
-        }
-        AddressOrScript::Script(script_pubkey) => {
-            BtcAddressAddendum {
-                address: s!(""),
-                from_height: 0,
-                script_pubkey: script_pubkey.to_bytes(),
-            }
-        }
+        AddressOrScript::Address(addr) => BtcAddressAddendum {
+            address: addr.to_string(),
+            from_height: 0,
+            script_pubkey: addr.script_pubkey().to_bytes(),
+        },
+        AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
+            address: s!(""),
+            from_height: 0,
+            script_pubkey: script_pubkey.to_bytes(),
+        },
     };
     let addendum = consensus::serialize(&addendum);
     let buf: Vec<u8> = (&*addendum).try_into().expect("watch_addr");
@@ -1378,6 +1365,7 @@ fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64) -> (Request, i32) 
     )
 }
 
+#[derive(Debug)]
 struct PendingRequest {
     request: Request,
     dest: ServiceId,
