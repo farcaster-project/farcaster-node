@@ -911,16 +911,8 @@ impl Runtime {
                 self.state = next_state;
             }
 
-            Request::Datum(Datum::SignedArbitratingLock((lock_sig, pubkey))) => {
+            Request::Datum(Datum::SignedArbitratingLock(finalized_tx)) => {
                 if let State::Bob(BobState::CorearbB(ref core_arb)) = self.state {
-                    let sig = lock_sig.lock_sig;
-                    let tx = core_arb.lock.clone();
-                    let mut lock_tx = LockTx::from_partial(tx);
-                    // FIXME: remove unwraps here
-                    lock_tx.add_witness(pubkey, sig).unwrap();
-                    let finalized_tx =
-                        Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)
-                            .unwrap();
                     let req =
                         Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
                             id: task_id(finalized_tx.txid()),

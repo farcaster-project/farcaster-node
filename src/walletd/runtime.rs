@@ -24,30 +24,13 @@ use bitcoin::{
     PrivateKey, PublicKey,
 };
 use colored::Colorize;
-use farcaster_core::{
-    bitcoin::{
-        segwitv0::SegwitV0,
-        segwitv0::{BuyTx, FundingTx},
-        Bitcoin, BitcoinSegwitV0,
-    },
-    blockchain::FeePriority,
-    bundle::{
+use farcaster_core::{bitcoin::{Bitcoin, BitcoinSegwitV0, segwitv0::{LockTx, SegwitV0}, segwitv0::{BuyTx, FundingTx}}, blockchain::FeePriority, bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FullySignedBuy,
         FundingTransaction, SignedAdaptorBuy, SignedArbitratingLock,
-    },
-    crypto::{ArbitratingKeyId, GenerateKey},
-    monero::Monero,
-    negotiation::PublicOffer,
-    protocol_message::{
+    }, crypto::{ArbitratingKeyId, GenerateKey}, monero::Monero, negotiation::PublicOffer, protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
-    },
-    role::{Alice, Bob, SwapRole, TradeRole},
-    swap::btcxmr::{BtcXmr, KeyManager},
-    swap::SwapId,
-    syncer::{AddressTransaction, Boolean, Event},
-    transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
-};
+    }, role::{Alice, Bob, SwapRole, TradeRole}, swap::SwapId, swap::btcxmr::{BtcXmr, KeyManager}, syncer::{AddressTransaction, Boolean, Event}, transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable}};
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 // use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 use microservices::esb::{self, Handler};
@@ -470,15 +453,21 @@ impl Runtime {
                             core_arbitrating_txs,
                         )?;
 
+                        let sig = signed_arb_lock.lock_sig;
+                        let tx = core_arbitrating_txs.lock.clone();
+                        let mut lock_tx = LockTx::from_partial(tx);
+                        // FIXME: remove unwraps here
                         let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Fund).unwrap();
+                        lock_tx.add_witness(lock_pubkey, sig).unwrap();
+                        let finalized_tx =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)
+                            .unwrap();
+
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
                             source.clone(), // destination swapd
-                            Request::Datum(request::Datum::SignedArbitratingLock((
-                                signed_arb_lock,
-                                lock_pubkey,
-                            ))),
+                            Request::Datum(request::Datum::SignedArbitratingLock(finalized_tx)),
                         )?;
 
                         let buy_proc_sig =
