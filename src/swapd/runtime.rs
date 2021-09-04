@@ -563,55 +563,8 @@ impl Runtime {
                     }
                 }
             }
-            // Request::PeerMessage(Messages::FundingCreated(funding_created))
-            // => {     let enquirer = self.enquirer.clone();
-
-            //     let funding_signed =
-            //         self.funding_created(senders, funding_created)?;
-
-            //     // self.send_peer(
-            //     //     senders,
-            //     //     Messages::FundingSigned(funding_signed),
-            //     // )?;
-
-            //     // Ignoring possible error here: do not want to
-            //     // halt the channel just because the client disconnected
-            //     let msg = format!(
-            //         "{} both signatures present",
-            //         "Channel funded:".bright_green_bold()
-            //     );
-            //     info!("{}", msg);
-            //     let _ = self.report_progress_to(senders, &enquirer, msg);
-            // }
-            Request::PeerMessage(Messages::FundingLocked(_funding_locked)) => {
-                let enquirer = self.enquirer.clone();
-
-                // self.state = Lifecycle::Locked;
-
-                // TODO:
-                //      1. Change the channel state
-                //      2. Do something with per-commitment point
-
-                // self.state = Lifecycle::Active;
-                // self.remote_capacity = self.params.funding_satoshis;
-
-                // Ignoring possible error here: do not want to
-                // halt the channel just because the client disconnected
-                let msg = format!(
-                    "{} transaction confirmed",
-                    "Channel active:".bright_green_bold()
-                );
-                info!("{}", msg);
-                let _ = self.report_success_to(senders, &enquirer, Some(msg));
-            }
-
-            Request::PeerMessage(Messages::CommitmentSigned(_commitment_signed)) => {}
-
-            Request::PeerMessage(Messages::RevokeAndAck(_revoke_ack)) => {}
-
-            Request::PeerMessage(_) => {
-                // Ignore the rest of LN peer messages
-            }
+            // let _ = self.report_progress_to(senders, &enquirer, msg);
+            // let _ = self.report_success_to(senders, &enquirer, Some(msg));
 
             _ => {
                 error!("MSG RPC can be only used for forwarding FWP messages");
@@ -1013,7 +966,7 @@ impl Runtime {
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
                 }?;
-                trace!("sending peer RefundProcedureSignatures msg");
+                debug!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
@@ -1024,7 +977,7 @@ impl Runtime {
                     State::Bob(BobState::CorearbB(..)) => Ok(State::Bob(BobState::BuyProcSigB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
-                trace!("subscribing with syncer for buy tx");
+                debug!("subscribing with syncer for buy tx");
 
                 let tx = buy_proc_sig.buy.clone().extract_tx();
                 let txid = tx.txid();
@@ -1067,24 +1020,13 @@ impl Runtime {
                 };
                 self.pending_requests
                     .insert(ServiceId::Syncer(Coin::Bitcoin), pending_request);
-                trace!("deferring BuyProcedureSignature msg");
+                debug!("deferring BuyProcedureSignature msg");
                 // self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
 
                 info!("State transition: {}", next_state.bright_blue_bold());
                 self.state = next_state;
             }
-            // Request::FundSwap(funding_outpoint) => {
-            //     self.enquirer = source.into();
 
-            //     let funding_created =
-            //         self.fund_swap(senders, funding_outpoint)?;
-
-            //     // self.state = Lifecycle::Funding;
-            //     // self.send_peer(
-            //     //     senders,
-            //     //     Messages::FundingCreated(funding_created),
-            //     // )?;
-            // }
             Request::GetInfo => {
                 fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
                 where
@@ -1159,9 +1101,6 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg)?;
 
-        // self.params = payment::channel::Params::with(&swap_req)?;
-        // self.local_keys = payment::channel::Keyset::from(swap_req);
-
         Ok(commitment)
     }
 
@@ -1208,131 +1147,6 @@ impl Runtime {
         // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
         Ok(commitment.clone())
     }
-
-    // pub fn fund_swap(
-    //     &mut self,
-    //     senders: &mut Senders,
-    //     funding_outpoint: OutPoint,
-    // ) -> Result<message::FundingCreated, Error> {
-    //     let enquirer = self.enquirer.clone();
-
-    //     info!(
-    //         "{} {}",
-    //         "Funding channel".bright_blue_bold(),
-    //         self.swap_id.bright_blue_italic()
-    //     );
-    //     let _ = self.report_progress_to(
-    //         senders,
-    //         &enquirer,
-    //         format!("Funding channel {:#}", self.swap_id),
-    //     );
-
-    //     self.funding_outpoint = funding_outpoint;
-    //     // self.funding_update(senders)?;
-
-    //     let signature = self.sign_funding();
-    //     let funding_created = message::FundingCreated {
-    //         temporary_channel_id: self.swap_id.into(),
-    //         funding_txid: self.funding_outpoint.txid,
-    //         funding_output_index: self.funding_outpoint.vout as u16,
-    //         signature,
-    //     };
-    //     trace!("Prepared funding_created: {:?}", funding_created);
-
-    //     let msg = format!(
-    //         "{} for channel {:#}. Awaiting for remote node signature.",
-    //         "Funding created".bright_green_bold(),
-    //         self.swap_id.bright_green_italic()
-    //     );
-    //     info!("{}", msg);
-    //     let _ = self.report_progress_to(senders, &enquirer, msg);
-
-    //     Ok(funding_created)
-    // }
-
-    // pub fn funding_created(
-    //     &mut self,
-    //     senders: &mut Senders,
-    //     funding_created: message::FundingCreated,
-    // ) -> Result<message::FundingSigned, Error> {
-    //     let enquirer = self.enquirer.clone();
-
-    //     info!(
-    //         "{} {}",
-    //         "Accepting channel funding".bright_blue_bold(),
-    //         self.swap_id.bright_blue_italic()
-    //     );
-    //     let _ = self.report_progress_to(
-    //         senders,
-    //         &enquirer,
-    //         format!(
-    //             "Accepting channel funding {:#}",
-    //             self.swap_id
-    //         ),
-    //     );
-
-    //     self.funding_outpoint = OutPoint {
-    //         txid: funding_created.funding_txid,
-    //         vout: funding_created.funding_output_index as u32,
-    //     };
-    //     // TODO: Save signature!
-    //     self.funding_update(senders)?;
-
-    //     let signature = self.sign_funding();
-    //     let funding_signed = message::FundingSigned {
-    //         channel_id: self.swap_id,
-    //         signature,
-    //     };
-    //     trace!("Prepared funding_signed: {:?}", funding_signed);
-
-    //     let msg = format!(
-    //         "{} for channel {:#}. Awaiting for funding tx mining.",
-    //         "Funding signed".bright_green_bold(),
-    //         self.swap_id.bright_green_italic()
-    //     );
-    //     info!("{}", msg);
-    //     let _ = self.report_progress_to(senders, &enquirer, msg);
-
-    //     Ok(funding_signed)
-    // }
-
-    // pub fn sign_funding(&mut self) -> secp256k1::Signature {
-    //     // We are doing counterparty's transaction!
-    //     let mut cmt_tx = Transaction::ln_cmt_base(
-    //         100,
-    //         100,
-    //         100,
-    //         self.obscuring_factor,
-    //         self.funding_outpoint,
-    //         self.local_keys.payment_basepoint,
-    //         self.local_keys.revocation_basepoint,
-    //         self.remote_keys.delayed_payment_basepoint,
-    //         100,
-    //     );
-    //     trace!("Counterparty's commitment tx: {:?}", cmt_tx);
-
-    //     let mut sig_hasher = SigHashCache::new(&mut cmt_tx);
-    //     let sighash = sig_hasher.signature_hash(
-    //         0,
-    //         &PubkeyScript::ln_funding(
-    //             self.channel_capacity(),
-    //             self.local_keys.funding_pubkey,
-    //             self.remote_keys.funding_pubkey,
-    //         )
-    //         .into(),
-    //         self.channel_capacity(),
-    //         SigHashType::All,
-    //     );
-    //     let sign_msg = secp256k1::Message::from_slice(&sighash[..])
-    //         .expect("Sighash size always match requirements");
-    //     let signature = self.local_node.sign(&sign_msg);
-    //     trace!("Commitment transaction signature created");
-    //     // .serialize_der();
-    //     // let mut with_hashtype = signature.to_vec();
-    //     // with_hashtype.push(SigHashType::All.as_u32() as u8);
-
-    //     signature
-    // }
 }
 
 pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
