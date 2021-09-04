@@ -53,6 +53,7 @@ use farcaster_core::{
     negotiation::{Offer, PublicOffer},
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+        RefundProcedureSignatures,
     },
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager},
@@ -321,6 +322,7 @@ impl Runtime {
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
+                        info!("State transition: {}", next_state.bright_blue_bold());
                         self.state = next_state;
                     }
                     Msg::TakerCommit(_) => {
@@ -493,24 +495,27 @@ impl Runtime {
                             }
                             self.send_wallet(msg_bus, senders, request)?
                         } else {
-                            Err(Error::Farcaster(s!(
-                                "Wrong state: Only Alice receives CoreArbitratingSetup msg \\
+                            error!(
+                                "Wrong state: Only Alice receives CoreArbitratingSetup msg \
                                  through peer connection at state RevealA"
-                            )))?
+                            )
                         }
                     }
                     // bob receives, alice sends
-                    Msg::RefundProcedureSignatures(_) => {
+                    Msg::RefundProcedureSignatures(RefundProcedureSignatures {
+                        swap_id,
+                        cancel_sig,
+                        refund_adaptor_sig,
+                    }) => {
                         if let State::Bob(BobState::CorearbB(_)) = self.state {
                             // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             // cancel txs
-                            self.send_wallet(msg_bus, senders, request)?
+                            self.send_wallet(msg_bus, senders, request)?;
                         } else {
-                            Err(Error::Farcaster(
-                                "Wrong state: Bob receives RefundProcedureSignatures msg \\
+                            error!(
+                                "Wrong state: Bob receives RefundProcedureSignatures msg \
                                  through peer connection in state CorearbB"
-                                    .to_string(),
-                            ))?
+                            )
                         }
                     }
                     // alice receives, bob sends
@@ -821,7 +826,7 @@ impl Runtime {
                             TxLabel::Buy => {
                                 if let State::Bob(BobState::BuyProcSigB) = self.state {
                                     info!(
-                                        "found buy tx in mempool or blockchain, \\
+                                        "found buy tx in mempool or blockchain, \
                                            sending it to wallet: {:?}",
                                         &tx
                                     );
@@ -867,7 +872,6 @@ impl Runtime {
                             "Transaction {} is now final after {} confirmations",
                             txlabel, confirmations
                         );
-                        // FIXME: fill match arms
                         match txlabel {
                             TxLabel::Funding => {}
                             TxLabel::Lock => {
@@ -884,7 +888,10 @@ impl Runtime {
                                     {
                                         senders.send_to(bus_id, self.identity(), dest, request)?;
                                     } else {
-                                        error!("Not buyproceduresignatures");
+                                        error!(
+                                            "Not buyproceduresignatures, found {}",
+                                            request.get_type()
+                                        );
                                     }
                                 }
                             }
@@ -896,11 +903,6 @@ impl Runtime {
                             &id
                         )
                     }
-                    info!(
-                        "tx {} is now final after {} confirmations",
-                        id, confirmations
-                    );
-                    // TODO abort task, inject into final_txs state
                 }
                 Event::TransactionBroadcasted(event) => {
                     info!("{}", event)
