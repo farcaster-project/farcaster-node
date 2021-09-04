@@ -104,7 +104,8 @@ impl SyncerState {
         self.task_count += 1;
         // This is technically valid behavior; immediately prune the task for being past
         // its lifetime by never inserting it
-        if !self.add_lifetime(task.lifetime, self.task_count).is_ok() {
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+            error!("{}", e);
             return;
         }
         self.watch_height.insert(self.task_count, task.clone());
@@ -133,7 +134,8 @@ impl SyncerState {
         // increment the count to use it as a unique internal id
         self.task_count += 1;
 
-        if self.add_lifetime(task.lifetime, self.task_count).is_err() {
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+            error!("{}", e);
             return;
         };
         self.tasks_sources.insert(self.task_count, source);
