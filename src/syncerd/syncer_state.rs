@@ -183,10 +183,7 @@ impl SyncerState {
             .iter()
             .filter(|(_, addr)| addr.task.addendum == address_addendum && addr.txs != txs)
             .map(|(id, addr)| {
-                for (_, tx) in txs
-                    .iter()
-                    .find(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
-                {
+                for (_, tx) in txs.iter().find(|&(tx_id, _)| !addr.txs.contains_key(tx_id)) {
                     let address_transaction = AddressTransaction {
                         id: addr.task.id,
                         hash: tx.tx_id.clone(),
@@ -218,51 +215,69 @@ impl SyncerState {
         confirmations: Option<u32>,
     ) {
         self.drop_lifetimes();
+        inner(
+            &mut self.transactions,
+            &mut self.events,
+            &mut self.tasks_sources,
+            tx_id,
+            block_hash,
+            confirmations,
+        );
 
-        let block = match block_hash {
-            Some(bh) => bh,
-            // per RFC, no block hash should be encoded as 0x0
-            None => hex::decode("00").unwrap(),
-        };
-        let confs = match confirmations {
-            Some(confs) => confs as i32,
-            // per RFC, no confirmation should be encoded as -1
-            None => -1,
-        };
+        fn inner(
+            transactions: &mut HashMap<u32, WatchedTransaction>,
+            events: &mut Vec<(Event, ServiceId)>,
+            tasks_sources: &mut HashMap<u32, ServiceId>,
+            tx_id: Vec<u8>,
+            block_hash: Option<Vec<u8>>,
+            confirmations: Option<u32>,
+        ) {
+            let block = match block_hash {
+                Some(bh) => bh,
+                // per RFC, no block hash should be encoded as 0x0
+                None => hex::decode("00").unwrap(),
+            };
+            let confirmations = match confirmations {
+                Some(confs) => confs as i32,
+                // per RFC, no confirmation should be encoded as -1
+                None => -1,
+            };
 
-        self.transactions = self
-            .transactions
-            .clone()
-            .iter()
-            .map(|(id, watched_tx)| {
-                if watched_tx.task.hash == tx_id
-                    && (watched_tx.transaction_confirmations.block != block
-                        || watched_tx.transaction_confirmations.confirmations != confs)
-                {
-                    let transaction_confirmations = TransactionConfirmations {
-                        id: watched_tx.task.id,
-                        block: block.clone(),
-                        confirmations: confs,
+            *transactions = transactions
+                .drain()
+                .filter_map(|(id, watched_tx)| {
+                    let transaction_confirmations = if watched_tx.task.hash == tx_id
+                        && (watched_tx.transaction_confirmations.block != block
+                            || watched_tx.transaction_confirmations.confirmations != confirmations)
+                    {
+                        let tx_confs = TransactionConfirmations {
+                            id: watched_tx.task.id,
+                            block: block.clone(),
+                            confirmations,
+                        };
+                        events.push((
+                            Event::TransactionConfirmations(tx_confs.clone()),
+                            tasks_sources.get(&id).unwrap().clone(),
+                        ));
+                        tx_confs
+                    } else {
+                        watched_tx.transaction_confirmations
                     };
-                    self.events.push((
-                        Event::TransactionConfirmations(transaction_confirmations.clone()),
-                        self.tasks_sources.get(id).unwrap().clone(),
-                    ));
                     // prune the task once it has reached its confirmation bound
-                    if confs >= watched_tx.task.confirmation_bound as i32 {
-                        self.remove_transaction(watched_tx.task.lifetime, *id);
+                    if confirmations >= watched_tx.task.confirmation_bound as i32 {
+                        None
+                    } else {
+                        Some((
+                            id.clone(),
+                            WatchedTransaction {
+                                task: watched_tx.task,
+                                transaction_confirmations,
+                            },
+                        ))
                     }
-                    return (
-                        id.clone(),
-                        WatchedTransaction {
-                            task: watched_tx.task.clone(),
-                            transaction_confirmations: transaction_confirmations.clone(),
-                        },
-                    );
-                }
-                return (id.clone(), watched_tx.clone());
-            })
-            .collect();
+                })
+                .collect();
+        }
     }
 
     fn remove_transaction(&mut self, transaction_lifetime: u64, id: u32) {
