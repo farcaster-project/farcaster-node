@@ -302,7 +302,7 @@ impl Runtime {
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
                                 let tx_label = TxLabel::Funding;
                                 let (watch_addr_req, id) =
-                                    watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
+                                    watch_addr(AddressOrScript::Address(addr), self.task_lifetime.expect("task_lifetime"));
                                 self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
                                 // deferred to when syncer comes online
                                 // FIXME
@@ -343,7 +343,7 @@ impl Runtime {
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
                                 let tx_label = TxLabel::Funding;
                                 let (watch_addr_req, id) =
-                                    watch_addr(addr, self.task_lifetime.expect("task_lifetime"));
+                                    watch_addr(AddressOrScript::Address(addr), self.task_lifetime.expect("task_lifetime"));
                                 self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
 
                                 // FIXME
@@ -1000,25 +1000,26 @@ impl Runtime {
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
                 trace!("subscribing with syncer for buy tx");
+
                 let tx = buy_proc_sig.buy.clone().extract_tx();
                 let txid = tx.txid();
-
-                let script_pubkey = tx.output[0].script_pubkey.clone().to_bytes();
-                let address_addendum = BtcAddressAddendum {
-                    address: s!(""), // address doesnt seem to be used by bitcoin syncer
-                    from_height: 0,
-                    script_pubkey,
-                };
-                let addendum = consensus::serialize(&address_addendum);
-                let buf: Vec<u8> = addendum.clone().try_into().expect("watch_addr");
-                let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
-                let id = i32::from_le_bytes(id_buf);
-                let watch_addr_task = Task::WatchAddress(WatchAddress {
-                    id,
-                    lifetime: self.task_lifetime.unwrap(),
-                    addendum,
-                    include_tx: Boolean::True,
-                });
+                let script_pubkey = tx.output[0].script_pubkey.clone();
+                let (watch_addr_req, id) = watch_addr(AddressOrScript::Script(script_pubkey), self.task_lifetime.unwrap());
+                // let address_addendum = BtcAddressAddendum {
+                //     address: s!(""), // address doesnt seem to be used by bitcoin syncer
+                //     from_height: 0,
+                //     script_pubkey,
+                // };
+                // let addendum = consensus::serialize(&address_addendum);
+                // let buf: Vec<u8> = addendum.clone().try_into().expect("watch_addr");
+                // let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
+                // let id = i32::from_le_bytes(id_buf);
+                // let watch_addr_task = Task::WatchAddress(WatchAddress {
+                //     id,
+                //     lifetime: self.task_lifetime.unwrap(),
+                //     addendum,
+                //     include_tx: Boolean::True,
+                // });
                 if self
                     .txs_status
                     .insert(id, (TxLabel::Buy, TxStatus::Notfinal))
@@ -1028,7 +1029,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         ServiceId::Syncer(Coin::Bitcoin),
-                        Request::SyncerTask(watch_addr_task),
+                        watch_addr_req,
                     )?;
                 } else {
                     error!("task already registered")
@@ -1339,14 +1340,30 @@ enum TxStatus {
     Notfinal,
 }
 
-fn watch_addr(addr: bitcoin::Address, lifetime: u64) -> (Request, i32) {
-    let addendum = BtcAddressAddendum {
-        address: addr.to_string(),
-        from_height: 0,
-        script_pubkey: addr.script_pubkey().to_bytes(),
+enum AddressOrScript{
+    Address(bitcoin::Address),
+    Script(bitcoin::Script),
+}
+
+fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64) -> (Request, i32) {
+    let addendum = match addr_or_script {
+        AddressOrScript::Address(addr) => {
+            BtcAddressAddendum {
+                address: addr.to_string(),
+                from_height: 0,
+                script_pubkey: addr.script_pubkey().to_bytes(),
+            }
+        }
+        AddressOrScript::Script(script_pubkey) => {
+            BtcAddressAddendum {
+                address: s!(""),
+                from_height: 0,
+                script_pubkey: script_pubkey.to_bytes(),
+            }
+        }
     };
     let addendum = consensus::serialize(&addendum);
-    let buf: Vec<u8> = addendum.clone().try_into().expect("watch_addr");
+    let buf: Vec<u8> = (&*addendum).try_into().expect("watch_addr");
     let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
     let id = i32::from_le_bytes(id_buf);
 
