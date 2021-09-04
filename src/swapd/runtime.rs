@@ -820,19 +820,26 @@ impl Runtime {
                             }
                             TxLabel::Buy => {
                                 if let State::Bob(BobState::BuyProcSigB) = self.state {
-                                    info!("found buy tx in mempool or blockchain: {:?}", tx);
+                                    info!(
+                                        "found buy tx in mempool or blockchain, \\
+                                           sending it to wallet: {:?}",
+                                        &tx
+                                    );
                                     let req = Request::Datum(Datum::FullySignedBuy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
                                 } else {
                                     error!("not BuyProcSigB")
                                 }
                             }
-                            _ => {
-                                error!("address transaction event not supported")
+                            txlabel => {
+                                error!("address transaction event not supported for tx {}", txlabel)
                             }
                         }
                     } else {
-                        error!("Transaction about unknow address");
+                        error!(
+                            "Transaction event received, unknow address with id {} and txid {:?}",
+                            id, hash
+                        );
                     }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
@@ -842,6 +849,11 @@ impl Runtime {
                 }) => {
                     if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         info!("tx {} has {} confirmations", txlabel, confirmations);
+                    } else {
+                        error!(
+                            "received event with unknown transaction and task id {}",
+                            &id
+                        )
                     }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
@@ -878,6 +890,11 @@ impl Runtime {
                             }
                             tx_label => error!("tx label {} not supported", tx_label),
                         }
+                    } else {
+                        error!(
+                            "received event with unknown transaction and task id {}",
+                            &id
+                        )
                     }
                     info!(
                         "tx {} is now final after {} confirmations",
@@ -940,47 +957,50 @@ impl Runtime {
             }
 
             Request::Datum(Datum::SignedArbitratingLock((lock_sig, pubkey))) => {
-                match self.state {
-                    State::Bob(BobState::CorearbB(ref core_arb)) => {
-                        let sig = lock_sig.lock_sig;
-                        let tx = core_arb.lock.clone();
-                        let mut lock_tx = LockTx::from_partial(tx);
-                        // FIXME: remove unwraps here
-                        lock_tx.add_witness(pubkey, sig).unwrap();
-                        let finalized_tx =
-                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)
-                                .unwrap();
-                        let req =
-                            Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
-                                id: task_id(finalized_tx.txid()),
-                                tx: bitcoin::consensus::serialize(&finalized_tx),
-                            }));
+                if let State::Bob(BobState::CorearbB(ref core_arb)) = self.state {
+                    let sig = lock_sig.lock_sig;
+                    let tx = core_arb.lock.clone();
+                    let mut lock_tx = LockTx::from_partial(tx);
+                    // FIXME: remove unwraps here
+                    lock_tx.add_witness(pubkey, sig).unwrap();
+                    let finalized_tx =
+                        Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)
+                            .unwrap();
+                    let req =
+                        Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
+                            id: task_id(finalized_tx.txid()),
+                            tx: bitcoin::consensus::serialize(&finalized_tx),
+                        }));
 
-                        info!("Broadcasting btc lock {}", finalized_tx.txid());
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Syncer(Coin::Bitcoin),
-                            req,
-                        )?;
-                        Ok(())
-                    }
-                    _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
-                }?;
+                    info!("Broadcasting btc lock {}", finalized_tx.txid());
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer(Coin::Bitcoin),
+                        req,
+                    )?;
+                } else {
+                    error!("Wrong state: must be RevealB, found {}", &self.state)
+                }
             }
             Request::Datum(Datum::FullySignedBuy(buy_tx)) => {
                 trace!("received fullysigned from wallet");
-                let req = Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
-                    id: task_id(buy_tx.txid()),
-                    tx: bitcoin::consensus::serialize(&buy_tx),
-                }));
-                info!("broadcasting buy tx {}", buy_tx.txid());
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    ServiceId::Syncer(Coin::Bitcoin),
-                    req,
-                )?;
+                if let State::Bob(BobState::BuyProcSigB) = self.state {
+                    let req =
+                        Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
+                            id: task_id(buy_tx.txid()),
+                            tx: bitcoin::consensus::serialize(&buy_tx),
+                        }));
+                    info!("broadcasting buy tx {}", buy_tx.txid());
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer(Coin::Bitcoin),
+                        req,
+                    )?;
+                } else {
+                    error!("wrong state: expected BuyProcSigB, found {}", &self.state)
+                }
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
