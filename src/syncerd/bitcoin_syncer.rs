@@ -1,4 +1,3 @@
-use crate::{error::Error, syncerd::syncer_state::txid_tx_hashmap};
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
@@ -12,6 +11,7 @@ use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::ServiceId;
+use crate::{error::Error, syncerd::syncer_state::txid_tx_hashmap};
 use bitcoin::hashes::{
     hex::{FromHex, ToHex},
     Hash,
@@ -76,7 +76,7 @@ impl ElectrumRpc {
     pub fn subscribe_script(
         &mut self,
         address_addendum: BtcAddressAddendum,
-    ) -> Result<AddressNotif, Error> {
+    ) -> Result<Option<AddressNotif>, Error> {
         match self.client.script_subscribe(&bitcoin::Script::from(
             address_addendum.script_pubkey.clone(),
         )) {
@@ -84,23 +84,16 @@ impl ElectrumRpc {
                 trace!("script_status:\n{:?}", &script_status);
                 self.addresses
                     .insert(address_addendum.clone(), script_status);
-                let txs = self.handle_address_notification(
-                    address_addendum.clone(),
-                    script_status,
-                );
+                let txs = self.handle_address_notification(address_addendum.clone(), script_status);
                 trace!("creating AddressNotif with txs: {:?}", txs);
                 let notif = AddressNotif {
                     address: address_addendum,
                     txs,
                 };
-                Ok(notif)
+                Ok(Some(notif))
             }
-            Ok(None) => {
-                let msg = "Address subscription successful, yet no transactions on this BTC address \
-                           yet, events will be emmited when transactions are observed";
-                trace!("{}", &msg);
-                Err(Error::Farcaster(msg.to_string()))
-            }
+            Ok(None) => Ok(None),
+
             Err(e) => Err(Error::Farcaster(e.to_string())),
         }
     }
@@ -131,12 +124,9 @@ impl ElectrumRpc {
             {
                 if digest != *state {
                     trace!("creating address notifications");
-                    txs.extend(self.handle_address_notification(
-                        address.clone(),
-                        digest,
-                    ));
+                    txs.extend(self.handle_address_notification(address.clone(), digest));
                 } else {
-                    error!("state did not change for given address");
+                    trace!("state did not change for given address");
                 }
             }
             if txs.len() > 0 {
@@ -318,16 +308,23 @@ impl Synclet for BitcoinSyncer {
                                     }
                                     Ok(address_addendum) => {
                                         trace!("subscribing to address: {:?}", &address_addendum);
-                                        if let Ok(address_transactions) =
-                                            rpc.subscribe_script(address_addendum)
-                                        {
-                                            trace!("address transactions {:?}", &address_transactions);
-                                            state.change_address(
-                                                task.addendum,
-                                                txid_tx_hashmap(address_transactions.txs),
-                                            );
-                                        } else {
-                                            error!("Not Ok(address_transactions)")
+                                        match rpc.subscribe_script(address_addendum) {
+                                            Ok(Some(address_transactions)) => {
+                                                trace!(
+                                                    "address transactions {:?}",
+                                                    &address_transactions
+                                                );
+                                                state.change_address(
+                                                    task.addendum,
+                                                    txid_tx_hashmap(address_transactions.txs),
+                                                );
+                                            }
+                                            Ok(None) => {
+                                                let msg = "Address subscription successful, but no transactions on this BTC address \
+                                                           yet, events will be emmited when transactions are observed";
+                                                debug!("{}", &msg);
+                                            }
+                                            Err(_) => error!("Not Ok(address_transactions)"),
                                         }
                                     }
                                 }
@@ -358,7 +355,10 @@ impl Synclet for BitcoinSyncer {
                         "processing address: {:?} \n {:?}",
                         serialized_address, address_transactions
                     );
-                    state.change_address(serialized_address, txid_tx_hashmap(address_transactions.txs.clone()));
+                    state.change_address(
+                        serialized_address,
+                        txid_tx_hashmap(address_transactions.txs.clone()),
+                    );
                 }
                 // check and process new block notifications
                 let mut new_blocks = rpc.new_block_check();
@@ -392,12 +392,12 @@ impl Synclet for BitcoinSyncer {
 
 // #[test]
 // pub fn syncer_state() {
-//     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-//     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-//     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-//     tx_event.connect("inproc://syncerdbridge").unwrap();
-//     rx_event.bind("inproc://syncerdbridge").unwrap();
-//     let mut syncer = BitcoinSyncer::new();
+//     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) =
+// std::sync::mpsc::channel();     let tx_event =
+// ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();     let rx_event =
+// ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();     tx_event.connect("inproc://
+// syncerdbridge").unwrap();     rx_event.bind("inproc://syncerdbridge").
+// unwrap();     let mut syncer = BitcoinSyncer::new();
 //     syncer.run(rx, tx_event, ServiceId::Syncer(Coin::Bitcoin).into());
 //     let task = SyncerdTask {
 //         task: Task::WatchHeight(WatchHeight {

@@ -81,9 +81,9 @@ impl SyncerState {
         //                 self.remove_transaction(tx.lifetime, tx.id);
         //             }
 
-        //             // Just set an error code as we immediately attempt to broadcast a transaction when told to
-        //             Task::BroadcastTransaction(_tx) => {
-        //                 status = 1;
+        //             // Just set an error code as we immediately attempt to broadcast
+        // a transaction when told to
+        // Task::BroadcastTransaction(_tx) => {                 status = 1;
         //             }
         //         }
         //     }
@@ -102,7 +102,8 @@ impl SyncerState {
     pub fn watch_height(&mut self, task: WatchHeight, source: ServiceId) {
         // increment the count to use it as a unique internal id
         self.task_count += 1;
-        // This is technically valid behavior; immediately prune the task for being past its lifetime by never inserting it
+        // This is technically valid behavior; immediately prune the task for being past
+        // its lifetime by never inserting it
         if !self.add_lifetime(task.lifetime, self.task_count).is_ok() {
             return;
         }
