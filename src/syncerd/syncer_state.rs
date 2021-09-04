@@ -177,35 +177,54 @@ impl SyncerState {
         if self.addresses.is_empty() {
             debug!("no addresses here");
         }
-        self.addresses = self
-            .addresses
-            .clone()
-            .iter()
-            .filter(|(_, addr)| addr.task.addendum == address_addendum && addr.txs != txs)
-            .map(|(id, addr)| {
-                for (_, tx) in txs.iter().find(|&(tx_id, _)| !addr.txs.contains_key(tx_id)) {
-                    let address_transaction = AddressTransaction {
-                        id: addr.task.id,
-                        hash: tx.tx_id.clone(),
-                        amount: tx.our_amount,
-                        block: tx.block_hash.clone(),
-                        tx: tx.tx.clone(),
-                    };
-                    self.events.push((
-                        Event::AddressTransaction(address_transaction.clone()),
-                        self.tasks_sources.get(id).unwrap().clone(),
-                    ));
-                }
 
-                (
-                    id.clone(),
-                    AddressTransactions {
-                        task: addr.task.clone(),
-                        txs: txs.clone(),
-                    },
-                )
-            })
-            .collect();
+        inner(
+            &mut self.addresses,
+            &mut self.events,
+            &mut self.tasks_sources,
+            address_addendum,
+            txs,
+        );
+
+        fn inner(
+            addresses: &mut HashMap<u32, AddressTransactions>,
+            events: &mut Vec<(Event, ServiceId)>,
+            tasks_sources: &mut HashMap<u32, ServiceId>,
+            address_addendum: Vec<u8>,
+            txs: HashMap<Vec<u8>, AddressTx>,
+        ) {
+            *addresses = addresses
+                .drain()
+                .map(|(id, addr)| {
+                    if addr.task.addendum == address_addendum && addr.txs != txs {
+                        for (_, tx) in txs.iter().find(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
+                        {
+                            let address_transaction = AddressTransaction {
+                                id: addr.task.id,
+                                hash: tx.tx_id.clone(),
+                                amount: tx.our_amount,
+                                block: tx.block_hash.clone(),
+                                tx: tx.tx.clone(),
+                            };
+                            events.push((
+                                Event::AddressTransaction(address_transaction.clone()),
+                                tasks_sources.get(&id).unwrap().clone(),
+                            ));
+                        }
+
+                        (
+                            id.clone(),
+                            AddressTransactions {
+                                task: addr.task.clone(),
+                                txs: txs.clone(),
+                            },
+                        )
+                    } else {
+                        (id, addr)
+                    }
+                })
+                .collect();
+        }
     }
 
     pub fn change_transaction(
