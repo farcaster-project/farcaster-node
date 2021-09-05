@@ -210,7 +210,7 @@ impl ElectrumRpc {
                     state.change_transaction(tx.txid.to_vec(), blockhash, tx.confirmations)
                 }
                 Err(err) => {
-                    error!("Failed: {}", err)
+                    warn!("{}", err)
                 }
             }
         }

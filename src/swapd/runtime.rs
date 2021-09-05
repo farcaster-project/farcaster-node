@@ -785,6 +785,9 @@ impl Runtime {
                     error!("pending request not found")
                 }
             }
+            // Request::SyncerEvent(ref event) => match (&event, source) {
+            // handle monero events here
+            // }
             Request::SyncerEvent(ref event) => match &event {
                 Event::HeightChanged(h) => {
                     info!("height changed {}", h)
@@ -861,10 +864,16 @@ impl Runtime {
                     block,
                     confirmations,
                 }) => {
-                    info!("tx {} now has {} confirmations", id, confirmations);
+                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
+                        info!("tx: {} now has {} confirmations", txlabel, confirmations);
+                    }
                 }
-                Event::TransactionBroadcasted(_) => {}
-                Event::TaskAborted(_) => {}
+                Event::TransactionBroadcasted(event) => {
+                    info!("{}", event)
+                }
+                Event::TaskAborted(event) => {
+                    info!("{}", event)
+                }
             },
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
@@ -941,6 +950,20 @@ impl Runtime {
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
+            }
+            Request::Datum(Datum::FullySignedBuy(buy_tx)) => {
+                trace!("received frullysigned from wallet");
+                let req = Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
+                    id: task_id(buy_tx.txid()),
+                    tx: bitcoin::consensus::serialize(&buy_tx),
+                }));
+                info!("broadcasting tx {}", buy_tx.txid());
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Syncer(Coin::Bitcoin),
+                    req,
+                )?;
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
@@ -1251,7 +1274,7 @@ impl Runtime {
     // }
 }
 
-pub fn swap_id(source: ServiceId) -> Result<SwapId, Error> {
+pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
     if let ServiceId::Swap(swap_id) = source {
         Ok(swap_id)
     } else {
