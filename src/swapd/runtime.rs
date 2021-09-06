@@ -969,18 +969,19 @@ impl Runtime {
                     State::Bob(BobState::CorearbB(..)) => Ok(State::Bob(BobState::BuyProcSigB)),
                     _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                 }?;
-                debug!("subscribing with syncer for buy tx");
+                debug!("subscribing with syncer for receiving raw buy tx ");
 
                 let tx = buy_proc_sig.buy.clone().extract_tx();
                 let txid = tx.txid();
+                let id_tx = task_id(txid);
                 let script_pubkey = tx.output[0].script_pubkey.clone();
-                let (watch_addr_req, id) = watch_addr(
+                let (watch_addr_req, id_addr) = watch_addr(
                     AddressOrScript::Script(script_pubkey),
                     self.task_lifetime.unwrap(),
                 );
                 if self
                     .txs_status
-                    .insert(id, (TxLabel::Buy, TxStatus::Notfinal))
+                    .insert(id_addr, (TxLabel::Buy, TxStatus::Notfinal))
                     .is_none()
                 {
                     senders.send_to(
@@ -993,18 +994,27 @@ impl Runtime {
                     error!("task already registered")
                 }
 
-                let task = Task::WatchTransaction(WatchTransaction {
-                    id: task_id(txid),
-                    lifetime: self.task_lifetime.expect("task_lifetime is None"),
-                    hash: txid.to_vec(),
-                    confirmation_bound: self.confirmation_bound,
-                });
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    ServiceId::Syncer(Coin::Bitcoin),
-                    Request::SyncerTask(task),
-                )?;
+                if self
+                    .txs_status
+                    .insert(id_tx, (TxLabel::Buy, TxStatus::Notfinal))
+                    .is_none()
+                {
+                    debug!("subscribing with syncer for receiving buy tx updates");
+                    let task = Task::WatchTransaction(WatchTransaction {
+                        id: task_id(txid),
+                        lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                        hash: txid.to_vec(),
+                        confirmation_bound: self.confirmation_bound,
+                    });
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer(Coin::Bitcoin),
+                        Request::SyncerTask(task),
+                    )?;
+                } else {
+                    error!("Already subscribed for Buy transaction, skipping");
+                }
                 let pending_request = PendingRequest {
                     request,
                     dest: self.peer_service.clone(),
