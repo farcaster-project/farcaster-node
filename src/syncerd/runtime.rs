@@ -172,15 +172,13 @@ impl Runtime {
                 );
             }
             (Request::SyncerTask(task), _) => {
-                if let Ok(_) = self.tx
-                    .send(SyncerdTask {
-                        task: task.clone(),
-                        source,
-                    }) {
-                        trace!("Task successfully sent to syncer runtime")
-                    } else {
-                        error!("Failed to send task, maybe electrum server offline?")
-                    };
+                match self.tx.send(SyncerdTask {
+                    task: task.clone(),
+                    source,
+                }) {
+                    Ok(()) => trace!("Task successfully sent to syncer runtime"),
+                    Err(e) => error!("Failed to send task with error: {}", e.to_string()),
+                };
             }
             (Request::GetInfo, _) => {
                 senders.send_to(

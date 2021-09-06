@@ -82,15 +82,22 @@ impl ElectrumRpc {
         )) {
             Ok(Some(script_status)) => {
                 trace!("script_status:\n{:?}", &script_status);
-                self.addresses
-                    .insert(address_addendum.clone(), script_status);
-                let txs = self.handle_address_notification(address_addendum.clone(), script_status);
-                trace!("creating AddressNotif with txs: {:?}", txs);
-                let notif = AddressNotif {
-                    address: address_addendum,
-                    txs,
-                };
-                Ok(Some(notif))
+                if self
+                    .addresses
+                    .insert(address_addendum.clone(), script_status)
+                    .is_none()
+                {
+                    let txs =
+                        self.handle_address_notification(address_addendum.clone(), script_status);
+                    trace!("creating AddressNotif with txs: {:?}", txs);
+                    let notif = AddressNotif {
+                        address: address_addendum,
+                        txs,
+                    };
+                    Ok(Some(notif))
+                } else {
+                    Err(Error::Farcaster(s!("address_addendum already registered")))
+                }
             }
             Ok(None) => Ok(None),
 
@@ -148,7 +155,7 @@ impl ElectrumRpc {
         // history of the address
         let script = bitcoin::Script::from(address.script_pubkey);
         if let Ok(tx_history) = self.client.script_get_history(&script) {
-            for hist in tx_history{
+            for hist in tx_history {
                 trace!("history: {:?}", hist);
                 let mut our_amount: u64 = 0;
                 let txid = hist.tx_hash;
@@ -338,7 +345,10 @@ impl Synclet for BitcoinSyncer {
                         // sending out events
                         continue;
                     }
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        error!("disconnected");
+                        return;
+                    }
                     Err(TryRecvError::Empty) => {
                         // do nothing
                     }

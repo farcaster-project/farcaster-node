@@ -31,7 +31,7 @@ pub struct WatchedTransaction {
     pub transaction_confirmations: TransactionConfirmations,
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct AddressTransactions {
     pub task: WatchAddress,
     txs: HashMap<Vec<u8>, AddressTx>,
