@@ -115,14 +115,14 @@ impl ElectrumRpc {
     // check if an address received a new transaction
     pub fn address_change_check(&mut self) -> Vec<AddressNotif> {
         let mut notifs: Vec<AddressNotif> = vec![];
-        for (address, state) in self.addresses.clone().iter() {
+        for (address, state) in self.addresses.clone().into_iter() {
             let mut txs: Vec<AddressTx> = vec![];
             // get pending notifications for this address/script_pubkey
             while let Ok(Some(digest)) = self
                 .client
                 .script_pop(&bitcoin::Script::from(address.script_pubkey.clone()))
             {
-                if digest != *state {
+                if digest != state {
                     trace!("creating address notifications");
                     txs.extend(self.handle_address_notification(address.clone(), digest));
                 } else {
@@ -131,10 +131,7 @@ impl ElectrumRpc {
             }
             if txs.len() > 0 {
                 trace!("address update to notify");
-                notifs.push(AddressNotif {
-                    address: address.clone(),
-                    txs,
-                })
+                notifs.push(AddressNotif { address, txs })
             }
         }
         notifs
@@ -151,7 +148,7 @@ impl ElectrumRpc {
         // history of the address
         let script = bitcoin::Script::from(address.script_pubkey);
         if let Ok(tx_history) = self.client.script_get_history(&script) {
-            for hist in tx_history.iter() {
+            for hist in tx_history{
                 trace!("history: {:?}", hist);
                 let mut our_amount: u64 = 0;
                 let txid = hist.tx_hash;
@@ -324,7 +321,7 @@ impl Synclet for BitcoinSyncer {
                                                            yet, events will be emmited when transactions are observed";
                                                 debug!("{}", &msg);
                                             }
-                                            Err(_) => error!("Not Ok(address_transactions)"),
+                                            Err(_) => error!("Not Ok(Option<AddressTransactions>)"),
                                         }
                                     }
                                 }
