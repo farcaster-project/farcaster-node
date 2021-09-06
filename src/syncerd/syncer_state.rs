@@ -125,8 +125,8 @@ impl SyncerState {
         self.task_count += 1;
         self.add_lifetime(task.lifetime, self.task_count)?; // FIXME turned off because it errors here
         self.tasks_sources.insert(self.task_count, source);
-        let address_tx = AddressTransactions { task, txs: none!() };
-        self.addresses.insert(self.task_count, address_tx);
+        let address_txs = AddressTransactions { task, txs: none!() };
+        self.addresses.insert(self.task_count, address_txs);
         Ok(())
     }
 
