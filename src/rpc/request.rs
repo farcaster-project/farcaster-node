@@ -277,7 +277,8 @@ pub enum Datum {
         SignedArbitratingLock<BitcoinSegwitV0>,
         bitcoin::secp256k1::PublicKey,
     )),
-    FullySignedBuy(Transaction)
+    FullySignedBuy(Transaction),
+    Funding(Transaction),
 }
 
 use crate::{Error, ServiceId};
