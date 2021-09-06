@@ -46,7 +46,7 @@ use farcaster_core::syncer::*;
 pub trait Rpc {
     fn new(electrum_server: String) -> Self;
 
-    fn get_height(&mut self) -> Result<u64, Error>;
+    fn get_height(&mut self) -> u64;
 
     fn send_raw_transaction(&mut self, tx: Vec<u8>) -> Result<String, electrum_client::Error>;
 
@@ -223,8 +223,8 @@ impl Rpc for ElectrumRpc {
         Ok(result.to_string())
     }
 
-    fn get_height(&mut self) -> Result<u64, Error> {
-        Ok(self.height)
+    fn get_height(&mut self) -> u64 {
+        self.height
     }
 
     fn ping(&mut self) -> Result<(), Error> {
