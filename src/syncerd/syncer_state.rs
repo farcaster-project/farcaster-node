@@ -81,9 +81,9 @@ impl SyncerState {
         //                 self.remove_transaction(tx.lifetime, tx.id);
         //             }
 
-        //             // Just set an error code as we immediately attempt to broadcast a transaction when told to
-        //             Task::BroadcastTransaction(_tx) => {
-        //                 status = 1;
+        //             // Just set an error code as we immediately attempt to broadcast
+        // a transaction when told to
+        // Task::BroadcastTransaction(_tx) => {                 status = 1;
         //             }
         //         }
         //     }
@@ -102,8 +102,10 @@ impl SyncerState {
     pub fn watch_height(&mut self, task: WatchHeight, source: ServiceId) {
         // increment the count to use it as a unique internal id
         self.task_count += 1;
-        // This is technically valid behavior; immediately prune the task for being past its lifetime by never inserting it
-        if !self.add_lifetime(task.lifetime, self.task_count).is_ok() {
+        // This is technically valid behavior; immediately prune the task for being past
+        // its lifetime by never inserting it
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+            error!("{}", e);
             return;
         }
         self.watch_height.insert(self.task_count, task.clone());
@@ -123,8 +125,8 @@ impl SyncerState {
         self.task_count += 1;
         self.add_lifetime(task.lifetime, self.task_count)?; // FIXME turned off because it errors here
         self.tasks_sources.insert(self.task_count, source);
-        let address_tx = AddressTransactions { task, txs: none!() };
-        self.addresses.insert(self.task_count, address_tx);
+        let address_txs = AddressTransactions { task, txs: none!() };
+        self.addresses.insert(self.task_count, address_txs);
         Ok(())
     }
 
@@ -132,7 +134,8 @@ impl SyncerState {
         // increment the count to use it as a unique internal id
         self.task_count += 1;
 
-        if self.add_lifetime(task.lifetime, self.task_count).is_err() {
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+            error!("{}", e);
             return;
         };
         self.tasks_sources.insert(self.task_count, source);
@@ -176,38 +179,54 @@ impl SyncerState {
         if self.addresses.is_empty() {
             debug!("no addresses here");
         }
-        self.addresses = self
-            .addresses
-            .clone()
-            .iter()
-            .filter(|(_, addr)| addr.task.addendum == address_addendum && addr.txs != txs)
-            .map(|(id, addr)| {
-                for (_, tx) in txs
-                    .iter()
-                    .find(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
-                {
-                    let address_transaction = AddressTransaction {
-                        id: addr.task.id,
-                        hash: tx.tx_id.clone(),
-                        amount: tx.our_amount,
-                        block: tx.block_hash.clone(),
-                        tx: tx.tx.clone(),
-                    };
-                    self.events.push((
-                        Event::AddressTransaction(address_transaction.clone()),
-                        self.tasks_sources.get(id).unwrap().clone(),
-                    ));
-                }
 
-                (
-                    id.clone(),
-                    AddressTransactions {
-                        task: addr.task.clone(),
-                        txs: txs.clone(),
-                    },
-                )
-            })
-            .collect();
+        inner(
+            &mut self.addresses,
+            &mut self.events,
+            &mut self.tasks_sources,
+            address_addendum,
+            txs,
+        );
+
+        fn inner(
+            addresses: &mut HashMap<u32, AddressTransactions>,
+            events: &mut Vec<(Event, ServiceId)>,
+            tasks_sources: &mut HashMap<u32, ServiceId>,
+            address_addendum: Vec<u8>,
+            txs: HashMap<Vec<u8>, AddressTx>,
+        ) {
+            *addresses = addresses
+                .drain()
+                .map(|(id, addr)| {
+                    if addr.task.addendum == address_addendum && addr.txs != txs {
+                        for (_, tx) in txs.iter().find(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
+                        {
+                            let address_transaction = AddressTransaction {
+                                id: addr.task.id,
+                                hash: tx.tx_id.clone(),
+                                amount: tx.our_amount,
+                                block: tx.block_hash.clone(),
+                                tx: tx.tx.clone(),
+                            };
+                            events.push((
+                                Event::AddressTransaction(address_transaction.clone()),
+                                tasks_sources.get(&id).unwrap().clone(),
+                            ));
+                        }
+
+                        (
+                            id.clone(),
+                            AddressTransactions {
+                                task: addr.task.clone(),
+                                txs: txs.clone(),
+                            },
+                        )
+                    } else {
+                        (id, addr)
+                    }
+                })
+                .collect();
+        }
     }
 
     pub fn change_transaction(
@@ -217,51 +236,69 @@ impl SyncerState {
         confirmations: Option<u32>,
     ) {
         self.drop_lifetimes();
+        inner(
+            &mut self.transactions,
+            &mut self.events,
+            &mut self.tasks_sources,
+            tx_id,
+            block_hash,
+            confirmations,
+        );
 
-        let block = match block_hash {
-            Some(bh) => bh,
-            // per RFC, no block hash should be encoded as 0x0
-            None => hex::decode("00").unwrap(),
-        };
-        let confs = match confirmations {
-            Some(confs) => confs as i32,
-            // per RFC, no confirmation should be encoded as -1
-            None => -1,
-        };
+        fn inner(
+            transactions: &mut HashMap<u32, WatchedTransaction>,
+            events: &mut Vec<(Event, ServiceId)>,
+            tasks_sources: &mut HashMap<u32, ServiceId>,
+            tx_id: Vec<u8>,
+            block_hash: Option<Vec<u8>>,
+            confirmations: Option<u32>,
+        ) {
+            let block = match block_hash {
+                Some(bh) => bh,
+                // per RFC, no block hash should be encoded as 0x0
+                None => hex::decode("00").unwrap(),
+            };
+            let confirmations = match confirmations {
+                Some(confs) => confs as i32,
+                // per RFC, no confirmation should be encoded as -1
+                None => -1,
+            };
 
-        self.transactions = self
-            .transactions
-            .clone()
-            .iter()
-            .map(|(id, watched_tx)| {
-                if watched_tx.task.hash == tx_id
-                    && (watched_tx.transaction_confirmations.block != block
-                        || watched_tx.transaction_confirmations.confirmations != confs)
-                {
-                    let transaction_confirmations = TransactionConfirmations {
-                        id: watched_tx.task.id,
-                        block: block.clone(),
-                        confirmations: confs,
+            *transactions = transactions
+                .drain()
+                .filter_map(|(id, watched_tx)| {
+                    let transaction_confirmations = if watched_tx.task.hash == tx_id
+                        && (watched_tx.transaction_confirmations.block != block
+                            || watched_tx.transaction_confirmations.confirmations != confirmations)
+                    {
+                        let tx_confs = TransactionConfirmations {
+                            id: watched_tx.task.id,
+                            block: block.clone(),
+                            confirmations,
+                        };
+                        events.push((
+                            Event::TransactionConfirmations(tx_confs.clone()),
+                            tasks_sources.get(&id).unwrap().clone(),
+                        ));
+                        tx_confs
+                    } else {
+                        watched_tx.transaction_confirmations
                     };
-                    self.events.push((
-                        Event::TransactionConfirmations(transaction_confirmations.clone()),
-                        self.tasks_sources.get(id).unwrap().clone(),
-                    ));
                     // prune the task once it has reached its confirmation bound
-                    if confs >= watched_tx.task.confirmation_bound as i32 {
-                        self.remove_transaction(watched_tx.task.lifetime, *id);
+                    if confirmations >= watched_tx.task.confirmation_bound as i32 {
+                        None
+                    } else {
+                        Some((
+                            id.clone(),
+                            WatchedTransaction {
+                                task: watched_tx.task,
+                                transaction_confirmations,
+                            },
+                        ))
                     }
-                    return (
-                        id.clone(),
-                        WatchedTransaction {
-                            task: watched_tx.task.clone(),
-                            transaction_confirmations: transaction_confirmations.clone(),
-                        },
-                    );
-                }
-                return (id.clone(), watched_tx.clone());
-            })
-            .collect();
+                })
+                .collect();
+        }
     }
 
     fn remove_transaction(&mut self, transaction_lifetime: u64, id: u32) {

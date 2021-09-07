@@ -273,10 +273,7 @@ pub enum Params {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("datum")]
 pub enum Datum {
-    SignedArbitratingLock((
-        SignedArbitratingLock<BitcoinSegwitV0>,
-        bitcoin::secp256k1::PublicKey,
-    )),
+    SignedArbitratingLock(Transaction),
     FullySignedBuy(Transaction),
     Funding(Transaction),
 }
