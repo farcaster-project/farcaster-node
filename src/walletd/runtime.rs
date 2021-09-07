@@ -24,13 +24,30 @@ use bitcoin::{
     PrivateKey, PublicKey,
 };
 use colored::Colorize;
-use farcaster_core::{bitcoin::{Bitcoin, BitcoinSegwitV0, segwitv0::{LockTx, SegwitV0}, segwitv0::{BuyTx, FundingTx}}, blockchain::FeePriority, bundle::{
+use farcaster_core::{
+    bitcoin::{
+        segwitv0::{BuyTx, FundingTx},
+        segwitv0::{LockTx, SegwitV0},
+        Bitcoin, BitcoinSegwitV0,
+    },
+    blockchain::FeePriority,
+    bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FullySignedBuy,
         FundingTransaction, SignedAdaptorBuy, SignedArbitratingLock,
-    }, crypto::{ArbitratingKeyId, GenerateKey}, monero::Monero, negotiation::PublicOffer, protocol_message::{
+    },
+    crypto::{ArbitratingKeyId, GenerateKey},
+    monero::Monero,
+    negotiation::PublicOffer,
+    protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
-    }, role::{Alice, Bob, SwapRole, TradeRole}, swap::SwapId, swap::btcxmr::{BtcXmr, KeyManager}, syncer::{AddressTransaction, Boolean, Event}, transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable}};
+    },
+    role::{Alice, Bob, SwapRole, TradeRole},
+    swap::btcxmr::{BtcXmr, KeyManager},
+    swap::SwapId,
+    syncer::{AddressTransaction, Boolean, Event},
+    transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
+};
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 // use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 use microservices::esb::{self, Handler};
@@ -382,7 +399,7 @@ impl Runtime {
                                 public_offer,
                                 Some(funding),
                                 Some(commit),
-                                alice_params, // None
+                                alice_params, // Some
                                 core_arb_txs, // None
                             )) => {
                                 // set wallet params
@@ -461,7 +478,7 @@ impl Runtime {
                         lock_tx.add_witness(lock_pubkey, sig).unwrap();
                         let finalized_tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)
-                            .unwrap();
+                                .unwrap();
 
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -758,9 +775,13 @@ impl Runtime {
                 };
             }
             Request::Datum(Datum::Funding(tx)) => {
-                if let Some(Wallet::Bob(.., Some(funding), _,_,_)) =
+                if let Some(Wallet::Bob(.., Some(funding), _, _, _)) =
                     self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
+                    if funding.was_seen() {
+                        warn!("funding was previously updated, ignoring");
+                        return Ok(());
+                    }
                     funding_update(funding, tx)?;
                     info!("bob's wallet informs swapd that funding was succesfully updated");
                     senders.send_to(
@@ -806,7 +827,7 @@ impl Runtime {
 }
 
 fn address() -> bitcoin::Address {
-    bitcoin::Address::from_str("tb1qdk49um4fyc7306lp9mhhlkacxz9cmhnr6k8e37")
+    bitcoin::Address::from_str("tb1q4ylyed3mmcy9e6uwg5e8y9fx4yadct32kj2ahq")
         .expect("Parsable address")
 }
 
