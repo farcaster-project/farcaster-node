@@ -31,18 +31,22 @@ pub struct WatchedTransaction {
     pub transaction_confirmations: TransactionConfirmations,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct AddressTransactions {
     pub task: WatchAddress,
-    txs: Vec<AddressTx>,
+    txs: HashMap<Vec<u8>, AddressTx>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct AddressTx {
     pub our_amount: u64,
     pub tx_id: Vec<u8>,
     pub block_hash: Vec<u8>,
     pub tx: Vec<u8>,
+}
+
+pub fn txid_tx_hashmap(addrs: Vec<AddressTx>) -> HashMap<Vec<u8>, AddressTx> {
+    addrs.into_iter().map(|a| (a.tx_id.clone(), a)).collect()
 }
 
 impl SyncerState {
@@ -119,7 +123,7 @@ impl SyncerState {
         self.task_count += 1;
         self.add_lifetime(task.lifetime, self.task_count)?; // FIXME turned off because it errors here
         self.tasks_sources.insert(self.task_count, source);
-        let address_tx = AddressTransactions { task, txs: vec![] };
+        let address_tx = AddressTransactions { task, txs: none!() };
         self.addresses.insert(self.task_count, address_tx);
         Ok(())
     }
@@ -166,42 +170,42 @@ impl SyncerState {
         }
     }
 
-    pub fn change_address(&mut self, address_addendum: Vec<u8>, txs: Vec<AddressTx>) {
+    pub fn change_address(&mut self, address_addendum: Vec<u8>, txs: HashMap<Vec<u8>, AddressTx>) {
+        trace!("inside change_address");
         self.drop_lifetimes();
         if self.addresses.is_empty() {
-            info!("no addresses here");
+            debug!("no addresses here");
         }
-        info!("inside change_address");
         self.addresses = self
             .addresses
             .clone()
             .iter()
+            .filter(|(_, addr)| addr.task.addendum == address_addendum && addr.txs != txs)
             .map(|(id, addr)| {
-                if address_addendum == addr.task.addendum && txs != addr.txs {
-                    for tx in txs.iter() {
-                        if !addr.txs.iter().any(|i| i.tx_id == tx.tx_id) {
-                            let address_transaction = AddressTransaction {
-                                id: addr.task.id,
-                                hash: tx.tx_id.clone(),
-                                amount: tx.our_amount,
-                                block: tx.block_hash.clone(),
-                                tx: tx.tx.clone(),
-                            };
-                            self.events.push((
-                                Event::AddressTransaction(address_transaction.clone()),
-                                self.tasks_sources.get(id).unwrap().clone(),
-                            ));
-                        }
-                    }
-                    return (
-                        id.clone(),
-                        AddressTransactions {
-                            task: addr.task.clone(),
-                            txs: txs.clone(),
-                        },
-                    );
+                for (_, tx) in txs
+                    .iter()
+                    .find(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
+                {
+                    let address_transaction = AddressTransaction {
+                        id: addr.task.id,
+                        hash: tx.tx_id.clone(),
+                        amount: tx.our_amount,
+                        block: tx.block_hash.clone(),
+                        tx: tx.tx.clone(),
+                    };
+                    self.events.push((
+                        Event::AddressTransaction(address_transaction.clone()),
+                        self.tasks_sources.get(id).unwrap().clone(),
+                    ));
                 }
-                return (id.clone(), addr.clone());
+
+                (
+                    id.clone(),
+                    AddressTransactions {
+                        task: addr.task.clone(),
+                        txs: txs.clone(),
+                    },
+                )
             })
             .collect();
     }
@@ -420,14 +424,14 @@ fn syncer_state_addresses() {
         tx: vec![0],
     };
 
-    state.change_address(vec![0], vec![address_tx_one.clone()]);
+    state.change_address(vec![0], txid_tx_hashmap(vec![address_tx_one.clone()]));
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
 
     assert_eq!(state.addresses.len(), 1);
     assert_eq!(state.events.len(), 1);
 
-    state.change_address(vec![0], vec![address_tx_one.clone()]);
+    state.change_address(vec![0], txid_tx_hashmap(vec![address_tx_one.clone()]));
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -435,7 +439,7 @@ fn syncer_state_addresses() {
 
     state.change_address(
         vec![0],
-        vec![address_tx_one.clone(), address_tx_one.clone()],
+        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_one.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
@@ -444,16 +448,7 @@ fn syncer_state_addresses() {
 
     state.change_address(
         vec![0],
-        vec![address_tx_one.clone(), address_tx_two.clone()],
-    );
-    assert_eq!(state.lifetimes.len(), 1);
-    assert_eq!(state.tasks_sources.len(), 1);
-    assert_eq!(state.addresses.len(), 1);
-    assert_eq!(state.events.len(), 2);
-
-    state.change_address(
-        vec![0],
-        vec![address_tx_one.clone(), address_tx_two.clone()],
+        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
@@ -462,7 +457,16 @@ fn syncer_state_addresses() {
 
     state.change_address(
         vec![0],
-        vec![address_tx_three.clone(), address_tx_four.clone()],
+        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
+    );
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.addresses.len(), 1);
+    assert_eq!(state.events.len(), 2);
+
+    state.change_address(
+        vec![0],
+        txid_tx_hashmap(vec![address_tx_three.clone(), address_tx_four.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
@@ -482,7 +486,7 @@ fn syncer_state_addresses() {
     state.change_height(2, vec![0]);
     state.change_address(
         vec![0],
-        vec![address_tx_one.clone(), address_tx_two.clone()],
+        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);

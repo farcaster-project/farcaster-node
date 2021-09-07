@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::{error::Error, syncerd::syncer_state::txid_tx_hashmap};
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
@@ -286,7 +286,7 @@ impl Synclet for MoneroSyncer {
             rt.block_on(async {
                 let block = rpc.check_block().await.unwrap();
                 state.change_height(block.height, block.block_hash);
-
+                info!("Entering monero_syncer event loop");
                 loop {
                     match receive_task_channel.try_recv() {
                         Ok(syncerd_task) => {
@@ -310,7 +310,7 @@ impl Synclet for MoneroSyncer {
                                                 rpc.check_address(address_addendum).await.unwrap();
                                             state.change_address(
                                                 task.addendum,
-                                                address_transactions.txs,
+                                                txid_tx_hashmap(address_transactions.txs),
                                             );
                                         }
                                     }
@@ -354,7 +354,7 @@ impl Synclet for MoneroSyncer {
                             rpc.check_address(address_addendum).await.unwrap();
                         let serialized_address =
                             consensus::serialize(&address_transactions.address);
-                        state.change_address(serialized_address, address_transactions.txs.clone());
+                        state.change_address(serialized_address, txid_tx_hashmap(address_transactions.txs.clone()));
                     }
 
                     // check and process new block notifications
