@@ -136,6 +136,7 @@ pub fn run(
         task_lifetime: Some(2066175 + 50000),
         txs_status: none!(),
         pending_requests: none!(),
+        task_counter: 0,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -168,6 +169,7 @@ pub struct Runtime {
     pending_requests: HashMap<ServiceId, PendingRequest>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
+    task_counter: i32,
 }
 
 #[derive(Display, Clone)]
@@ -245,6 +247,10 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    fn new_taskid(&mut self) -> i32 {
+        self.task_counter += 1;
+        self.task_counter
+    }
     fn send_peer(&self, senders: &mut Senders, msg: request::Msg) -> Result<(), Error> {
         trace!("sending peer message {}", msg.bright_yellow_bold());
         senders.send_to(
@@ -301,23 +307,35 @@ impl Runtime {
                                 local_params,
                             )),
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
-                                let tx_label = TxLabel::Funding;
-                                let (watch_addr_req, id) = watch_addr(
+                                let id = self.new_taskid();
+                                let watch_addr_req = watch_addr(
                                     AddressOrScript::Address(addr),
                                     self.task_lifetime.expect("task_lifetime"),
+                                    id,
                                 );
-                                self.txs_status.insert(id, (tx_label, TxStatus::Notfinal));
-                                self.send_ctl(
-                                    senders,
-                                    ServiceId::Syncer(Coin::Bitcoin),
-                                    watch_addr_req,
-                                )?;
-                                Ok((
-                                    State::Bob(BobState::RevealB(remote_commit.clone())),
-                                    local_params,
-                                ))
+                                if self
+                                    .txs_status
+                                    .insert(id, (TxLabel::Funding, TxStatus::Notfinal))
+                                    .is_none()
+                                {
+                                    info!("Bob subscribes for Funding address");
+                                    self.send_ctl(
+                                        senders,
+                                        ServiceId::Syncer(Coin::Bitcoin),
+                                        watch_addr_req,
+                                    )?;
+                                    Ok((
+                                        State::Bob(BobState::RevealB(remote_commit.clone())),
+                                        local_params,
+                                    ))
+                                } else {
+                                    Err(Error::Farcaster(s!("tx already registered with that id")))
+                                }
                             }
-                            _ => Err(Error::Farcaster("Must be on Commit state".to_string())),
+                            state => Err(Error::Farcaster(format!(
+                                "Must be on Commit state, found {}",
+                                state
+                            ))),
                         }?;
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
@@ -343,22 +361,32 @@ impl Runtime {
                                 remote_commit,
                             )),
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
-                                let (watch_addr_req, id) = watch_addr(
+                                let id = self.new_taskid();
+                                let watch_addr_req = watch_addr(
                                     AddressOrScript::Address(addr),
                                     self.task_lifetime.expect("task_lifetime"),
+                                    id,
                                 );
-                                self.txs_status
-                                    .insert(id, (TxLabel::Funding, TxStatus::Notfinal));
-
-                                self.send_ctl(
-                                    senders,
-                                    ServiceId::Syncer(Coin::Bitcoin),
-                                    watch_addr_req,
-                                )?;
-                                Ok((
-                                    State::Bob(BobState::RevealB(remote_commit.clone())),
-                                    remote_commit,
-                                ))
+                                if self
+                                    .txs_status
+                                    .insert(id, (TxLabel::Funding, TxStatus::Notfinal))
+                                    .is_none()
+                                {
+                                    info!("Bob subscribes for Funding address");
+                                    self.send_ctl(
+                                        senders,
+                                        ServiceId::Syncer(Coin::Bitcoin),
+                                        watch_addr_req,
+                                    )?;
+                                    Ok((
+                                        State::Bob(BobState::RevealB(remote_commit.clone())),
+                                        remote_commit,
+                                    ))
+                                } else {
+                                    Err(Error::Farcaster(s!(
+                                        "there is already a tx registered iwth that id"
+                                    )))
+                                }
                             }
                             // we're already in reveal state, i.e. we're taker, so don't change
                             // state once counterparty reveals too.
@@ -370,9 +398,10 @@ impl Runtime {
                                 State::Bob(BobState::RevealB(remote_commit.clone())),
                                 remote_commit,
                             )),
-                            _ => Err(Error::Farcaster(
-                                "Must be on Commit or Reveal state".to_string(),
-                            )),
+                            state => Err(Error::Farcaster(format!(
+                                "Must be on Commit or Reveal state, found {}",
+                                state
+                            ))),
                         }?;
 
                         // parameter processing irrespective of maker & taker role
@@ -471,7 +500,7 @@ impl Runtime {
                                 TxLabel::Refund,
                             ]) {
                                 let txid = tx.clone().extract_tx().txid();
-                                let id = task_id(txid);
+                                let id = self.new_taskid();
                                 if self
                                     .txs_status
                                     .insert(id, (tx_label.clone(), TxStatus::Notfinal))
@@ -491,9 +520,13 @@ impl Runtime {
                                         ServiceId::Syncer(Coin::Bitcoin),
                                         Request::SyncerTask(task),
                                     )?;
+                                } else {
+                                    error!("task id already registered");
+                                    return Ok(());
                                 }
                             }
-                            self.send_wallet(msg_bus, senders, request)?
+                            senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Syncer(Coin::Bitcoin), req)?;
+                            self.send_wallet(msg_bus, senders, request)?;
                         } else {
                             error!(
                                 "Wrong state: Only Alice receives CoreArbitratingSetup msg \
@@ -526,7 +559,7 @@ impl Runtime {
                             let tx = buy.clone().extract_tx();
 
                             let txid = tx.txid();
-                            let id = task_id(txid);
+                            let id = self.new_taskid();
                             if self
                                 .txs_status
                                 .insert(id, (TxLabel::Buy, TxStatus::Notfinal))
@@ -565,7 +598,6 @@ impl Runtime {
             }
             // let _ = self.report_progress_to(senders, &enquirer, msg);
             // let _ = self.report_success_to(senders, &enquirer, Some(msg));
-
             _ => {
                 error!("MSG RPC can be only used for forwarding FWP messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
@@ -768,8 +800,11 @@ impl Runtime {
                 }) => {
                     // FIXME where to wait for a few confs?
                     let tx = bitcoin::Transaction::deserialize(tx)?;
-                    trace!("Received AddressTransaction, processing {:?}: ", tx);
-                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
+                    trace!(
+                        "Received AddressTransaction, processing tx {}",
+                        tx.txid().bright_yellow_bold()
+                    );
+                    if let Some((txlabel, status)) = self.txs_status.get(&id) {
                         match txlabel {
                             TxLabel::Funding => {
                                 info!("Funding transaction received, forwarding to wallet");
@@ -780,8 +815,8 @@ impl Runtime {
                                 if let State::Bob(BobState::BuyProcSigB) = self.state {
                                     info!(
                                         "found buy tx in mempool or blockchain, \
-                                           sending it to wallet: {:?}",
-                                        &tx
+                                           sending it to wallet: {}",
+                                        &tx.txid()
                                     );
                                     let req = Request::Datum(Datum::FullySignedBuy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
@@ -804,20 +839,6 @@ impl Runtime {
                     id,
                     block,
                     confirmations,
-                }) => {
-                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
-                        info!("tx {} has {} confirmations", txlabel, confirmations);
-                    } else {
-                        error!(
-                            "received event with unknown transaction and task id {}",
-                            &id
-                        )
-                    }
-                }
-                Event::TransactionConfirmations(TransactionConfirmations {
-                    id,
-                    block,
-                    confirmations,
                 }) if confirmations >= &self.tx_finality_thr => {
                     if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
@@ -828,8 +849,6 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding => {}
                             TxLabel::Lock => {
-                                error!("this should be in Accordant lock, not Arbitrating lock finality");
-                                info!("send Msg BuyProcedureSignature");
                                 if let Some(PendingRequest {
                                     request,
                                     dest,
@@ -839,6 +858,11 @@ impl Runtime {
                                     if let Request::Protocol(Msg::BuyProcedureSignature(_)) =
                                         request
                                     {
+                                        error!("this should be in Accordant lock, not Arbitrating lock finality");
+                                        info!(
+                                            "sending buyproceduresignature at state {}",
+                                            &self.state
+                                        );
                                         senders.send_to(bus_id, self.identity(), dest, request)?;
                                     } else {
                                         error!(
@@ -846,10 +870,26 @@ impl Runtime {
                                             request.get_type()
                                         );
                                     }
+                                } else {
+                                    warn!("no pending requests to be triggered by lock")
                                 }
                             }
-                            tx_label => error!("tx label {} not supported", tx_label),
+                            tx_label => warn!("tx label {} not supported", tx_label),
                         }
+                    } else {
+                        warn!(
+                            "received event with unknown transaction and task id {}",
+                            &id
+                        )
+                    }
+                }
+                Event::TransactionConfirmations(TransactionConfirmations {
+                    id,
+                    block,
+                    confirmations,
+                }) => {
+                    if let Some((txlabel, status)) = self.txs_status.get_mut(&id) {
+                        info!("tx {} has {} confirmations", txlabel, confirmations);
                     } else {
                         error!(
                             "received event with unknown transaction and task id {}",
@@ -885,14 +925,18 @@ impl Runtime {
                     TxLabel::Refund,
                 ]) {
                     let txid = tx.clone().extract_tx().txid();
-                    let id = task_id(txid);
+                    let id = self.new_taskid();
                     if self
                         .txs_status
                         .insert(id, (tx_label, TxStatus::Notfinal))
                         .is_none()
                     {
+                        debug!(
+                            "Bob registers with syncer tx {} with label {}",
+                            txid, tx_label
+                        );
                         let task = Task::WatchTransaction(WatchTransaction {
-                            id: task_id(txid),
+                            id,
                             lifetime: self.task_lifetime.expect("task_lifetime is None"),
                             hash: txid.to_vec(),
                             confirmation_bound: self.confirmation_bound,
@@ -903,6 +947,9 @@ impl Runtime {
                             ServiceId::Syncer(Coin::Bitcoin),
                             Request::SyncerTask(task),
                         )?;
+                    } else {
+                        error!("task id already registered");
+                        return Ok(());
                     }
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
@@ -915,7 +962,7 @@ impl Runtime {
                 if let State::Bob(BobState::CorearbB(ref core_arb)) = self.state {
                     let req =
                         Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
-                            id: task_id(finalized_tx.txid()),
+                            id: self.new_taskid(),
                             tx: bitcoin::consensus::serialize(&finalized_tx),
                         }));
 
@@ -932,10 +979,10 @@ impl Runtime {
             }
             Request::Datum(Datum::FullySignedBuy(buy_tx)) => {
                 trace!("received fullysigned from wallet");
-                if let State::Bob(BobState::BuyProcSigB) = self.state {
+                if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
                     let req =
                         Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
-                            id: task_id(buy_tx.txid()),
+                            id: self.new_taskid(),
                             tx: bitcoin::consensus::serialize(&buy_tx),
                         }));
                     info!("broadcasting buy tx {}", buy_tx.txid());
@@ -946,7 +993,10 @@ impl Runtime {
                         req,
                     )?;
                 } else {
-                    error!("wrong state: expected BuyProcSigB, found {}", &self.state)
+                    error!(
+                        "wrong state: expected RefundProcedureSignatures, found {}",
+                        &self.state
+                    )
                 }
             }
 
@@ -973,17 +1023,25 @@ impl Runtime {
 
                 let tx = buy_proc_sig.buy.clone().extract_tx();
                 let txid = tx.txid();
-                let id_tx = task_id(txid);
-                let script_pubkey = tx.output[0].script_pubkey.clone();
-                let (watch_addr_req, id_addr) = watch_addr(
+                let id_addr = self.new_taskid();
+                let id_tx = self.new_taskid();
+                let script_pubkey = if tx.output.len() == 1 {
+                    tx.output[0].script_pubkey.clone()
+                } else {
+                    error!("more than one output");
+                    return Ok(());
+                };
+                let watch_addr_req = watch_addr(
                     AddressOrScript::Script(script_pubkey),
                     self.task_lifetime.unwrap(),
+                    id_addr,
                 );
                 if self
                     .txs_status
                     .insert(id_addr, (TxLabel::Buy, TxStatus::Notfinal))
                     .is_none()
                 {
+                    debug!("subscribe Buy address task");
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -993,7 +1051,7 @@ impl Runtime {
                 } else {
                     error!("task already registered")
                 }
-
+                // register Buy tx task
                 if self
                     .txs_status
                     .insert(id_tx, (TxLabel::Buy, TxStatus::Notfinal))
@@ -1001,7 +1059,7 @@ impl Runtime {
                 {
                     debug!("subscribing with syncer for receiving buy tx updates");
                     let task = Task::WatchTransaction(WatchTransaction {
-                        id: task_id(txid),
+                        id: id_tx,
                         lifetime: self.task_lifetime.expect("task_lifetime is None"),
                         hash: txid.to_vec(),
                         confirmation_bound: self.confirmation_bound,
@@ -1159,11 +1217,6 @@ pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
     }
 }
 
-pub fn task_id(txid: Txid) -> i32 {
-    let buf: [u8; 4] = txid.to_vec()[0..4].try_into().expect("task_id");
-    i32::from_le_bytes(buf)
-}
-
 enum TxStatus {
     Final,
     Notfinal,
@@ -1174,7 +1227,7 @@ enum AddressOrScript {
     Script(bitcoin::Script),
 }
 
-fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64) -> (Request, i32) {
+fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64, id: i32) -> Request {
     let addendum = match addr_or_script {
         AddressOrScript::Address(addr) => BtcAddressAddendum {
             address: addr.to_string(),
@@ -1188,19 +1241,12 @@ fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64) -> (Request, i32) 
         },
     };
     let addendum = consensus::serialize(&addendum);
-    let buf: Vec<u8> = (&*addendum).try_into().expect("watch_addr");
-    let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
-    let id = i32::from_le_bytes(id_buf);
-
-    (
-        Request::SyncerTask(Task::WatchAddress(WatchAddress {
-            id,
-            lifetime,
-            addendum,
-            include_tx: Boolean::True,
-        })),
+    Request::SyncerTask(Task::WatchAddress(WatchAddress {
         id,
-    )
+        lifetime,
+        addendum,
+        include_tx: Boolean::True,
+    }))
 }
 
 #[derive(Debug)]
