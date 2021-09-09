@@ -124,7 +124,7 @@ pub fn run(
         arbitrating_blockchain,
         network,
         enquirer: None,
-        tx_finality_thr: 1,
+        tx_finality_thr: -2,
         storage: Box::new(storage::DiskDriver::init(
             swap_id,
             Box::new(storage::DiskConfig {
@@ -309,7 +309,7 @@ impl Runtime {
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
                                 let id = self.new_taskid();
                                 let watch_addr_req = watch_addr(
-                                    AddressOrScript::Address(addr),
+                                    AddressOrScript::Script(addr.script_pubkey()),
                                     self.task_lifetime.expect("task_lifetime"),
                                     id,
                                 );
@@ -363,7 +363,7 @@ impl Runtime {
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
                                 let id = self.new_taskid();
                                 let watch_addr_req = watch_addr(
-                                    AddressOrScript::Address(addr),
+                                    AddressOrScript::Script(addr.script_pubkey()),
                                     self.task_lifetime.expect("task_lifetime"),
                                     id,
                                 );
@@ -506,6 +506,11 @@ impl Runtime {
                                     .insert(id, (tx_label.clone(), TxStatus::Notfinal))
                                     .is_none()
                                 {
+                                    info!(
+                                        "Alice registers tx {} with syncer {}",
+                                        tx_label.addr(),
+                                        txid.addr()
+                                    );
                                     let task = Task::WatchTransaction(WatchTransaction {
                                         id,
                                         lifetime: self
@@ -525,7 +530,8 @@ impl Runtime {
                                     return Ok(());
                                 }
                             }
-                            senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Syncer(Coin::Bitcoin), req)?;
+                            // senders.send_to(ServiceBus::Ctl, self.identity(),
+                            // ServiceId::Syncer(Coin::Bitcoin), req)?;
                             self.send_wallet(msg_bus, senders, request)?;
                         } else {
                             error!(
@@ -802,7 +808,7 @@ impl Runtime {
                     let tx = bitcoin::Transaction::deserialize(tx)?;
                     trace!(
                         "Received AddressTransaction, processing tx {}",
-                        tx.txid().bright_yellow_bold()
+                        tx.txid().addr()
                     );
                     if let Some((txlabel, status)) = self.txs_status.get(&id) {
                         match txlabel {
@@ -816,7 +822,7 @@ impl Runtime {
                                     info!(
                                         "found buy tx in mempool or blockchain, \
                                            sending it to wallet: {}",
-                                        &tx.txid()
+                                        &tx.txid().addr()
                                     );
                                     let req = Request::Datum(Datum::FullySignedBuy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
@@ -830,8 +836,8 @@ impl Runtime {
                         }
                     } else {
                         error!(
-                            "Transaction event received, unknow address with id {} and txid {:?}",
-                            id, hash
+                            "Transaction event received, unknow address with task id {} and txid {:?}",
+                            id.addr(), Txid::from_slice(hash).unwrap().addr()
                         );
                     }
                 }
@@ -931,9 +937,10 @@ impl Runtime {
                         .insert(id, (tx_label, TxStatus::Notfinal))
                         .is_none()
                     {
-                        debug!(
-                            "Bob registers with syncer tx {} with label {}",
-                            txid, tx_label
+                        info!(
+                            "Bob registers tx {} with syncer {}",
+                            tx_label.addr(),
+                            txid.addr()
                         );
                         let task = Task::WatchTransaction(WatchTransaction {
                             id,
@@ -958,15 +965,15 @@ impl Runtime {
                 self.state = next_state;
             }
 
-            Request::Datum(Datum::SignedArbitratingLock(finalized_tx)) => {
+            Request::Datum(Datum::SignedArbitratingLock(btc_lock)) => {
                 if let State::Bob(BobState::CorearbB(ref core_arb)) = self.state {
                     let req =
                         Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
                             id: self.new_taskid(),
-                            tx: bitcoin::consensus::serialize(&finalized_tx),
+                            tx: bitcoin::consensus::serialize(&btc_lock),
                         }));
 
-                    info!("Broadcasting btc lock {}", finalized_tx.txid());
+                    info!("Broadcasting btc lock {}", btc_lock.txid().addr());
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -985,7 +992,7 @@ impl Runtime {
                             id: self.new_taskid(),
                             tx: bitcoin::consensus::serialize(&buy_tx),
                         }));
-                    info!("broadcasting buy tx {}", buy_tx.txid());
+                    info!("broadcasting buy tx {}", buy_tx.txid().addr());
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -1021,43 +1028,16 @@ impl Runtime {
                 }?;
                 debug!("subscribing with syncer for receiving raw buy tx ");
 
-                let tx = buy_proc_sig.buy.clone().extract_tx();
-                let txid = tx.txid();
-                let id_addr = self.new_taskid();
-                let id_tx = self.new_taskid();
-                let script_pubkey = if tx.output.len() == 1 {
-                    tx.output[0].script_pubkey.clone()
-                } else {
-                    error!("more than one output");
-                    return Ok(());
-                };
-                let watch_addr_req = watch_addr(
-                    AddressOrScript::Script(script_pubkey),
-                    self.task_lifetime.unwrap(),
-                    id_addr,
-                );
-                if self
-                    .txs_status
-                    .insert(id_addr, (TxLabel::Buy, TxStatus::Notfinal))
-                    .is_none()
-                {
-                    debug!("subscribe Buy address task");
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        ServiceId::Syncer(Coin::Bitcoin),
-                        watch_addr_req,
-                    )?;
-                } else {
-                    error!("task already registered")
-                }
+                let buy_tx = buy_proc_sig.buy.clone().extract_tx();
+                let txid = buy_tx.txid();
                 // register Buy tx task
+                let id_tx = self.new_taskid();
                 if self
                     .txs_status
                     .insert(id_tx, (TxLabel::Buy, TxStatus::Notfinal))
                     .is_none()
                 {
-                    debug!("subscribing with syncer for receiving buy tx updates");
+                    info!("subscribing with syncer for receiving buy tx updates");
                     let task = Task::WatchTransaction(WatchTransaction {
                         id: id_tx,
                         lifetime: self.task_lifetime.expect("task_lifetime is None"),
@@ -1073,6 +1053,36 @@ impl Runtime {
                 } else {
                     error!("Already subscribed for Buy transaction, skipping");
                 }
+
+                let script_pubkey = if buy_tx.output.len() == 1 {
+                    buy_tx.output[0].script_pubkey.clone()
+                } else {
+                    error!("more than one output");
+                    return Ok(());
+                };
+                let id_addr = self.new_taskid();
+                if self
+                    .txs_status
+                    .insert(id_addr, (TxLabel::Buy, TxStatus::Notfinal))
+                    .is_none()
+                {
+                    // error!("bob does not subscribe for buy tx")
+                    debug!("subscribe Buy address task");
+                    let req = watch_addr(
+                        AddressOrScript::Script(script_pubkey),
+                        self.task_lifetime.unwrap(),
+                        id_addr,
+                    );
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer(Coin::Bitcoin),
+                        req,
+                    )?;
+                } else {
+                    error!("task already registered")
+                }
+
                 let pending_request = PendingRequest {
                     request,
                     dest: self.peer_service.clone(),
@@ -1232,12 +1242,12 @@ fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64, id: i32) -> Reques
         AddressOrScript::Address(addr) => BtcAddressAddendum {
             address: addr.to_string(),
             from_height: 0,
-            script_pubkey: addr.script_pubkey().to_bytes(),
+            script_pubkey: bitcoin::consensus::serialize(&addr.script_pubkey()),
         },
         AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
             address: s!(""),
             from_height: 0,
-            script_pubkey: script_pubkey.to_bytes(),
+            script_pubkey: bitcoin::consensus::serialize(&script_pubkey),
         },
     };
     let addendum = consensus::serialize(&addendum);

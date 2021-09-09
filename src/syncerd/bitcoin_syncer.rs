@@ -110,7 +110,7 @@ impl ElectrumRpc {
                 &address_addendum, &script_status
             );
         }
-        let txs = query_addr_history(&mut self.client, script_status, script_pubkey)?;
+        let txs = query_addr_history(&mut self.client, script_pubkey)?;
         logging(&txs, &address_addendum);
         let notif = AddressNotif {
             address: address_addendum,
@@ -138,7 +138,7 @@ impl ElectrumRpc {
         let scripts = Vec::<Script>::from(&*self);
 
         for (script, (address, script_status)) in scripts.into_iter().zip(self.addresses.clone()) {
-            if let Ok(txs) = query_addr_history(&mut self.client, script_status, script) {
+            if let Ok(txs) = query_addr_history(&mut self.client, script) {
                 logging(&txs, &address);
                 let new_notif = AddressNotif {
                     address: address.clone(),
@@ -175,7 +175,6 @@ impl ElectrumRpc {
                     }
                     if let Ok(txs) = query_addr_history(
                         &mut self.client,
-                        Some(script_status),
                         script_pubkey.clone(),
                     ) {
                         info!("creating AddressNotif");
@@ -214,7 +213,6 @@ impl ElectrumRpc {
 
 fn query_addr_history(
     client: &mut Client,
-    script_status: Option<Hex32Bytes>,
     script: Script,
 ) -> Result<Vec<AddressTx>, Error> {
     // if script_status.is_none() {

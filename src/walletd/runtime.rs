@@ -476,7 +476,7 @@ impl Runtime {
                         // FIXME: remove unwraps here
                         let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Fund).unwrap();
                         lock_tx.add_witness(lock_pubkey, sig).unwrap();
-                        let finalized_tx =
+                        let finalized_lock_tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)
                                 .unwrap();
 
@@ -484,7 +484,9 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             source.clone(), // destination swapd
-                            Request::Datum(request::Datum::SignedArbitratingLock(finalized_tx)),
+                            Request::Datum(request::Datum::SignedArbitratingLock(
+                                finalized_lock_tx,
+                            )),
                         )?;
 
                         let buy_proc_sig =
@@ -827,7 +829,7 @@ impl Runtime {
 }
 
 fn address() -> bitcoin::Address {
-    bitcoin::Address::from_str("tb1q4ylyed3mmcy9e6uwg5e8y9fx4yadct32kj2ahq")
+    bitcoin::Address::from_str("tb1qxcehz3p39vhmjxgl3754z74qu9lnjd5wam7prc")
         .expect("Parsable address")
 }
 
