@@ -77,6 +77,20 @@ pub enum Error {
 
     /// Invalid walletd token error
     InvalidToken,
+
+    /// Syncer
+    #[display(inner)]
+    Syncer(SyncerError)
+}
+
+#[derive(Debug, Display)]
+pub enum SyncerError {
+    #[display(inner)]
+    Electrum(electrum_client::Error),
+    #[display(inner)]
+    NoTxsOnAddress,
+    #[display(inner)]
+    ScriptAlreadyRegistered,
 }
 
 impl microservices::error::Error for Error {}
@@ -119,5 +133,11 @@ impl From<farcaster_core::syncer::Error> for Error {
 impl From<bitcoin::consensus::encode::Error> for Error {
     fn from(err: bitcoin::consensus::encode::Error) -> Self {
         Error::Farcaster(err.to_string())
+    }
+}
+
+impl From<electrum_client::Error> for Error {
+    fn from(err: electrum_client::Error) -> Self {
+        Error::Syncer(SyncerError::Electrum(err))
     }
 }

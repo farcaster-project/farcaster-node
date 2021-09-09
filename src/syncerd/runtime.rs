@@ -87,10 +87,10 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
         syncer: syncer.unwrap(),
         tx,
     };
-
+    let polling = true;
     runtime
         .syncer
-        .run(rx, tx_event, runtime.identity().into(), syncer_servers);
+        .run(rx, tx_event, runtime.identity().into(), syncer_servers, polling);
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
     service.run_loop()?;

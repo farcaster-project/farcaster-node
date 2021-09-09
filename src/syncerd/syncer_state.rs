@@ -1,6 +1,7 @@
 use crate::farcaster_core::consensus::Decodable;
 use crate::syncerd::opts::Coin;
 use crate::ServiceId;
+use bitcoin::{hashes::Hash, Txid};
 use microservices::rpc_connection::Request;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
@@ -175,7 +176,7 @@ impl SyncerState {
             }
         }
     }
-
+    /// updates self.events
     pub fn change_address(
         &mut self,
         address_addendum: impl Encodable + std::fmt::Debug,
@@ -184,7 +185,7 @@ impl SyncerState {
         trace!("inside change_address");
         self.drop_lifetimes();
         if self.addresses.is_empty() {
-            debug!("no addresses here");
+            info!("no addresses here");
         }
 
         inner(
@@ -202,17 +203,32 @@ impl SyncerState {
             address_addendum: Vec<u8>,
             txs: HashSet<AddressTx>,
         ) {
+            let changes_detected: bool = addresses
+                .iter()
+                .map(|(id, addr)| {
+                    txs.difference(&addr.known_txs)
+                        .collect::<HashSet<&_>>()
+                        .is_empty()
+                })
+                .find(|x| x == &true)
+                .unwrap_or_else(|| false);
+
+            if !changes_detected {
+                trace!("no changes to process, skipping...");
+                return;
+            }
+
             *addresses = addresses
                 .drain()
                 .map(|(id, addr)| {
                     trace!("processing taskid {} for address {:?}", id, addr);
                     if addr.task.addendum != address_addendum {
-                        trace!("not address_addendum of interest");
+                        trace!("address not changed or not address_addendum of interest");
                         return (id, addr);
                     }
                     // create events for new transactions
                     for new_tx in txs.difference(&addr.known_txs).cloned() {
-                        trace!("new_tx seen: {:?}", new_tx);
+                        info!("new_tx seen: {}", Txid::from_slice(&new_tx.tx_id).unwrap());
                         let address_transaction = AddressTransaction {
                             id: addr.task.id,
                             hash: new_tx.tx_id,
@@ -238,6 +254,8 @@ impl SyncerState {
                     )
                 })
                 .collect();
+
+            events.dedup();
         }
     }
 
@@ -322,6 +340,7 @@ impl SyncerState {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
             if lifetime < self.block_height {
+                warn!("dropping lifetime");
                 self.drop_lifetime(lifetime);
             }
         }
@@ -349,11 +368,15 @@ impl SyncerState {
     }
 
     fn drop_lifetime(&mut self, lifetime: u64) {
-        for task in self.lifetimes.remove(&lifetime).unwrap().iter() {
-            self.addresses.remove(task);
-            self.transactions.remove(task);
-            self.watch_height.remove(task);
-            self.tasks_sources.remove(task);
+        if let Some(tasks) = self.lifetimes.remove(&lifetime) {
+            for task in &tasks {
+                self.addresses.remove(task);
+                self.transactions.remove(task);
+                self.watch_height.remove(task);
+                self.tasks_sources.remove(task);
+            }
+        } else {
+            error!("Unknown lifetime {}", lifetime);
         }
     }
 

@@ -271,6 +271,7 @@ impl Synclet for MoneroSyncer {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
+        polling: bool,
     ) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
