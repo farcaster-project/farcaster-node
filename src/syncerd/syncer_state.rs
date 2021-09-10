@@ -205,12 +205,14 @@ impl SyncerState {
         ) {
             let changes_detected: bool = addresses
                 .iter()
-                .map(|(id, addr)| {
-                    txs.difference(&addr.known_txs)
-                        .collect::<HashSet<&_>>()
-                        .is_empty()
+                .find_map(|(_, addr)| {
+                    let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
+                    if !new_txs.is_empty() {
+                        Some(true)
+                    } else {
+                        None
+                    }
                 })
-                .find(|x| x == &true)
                 .unwrap_or_else(|| false);
 
             if !changes_detected {

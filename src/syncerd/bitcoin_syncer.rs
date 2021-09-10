@@ -358,11 +358,9 @@ impl Synclet for BitcoinSyncer {
                                         state.abort(task.id, syncerd_task.source);
                                     }
                                     Ok(ref address_addendum) => {
-                                        info!("address_addendum");
                                         state
                                             .watch_address(task, syncerd_task.source)
                                             .expect("watch_address");
-                                        info!("state update");
                                         match rpc.script_subscribe(address_addendum.clone()) {
                                             Ok(addr_notif) if addr_notif.txs.is_empty() => {
                                                 let msg =
