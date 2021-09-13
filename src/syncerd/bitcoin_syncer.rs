@@ -128,7 +128,6 @@ impl ElectrumRpc {
                 .script_pop(&bitcoin::Script::from(address.script_pubkey.clone()))
             {
                 if digest != state {
-                    trace!("creating address notifications");
                     txs.extend(self.handle_address_notification(address.clone(), digest));
                 } else {
                     trace!("state did not change for given address");

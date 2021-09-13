@@ -203,7 +203,9 @@ impl SyncerState {
                 .drain()
                 .map(|(id, addr)| {
                     if addr.task.addendum == address_addendum && addr.txs != txs {
-                        for (_, tx) in txs.iter().find(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
+                        for (_, tx) in txs
+                            .iter()
+                            .filter(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
                         {
                             let address_transaction = AddressTransaction {
                                 id: addr.task.id,
