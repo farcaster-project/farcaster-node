@@ -44,7 +44,7 @@ fn bitcoin_syncer_block_height_test() {
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // Generate over 101 blocks to reach block maturity, and some more for extra leeway
-    bitcoin_rpc.generate_to_address(110, &address).unwrap();
+    // bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
     // start a bitcoin syncer
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -59,7 +59,7 @@ fn bitcoin_syncer_block_height_test() {
         monero_rpc_wallet: "".to_string(),
     };
 
-    // allow some time for things to happen, like electrum server catching up
+    // allow some time for things to happen, like the electrum server catching up
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
@@ -120,6 +120,21 @@ fn bitcoin_syncer_block_height_test() {
     assert_received_height_changed(request, blocks);
 }
 
+/*
+We test for the following scenarios in the address transaction tests:
+
+- Subscribe to an address with no history yet, then create a transaction for it
+and check the respective event
+
+- Create a coinbase transaction to the same address and check the respective event
+
+- Subscribe to another address in parallel, then create two transactions for it
+and check for both respective events
+
+- Subscribe to the same address again, observe if it receives the complete
+existing transaction history
+
+*/
 #[test]
 fn bitcoin_syncer_address_test() {
     let path =
@@ -154,7 +169,7 @@ fn bitcoin_syncer_address_test() {
         monero_rpc_wallet: "".to_string(),
     };
 
-    // allow some time for things to happen, e.g. electrum server to catch up
+    // allow some time for things to happen, like the electrum server catching
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
@@ -181,7 +196,7 @@ fn bitcoin_syncer_address_test() {
         from_height: 0,
         script_pubkey: address2.script_pubkey().to_bytes(),
     };
-    let watch_address_task = SyncerdTask {
+    let watch_address_task_1 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
             id: 1,
             lifetime: blocks + 1,
@@ -190,7 +205,7 @@ fn bitcoin_syncer_address_test() {
         }),
         source: ServiceId::Syncer(Coin::Bitcoin),
     };
-    tx.send(watch_address_task).unwrap();
+    tx.send(watch_address_task_1).unwrap();
     let watch_address_task_2 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
             id: 1,
@@ -202,7 +217,7 @@ fn bitcoin_syncer_address_test() {
     };
     tx.send(watch_address_task_2).unwrap();
 
-    // send some coins to address3
+    // send some coins to address1
     bitcoin_rpc
         .send_to_address(&address1, amount, None, None, None, None, None, None)
         .unwrap();
@@ -211,9 +226,8 @@ fn bitcoin_syncer_address_test() {
     let request = get_request_from_message(message);
     assert_address_transaction(request, 100000000, vec![]);
 
-    // now generate a block for that address, wait for the response and test it
+    // now generate a block for address1, then wait for the response and test it
     let block_hash = bitcoin_rpc.generate_to_address(1, &address1).unwrap();
-
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     let request = get_request_from_message(message);
@@ -225,10 +239,38 @@ fn bitcoin_syncer_address_test() {
     bitcoin_rpc
         .send_to_address(&address2, amount, None, None, None, None, None, None)
         .unwrap();
+    bitcoin_rpc
+        .send_to_address(&address2, amount, None, None, None, None, None, None)
+        .unwrap();
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     let request = get_request_from_message(message);
-    assert_address_transaction(request, 100000000, vec![]);
+    assert_address_transaction(request, amount.as_sat(), vec![]);
+
+    println!("waiting for watch transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, amount.as_sat(), vec![]);
+
+    // watch for the same address, it should already contain transactions
+    let watch_address_task_3 = SyncerdTask {
+        task: Task::WatchAddress(WatchAddress {
+            id: 1,
+            lifetime: blocks + 2,
+            addendum: consensus::serialize(&addendum_2),
+            include_tx: farcaster_core::syncer::Boolean::True,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(watch_address_task_3).unwrap();
+    println!("waiting for watch transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, amount.as_sat(), vec![]);
+    println!("waiting for watch transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, amount.as_sat(), vec![]);
 }
 
 fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
