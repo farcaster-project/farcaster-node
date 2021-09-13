@@ -80,7 +80,11 @@ pub enum Error {
 
     /// Syncer
     #[display(inner)]
-    Syncer(SyncerError)
+    Syncer(SyncerError),
+
+    /// BitcoinHashes
+    #[display(inner)]
+    BitcoinHashes(bitcoin::hashes::Error)
 }
 
 #[derive(Debug, Display)]
@@ -91,6 +95,8 @@ pub enum SyncerError {
     NoTxsOnAddress,
     #[display(inner)]
     ScriptAlreadyRegistered,
+    #[display("syncer creating error")]
+    UnknownNetwork,
 }
 
 impl microservices::error::Error for Error {}
@@ -139,5 +145,11 @@ impl From<bitcoin::consensus::encode::Error> for Error {
 impl From<electrum_client::Error> for Error {
     fn from(err: electrum_client::Error) -> Self {
         Error::Syncer(SyncerError::Electrum(err))
+    }
+}
+
+impl From<bitcoin::hashes::Error> for Error {
+    fn from(err: bitcoin::hashes::Error) -> Self {
+        Error::BitcoinHashes(err)
     }
 }
