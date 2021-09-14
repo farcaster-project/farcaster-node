@@ -42,10 +42,14 @@ use bitcoin::{
 };
 use bitcoin::{OutPoint, SigHashType};
 
+use crate::syncerd::types::{
+    AddressAddendum, AddressTransaction, Boolean, BroadcastTransaction, BtcAddressAddendum, Event,
+    Task, TransactionConfirmations, WatchAddress, WatchTransaction,
+};
 use farcaster_core::{
     bitcoin::{
-        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, tasks::BtcAddressAddendum,
-        timelock::CSVTimelock, Bitcoin, BitcoinSegwitV0,
+        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin,
+        BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
     consensus::{self, Encodable as FarEncodable},
@@ -58,10 +62,6 @@ use farcaster_core::{
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
-    syncer::{
-        AddressTransaction, Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations,
-        WatchAddress, WatchTransaction,
-    },
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
@@ -565,7 +565,6 @@ impl Runtime {
             }
             // let _ = self.report_progress_to(senders, &enquirer, msg);
             // let _ = self.report_success_to(senders, &enquirer, Some(msg));
-
             _ => {
                 error!("MSG RPC can be only used for forwarding FWP messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
@@ -1166,19 +1165,21 @@ enum AddressOrScript {
 
 fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64) -> (Request, i32) {
     let addendum = match addr_or_script {
-        AddressOrScript::Address(addr) => BtcAddressAddendum {
-            address: addr.to_string(),
+        AddressOrScript::Address(address) => BtcAddressAddendum {
+            address: Some(address.clone()),
             from_height: 0,
-            script_pubkey: addr.script_pubkey().to_bytes(),
+            script_pubkey: address.script_pubkey(),
         },
         AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
-            address: s!(""),
+            address: None,
             from_height: 0,
-            script_pubkey: script_pubkey.to_bytes(),
+            script_pubkey: script_pubkey,
         },
     };
-    let addendum = consensus::serialize(&addendum);
-    let buf: Vec<u8> = (&*addendum).try_into().expect("watch_addr");
+
+    use lnpbp::strict_encoding::{strict_deserialize, strict_serialize};
+    let serialized_addendum = strict_serialize(&addendum.clone()).expect("watch_addr");
+    let buf: Vec<u8> = (&*serialized_addendum).try_into().expect("watch_addr");
     let id_buf: [u8; 4] = keccak_256(&buf)[0..4].try_into().expect("watch_addr");
     let id = i32::from_le_bytes(id_buf);
 
@@ -1186,7 +1187,7 @@ fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64) -> (Request, i32) 
         Request::SyncerTask(Task::WatchAddress(WatchAddress {
             id,
             lifetime,
-            addendum,
+            addendum: AddressAddendum::Bitcoin(addendum),
             include_tx: Boolean::True,
         })),
         id,

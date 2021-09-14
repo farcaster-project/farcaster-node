@@ -40,8 +40,7 @@ use tokio::runtime::Runtime;
 
 use hex;
 
-use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
-use farcaster_core::syncer::*;
+use crate::syncerd::*;
 
 pub trait Rpc {
     fn new(electrum_server: String) -> Self;
@@ -77,9 +76,10 @@ impl ElectrumRpc {
         &mut self,
         address_addendum: BtcAddressAddendum,
     ) -> Result<Option<AddressNotif>, Error> {
-        match self.client.script_subscribe(&bitcoin::Script::from(
-            address_addendum.script_pubkey.clone(),
-        )) {
+        match self
+            .client
+            .script_subscribe(&address_addendum.script_pubkey)
+        {
             Ok(Some(script_status)) => {
                 trace!("script_status:\n{:?}", &script_status);
                 self.addresses
@@ -148,7 +148,7 @@ impl ElectrumRpc {
         // history of the address
         let script = bitcoin::Script::from(address.script_pubkey);
         if let Ok(tx_history) = self.client.script_get_history(&script) {
-            for hist in tx_history{
+            for hist in tx_history {
                 trace!("history: {:?}", hist);
                 let mut our_amount: u64 = 0;
                 let txid = hist.tx_hash;
@@ -297,13 +297,8 @@ impl Synclet for BitcoinSyncer {
                                 state
                                     .watch_address(task.clone(), syncerd_task.source.clone())
                                     .unwrap();
-                                let mut res = std::io::Cursor::new(task.addendum.clone());
-                                match BtcAddressAddendum::consensus_decode(&mut res) {
-                                    Err(_e) => {
-                                        error!("Aborting watch address task - unable to decode address addendum");
-                                        state.abort(task.id, syncerd_task.source);
-                                    }
-                                    Ok(address_addendum) => {
+                                match task.addendum.clone() {
+                                    AddressAddendum::Bitcoin(address_addendum) => {
                                         trace!("subscribing to address: {:?}", &address_addendum);
                                         match rpc.subscribe_script(address_addendum) {
                                             Ok(Some(address_transactions)) => {
@@ -323,6 +318,10 @@ impl Synclet for BitcoinSyncer {
                                             }
                                             Err(_) => error!("Not Ok(Option<AddressTransactions>)"),
                                         }
+                                    }
+                                    _ => {
+                                        error!("Aborting watch address task - received invalid address addendum");
+                                        state.abort(task.id, syncerd_task.source);
                                     }
                                 }
                             }
@@ -347,13 +346,13 @@ impl Synclet for BitcoinSyncer {
                 // check and process address/script_pubkey notifications
                 let notifs = rpc.address_change_check();
                 for address_transactions in notifs.iter() {
-                    let serialized_address = consensus::serialize(&address_transactions.address);
                     debug!(
                         "processing address: {:?} \n {:?}",
-                        serialized_address, address_transactions
+                        address_transactions.address.clone(),
+                        address_transactions.clone()
                     );
                     state.change_address(
-                        serialized_address,
+                        AddressAddendum::Bitcoin(address_transactions.address.clone()),
                         txid_tx_hashmap(address_transactions.txs.clone()),
                     );
                 }

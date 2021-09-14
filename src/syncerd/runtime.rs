@@ -18,8 +18,6 @@ use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::Coin;
 use amplify::Wrapper;
 use farcaster_core::blockchain::Network;
-use farcaster_core::syncer::Abort;
-use farcaster_core::syncer::{Syncer, Task};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
@@ -43,6 +41,7 @@ use microservices::rpc::Failure;
 
 use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
+use crate::syncerd::*;
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 pub struct SyncerdTask {
@@ -172,15 +171,14 @@ impl Runtime {
                 );
             }
             (Request::SyncerTask(task), _) => {
-                if let Ok(_) = self.tx
-                    .send(SyncerdTask {
-                        task: task.clone(),
-                        source,
-                    }) {
-                        trace!("Task successfully sent to syncer runtime")
-                    } else {
-                        error!("Failed to send task, maybe electrum server offline?")
-                    };
+                if let Ok(_) = self.tx.send(SyncerdTask {
+                    task: task.clone(),
+                    source,
+                }) {
+                    trace!("Task successfully sent to syncer runtime")
+                } else {
+                    error!("Failed to send task, maybe electrum server offline?")
+                };
             }
             (Request::GetInfo, _) => {
                 senders.send_to(

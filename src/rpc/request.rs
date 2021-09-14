@@ -14,14 +14,10 @@
 
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
 use farcaster_core::syncer::BroadcastTransaction;
-use farcaster_core::syncer::Event;
-use farcaster_core::syncer::HeightChanged;
-use farcaster_core::syncer::Task;
-use farcaster_core::syncer::WatchAddress;
-use farcaster_core::syncer::WatchHeight;
-use farcaster_core::syncer::WatchTransaction;
+use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
+// use farcaster_core::syncer::Event;
+use crate::syncerd::types::{Event, Task};
 use internet2::addr::InetSocketAddr;
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
@@ -37,11 +33,14 @@ use std::{
 use std::{iter::FromIterator, str::FromStr};
 use std::{num::ParseIntError, time::Duration};
 
-use bitcoin::{OutPoint, PublicKey, Transaction, secp256k1::{
+use bitcoin::{
+    secp256k1::{
         self,
         rand::{thread_rng, RngCore},
         SecretKey,
-    }};
+    },
+    OutPoint, PublicKey, Transaction,
+};
 use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
     blockchain::FeePriority,

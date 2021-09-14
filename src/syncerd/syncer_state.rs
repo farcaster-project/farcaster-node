@@ -1,5 +1,6 @@
 use crate::farcaster_core::consensus::Decodable;
 use crate::syncerd::opts::Coin;
+use crate::Error;
 use crate::ServiceId;
 use microservices::rpc_connection::Request;
 use std::collections::{HashMap, HashSet};
@@ -10,8 +11,7 @@ use std::marker::{Send, Sized};
 use crate::serde::Deserialize;
 use hex;
 
-use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
-use farcaster_core::syncer::*;
+use crate::syncerd::*;
 
 pub struct SyncerState {
     block_height: u64,
@@ -173,7 +173,11 @@ impl SyncerState {
         }
     }
 
-    pub fn change_address(&mut self, address_addendum: Vec<u8>, txs: HashMap<Vec<u8>, AddressTx>) {
+    pub fn change_address(
+        &mut self,
+        address_addendum: AddressAddendum,
+        txs: HashMap<Vec<u8>, AddressTx>,
+    ) {
         trace!("inside change_address");
         self.drop_lifetimes();
         if self.addresses.is_empty() {
@@ -192,7 +196,7 @@ impl SyncerState {
             addresses: &mut HashMap<u32, AddressTransactions>,
             events: &mut Vec<(Event, ServiceId)>,
             tasks_sources: &mut HashMap<u32, ServiceId>,
-            address_addendum: Vec<u8>,
+            address_addendum: AddressAddendum,
             txs: HashMap<Vec<u8>, AddressTx>,
         ) {
             *addresses = addresses
@@ -317,7 +321,7 @@ impl SyncerState {
 
     fn add_lifetime(&mut self, lifetime: u64, id: u32) -> Result<(), Error> {
         if lifetime < self.block_height {
-            Err(Error::new(Error::LifetimeExpired))?;
+            Err(Error::Farcaster("task lifetime expired".to_string()))?;
         }
 
         if let Some(lifetimes) = self.lifetimes.get_mut(&lifetime) {
@@ -371,11 +375,7 @@ fn syncer_state_transaction() {
         hash: vec![1],
         confirmation_bound: 4,
     };
-    let height_task = WatchHeight {
-        id: 0,
-        lifetime: 4,
-        addendum: vec![],
-    };
+    let height_task = WatchHeight { id: 0, lifetime: 4 };
     state.watch_transaction(transaction_task_one, ServiceId::Syncer(Coin::Bitcoin));
     state.watch_transaction(transaction_task_two, ServiceId::Syncer(Coin::Bitcoin));
     state.watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin));
@@ -423,11 +423,18 @@ fn syncer_state_transaction() {
 
 #[test]
 fn syncer_state_addresses() {
+    use std::str::FromStr;
     let mut state = SyncerState::new();
+    let address = bitcoin::Address::from_str("32BkaQeAVcd65Vn7pjEziohf5bCiryNQov").unwrap();
+    let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum {
+        address: Some(address.clone()),
+        from_height: 0,
+        script_pubkey: address.script_pubkey(),
+    });
     let address_task = WatchAddress {
         id: 0,
         lifetime: 1,
-        addendum: vec![0],
+        addendum: addendum.clone(),
         include_tx: Boolean::False,
     };
     state
@@ -461,21 +468,27 @@ fn syncer_state_addresses() {
         tx: vec![0],
     };
 
-    state.change_address(vec![0], txid_tx_hashmap(vec![address_tx_one.clone()]));
+    state.change_address(
+        addendum.clone(),
+        txid_tx_hashmap(vec![address_tx_one.clone()]),
+    );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
 
     assert_eq!(state.addresses.len(), 1);
     assert_eq!(state.events.len(), 1);
 
-    state.change_address(vec![0], txid_tx_hashmap(vec![address_tx_one.clone()]));
+    state.change_address(
+        addendum.clone(),
+        txid_tx_hashmap(vec![address_tx_one.clone()]),
+    );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
     assert_eq!(state.events.len(), 1);
 
     state.change_address(
-        vec![0],
+        addendum.clone(),
         txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_one.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
@@ -484,7 +497,7 @@ fn syncer_state_addresses() {
     assert_eq!(state.events.len(), 1);
 
     state.change_address(
-        vec![0],
+        addendum.clone(),
         txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
@@ -493,7 +506,7 @@ fn syncer_state_addresses() {
     assert_eq!(state.events.len(), 2);
 
     state.change_address(
-        vec![0],
+        addendum.clone(),
         txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
@@ -502,7 +515,7 @@ fn syncer_state_addresses() {
     assert_eq!(state.events.len(), 2);
 
     state.change_address(
-        vec![0],
+        addendum.clone(),
         txid_tx_hashmap(vec![address_tx_three.clone(), address_tx_four.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
@@ -510,11 +523,7 @@ fn syncer_state_addresses() {
     assert_eq!(state.addresses.len(), 1);
     assert_eq!(state.events.len(), 4);
 
-    let height_task = WatchHeight {
-        id: 0,
-        lifetime: 3,
-        addendum: vec![],
-    };
+    let height_task = WatchHeight { id: 0, lifetime: 3 };
     state.watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin));
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
@@ -522,7 +531,7 @@ fn syncer_state_addresses() {
 
     state.change_height(2, vec![0]);
     state.change_address(
-        vec![0],
+        addendum.clone(),
         txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
@@ -534,16 +543,8 @@ fn syncer_state_addresses() {
 #[test]
 fn syncer_state_height() {
     let mut state = SyncerState::new();
-    let height_task = WatchHeight {
-        id: 0,
-        lifetime: 0,
-        addendum: vec![],
-    };
-    let another_height_task = WatchHeight {
-        id: 0,
-        lifetime: 3,
-        addendum: vec![],
-    };
+    let height_task = WatchHeight { id: 0, lifetime: 0 };
+    let another_height_task = WatchHeight { id: 0, lifetime: 3 };
 
     state.watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin));
     state.watch_height(another_height_task, ServiceId::Syncer(Coin::Bitcoin));

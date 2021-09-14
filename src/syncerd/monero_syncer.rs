@@ -1,4 +1,3 @@
-use crate::{error::Error, syncerd::syncer_state::txid_tx_hashmap};
 use crate::farcaster_core::consensus::Decodable;
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
@@ -12,14 +11,15 @@ use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::ServiceId;
+use crate::{error::Error, syncerd::syncer_state::txid_tx_hashmap};
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::Script;
 use electrum_client::raw_client::ElectrumSslStream;
 use electrum_client::raw_client::RawClient;
 use electrum_client::Hex32Bytes;
 use electrum_client::{Client, ElectrumApi};
-use farcaster_core::consensus::{self};
-use farcaster_core::monero::tasks::XmrAddressAddendum;
+// use farcaster_core::consensus::{self};
+// use farcaster_core::monero::tasks::XmrAddressAddendum;
 use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
@@ -46,7 +46,7 @@ use tokio::runtime::Runtime;
 
 use hex;
 
-use farcaster_core::syncer::*;
+use crate::syncerd::*;
 use std::str::FromStr;
 
 trait Rpc {
@@ -298,13 +298,8 @@ impl Synclet for MoneroSyncer {
                                     error!("broadcast transaction not available for Monero");
                                 }
                                 Task::WatchAddress(task) => {
-                                    let mut res = std::io::Cursor::new(task.addendum.clone());
-                                    match XmrAddressAddendum::consensus_decode(&mut res) {
-                                        Err(_e) => {
-                                            error!("Aborting watch address task - unable to decode address addendum");
-                                            state.abort(task.id, syncerd_task.source);
-                                        }
-                                        Ok(address_addendum) => {
+                                    match task.addendum.clone() {
+                                        AddressAddendum::Monero(address_addendum) => {
                                             state.watch_address(task.clone(), syncerd_task.source).expect("Task::WatchAddress");
                                             let address_transactions =
                                                 rpc.check_address(address_addendum).await.unwrap();
@@ -312,6 +307,10 @@ impl Synclet for MoneroSyncer {
                                                 task.addendum,
                                                 txid_tx_hashmap(address_transactions.txs),
                                             );
+                                        }
+                                        _ => {
+                                            error!("Aborting watch address task - unable to decode address addendum");
+                                            state.abort(task.id, syncerd_task.source);
                                         }
                                     }
                                 }
@@ -347,14 +346,13 @@ impl Synclet for MoneroSyncer {
 
                     // check and process address/script_pubkey notifications
                     for (_, watched_address) in state.addresses.clone().iter() {
-                        let mut res = std::io::Cursor::new(watched_address.task.addendum.clone());
-                        let address_addendum =
-                            XmrAddressAddendum::consensus_decode(&mut res).unwrap();
+                        let xmr_address_addendum = match watched_address.task.addendum.clone() {
+                            AddressAddendum::Monero(address) => address,
+                            _ => panic!("should never get an invalid address")
+                        };
                         let address_transactions =
-                            rpc.check_address(address_addendum).await.unwrap();
-                        let serialized_address =
-                            consensus::serialize(&address_transactions.address);
-                        state.change_address(serialized_address, txid_tx_hashmap(address_transactions.txs.clone()));
+                            rpc.check_address(xmr_address_addendum).await.unwrap();
+                        state.change_address(AddressAddendum::Monero(address_transactions.address), txid_tx_hashmap(address_transactions.txs.clone()));
                     }
 
                     // check and process new block notifications
