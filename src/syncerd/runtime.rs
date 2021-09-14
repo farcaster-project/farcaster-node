@@ -87,10 +87,10 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
         syncer: syncer.unwrap(),
         tx,
     };
-
+    let polling = true;
     runtime
         .syncer
-        .run(rx, tx_event, runtime.identity().into(), syncer_servers);
+        .run(rx, tx_event, runtime.identity().into(), syncer_servers, polling);
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
     service.run_loop()?;
@@ -172,15 +172,13 @@ impl Runtime {
                 );
             }
             (Request::SyncerTask(task), _) => {
-                if let Ok(_) = self.tx
-                    .send(SyncerdTask {
-                        task: task.clone(),
-                        source,
-                    }) {
-                        trace!("Task successfully sent to syncer runtime")
-                    } else {
-                        error!("Failed to send task, maybe electrum server offline?")
-                    };
+                match self.tx.send(SyncerdTask {
+                    task: task.clone(),
+                    source,
+                }) {
+                    Ok(()) => trace!("Task successfully sent to syncer runtime"),
+                    Err(e) => error!("Failed to send task with error: {}", e.to_string()),
+                };
             }
             (Request::GetInfo, _) => {
                 senders.send_to(

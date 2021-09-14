@@ -1,6 +1,7 @@
 use crate::farcaster_core::consensus::Decodable;
 use crate::syncerd::opts::Coin;
 use crate::ServiceId;
+use bitcoin::{hashes::Hash, Txid};
 use microservices::rpc_connection::Request;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
@@ -10,8 +11,8 @@ use std::marker::{Send, Sized};
 use crate::serde::Deserialize;
 use hex;
 
-use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
 use farcaster_core::syncer::*;
+use farcaster_core::{bitcoin::tasks::BtcAddressAddendum, consensus::Encodable};
 
 pub struct SyncerState {
     block_height: u64,
@@ -31,10 +32,10 @@ pub struct WatchedTransaction {
     pub transaction_confirmations: TransactionConfirmations,
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct AddressTransactions {
     pub task: WatchAddress,
-    txs: HashMap<Vec<u8>, AddressTx>,
+    known_txs: HashSet<AddressTx>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -45,8 +46,8 @@ pub struct AddressTx {
     pub tx: Vec<u8>,
 }
 
-pub fn txid_tx_hashmap(addrs: Vec<AddressTx>) -> HashMap<Vec<u8>, AddressTx> {
-    addrs.into_iter().map(|a| (a.tx_id.clone(), a)).collect()
+pub fn create_set<T: std::hash::Hash + Eq>(xs: Vec<T>) -> HashSet<T> {
+    xs.into_iter().collect()
 }
 
 impl SyncerState {
@@ -123,9 +124,12 @@ impl SyncerState {
     pub fn watch_address(&mut self, task: WatchAddress, source: ServiceId) -> Result<(), Error> {
         // increment the count to use it as a unique internal id
         self.task_count += 1;
-        self.add_lifetime(task.lifetime, self.task_count)?; // FIXME turned off because it errors here
+        self.add_lifetime(task.lifetime, self.task_count)?;
         self.tasks_sources.insert(self.task_count, source);
-        let address_txs = AddressTransactions { task, txs: none!() };
+        let address_txs = AddressTransactions {
+            task,
+            known_txs: none!(),
+        };
         self.addresses.insert(self.task_count, address_txs);
         Ok(())
     }
@@ -172,19 +176,23 @@ impl SyncerState {
             }
         }
     }
-
-    pub fn change_address(&mut self, address_addendum: Vec<u8>, txs: HashMap<Vec<u8>, AddressTx>) {
+    /// updates self.events
+    pub fn change_address(
+        &mut self,
+        address_addendum: impl Encodable + std::fmt::Debug,
+        txs: HashSet<AddressTx>,
+    ) {
         trace!("inside change_address");
         self.drop_lifetimes();
         if self.addresses.is_empty() {
-            debug!("no addresses here");
+            info!("no addresses here");
         }
 
         inner(
             &mut self.addresses,
             &mut self.events,
             &mut self.tasks_sources,
-            address_addendum,
+            farcaster_core::consensus::serialize(&address_addendum),
             txs,
         );
 
@@ -193,39 +201,63 @@ impl SyncerState {
             events: &mut Vec<(Event, ServiceId)>,
             tasks_sources: &mut HashMap<u32, ServiceId>,
             address_addendum: Vec<u8>,
-            txs: HashMap<Vec<u8>, AddressTx>,
+            txs: HashSet<AddressTx>,
         ) {
+            let changes_detected: bool = addresses
+                .iter()
+                .find_map(|(_, addr)| {
+                    let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
+                    if !new_txs.is_empty() {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| false);
+
+            if !changes_detected {
+                trace!("no changes to process, skipping...");
+                return;
+            }
+
             *addresses = addresses
                 .drain()
                 .map(|(id, addr)| {
-                    if addr.task.addendum == address_addendum && addr.txs != txs {
-                        for (_, tx) in txs.iter().find(|&(tx_id, _)| !addr.txs.contains_key(tx_id))
-                        {
-                            let address_transaction = AddressTransaction {
-                                id: addr.task.id,
-                                hash: tx.tx_id.clone(),
-                                amount: tx.our_amount,
-                                block: tx.block_hash.clone(),
-                                tx: tx.tx.clone(),
-                            };
-                            events.push((
-                                Event::AddressTransaction(address_transaction.clone()),
-                                tasks_sources.get(&id).unwrap().clone(),
-                            ));
-                        }
-
-                        (
-                            id.clone(),
-                            AddressTransactions {
-                                task: addr.task.clone(),
-                                txs: txs.clone(),
-                            },
-                        )
-                    } else {
-                        (id, addr)
+                    trace!("processing taskid {} for address {:?}", id, addr);
+                    if addr.task.addendum != address_addendum {
+                        trace!("address not changed or not address_addendum of interest");
+                        return (id, addr);
                     }
+                    // create events for new transactions
+                    for new_tx in txs.difference(&addr.known_txs).cloned() {
+                        info!("new_tx seen: {}", Txid::from_slice(&new_tx.tx_id).unwrap());
+                        let address_transaction = AddressTransaction {
+                            id: addr.task.id,
+                            hash: new_tx.tx_id,
+                            amount: new_tx.our_amount,
+                            block: new_tx.block_hash,
+                            tx: new_tx.tx,
+                        };
+                        events.push((
+                            Event::AddressTransaction(address_transaction),
+                            tasks_sources
+                                .get(&id)
+                                .cloned()
+                                .expect("task source missing"),
+                        ));
+                    }
+
+                    (
+                        id,
+                        AddressTransactions {
+                            task: addr.task.clone(),
+                            known_txs: txs.clone(),
+                        },
+                    )
                 })
                 .collect();
+
+            events.dedup();
         }
     }
 
@@ -310,6 +342,7 @@ impl SyncerState {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
             if lifetime < self.block_height {
+                warn!("dropping lifetime");
                 self.drop_lifetime(lifetime);
             }
         }
@@ -337,11 +370,15 @@ impl SyncerState {
     }
 
     fn drop_lifetime(&mut self, lifetime: u64) {
-        for task in self.lifetimes.remove(&lifetime).unwrap().iter() {
-            self.addresses.remove(task);
-            self.transactions.remove(task);
-            self.watch_height.remove(task);
-            self.tasks_sources.remove(task);
+        if let Some(tasks) = self.lifetimes.remove(&lifetime) {
+            for task in &tasks {
+                self.addresses.remove(task);
+                self.transactions.remove(task);
+                self.watch_height.remove(task);
+                self.tasks_sources.remove(task);
+            }
+        } else {
+            error!("Unknown lifetime {}", lifetime);
         }
     }
 
@@ -461,14 +498,14 @@ fn syncer_state_addresses() {
         tx: vec![0],
     };
 
-    state.change_address(vec![0], txid_tx_hashmap(vec![address_tx_one.clone()]));
+    state.change_address(vec![0], create_set(vec![address_tx_one.clone()]));
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
 
     assert_eq!(state.addresses.len(), 1);
     assert_eq!(state.events.len(), 1);
 
-    state.change_address(vec![0], txid_tx_hashmap(vec![address_tx_one.clone()]));
+    state.change_address(vec![0], create_set(vec![address_tx_one.clone()]));
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -476,7 +513,7 @@ fn syncer_state_addresses() {
 
     state.change_address(
         vec![0],
-        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_one.clone()]),
+        create_set(vec![address_tx_one.clone(), address_tx_one.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
@@ -485,16 +522,7 @@ fn syncer_state_addresses() {
 
     state.change_address(
         vec![0],
-        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
-    );
-    assert_eq!(state.lifetimes.len(), 1);
-    assert_eq!(state.tasks_sources.len(), 1);
-    assert_eq!(state.addresses.len(), 1);
-    assert_eq!(state.events.len(), 2);
-
-    state.change_address(
-        vec![0],
-        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
+        create_set(vec![address_tx_one.clone(), address_tx_two.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
@@ -503,7 +531,16 @@ fn syncer_state_addresses() {
 
     state.change_address(
         vec![0],
-        txid_tx_hashmap(vec![address_tx_three.clone(), address_tx_four.clone()]),
+        create_set(vec![address_tx_one.clone(), address_tx_two.clone()]),
+    );
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.addresses.len(), 1);
+    assert_eq!(state.events.len(), 2);
+
+    state.change_address(
+        vec![0],
+        create_set(vec![address_tx_three.clone(), address_tx_four.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
@@ -523,7 +560,7 @@ fn syncer_state_addresses() {
     state.change_height(2, vec![0]);
     state.change_address(
         vec![0],
-        txid_tx_hashmap(vec![address_tx_one.clone(), address_tx_two.clone()]),
+        create_set(vec![address_tx_one.clone(), address_tx_two.clone()]),
     );
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
