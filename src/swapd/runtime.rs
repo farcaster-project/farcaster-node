@@ -59,8 +59,8 @@ use farcaster_core::{
     swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
     syncer::{
-        AddressTransaction, Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations,
-        WatchAddress, WatchTransaction,
+        AddressTransaction, Boolean, BroadcastTransaction, Event, HeightChanged, Task,
+        TransactionConfirmations, WatchAddress, WatchTransaction,
     },
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
@@ -135,6 +135,7 @@ pub fn run(
         // TODO: query syncer to set this value (start with None)
         task_lifetime: Some(2066175 + 50000),
         txs_status: none!(),
+        block_height: 0,
         pending_requests: none!(),
         task_counter: 0,
     };
@@ -166,6 +167,7 @@ pub struct Runtime {
     confirmation_bound: u16,
     task_lifetime: Option<u64>,
     txs_status: HashMap<i32, (TxLabel, TxStatus)>,
+    block_height: u64,
     pending_requests: HashMap<ServiceId, PendingRequest>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
@@ -312,6 +314,7 @@ impl Runtime {
                                     AddressOrScript::Script(addr.script_pubkey()),
                                     self.task_lifetime.expect("task_lifetime"),
                                     id,
+                                    self.block_height,
                                 );
                                 if self
                                     .txs_status
@@ -366,6 +369,7 @@ impl Runtime {
                                     AddressOrScript::Script(addr.script_pubkey()),
                                     self.task_lifetime.expect("task_lifetime"),
                                     id,
+                                    self.block_height,
                                 );
                                 if self
                                     .txs_status
@@ -791,8 +795,9 @@ impl Runtime {
             // handle monero events here
             // }
             Request::SyncerEvent(ref event) => match &event {
-                Event::HeightChanged(h) => {
-                    info!("height changed {}", h)
+                Event::HeightChanged(HeightChanged { height, .. }) => {
+                    self.block_height = *height;
+                    info!("height changed {}", height)
                 }
                 Event::AddressTransaction(AddressTransaction {
                     id,
@@ -1068,6 +1073,7 @@ impl Runtime {
                         AddressOrScript::Script(script_pubkey),
                         self.task_lifetime.unwrap(),
                         id_addr,
+                        self.block_height,
                     );
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -1233,16 +1239,21 @@ enum AddressOrScript {
     Script(bitcoin::Script),
 }
 
-fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64, id: i32) -> Request {
+fn watch_addr(
+    addr_or_script: AddressOrScript,
+    lifetime: u64,
+    id: i32,
+    from_height: u64,
+) -> Request {
     let addendum = match addr_or_script {
         AddressOrScript::Address(addr) => BtcAddressAddendum {
             address: addr.to_string(),
-            from_height: 0,
+            from_height,
             script_pubkey: bitcoin::consensus::serialize(&addr.script_pubkey()),
         },
         AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
             address: s!(""),
-            from_height: 0,
+            from_height,
             script_pubkey: bitcoin::consensus::serialize(&script_pubkey),
         },
     };
