@@ -1,9 +1,4 @@
 use bitcoincore_rpc::{Auth, Client, RpcApi};
-use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
-use farcaster_core::syncer::Event;
-use farcaster_core::syncer::Task;
-use farcaster_core::syncer::WatchAddress;
-use farcaster_core::syncer::WatchHeight;
 use farcaster_node::rpc::Request;
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::bitcoin_syncer::Synclet;
@@ -22,9 +17,12 @@ use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
 use bitcoin::hashes::Hash;
-use farcaster_core::consensus;
 use internet2::{CreateUnmarshaller, Unmarshall};
 use std::str::FromStr;
+
+use farcaster_node::syncerd::types::{
+    AddressAddendum, Boolean, BtcAddressAddendum, Event, Task, WatchAddress, WatchHeight,
+};
 
 #[test]
 fn bitcoin_syncer_block_height_test() {
@@ -43,8 +41,6 @@ fn bitcoin_syncer_block_height_test() {
 
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    // Generate over 101 blocks to reach block maturity, and some more for extra leeway
-    // bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
     // start a bitcoin syncer
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -77,7 +73,6 @@ fn bitcoin_syncer_block_height_test() {
         task: Task::WatchHeight(WatchHeight {
             id: 0,
             lifetime: blocks + 2,
-            addendum: vec![],
         }),
         source: ServiceId::Syncer(Coin::Bitcoin),
     };
@@ -99,7 +94,6 @@ fn bitcoin_syncer_block_height_test() {
         task: Task::WatchHeight(WatchHeight {
             id: 1,
             lifetime: blocks + 2,
-            addendum: vec![],
         }),
         source: ServiceId::Syncer(Coin::Bitcoin),
     };
@@ -134,6 +128,9 @@ and check for both respective events
 - Subscribe to the same address again, observe if it receives the complete
 existing transaction history
 
+- Subscribe to many times the same address, ensure we receive many times the
+same notification
+
 */
 #[test]
 fn bitcoin_syncer_address_test() {
@@ -152,7 +149,8 @@ fn bitcoin_syncer_address_test() {
 
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    let amount = bitcoin::Amount::ONE_BTC;
+    // 294 Satoshi is the dust limit for a segwit transaction
+    let amount = bitcoin::Amount::ONE_SAT * 294;
     // Generate over 101 blocks to reach block maturity, and some more for extra leeway
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
@@ -186,22 +184,22 @@ fn bitcoin_syncer_address_test() {
     let address1 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let address2 = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    let addendum_1 = BtcAddressAddendum {
-        address: address1.to_string(),
+    let addendum_1 = AddressAddendum::Bitcoin(BtcAddressAddendum {
+        address: Some(address1.clone()),
         from_height: 0,
-        script_pubkey: address1.script_pubkey().to_bytes(),
-    };
-    let addendum_2 = BtcAddressAddendum {
-        address: address2.to_string(),
+        script_pubkey: address1.script_pubkey(),
+    });
+    let addendum_2 = AddressAddendum::Bitcoin(BtcAddressAddendum {
+        address: Some(address2.clone()),
         from_height: 0,
-        script_pubkey: address2.script_pubkey().to_bytes(),
-    };
+        script_pubkey: address2.script_pubkey(),
+    });
     let watch_address_task_1 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
             id: 1,
             lifetime: blocks + 1,
-            addendum: consensus::serialize(&addendum_1),
-            include_tx: farcaster_core::syncer::Boolean::True,
+            addendum: addendum_1,
+            include_tx: Boolean::True,
         }),
         source: ServiceId::Syncer(Coin::Bitcoin),
     };
@@ -210,8 +208,8 @@ fn bitcoin_syncer_address_test() {
         task: Task::WatchAddress(WatchAddress {
             id: 1,
             lifetime: blocks + 2,
-            addendum: consensus::serialize(&addendum_2),
-            include_tx: farcaster_core::syncer::Boolean::True,
+            addendum: addendum_2.clone(),
+            include_tx: Boolean::True,
         }),
         source: ServiceId::Syncer(Coin::Bitcoin),
     };
@@ -224,7 +222,7 @@ fn bitcoin_syncer_address_test() {
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     let request = get_request_from_message(message);
-    assert_address_transaction(request, 100000000, vec![]);
+    assert_address_transaction(request, amount.as_sat(), vec![]);
 
     // now generate a block for address1, then wait for the response and test it
     let block_hash = bitcoin_rpc.generate_to_address(1, &address1).unwrap();
@@ -257,8 +255,8 @@ fn bitcoin_syncer_address_test() {
         task: Task::WatchAddress(WatchAddress {
             id: 1,
             lifetime: blocks + 2,
-            addendum: consensus::serialize(&addendum_2),
-            include_tx: farcaster_core::syncer::Boolean::True,
+            addendum: addendum_2,
+            include_tx: Boolean::True,
         }),
         source: ServiceId::Syncer(Coin::Bitcoin),
     };
@@ -271,6 +269,35 @@ fn bitcoin_syncer_address_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     let request = get_request_from_message(message);
     assert_address_transaction(request, amount.as_sat(), vec![]);
+
+    let address4 = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let addendum_4 = AddressAddendum::Bitcoin(BtcAddressAddendum {
+        address: Some(address4.clone()),
+        from_height: 0,
+        script_pubkey: address4.script_pubkey(),
+    });
+    for _ in 0..5 {
+        tx.send(SyncerdTask {
+            task: Task::WatchAddress(WatchAddress {
+                id: 1,
+                lifetime: blocks + 5,
+                addendum: addendum_4.clone(),
+                include_tx: Boolean::True,
+            }),
+            source: ServiceId::Syncer(Coin::Bitcoin),
+        })
+        .unwrap();
+    }
+    bitcoin_rpc
+        .send_to_address(&address4, amount, None, None, None, None, None, None)
+        .unwrap();
+
+    for _ in 0..5 {
+        println!("waiting for repeated watch transaction message");
+        let message = rx_event.recv_multipart(0).unwrap();
+        let request = get_request_from_message(message);
+        assert_address_transaction(request, amount.as_sat(), vec![]);
+    }
 }
 
 fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
