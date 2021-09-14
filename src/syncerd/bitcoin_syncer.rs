@@ -40,8 +40,7 @@ use tokio::runtime::Runtime;
 
 use hex;
 
-use farcaster_core::bitcoin::tasks::BtcAddressAddendum;
-use farcaster_core::syncer::*;
+use crate::syncerd::*;
 
 pub trait Rpc: Sized {
     fn new(electrum_server: String, polling: bool) -> Result<Self, electrum_client::Error>;
@@ -62,13 +61,11 @@ pub struct ElectrumRpc {
     polling: bool,
 }
 
-
-// FIXME shoudl be From<BtcAddressAddendum> or btc_addr.scripts() in core
 impl From<&ElectrumRpc> for Vec<Script> {
     fn from(x: &ElectrumRpc) -> Self {
         x.addresses
             .keys()
-            .filter_map(|addr| bitcoin::consensus::deserialize::<Script>(&addr.script_pubkey).ok())
+            .filter_map(|addr| Some(addr.script_pubkey.clone()))
             .collect()
     }
 }
@@ -89,12 +86,15 @@ impl ElectrumRpc {
         &mut self,
         address_addendum: BtcAddressAddendum,
     ) -> Result<AddressNotif, Error> {
-        let script_pubkey = bitcoin::consensus::deserialize(&address_addendum.script_pubkey)?;
-        info!("subscribing to script_pubkey {}", &script_pubkey);
+        info!(
+            "subscribing to script_pubkey {}",
+            &address_addendum.script_pubkey
+        );
         let script_status = if self.polling {
             None
         } else {
-            self.client.script_subscribe(&script_pubkey)?
+            self.client
+                .script_subscribe(&address_addendum.script_pubkey)?
         };
         if let Some(_) = self
             .addresses
@@ -110,7 +110,7 @@ impl ElectrumRpc {
                 &address_addendum, &script_status
             );
         }
-        let txs = query_addr_history(&mut self.client, script_pubkey)?;
+        let txs = query_addr_history(&mut self.client, address_addendum.script_pubkey.clone())?;
         logging(&txs, &address_addendum);
         let notif = AddressNotif {
             address: address_addendum,
@@ -155,7 +155,7 @@ impl ElectrumRpc {
         let mut notifs: Vec<AddressNotif> = vec![];
         for (address, previous_status) in self.addresses.clone().into_iter() {
             // get pending notifications for this address/script_pubkey
-            let script_pubkey = &bitcoin::consensus::deserialize(&address.script_pubkey).unwrap();
+            let script_pubkey = &address.script_pubkey;
 
             while let Ok(Some(script_status)) = self.client.script_pop(&script_pubkey) {
                 if Some(script_status) != previous_status {
@@ -173,10 +173,7 @@ impl ElectrumRpc {
                             &address, &script_status
                         );
                     }
-                    if let Ok(txs) = query_addr_history(
-                        &mut self.client,
-                        script_pubkey.clone(),
-                    ) {
+                    if let Ok(txs) = query_addr_history(&mut self.client, script_pubkey.clone()) {
                         info!("creating AddressNotif");
                         logging(&txs, &address);
                         let new_notif = AddressNotif {
@@ -211,10 +208,7 @@ impl ElectrumRpc {
     }
 }
 
-fn query_addr_history(
-    client: &mut Client,
-    script: Script,
-) -> Result<Vec<AddressTx>, Error> {
+fn query_addr_history(client: &mut Client, script: Script) -> Result<Vec<AddressTx>, Error> {
     // if script_status.is_none() {
     //     Err(Error::Syncer(SyncerError::NoTxsOnAddress))?
     // }
@@ -350,39 +344,36 @@ impl Synclet for BitcoinSyncer {
                                     Err(e) => error!("failed to broadcast tx: {}", e.err()),
                                 }
                             }
-                            Task::WatchAddress(task) => {
-                                let mut res = std::io::Cursor::new(task.addendum.clone());
-                                match BtcAddressAddendum::consensus_decode(&mut res) {
-                                    Err(e) => {
-                                        error!("Aborting watch address task - unable to decode address addendum: {}", e);
-                                        state.abort(task.id, syncerd_task.source);
-                                    }
-                                    Ok(ref address_addendum) => {
-                                        state
-                                            .watch_address(task, syncerd_task.source)
-                                            .expect("watch_address");
-                                        match rpc.script_subscribe(address_addendum.clone()) {
-                                            Ok(addr_notif) if addr_notif.txs.is_empty() => {
-                                                let msg =
+                            Task::WatchAddress(task) => match task.addendum.clone() {
+                                AddressAddendum::Bitcoin(address_addendum) => {
+                                    state
+                                        .watch_address(task, syncerd_task.source)
+                                        .expect("watch_address");
+                                    match rpc.script_subscribe(address_addendum.clone()) {
+                                        Ok(addr_notif) if addr_notif.txs.is_empty() => {
+                                            let msg =
                                                     "Address subscription successful, but no \
                                                      transactions on this BTC address yet, events \
                                                      will be emmited when transactions are observed";
-                                                warn!("{}", &msg);
-                                            }
-                                            Ok(addr_notif) => {
-                                                logging(&addr_notif.txs, address_addendum);
-                                                state.change_address(
-                                                    address_addendum.clone(),
-                                                    create_set(addr_notif.txs),
-                                                );
-                                            }
-                                            Err(e) => {
-                                                warn!("{}", e)
-                                            }
+                                            warn!("{}", &msg);
+                                        }
+                                        Ok(addr_notif) => {
+                                            logging(&addr_notif.txs, &address_addendum);
+                                            state.change_address(
+                                                AddressAddendum::Bitcoin(address_addendum.clone()),
+                                                create_set(addr_notif.txs),
+                                            );
+                                        }
+                                        Err(e) => {
+                                            warn!("{}", e)
                                         }
                                     }
                                 }
-                            }
+                                _ => {
+                                    error!("Aborting watch address task - received invalid address addendum");
+                                    state.abort(task.id, syncerd_task.source);
+                                }
+                            },
                             Task::WatchHeight(task) => {
                                 state.watch_height(task, syncerd_task.source);
                             }
@@ -412,7 +403,7 @@ impl Synclet for BitcoinSyncer {
                 };
                 while let Some(AddressNotif { address, txs }) = addrs_notifs.pop() {
                     logging(&txs, &address);
-                    state.change_address(address, create_set(txs));
+                    state.change_address(AddressAddendum::Bitcoin(address), create_set(txs));
                 }
                 // check and process new block notifications
                 let mut new_blocks = rpc.new_block_check();
@@ -451,7 +442,7 @@ fn logging(txs: &Vec<AddressTx>, address: &BtcAddressAddendum) {
     txs.iter().for_each(|tx| {
         trace!(
             "processing address {} notification txid {}",
-            address.address.addr(),
+            address.address.clone().unwrap(),
             bitcoin::Txid::from_slice(&tx.tx_id).unwrap().addr()
         )
     });

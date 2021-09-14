@@ -42,10 +42,14 @@ use bitcoin::{
 };
 use bitcoin::{OutPoint, SigHashType};
 
+use crate::syncerd::types::{
+    AddressAddendum, AddressTransaction, Boolean, BroadcastTransaction, BtcAddressAddendum, Event,
+    Task, TransactionConfirmations, WatchAddress, WatchTransaction,
+};
 use farcaster_core::{
     bitcoin::{
-        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, tasks::BtcAddressAddendum,
-        timelock::CSVTimelock, Bitcoin, BitcoinSegwitV0,
+        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin,
+        BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
     consensus::{self, Encodable as FarEncodable},
@@ -58,10 +62,6 @@ use farcaster_core::{
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
-    syncer::{
-        AddressTransaction, Boolean, BroadcastTransaction, Event, Task, TransactionConfirmations,
-        WatchAddress, WatchTransaction,
-    },
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
@@ -1239,22 +1239,22 @@ enum AddressOrScript {
 
 fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64, id: i32) -> Request {
     let addendum = match addr_or_script {
-        AddressOrScript::Address(addr) => BtcAddressAddendum {
-            address: addr.to_string(),
+        AddressOrScript::Address(address) => BtcAddressAddendum {
+            address: Some(address.clone()),
             from_height: 0,
-            script_pubkey: bitcoin::consensus::serialize(&addr.script_pubkey()),
+            script_pubkey: address.script_pubkey(),
         },
         AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
-            address: s!(""),
+            address: None,
             from_height: 0,
-            script_pubkey: bitcoin::consensus::serialize(&script_pubkey),
+            script_pubkey: script_pubkey,
         },
     };
-    let addendum = consensus::serialize(&addendum);
+
     Request::SyncerTask(Task::WatchAddress(WatchAddress {
         id,
         lifetime,
-        addendum,
+        addendum: AddressAddendum::Bitcoin(addendum),
         include_tx: Boolean::True,
     }))
 }
