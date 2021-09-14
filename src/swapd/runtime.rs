@@ -249,6 +249,11 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    fn handle_height_change(&mut self, block_height: u64) {
+        self.block_height = block_height;
+        self.task_lifetime = block_height + 500;
+    }
+
     fn new_taskid(&mut self) -> i32 {
         self.task_counter += 1;
         self.task_counter
@@ -829,7 +834,7 @@ impl Runtime {
             // }
             Request::SyncerEvent(ref event) => match &event {
                 Event::HeightChanged(HeightChanged { height, .. }) => {
-                    self.block_height = *height;
+                    self.handle_height_change(*height);
                     info!("height changed {}", height)
                 }
                 Event::AddressTransaction(AddressTransaction {
