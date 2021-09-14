@@ -110,9 +110,9 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock,
         punish_timelock,
-        tx_finality_thr: -2,
+        tx_finality_thr: 0,
         confirmation_bound: 50000,
-        race_thr: 20,
+        race_thr: 1,
     };
 
     let syncer_state = SyncerState {
@@ -179,9 +179,16 @@ pub struct Runtime {
 struct TemporalSafety {
     cancel_timelock: CSVTimelock,
     punish_timelock: CSVTimelock,
-    race_thr: u64,
-    tx_finality_thr: i32,
+    race_thr: u32,
+    tx_finality_thr: u32,
     confirmation_bound: u16,
+}
+
+impl TemporalSafety {
+    fn safe_cancel(&self, lock_confirmations: u32) -> bool {
+        self.tx_finality_thr >= lock_confirmations
+            && lock_confirmations >= (self.cancel_timelock.as_u32() - self.race_thr)
+    }
 }
 
 struct SyncerState {
@@ -913,7 +920,7 @@ impl Runtime {
                     id,
                     block,
                     confirmations,
-                }) if confirmations >= &self.temporal_safety.tx_finality_thr => {
+                }) if *confirmations as u32 >= self.temporal_safety.tx_finality_thr => {
                     if let Some((txlabel, status)) = self.syncer_state.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
                         info!(
@@ -932,6 +939,15 @@ impl Runtime {
                                     if let Request::Protocol(Msg::BuyProcedureSignature(_)) =
                                         request
                                     {
+                                        if self.temporal_safety.safe_cancel(*confirmations as u32) {
+                                            warn!(
+                                                "Not in safe temporal zone to procede with protocol\
+                                                 due to potential race condition between buy and\
+                                                 cancel txs, waiting to publish cancel as soon as\
+                                                 it becomes valid"
+                                            );
+                                            return Ok(());
+                                        }
                                         error!("this should be in Accordant lock, not Arbitrating lock finality");
                                         info!(
                                             "sending buyproceduresignature at state {}",
@@ -944,8 +960,17 @@ impl Runtime {
                                             request.get_type()
                                         );
                                     }
-                                } else {
-                                    warn!("no pending requests to be triggered by lock")
+                                }
+                            }
+                            TxLabel::Cancel => {
+                                if let State::Bob(BobState::BuyProcSigB) = self.state {
+                                    if *confirmations as u32
+                                        >= (self.temporal_safety.punish_timelock.as_u32()
+                                            - self.temporal_safety.race_thr)
+                                    {
+                                        warn!("Danger zone: waited too long, race condition possible, but Bob publishes refund tx anyway");
+                                        todo!()
+                                    }
                                 }
                             }
                             tx_label => warn!("tx label {} not supported", tx_label),
