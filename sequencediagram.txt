@@ -62,48 +62,7 @@ t_syncer -> t_swap:If Bob, Arbitrating Funding event
 t_swap -> t_wallet : Msg Reveal (maker is sender)
 ==Commit-Reveal Complete==
 
-==Bob is Maker (right side)==
-m_wallet -> m_swap : Ctl CoreArbitratingSetup
-m_swap -> m_syncer : Watch Arbitrating Lock
-m_swap -> m_syncer : Watch Cancel
-m_swap -> m_syncer : Watch Refund
-peerd <- m_swap : Msg CoreArbitratingSetup
-t_swap <- peerd : Msg CoreArbitratingSetup
-t_syncer <-- t_swap : Watch Accordant lock
-t_swap -> t_syncer : Watch Arbitrating Lock
-t_swap -> t_syncer : Watch Cancel
-t_swap -> t_syncer : Watch Refund
-t_wallet <- t_swap : Msg CoreArbitratingSetup
-t_wallet -> t_swap : Ctl RefundProcedureSignatures
-t_swap -> peerd : Msg RefundProcedureSignatures
-peerd -> m_swap : Msg RefundProcedureSignatures
-m_swap --> m_syncer : Watch Accordant Lock
-
-m_swap<-m_syncer:Arbitrating Funding final
-m_swap --> m_swap : Checkpoint Bob_0
-m_syncer <- m_swap : Broadcast Arbitrating Lock
-m_wallet -> m_swap : Ctl BuyProcedureSignature
-
-parallel
-m_syncer -->  m_swap : Arbitrating Lock final
-t_swap <-- t_syncer : Arbitrating Lock final
-parallel off
-
-t_swap --> t_swap : Checkpoint Alice 0
-t_swap --> t_syncer : Broadcast Accordant Lock
-
-parallel
-t_swap <-- t_syncer : Accordant Lock final
-m_swap <-- m_syncer : Accordant Lock final
-parallel off
-
-m_swap -> m_syncer:Watch Buy
-peerd <- m_swap : Msg BuyProcedureSignature
-t_swap <- peerd : Msg BuyProcedureSignature
-t_syncer <- t_swap:Watch Buy
-t_swap -> t_wallet : Msg BuyProcedureSignature
-
-==Alice is Maker (right side)==
+==Swap setup: Bob is left, Alice right==
 t_wallet -> t_swap : Ctl CoreArbitratingSetup
 t_syncer <- t_swap:Watch Arbitrating Lock
 t_syncer<-t_swap:Watch Cancel
@@ -142,6 +101,31 @@ parallel off
 
 peerd <- t_swap : Msg BuyProcedureSignature
 m_swap <- peerd : Msg BuyProcedureSignature
-m_swap->m_syncer:Watch Buy
+m_swap -> m_syncer:Watch Buy
 m_swap -> m_wallet : Msg BuyProcedureSignature
 ==Swap Setup Complete==
+==Buy Procedure: Bob is left, Alice right==
+
+m_swap <- m_wallet : Fully signed buy
+m_swap -> m_syncer : Broadcast buy
+parallel 
+m_swap <-- m_syncer : Event: buy seen on mempool
+t_swap <-- t_syncer : Event: buy seen on mempool
+parallel off
+t_wallet <- t_swap : buy signature
+t_wallet -> t_wallet : recover accordant key
+
+==Cancel Init t > t0: Bob is left, Alice right==
+parallel
+m_swap --> m_syncer : or Broadcast cancel (Alice inits)
+t_swap --> t_syncer : Broadcast cancel (Bob inits) or
+parallel off
+==Cancel detected t > t0: Bob is left, Alice right==
+t_swap <-- t_syncer: Event cancel final
+t_swap --> t_syncer : Broadcast refund
+t_syncer --> t_swap : Event: refund final
+
+== Punish process t > t1 > t0 ==
+
+
+
