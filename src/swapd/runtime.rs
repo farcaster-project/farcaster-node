@@ -303,19 +303,6 @@ impl Runtime {
                     // whether we're Bob or Alice and that we're on a compatible state
                     Msg::MakerCommit(remote_commit) => {
                         trace!("received commitment from counterparty, can now reveal");
-                        let watch_height = Task::WatchHeight(WatchHeight {
-                            id: self.new_taskid(),
-                            lifetime: self.task_lifetime,
-                            addendum: vec![],
-                        });
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Syncer(Coin::Bitcoin),
-                            Request::SyncerTask(watch_height),
-                        )?;
-
-                        trace!("received commitment from counterparty, can now reveal");
                         let (next_state, local_params) = match self.state.clone() {
                             State::Alice(AliceState::CommitA(_, local_params, _, None)) => Ok((
                                 State::Alice(AliceState::RevealA(remote_commit.clone())),
@@ -353,6 +340,25 @@ impl Runtime {
                                 state
                             ))),
                         }?;
+
+                        match &self.state {
+                            State::Alice(AliceState::CommitA(TradeRole::Taker, ..))
+                            | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) => {
+                                trace!("Watch height");
+                                let watch_height = Task::WatchHeight(WatchHeight {
+                                    id: self.new_taskid(),
+                                    lifetime: self.task_lifetime,
+                                    addendum: vec![],
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    Request::SyncerTask(watch_height),
+                                )?;
+                            }
+                            _ => unreachable!(),
+                        }
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
@@ -488,7 +494,7 @@ impl Runtime {
                                 ..,
                             ))
                             | State::Bob(BobState::CommitB(TradeRole::Maker, local_params, ..)) => {
-                                trace!("received commitment from counterparty, can now reveal");
+                                trace!("Watch height");
                                 let watch_height = Task::WatchHeight(WatchHeight {
                                     id,
                                     lifetime: self.task_lifetime,
@@ -502,6 +508,7 @@ impl Runtime {
                                     Request::SyncerTask(watch_height),
                                 )?;
 
+                                trace!("received commitment from counterparty, can now reveal");
                                 let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
                                 info!("State transition: {}", next_state.bright_blue_bold());
