@@ -585,9 +585,6 @@ impl Runtime {
                                     Request::SyncerTask(task),
                                 )?;
                                 self.send_wallet(msg_bus, senders, request)?
-                            } else {
-                                error!("Task already registered for this swapd");
-                                return Ok(());
                             }
                         } else {
                             error!("Wrong state: must be RefundProcedureSignatures");
@@ -1066,7 +1063,6 @@ impl Runtime {
                     .insert(id_addr, (TxLabel::Buy, TxStatus::Notfinal))
                     .is_none()
                 {
-                    // error!("bob does not subscribe for buy tx")
                     debug!("subscribe Buy address task");
                     let req = watch_addr(
                         AddressOrScript::Script(script_pubkey),
