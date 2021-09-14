@@ -60,7 +60,7 @@ use farcaster_core::{
     swap::SwapId,
     syncer::{
         AddressTransaction, Boolean, BroadcastTransaction, Event, HeightChanged, Task,
-        TransactionConfirmations, WatchAddress, WatchTransaction,
+        TransactionConfirmations, WatchAddress, WatchHeight, WatchTransaction,
     },
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
@@ -133,7 +133,7 @@ pub fn run(
         )?),
         confirmation_bound: 50000,
         // TODO: query syncer to set this value (start with None)
-        task_lifetime: Some(2066175 + 50000),
+        task_lifetime: u64::MAX,
         txs_status: none!(),
         block_height: 0,
         pending_requests: none!(),
@@ -165,7 +165,7 @@ pub struct Runtime {
     enquirer: Option<ServiceId>,
     tx_finality_thr: i32,
     confirmation_bound: u16,
-    task_lifetime: Option<u64>,
+    task_lifetime: u64,
     txs_status: HashMap<i32, (TxLabel, TxStatus)>,
     block_height: u64,
     pending_requests: HashMap<ServiceId, PendingRequest>,
@@ -299,9 +299,22 @@ impl Runtime {
                     )))?
                 }
                 match &msg {
+                    // we are taker and the maker committed, now we reveal after checking
+                    // whether we're Bob or Alice and that we're on a compatible state
                     Msg::MakerCommit(remote_commit) => {
-                        // we are taker and the maker committed, now we reveal after checking
-                        // whether we're Bob or Alice and that we're on a compatible state
+                        trace!("received commitment from counterparty, can now reveal");
+                        let watch_height = Task::WatchHeight(WatchHeight {
+                            id: self.new_taskid(),
+                            lifetime: self.task_lifetime,
+                            addendum: vec![],
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Syncer(Coin::Bitcoin),
+                            Request::SyncerTask(watch_height),
+                        )?;
+
                         trace!("received commitment from counterparty, can now reveal");
                         let (next_state, local_params) = match self.state.clone() {
                             State::Alice(AliceState::CommitA(_, local_params, _, None)) => Ok((
@@ -312,7 +325,7 @@ impl Runtime {
                                 let id = self.new_taskid();
                                 let watch_addr_req = watch_addr(
                                     AddressOrScript::Script(addr.script_pubkey()),
-                                    self.task_lifetime.expect("task_lifetime"),
+                                    self.task_lifetime,
                                     id,
                                     self.block_height,
                                 );
@@ -367,7 +380,7 @@ impl Runtime {
                                 let id = self.new_taskid();
                                 let watch_addr_req = watch_addr(
                                     AddressOrScript::Script(addr.script_pubkey()),
-                                    self.task_lifetime.expect("task_lifetime"),
+                                    self.task_lifetime,
                                     id,
                                     self.block_height,
                                 );
@@ -467,6 +480,7 @@ impl Runtime {
 
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
+                        let id = self.new_taskid();
                         match &self.state {
                             State::Alice(AliceState::CommitA(
                                 TradeRole::Maker,
@@ -474,6 +488,20 @@ impl Runtime {
                                 ..,
                             ))
                             | State::Bob(BobState::CommitB(TradeRole::Maker, local_params, ..)) => {
+                                trace!("received commitment from counterparty, can now reveal");
+                                let watch_height = Task::WatchHeight(WatchHeight {
+                                    id,
+                                    lifetime: self.task_lifetime,
+                                    addendum: vec![],
+                                });
+
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    Request::SyncerTask(watch_height),
+                                )?;
+
                                 let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
                                 info!("State transition: {}", next_state.bright_blue_bold());
@@ -517,9 +545,7 @@ impl Runtime {
                                     );
                                     let task = Task::WatchTransaction(WatchTransaction {
                                         id,
-                                        lifetime: self
-                                            .task_lifetime
-                                            .expect("task_lifetime is None"),
+                                        lifetime: self.task_lifetime,
                                         hash: txid.to_vec(),
                                         confirmation_bound: self.confirmation_bound,
                                     });
@@ -578,7 +604,7 @@ impl Runtime {
                                 // notify the syncer to watch for the buy transaction
                                 let task = Task::WatchTransaction(WatchTransaction {
                                     id,
-                                    lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                                    lifetime: self.task_lifetime,
                                     hash: txid.to_vec(),
                                     confirmation_bound: self.confirmation_bound,
                                 });
@@ -946,7 +972,7 @@ impl Runtime {
                         );
                         let task = Task::WatchTransaction(WatchTransaction {
                             id,
-                            lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                            lifetime: self.task_lifetime,
                             hash: txid.to_vec(),
                             confirmation_bound: self.confirmation_bound,
                         });
@@ -1042,7 +1068,7 @@ impl Runtime {
                     info!("subscribing with syncer for receiving buy tx updates");
                     let task = Task::WatchTransaction(WatchTransaction {
                         id: id_tx,
-                        lifetime: self.task_lifetime.expect("task_lifetime is None"),
+                        lifetime: self.task_lifetime,
                         hash: txid.to_vec(),
                         confirmation_bound: self.confirmation_bound,
                     });
@@ -1071,7 +1097,7 @@ impl Runtime {
                     debug!("subscribe Buy address task");
                     let req = watch_addr(
                         AddressOrScript::Script(script_pubkey),
-                        self.task_lifetime.unwrap(),
+                        self.task_lifetime,
                         id_addr,
                         self.block_height,
                     );
