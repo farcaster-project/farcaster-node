@@ -165,11 +165,11 @@ pub struct Runtime {
     tx_finality_thr: i32,
     confirmation_bound: u16,
     task_lifetime: Option<u64>,
-    txs_status: HashMap<i32, (TxLabel, TxStatus)>,
+    txs_status: HashMap<u32, (TxLabel, TxStatus)>,
     pending_requests: HashMap<ServiceId, PendingRequest>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    task_counter: i32,
+    task_counter: u32,
 }
 
 #[derive(Display, Clone)]
@@ -247,7 +247,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn new_taskid(&mut self) -> i32 {
+    fn new_taskid(&mut self) -> u32 {
         self.task_counter += 1;
         self.task_counter
     }
@@ -1237,7 +1237,7 @@ enum AddressOrScript {
     Script(bitcoin::Script),
 }
 
-fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64, id: i32) -> Request {
+fn watch_addr(addr_or_script: AddressOrScript, lifetime: u64, id: u32) -> Request {
     let addendum = match addr_or_script {
         AddressOrScript::Address(address) => BtcAddressAddendum {
             address: Some(address.clone()),

@@ -31,14 +31,14 @@ pub struct XmrAddressAddendum {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct Abort {
-    pub id: i32,
+    pub id: u32,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct WatchHeight {
-    pub id: i32,
+    pub id: u32,
     pub lifetime: u64,
 }
 
@@ -46,7 +46,7 @@ pub struct WatchHeight {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct WatchAddress {
-    pub id: i32,
+    pub id: u32,
     pub lifetime: u64,
     pub addendum: AddressAddendum,
     pub include_tx: Boolean,
@@ -73,7 +73,7 @@ impl From<Boolean> for bool {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct WatchTransaction {
-    pub id: i32,
+    pub id: u32,
     pub lifetime: u64,
     pub hash: Vec<u8>,
     pub confirmation_bound: u16,
@@ -83,7 +83,7 @@ pub struct WatchTransaction {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct BroadcastTransaction {
-    pub id: i32,
+    pub id: u32,
     pub tx: Vec<u8>,
 }
 
@@ -104,7 +104,7 @@ pub enum Task {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct TaskAborted {
-    pub id: i32,
+    pub id: u32,
     pub success_abort: i32,
 }
 
@@ -112,7 +112,7 @@ pub struct TaskAborted {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct HeightChanged {
-    pub id: i32,
+    pub id: u32,
     pub block: Vec<u8>,
     pub height: u64,
 }
@@ -121,7 +121,7 @@ pub struct HeightChanged {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct AddressTransaction {
-    pub id: i32,
+    pub id: u32,
     pub hash: Vec<u8>,
     pub amount: u64,
     pub block: Vec<u8>,
@@ -132,7 +132,7 @@ pub struct AddressTransaction {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct TransactionConfirmations {
-    pub id: i32,
+    pub id: u32,
     pub block: Vec<u8>,
     pub confirmations: i32,
 }
@@ -141,7 +141,7 @@ pub struct TransactionConfirmations {
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct TransactionBroadcasted {
-    pub id: i32,
+    pub id: u32,
     pub tx_len: i16,
     pub tx: Vec<u8>,
     pub success_broadcast: i32,

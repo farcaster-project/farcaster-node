@@ -64,7 +64,7 @@ impl SyncerState {
         }
     }
 
-    pub fn abort(&mut self, task_id: i32, source: ServiceId) {
+    pub fn abort(&mut self, task_id: u32, source: ServiceId) {
         let status = 0;
         // match self.tasks.remove(&task.id) {
         //     None => {}
