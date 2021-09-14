@@ -211,24 +211,19 @@ impl Runtime {
                             );
                             info!("Creating {}", "Wallet::Bob".bright_yellow());
                             if let request::Commit::Alice(remote_commit) = remote_commit.clone() {
-                                if self.wallets.get(&swap_id).is_none() {
-                                    self.wallets.insert(
-                                        swap_id,
-                                        Wallet::Bob(
-                                            bob,
-                                            local_params.clone(),
-                                            key_manager,
-                                            public_offer.clone(),
-                                            Some(funding),
-                                            Some(remote_commit),
-                                            None,
-                                            None,
-                                        ),
-                                    );
-                                } else {
-                                    error!("Wallet already exists");
-                                    return Ok(());
-                                }
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Bob(
+                                        bob,
+                                        local_params.clone(),
+                                        key_manager,
+                                        public_offer.clone(),
+                                        Some(funding),
+                                        Some(remote_commit),
+                                        None,
+                                        None,
+                                    ),
+                                );
                             } else {
                                 error!("Not Commit::Alice");
                                 return Ok(());
