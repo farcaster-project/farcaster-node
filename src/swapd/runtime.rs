@@ -274,8 +274,12 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl SyncerState {
     fn handle_height_change(&mut self, block_height: u64) {
-        self.block_height = block_height;
-        self.task_lifetime = block_height + 500;
+        if &block_height > &self.block_height {
+            self.block_height = block_height;
+            self.task_lifetime = block_height + 500;
+        } else {
+            warn!("block height did not increment, maybe syncer sends multiple events");
+        }
     }
 
     fn new_taskid(&mut self) -> i32 {

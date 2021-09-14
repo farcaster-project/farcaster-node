@@ -190,10 +190,6 @@ impl Runtime {
                     remote_addr: internet2::RemoteSocketAddr::Ftcp(peer_address),
                 };
                 let peer = daemon_service
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
-
-                let peer = daemon_service
                     .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
                 match offer.maker_role {
@@ -306,7 +302,7 @@ impl Runtime {
                                     _alice_params,
                                     key_manager,
                                     _public_offer,
-                                    bob_commit,
+                                    bob_commit, // None
                                     bob_params, // None
                                     _core_arb_txs,
                                 )) => {
