@@ -181,7 +181,7 @@ impl SyncerState {
         trace!("inside change_address");
         self.drop_lifetimes();
         if self.addresses.is_empty() {
-            debug!("no addresses here");
+            debug!("no addresses in change address");
         }
 
         inner(

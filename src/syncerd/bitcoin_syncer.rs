@@ -161,10 +161,18 @@ impl ElectrumRpc {
                     .client
                     .transaction_get(&txid)
                     .expect("cant get transaction");
+                let mut output_found = false;
                 for output in tx.output.iter() {
                     if output.script_pubkey == script {
+                        output_found = true;
                         our_amount += output.value
                     }
+                }
+                if !output_found {
+                    debug!(
+                        "ignoring outgoing transaction in handle address notification, continuing"
+                    );
+                    continue;
                 }
                 // if the transaction is mined, get the blockhash of the block containing it
                 let block_hash = if hist.height > 0 {
