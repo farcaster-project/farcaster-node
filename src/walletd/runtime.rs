@@ -248,20 +248,19 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             info!("Creating {}", "Wallet::Alice".bright_yellow());
                             if let request::Commit::Bob(bob_commit) = remote_commit.clone() {
-                                if self.wallets.get(&swap_id).is_none() {
-                                    self.wallets.insert(
-                                        swap_id,
-                                        Wallet::Alice(
-                                            alice,
-                                            params.clone(),
-                                            key_manager,
-                                            public_offer.clone(),
-                                            Some(bob_commit),
-                                            None,
-                                            None,
-                                        ),
-                                    );
-                                }
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Alice(
+                                        alice,
+                                        params.clone(),
+                                        key_manager,
+                                        public_offer.clone(),
+                                        Some(bob_commit),
+                                        None,
+                                        None,
+                                    ),
+                                );
+
                                 let launch_swap = LaunchSwap {
                                     peer: peer.into(),
                                     local_trade_role: TradeRole::Maker,
