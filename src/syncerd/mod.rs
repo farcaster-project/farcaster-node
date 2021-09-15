@@ -15,6 +15,7 @@
 pub mod bitcoin_syncer;
 pub mod monero_syncer;
 pub mod syncer_state;
+pub mod types;
 
 #[cfg(feature = "shell")]
 pub mod opts;
@@ -24,3 +25,4 @@ pub mod runtime;
 pub use opts::Opts;
 pub use runtime::run;
 pub use runtime::SyncerServers;
+pub use types::*;

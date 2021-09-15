@@ -13,7 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::opts::Coin;
+use crate::syncerd::{opts::Coin, Abort, HeightChanged, WatchHeight};
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -42,10 +42,14 @@ use bitcoin::{
 };
 use bitcoin::{OutPoint, SigHashType};
 
+use crate::syncerd::types::{
+    AddressAddendum, AddressTransaction, Boolean, BroadcastTransaction, BtcAddressAddendum, Event,
+    Task, TransactionConfirmations, WatchAddress, WatchTransaction,
+};
 use farcaster_core::{
     bitcoin::{
-        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, tasks::BtcAddressAddendum,
-        timelock::CSVTimelock, Bitcoin, BitcoinSegwitV0,
+        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin,
+        BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
     consensus::{self, Encodable as FarEncodable},
@@ -58,10 +62,6 @@ use farcaster_core::{
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager},
     swap::SwapId,
-    syncer::{
-        Abort, AddressTransaction, Boolean, BroadcastTransaction, Event, HeightChanged, Task,
-        TransactionConfirmations, WatchAddress, WatchHeight, WatchTransaction,
-    },
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
 use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
@@ -193,9 +193,9 @@ impl TemporalSafety {
 
 struct SyncerState {
     task_lifetime: u64,
-    txs_status: HashMap<i32, (TxLabel, TxStatus)>,
+    txs_status: HashMap<u32, (TxLabel, TxStatus)>,
     block_height: u64,
-    task_counter: i32,
+    task_counter: u32,
 }
 
 #[derive(Display, Clone)]
@@ -282,7 +282,7 @@ impl SyncerState {
         }
     }
 
-    fn new_taskid(&mut self) -> i32 {
+    fn new_taskid(&mut self) -> u32 {
         self.task_counter += 1;
         self.task_counter
     }
@@ -384,7 +384,6 @@ impl Runtime {
                                 let watch_height = Task::WatchHeight(WatchHeight {
                                     id: self.syncer_state.new_taskid(),
                                     lifetime: self.syncer_state.task_lifetime,
-                                    addendum: vec![],
                                 });
                                 senders.send_to(
                                     ServiceBus::Ctl,
@@ -535,7 +534,6 @@ impl Runtime {
                                 let watch_height = Task::WatchHeight(WatchHeight {
                                     id,
                                     lifetime: self.syncer_state.task_lifetime,
-                                    addendum: vec![],
                                 });
 
                                 senders.send_to(
@@ -1340,26 +1338,26 @@ enum AddressOrScript {
 fn watch_addr(
     addr_or_script: AddressOrScript,
     lifetime: u64,
-    id: i32,
+    id: u32,
     from_height: u64,
 ) -> Request {
     let addendum = match addr_or_script {
         AddressOrScript::Address(addr) => BtcAddressAddendum {
-            address: addr.to_string(),
+            address: Some(addr.clone()),
             from_height,
-            script_pubkey: bitcoin::consensus::serialize(&addr.script_pubkey()),
+            script_pubkey: addr.script_pubkey(),
         },
         AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
-            address: s!(""),
-            from_height,
-            script_pubkey: bitcoin::consensus::serialize(&script_pubkey),
+            address: None,
+            from_height: 0,
+            script_pubkey,
         },
     };
-    let addendum = consensus::serialize(&addendum);
+
     Request::SyncerTask(Task::WatchAddress(WatchAddress {
         id,
         lifetime,
-        addendum,
+        addendum: AddressAddendum::Bitcoin(addendum),
         include_tx: Boolean::True,
     }))
 }

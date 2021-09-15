@@ -18,8 +18,6 @@ use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::Coin;
 use amplify::Wrapper;
 use farcaster_core::blockchain::Network;
-use farcaster_core::syncer::Abort;
-use farcaster_core::syncer::{Syncer, Task};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
@@ -43,6 +41,7 @@ use microservices::rpc::Failure;
 
 use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
+use crate::syncerd::*;
 use crate::{Config, Error, LogStyle, Service, ServiceId};
 
 pub struct SyncerdTask {
@@ -88,9 +87,13 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
         tx,
     };
     let polling = true;
-    runtime
-        .syncer
-        .run(rx, tx_event, runtime.identity().into(), syncer_servers, polling);
+    runtime.syncer.run(
+        rx,
+        tx_event,
+        runtime.identity().into(),
+        syncer_servers,
+        polling,
+    );
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
     service.run_loop()?;
