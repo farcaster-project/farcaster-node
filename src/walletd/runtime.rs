@@ -233,9 +233,9 @@ impl Runtime {
                                 senders,
                                 ServiceId::Farcasterd,
                                 Request::LaunchSwap(launch_swap),
-                            )
+                            )?;
                         } else {
-                            Err(Error::Farcaster("Wallet already existed".to_string()))
+                            error!("Wallet already existed");
                         }
                     }
                     SwapRole::Alice => {
@@ -274,17 +274,15 @@ impl Runtime {
                                     senders,
                                     ServiceId::Farcasterd,
                                     Request::LaunchSwap(launch_swap),
-                                )
+                                )?;
                             } else {
                                 error!("Not Commit::Bob");
-                                return Ok(());
                             }
                         } else {
                             error!("Wallet already existed");
-                            return Ok(());
                         }
                     }
-                }?
+                }
             }
             Request::Protocol(Msg::MakerCommit(commit)) => {
                 if get_swap_id(source)? != Msg::MakerCommit(commit.clone()).swap_id() {
@@ -387,13 +385,15 @@ impl Runtime {
                         {
                             // set wallet params
                             if alice_params.is_some() {
-                                Err(Error::Farcaster("Alice params already set".to_string()))?
+                                error!("Alice params already set");
+                                return Ok(());
                             }
                             *alice_params = Some(reveal.into());
 
                             // set wallet core_arb_txs
                             if core_arb_txs.is_some() {
-                                Err(Error::Farcaster("Core Arb Txs already set".to_string()))?
+                                error!("Core Arb Txs already set");
+                                return Ok(());
                             }
                             if !funding.was_seen() {
                                 error!("Funding not yet seen");
@@ -420,7 +420,7 @@ impl Runtime {
                             let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
                             self.send_ctl(senders, source, Request::Protocol(core_arb_setup))?;
                         } else {
-                            Err(Error::Farcaster("only Some(Wallet::Bob)".to_string()))?
+                            error!("only Some(Wallet::Bob)");
                         }
                     }
                 }
@@ -473,9 +473,9 @@ impl Runtime {
                         self.identity(),
                         source, // destination swapd
                         Request::Protocol(buy_proc_sig),
-                    )?
+                    )?;
                 } else {
-                    Err(Error::Farcaster("Unknown wallet and swap_id".to_string()))?
+                    error!("Unknown wallet and swap_id");
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
@@ -526,7 +526,7 @@ impl Runtime {
                         Request::Protocol(refund_proc_signatures),
                     )?
                 } else {
-                    Err(Error::Farcaster("only Some(Wallet::Alice)".to_string()))?
+                    error!("only Some(Wallet::Alice)");
                 }
             }
             Request::Protocol(Msg::BuyProcedureSignature(BuyProcedureSignature {
@@ -676,7 +676,8 @@ impl Runtime {
                                 ),
                             );
                         } else {
-                            Err(Error::Farcaster(s!("Wallet already exists")))?
+                            error!("Wallet already exists");
+                            return Ok(());
                         }
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
@@ -719,7 +720,7 @@ impl Runtime {
                                 ),
                             );
                         } else {
-                            Err(Error::Farcaster(s!("Wallet already exists")))?
+                            error!("Wallet already exists");
                         }
                         let launch_swap = LaunchSwap {
                             peer: peer.into(),
@@ -799,13 +800,10 @@ fn address() -> bitcoin::Address {
 pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Fund)?;
     debug!("bug to fix: not Fund, Lock^");
-    FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)
-        .map_err(|_| Error::Farcaster("Impossible to initialize funding tx".to_string()))
+    Ok(FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)?)
 }
 
 pub fn funding_update(funding: &mut FundingTx, tx: bitcoin::Transaction) -> Result<(), Error> {
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> { funding: tx };
-    funding
-        .update(funding_bundle.funding.clone())
-        .map_err(|_| Error::Farcaster(s!("Could not update funding")))
+    Ok(funding.update(funding_bundle.funding.clone())?)
 }

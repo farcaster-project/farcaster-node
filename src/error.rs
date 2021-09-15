@@ -31,15 +31,6 @@ pub enum Error {
     /// Farcaster core errors: {0}
     FarcasterCore(farcaster_core::Error),
 
-    /// Farcaster core Transaction error: {0}
-    CoreTransaction(farcaster_core::transaction::Error),
-
-    /// Crypto error: {0}
-    CoreCrypto(farcaster_core::crypto::Error),
-
-    /// Farcaster core Consensus error: {0}
-    CoreConsensus(farcaster_core::consensus::Error),
-
     /// Farcaster node errors: {0}
     Farcaster(String),
 
@@ -166,18 +157,18 @@ impl From<bitcoin::hashes::Error> for Error {
 
 impl From<farcaster_core::transaction::Error> for Error {
     fn from(err: farcaster_core::transaction::Error) -> Self {
-        Error::CoreTransaction(err)
+        Error::FarcasterCore(err.into())
     }
 }
 
 impl From<farcaster_core::crypto::Error> for Error {
     fn from(err: farcaster_core::crypto::Error) -> Self {
-        Error::CoreCrypto(err)
+        Error::FarcasterCore(err.into())
     }
 }
 
 impl From<farcaster_core::consensus::Error> for Error {
     fn from(err: farcaster_core::consensus::Error) -> Self {
-        Error::CoreConsensus(err)
+        Error::FarcasterCore(err.into())
     }
 }
