@@ -294,27 +294,25 @@ impl Runtime {
 
                 match commit {
                     Commit::Bob(CommitBobParameters { swap_id, .. }) => {
-                        match self.wallets.get_mut(&swap_id) {
-                            Some(Wallet::Alice(
-                                _alice,
-                                _alice_params,
-                                key_manager,
-                                _public_offer,
-                                bob_commit, // None
-                                bob_params, // None
-                                _core_arb_txs,
-                            )) => {
-                                if let Some(_) = bob_commit {
-                                    error!("Bob commit (remote) already set");
-                                } else if let Commit::Bob(commit) = commit {
-                                    trace!("Setting bob commit");
-                                    *bob_commit = Some(commit);
-                                }
+                        if let Some(Wallet::Alice(
+                            _alice,
+                            _alice_params,
+                            key_manager,
+                            _public_offer,
+                            bob_commit, // None
+                            bob_params, // None
+                            _core_arb_txs,
+                        )) = self.wallets.get_mut(&swap_id)
+                        {
+                            if let Some(_) = bob_commit {
+                                error!("Bob commit (remote) already set");
+                            } else if let Commit::Bob(commit) = commit {
+                                trace!("Setting bob commit");
+                                *bob_commit = Some(commit);
                             }
-                            _ => {
-                                error!("Wallet not found or not on correct state");
-                                return Ok(());
-                            }
+                        } else {
+                            error!("Wallet not found or not on correct state");
+                            return Ok(());
                         }
                     }
                     Commit::Alice(CommitAliceParameters { swap_id, .. }) => {
