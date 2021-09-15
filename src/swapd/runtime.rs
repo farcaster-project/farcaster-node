@@ -31,14 +31,17 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
-use bitcoin::util::{
-    bip143::SigHashCache,
-    psbt::{serialize::Deserialize, PartiallySignedTransaction},
-};
 use bitcoin::{consensus::Encodable, secp256k1};
 use bitcoin::{
     hashes::{hex::FromHex, sha256, Hash, HashEngine},
     Txid,
+};
+use bitcoin::{
+    util::{
+        bip143::SigHashCache,
+        psbt::{serialize::Deserialize, PartiallySignedTransaction},
+    },
+    Script,
 };
 use bitcoin::{OutPoint, SigHashType};
 
@@ -286,6 +289,21 @@ impl SyncerState {
         self.task_counter += 1;
         self.task_counter
     }
+
+    fn watch_addr(&mut self, script_pubkey: Script, id: u32) -> Request {
+        let from_height = self.block_height - 100;
+        let addendum = BtcAddressAddendum {
+            address: None,
+            from_height,
+            script_pubkey,
+        };
+        Request::SyncerTask(Task::WatchAddress(WatchAddress {
+            id,
+            lifetime: self.task_lifetime,
+            addendum: AddressAddendum::Bitcoin(addendum),
+            include_tx: Boolean::True,
+        }))
+    }
 }
 impl Runtime {
     fn send_peer(&self, senders: &mut Senders, msg: request::Msg) -> Result<(), Error> {
@@ -345,12 +363,8 @@ impl Runtime {
                             )),
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
                                 let id = self.syncer_state.new_taskid();
-                                let watch_addr_req = watch_addr(
-                                    AddressOrScript::Script(addr.script_pubkey()),
-                                    self.syncer_state.task_lifetime,
-                                    id,
-                                    self.syncer_state.block_height,
-                                );
+                                let watch_addr_req =
+                                    self.syncer_state.watch_addr(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
                                     .txs_status
@@ -419,12 +433,8 @@ impl Runtime {
                             )),
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
                                 let id = self.syncer_state.new_taskid();
-                                let watch_addr_req = watch_addr(
-                                    AddressOrScript::Script(addr.script_pubkey()),
-                                    self.syncer_state.task_lifetime,
-                                    id,
-                                    self.syncer_state.block_height,
-                                );
+                                let watch_addr_req =
+                                    self.syncer_state.watch_addr(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
                                     .txs_status
@@ -1165,12 +1175,7 @@ impl Runtime {
                     .is_none()
                 {
                     debug!("subscribe Buy address task");
-                    let req = watch_addr(
-                        AddressOrScript::Script(script_pubkey),
-                        self.syncer_state.task_lifetime,
-                        id_addr,
-                        self.syncer_state.block_height,
-                    );
+                    let req = self.syncer_state.watch_addr(script_pubkey, id_addr);
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -1333,33 +1338,6 @@ enum TxStatus {
 enum AddressOrScript {
     Address(bitcoin::Address),
     Script(bitcoin::Script),
-}
-
-fn watch_addr(
-    addr_or_script: AddressOrScript,
-    lifetime: u64,
-    id: u32,
-    from_height: u64,
-) -> Request {
-    let addendum = match addr_or_script {
-        AddressOrScript::Address(addr) => BtcAddressAddendum {
-            address: Some(addr.clone()),
-            from_height,
-            script_pubkey: addr.script_pubkey(),
-        },
-        AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
-            address: None,
-            from_height: 0,
-            script_pubkey,
-        },
-    };
-
-    Request::SyncerTask(Task::WatchAddress(WatchAddress {
-        id,
-        lifetime,
-        addendum: AddressAddendum::Bitcoin(addendum),
-        include_tx: Boolean::True,
-    }))
 }
 
 #[derive(Debug)]
