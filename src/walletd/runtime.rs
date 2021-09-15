@@ -190,10 +190,6 @@ impl Runtime {
                     remote_addr: internet2::RemoteSocketAddr::Ftcp(peer_address),
                 };
                 let peer = daemon_service
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
-
-                let peer = daemon_service
                     .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
                 match offer.maker_role {
@@ -211,24 +207,19 @@ impl Runtime {
                             );
                             info!("Creating {}", "Wallet::Bob".bright_yellow());
                             if let request::Commit::Alice(remote_commit) = remote_commit.clone() {
-                                if self.wallets.get(&swap_id).is_none() {
-                                    self.wallets.insert(
-                                        swap_id,
-                                        Wallet::Bob(
-                                            bob,
-                                            local_params.clone(),
-                                            key_manager,
-                                            public_offer.clone(),
-                                            Some(funding),
-                                            Some(remote_commit),
-                                            None,
-                                            None,
-                                        ),
-                                    );
-                                } else {
-                                    error!("Wallet already exists");
-                                    return Ok(());
-                                }
+                                self.wallets.insert(
+                                    swap_id,
+                                    Wallet::Bob(
+                                        bob,
+                                        local_params.clone(),
+                                        key_manager,
+                                        public_offer.clone(),
+                                        Some(funding),
+                                        Some(remote_commit),
+                                        None,
+                                        None,
+                                    ),
+                                );
                             } else {
                                 error!("Not Commit::Alice");
                                 return Ok(());
@@ -311,7 +302,7 @@ impl Runtime {
                                     _alice_params,
                                     key_manager,
                                     _public_offer,
-                                    bob_commit,
+                                    bob_commit, // None
                                     bob_params, // None
                                     _core_arb_txs,
                                 )) => {
