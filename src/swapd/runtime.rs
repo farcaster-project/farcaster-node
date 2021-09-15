@@ -391,23 +391,22 @@ impl Runtime {
                             ))),
                         }?;
 
-                        match &self.state {
-                            State::Alice(AliceState::CommitA(TradeRole::Taker, ..))
-                            | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) => {
-                                trace!("Watch height");
-                                let watch_height = Task::WatchHeight(WatchHeight {
-                                    id: self.syncer_state.new_taskid(),
-                                    lifetime: self.syncer_state.task_lifetime,
-                                });
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Syncer(Coin::Bitcoin),
-                                    Request::SyncerTask(watch_height),
-                                )?;
-                            }
-                            _ => unreachable!(),
+                        if let State::Alice(AliceState::CommitA(TradeRole::Taker, ..))
+                        | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) = &self.state
+                        {
+                            trace!("Watch height");
+                            let watch_height = Task::WatchHeight(WatchHeight {
+                                id: self.syncer_state.new_taskid(),
+                                lifetime: self.syncer_state.task_lifetime,
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Syncer(Coin::Bitcoin),
+                                Request::SyncerTask(watch_height),
+                            )?;
                         }
+
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
