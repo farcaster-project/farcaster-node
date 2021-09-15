@@ -71,10 +71,6 @@ use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
-use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
-use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
-use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
@@ -130,7 +126,6 @@ pub fn run(
         peer_service: ServiceId::Loopback,
         chain,
         state: init_state,
-        funding_outpoint: default!(),
         maker_peer: None,
         started: SystemTime::now(),
         accordant_amount,
@@ -162,7 +157,6 @@ pub struct Runtime {
     chain: Chain,
     state: State,
     // remote_state: State,
-    funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
     accordant_amount: monero::Amount,
