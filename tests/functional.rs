@@ -38,8 +38,7 @@ We test for the following scenarios in the address block height tests:
 */
 #[test]
 fn bitcoin_syncer_block_height_test() {
-    let path =
-        std::path::PathBuf::from_str("/home/drgrid/containers/data_dir/regtest/.cookie").unwrap();
+    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
     let bitcoin_rpc =
         Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
 
@@ -144,8 +143,7 @@ many times the same event
 */
 #[test]
 fn bitcoin_syncer_address_test() {
-    let path =
-        std::path::PathBuf::from_str("/home/drgrid/containers/data_dir/regtest/.cookie").unwrap();
+    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
     let bitcoin_rpc =
         Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
 
@@ -344,8 +342,7 @@ the threshold confs are reached
 */
 #[test]
 fn bitcoin_syncer_transaction_test() {
-    let path =
-        std::path::PathBuf::from_str("/home/drgrid/containers/data_dir/regtest/.cookie").unwrap();
+    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
     let bitcoin_rpc =
         Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
 
