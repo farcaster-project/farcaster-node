@@ -26,6 +26,19 @@ use farcaster_node::syncerd::types::{
 };
 
 /*
+These tests need to run serialy, otherwise we cannot verify events based on the
+state of electrum and bitcoin
+*/
+
+#[test]
+#[ignore] // it's too expensive
+fn bitcoin_syncer_test() {
+    bitcoin_syncer_block_height_test();
+    bitcoin_syncer_address_test();
+    bitcoin_syncer_transaction_test();
+}
+
+/*
 We test for the following scenarios in the address block height tests:
 
 - Submit a WatchHeight task, and immediately receive a HeightChanged event
@@ -36,7 +49,6 @@ We test for the following scenarios in the address block height tests:
 
 - Mine another block and receive two HeightChanged events
 */
-#[test]
 fn bitcoin_syncer_block_height_test() {
     let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
     let bitcoin_rpc =
@@ -57,8 +69,8 @@ fn bitcoin_syncer_block_height_test() {
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://syncerdbridge").unwrap();
-    rx_event.bind("inproc://syncerdbridge").unwrap();
+    tx_event.connect("inproc://testheightbridge").unwrap();
+    rx_event.bind("inproc://testheightbridge").unwrap();
     let mut syncer = BitcoinSyncer::new();
     let syncer_servers = SyncerServers {
         electrum_server: "tcp://localhost:50001".to_string(),
@@ -87,14 +99,17 @@ fn bitcoin_syncer_block_height_test() {
     tx.send(task).unwrap();
 
     // Receive the request and compare it to the actual block count
-    println!("await message");
+    println!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
     let request = get_request_from_message(message);
+    let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
     // Generate a single height changed event
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    println!("await message");
+    println!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
     let request = get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
@@ -114,11 +129,15 @@ fn bitcoin_syncer_block_height_test() {
 
     // generate another block - this should result in two height changed messages
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
+    println!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
     let request = get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
+    println!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
     let request = get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
@@ -141,7 +160,6 @@ the complete existing transaction history
 - Submit a WatchAddress task many times with the same address, ensure we receive
 many times the same event
 */
-#[test]
 fn bitcoin_syncer_address_test() {
     let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
     let bitcoin_rpc =
@@ -166,8 +184,8 @@ fn bitcoin_syncer_address_test() {
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://syncerdbridge").unwrap();
-    rx_event.bind("inproc://syncerdbridge").unwrap();
+    tx_event.connect("inproc://testaddressbridge").unwrap();
+    rx_event.bind("inproc://testaddressbridge").unwrap();
     let mut syncer = BitcoinSyncer::new();
     let syncer_servers = SyncerServers {
         electrum_server: "tcp://localhost:50001".to_string(),
@@ -230,6 +248,7 @@ fn bitcoin_syncer_address_test() {
         .unwrap();
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
 
@@ -237,6 +256,7 @@ fn bitcoin_syncer_address_test() {
     let block_hash = bitcoin_rpc.generate_to_address(1, &address1).unwrap();
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received transaction message");
     let request = get_request_from_message(message);
     let block = bitcoin_rpc.get_block(&block_hash[0]).unwrap();
     let address_transaction_amount = find_coinbase_transaction_amount(block.txdata.clone());
@@ -256,6 +276,7 @@ fn bitcoin_syncer_address_test() {
         .unwrap();
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -265,6 +286,7 @@ fn bitcoin_syncer_address_test() {
 
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -285,6 +307,7 @@ fn bitcoin_syncer_address_test() {
     tx.send(watch_address_task_3).unwrap();
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -293,6 +316,7 @@ fn bitcoin_syncer_address_test() {
     );
     println!("waiting for watch transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -325,6 +349,7 @@ fn bitcoin_syncer_address_test() {
     for _ in 0..5 {
         println!("waiting for repeated watch transaction message");
         let message = rx_event.recv_multipart(0).unwrap();
+        println!("received repeated transaction message");
         let request = get_request_from_message(message);
         assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
     }
@@ -340,7 +365,6 @@ the threshold confs are reached
 
 - Submit two WatchTransaction tasks in parallel, receive confirmation events for both
 */
-#[test]
 fn bitcoin_syncer_transaction_test() {
     let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
     let bitcoin_rpc =
@@ -362,8 +386,8 @@ fn bitcoin_syncer_transaction_test() {
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://syncerdbridge").unwrap();
-    rx_event.bind("inproc://syncerdbridge").unwrap();
+    tx_event.connect("inproc://testtransactionbridge").unwrap();
+    rx_event.bind("inproc://testtransactionbridge").unwrap();
     let mut syncer = BitcoinSyncer::new();
     let syncer_servers = SyncerServers {
         electrum_server: "tcp://localhost:50001".to_string(),
@@ -404,18 +428,21 @@ fn bitcoin_syncer_transaction_test() {
 
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 0, vec![0]);
 
     let block_hash = bitcoin_rpc.generate_to_address(1, &address).unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 1, block_hash[0].to_vec());
 
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 2, block_hash[0].to_vec());
 
@@ -434,12 +461,14 @@ fn bitcoin_syncer_transaction_test() {
     .unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 1, block_hash[0].to_vec());
 
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 2, block_hash[0].to_vec());
 
@@ -473,10 +502,12 @@ fn bitcoin_syncer_transaction_test() {
 
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 0, vec![0]);
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 0, vec![0]);
 }
@@ -552,14 +583,14 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
     0
 }
 
+#[ignore]
 #[tokio::test]
 async fn monero_syncer_block_height_test() {
     let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
     let daemon = daemon_client.daemon();
     let regtest = daemon.regtest();
     let count = regtest.get_block_count().await.unwrap();
-    println!("count: {:?}", count);
-
+    println!("monero block count: {:?}", count);
     let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
     let wallet = wallet_client.wallet();
     match wallet
@@ -571,10 +602,6 @@ async fn monero_syncer_block_height_test() {
         }
     }
 
-    // allow some time for things to happen, like the wallet server catching up
-    let duration = std::time::Duration::from_secs(5);
-    std::thread::sleep(duration);
-
     let address = wallet.get_address(0, None).await.unwrap();
     let generate = regtest.generate_blocks(200, address.address).await.unwrap();
     println!("generated: {:?}", generate);
@@ -582,9 +609,12 @@ async fn monero_syncer_block_height_test() {
     let balance = wallet.get_balance(0, None).await.unwrap();
     println!("balance: {:?}", balance);
 
+    // allow some time for things to happen, like the wallet server catching up
+    let duration = std::time::Duration::from_secs(5);
+    std::thread::sleep(duration);
+
     let mut destination: HashMap<Address, u64> = HashMap::new();
     destination.insert(address.address, 1);
-
     let options = monero_rpc::TransferOptions {
         account_index: None,
         subaddr_indices: None,
@@ -594,7 +624,6 @@ async fn monero_syncer_block_height_test() {
         payment_id: None,
         do_not_relay: None,
     };
-
     wallet
         .transfer(destination, monero_rpc::TransferPriority::Default, options)
         .await
