@@ -74,7 +74,7 @@ use internet2::{
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
-use request::{Commit, Datum, InitSwap, Params, Reveal, TakeCommit};
+use request::{Commit, Tx, InitSwap, Params, Reveal, TakeCommit};
 
 pub fn run(
     config: Config,
@@ -919,7 +919,7 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding => {
                                 info!("Funding transaction received, forwarding to wallet");
-                                let req = Request::Datum(Datum::Funding(tx));
+                                let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                                 senders.send_to(
                                     ServiceBus::Ctl,
@@ -935,7 +935,7 @@ impl Runtime {
                                            sending it to wallet: {}",
                                         &tx.txid().addr()
                                     );
-                                    let req = Request::Datum(Datum::FullySignedBuy(tx));
+                                    let req = Request::Tx(Tx::Buy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
                                 } else {
                                     error!("not BuyProcSigB")
@@ -1113,7 +1113,7 @@ impl Runtime {
                 self.state = next_state;
             }
 
-            Request::Datum(Datum::SignedArbitratingLock(btc_lock)) => {
+            Request::Tx(Tx::Lock(btc_lock)) => {
                 if let State::Bob(BobState::CorearbB(ref core_arb)) = self.state {
                     let req =
                         Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
@@ -1132,7 +1132,7 @@ impl Runtime {
                     error!("Wrong state: must be RevealB, found {}", &self.state)
                 }
             }
-            Request::Datum(Datum::FullySignedBuy(buy_tx)) => {
+            Request::Tx(Tx::Buy(buy_tx)) => {
                 trace!("received fullysigned from wallet");
                 if let State::Alice(AliceState::RefundSigA(..)) = self.state {
                     let req =
