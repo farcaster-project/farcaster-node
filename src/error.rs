@@ -33,6 +33,7 @@ pub enum Error {
 
     /// Farcaster node errors: {0}
     Farcaster(String),
+
     /// I/O error: {0:?}
     #[from(io::Error)]
     Io(IoError),
@@ -151,5 +152,23 @@ impl From<electrum_client::Error> for Error {
 impl From<bitcoin::hashes::Error> for Error {
     fn from(err: bitcoin::hashes::Error) -> Self {
         Error::BitcoinHashes(err)
+    }
+}
+
+impl From<farcaster_core::transaction::Error> for Error {
+    fn from(err: farcaster_core::transaction::Error) -> Self {
+        Error::FarcasterCore(err.into())
+    }
+}
+
+impl From<farcaster_core::crypto::Error> for Error {
+    fn from(err: farcaster_core::crypto::Error) -> Self {
+        Error::FarcasterCore(err.into())
+    }
+}
+
+impl From<farcaster_core::consensus::Error> for Error {
+    fn from(err: farcaster_core::consensus::Error) -> Self {
+        Error::FarcasterCore(err.into())
     }
 }
