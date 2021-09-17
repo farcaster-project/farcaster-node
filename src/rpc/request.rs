@@ -275,6 +275,7 @@ pub enum Datum {
     FullySignedBuy(Transaction),
     Funding(Transaction),
     Cancel(Transaction),
+    Refund(Transaction),
 }
 
 use crate::{Error, ServiceId};

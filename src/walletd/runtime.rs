@@ -26,14 +26,15 @@ use bitcoin::{
 use colored::Colorize;
 use farcaster_core::{
     bitcoin::{
-        segwitv0::{BuyTx, CancelTx, FundingTx},
+        segwitv0::{BuyTx, CancelTx, FundingTx, RefundTx},
         segwitv0::{LockTx, SegwitV0},
         Bitcoin, BitcoinSegwitV0,
     },
     blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FullySignedBuy,
-        FundingTransaction, SignedAdaptorBuy, SignedAdaptorRefund, SignedArbitratingLock,
+        FullySignedRefund, FundingTransaction, SignedAdaptorBuy, SignedAdaptorRefund,
+        SignedArbitratingLock,
     },
     crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
@@ -445,13 +446,14 @@ impl Runtime {
                 {
                     error!("validate_adaptor_refund missing");
                     let core_arb_txs = &(core_arb_setup.clone()).into();
+                    let signed_adaptor_refund = &SignedAdaptorRefund { refund_adaptor_sig };
 
                     bob.validate_adaptor_refund(
                         key_manager,
                         alice_params,
                         bob_params,
                         core_arb_txs,
-                        &SignedAdaptorRefund { refund_adaptor_sig },
+                        signed_adaptor_refund,
                     )?;
 
                     // *refund_sigs = Some(refund_proc_sigs);
@@ -470,7 +472,9 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
-                            Request::Datum(request::Datum::SignedArbitratingLock(finalized_lock_tx)),
+                            Request::Datum(request::Datum::SignedArbitratingLock(
+                                finalized_lock_tx,
+                            )),
                         )?;
                     }
 
@@ -503,10 +507,41 @@ impl Runtime {
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
                         senders.send_to(
                             ServiceBus::Ctl,
-                            my_id,
-                            source, // destination swapd
+                            my_id.clone(),
+                            source.clone(), // destination swapd
                             Request::Datum(Datum::Cancel(finalized_cancel_tx)),
                         )?;
+                    }
+                    {
+                        // refund
+                        if let Request::Protocol(Msg::RefundProcedureSignatures(refundsigs)) =
+                            request
+                        {
+                            let FullySignedRefund {
+                                refund_sig,
+                                refund_adapted_sig,
+                            } = bob.fully_sign_refund(
+                                key_manager,
+                                bob_params,
+                                core_arb_txs.clone(),
+                                signed_adaptor_refund,
+                            )?;
+                            let tx = core_arb_setup.refund.clone();
+                            let mut refund_tx = RefundTx::from_partial(tx);
+
+                            refund_tx.add_witness(bob_params.refund, refund_sig)?;
+                            refund_tx.add_witness(alice_params.refund, refund_adapted_sig)?;
+                            let final_refund_tx =
+                                Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(
+                                    &mut refund_tx,
+                                )?;
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                my_id,
+                                source, // destination swapd
+                                Request::Datum(Datum::Refund(final_refund_tx)),
+                            )?;
+                        }
                     }
                 } else {
                     error!("Unknown wallet and swap_id");
