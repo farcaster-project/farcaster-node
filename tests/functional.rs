@@ -62,41 +62,11 @@ We test for the following scenarios in the block height tests:
 - Mine another block and receive two HeightChanged events
 */
 fn bitcoin_syncer_block_height_test() {
-    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
-    let bitcoin_rpc =
-        Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
-
-    // make sure a wallet is created and loaded
-    match bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
-        Err(_e) => match bitcoin_rpc.load_wallet("wallet") {
-            _ => {}
-        },
-        _ => {}
-    }
-
-    // generate some blocks to an address
+    let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     // start a bitcoin syncer
-    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testheightbridge").unwrap();
-    rx_event.bind("inproc://testheightbridge").unwrap();
-    let mut syncer = BitcoinSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "tcp://localhost:50001".to_string(),
-        monero_daemon: "".to_string(),
-        monero_rpc_wallet: "".to_string(),
-    };
-
-    syncer.run(
-        rx,
-        tx_event,
-        ServiceId::Syncer(Coin::Bitcoin).into(),
-        syncer_servers,
-        true,
-    );
+    let (tx, rx_event) = create_bitcoin_syncer();
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -173,17 +143,7 @@ the complete existing transaction history
 many times the same event
 */
 fn bitcoin_syncer_address_test() {
-    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
-    let bitcoin_rpc =
-        Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
-
-    // make sure a wallet is created and loaded
-    match bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
-        Err(_e) => match bitcoin_rpc.load_wallet("wallet") {
-            _ => {}
-        },
-        _ => {}
-    }
+    let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -192,30 +152,12 @@ fn bitcoin_syncer_address_test() {
     // Generate over 101 blocks to reach block maturity, and some more for extra leeway
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
-    // start a bitcoin syncer
-    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testaddressbridge").unwrap();
-    rx_event.bind("inproc://testaddressbridge").unwrap();
-    let mut syncer = BitcoinSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "tcp://localhost:50001".to_string(),
-        monero_daemon: "".to_string(),
-        monero_rpc_wallet: "".to_string(),
-    };
-
     // allow some time for things to happen, like the electrum server catching
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
-    syncer.run(
-        rx,
-        tx_event,
-        ServiceId::Syncer(Coin::Bitcoin).into(),
-        syncer_servers,
-        true,
-    );
+    // start a bitcoin syncer
+    let (tx, rx_event) = create_bitcoin_syncer();
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -378,42 +320,14 @@ the threshold confs are reached
 - Submit two WatchTransaction tasks in parallel, receive confirmation events for both
 */
 fn bitcoin_syncer_transaction_test() {
-    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
-    let bitcoin_rpc =
-        Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
-
-    // make sure a wallet is created and loaded
-    match bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
-        Err(_e) => match bitcoin_rpc.load_wallet("wallet") {
-            _ => {}
-        },
-        _ => {}
-    }
+    let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
     // start a bitcoin syncer
-    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testtransactionbridge").unwrap();
-    rx_event.bind("inproc://testtransactionbridge").unwrap();
-    let mut syncer = BitcoinSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "tcp://localhost:50001".to_string(),
-        monero_daemon: "".to_string(),
-        monero_rpc_wallet: "".to_string(),
-    };
-
-    syncer.run(
-        rx,
-        tx_event,
-        ServiceId::Syncer(Coin::Bitcoin).into(),
-        syncer_servers,
-        true,
-    );
+    let (tx, rx_event) = create_bitcoin_syncer();
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
@@ -524,53 +438,26 @@ fn bitcoin_syncer_transaction_test() {
     assert_transaction_confirmations(request, 0, vec![0]);
 }
 
-fn assert_address_transaction(request: Request, expected_amount: u64, expected_txid: Vec<Vec<u8>>) {
-    match request {
-        Request::SyncerdBridgeEvent(event) => match event.event {
-            Event::AddressTransaction(address_transaction) => {
-                assert_eq!(address_transaction.amount, expected_amount);
-                assert!(expected_txid.contains(&address_transaction.hash));
-            }
-            _ => panic!("expected address transaction event"),
-        },
-        _ => panic!("expected syncerd bridge event"),
-    }
-}
-
-fn assert_received_height_changed(request: Request, expected_height: u64) {
-    match request {
-        Request::SyncerdBridgeEvent(event) => match event.event {
-            Event::HeightChanged(height_changed) => {
-                assert_eq!(height_changed.height, expected_height);
-            }
-            _ => {
-                panic!("expected height changed event");
-            }
-        },
-        _ => {
-            panic!("expected syncerd bridge event");
-        }
-    }
-}
-
-fn assert_transaction_confirmations(
-    request: Request,
-    expected_confirmations: u32,
-    expected_block_hash: Vec<u8>,
-) {
-    match request {
-        Request::SyncerdBridgeEvent(event) => match event.event {
-            Event::TransactionConfirmations(transaction_confirmations) => {
-                assert_eq!(
-                    transaction_confirmations.confirmations,
-                    Some(expected_confirmations)
-                );
-                assert_eq!(transaction_confirmations.block, expected_block_hash);
-            }
-            _ => panic!("expected address transaction event"),
-        },
-        _ => panic!("expected syncerd bridge event"),
-    }
+fn create_bitcoin_syncer() -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    tx_event.connect("inproc://testbitcoinbridge").unwrap();
+    rx_event.bind("inproc://testbitcoinbridge").unwrap();
+    let mut syncer = BitcoinSyncer::new();
+    let syncer_servers = SyncerServers {
+        electrum_server: "tcp://localhost:50001".to_string(),
+        monero_daemon: "".to_string(),
+        monero_rpc_wallet: "".to_string(),
+    };
+    syncer.run(
+        rx,
+        tx_event,
+        ServiceId::Syncer(Coin::Bitcoin).into(),
+        syncer_servers,
+        true,
+    );
+    (tx, rx_event)
 }
 
 fn find_coinbase_transaction_id(txs: Vec<bitcoin::Transaction>) -> bitcoin::Txid {
@@ -595,6 +482,21 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
     0
 }
 
+fn bitcoin_setup() -> bitcoincore_rpc::Client {
+    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
+    let bitcoin_rpc =
+        Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
+
+    // make sure a wallet is created and loaded
+    match bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
+        Err(_e) => match bitcoin_rpc.load_wallet("wallet") {
+            _ => {}
+        },
+        _ => {}
+    }
+    bitcoin_rpc
+}
+
 /*
 We test for the following scenarios in the block height tests:
 
@@ -607,20 +509,7 @@ We test for the following scenarios in the block height tests:
 - Mine another block and receive two HeightChanged events
 */
 async fn monero_syncer_block_height_test() {
-    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
-    let daemon = daemon_client.daemon();
-    let regtest = daemon.regtest();
-    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
-    let wallet = wallet_client.wallet();
-    match wallet
-        .create_wallet("test".to_string(), None, "English".to_string())
-        .await
-    {
-        _ => {
-            wallet.open_wallet("test".to_string(), None).await.unwrap();
-        }
-    }
-
+    let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
 
@@ -628,25 +517,8 @@ async fn monero_syncer_block_height_test() {
     let duration = std::time::Duration::from_secs(1);
     std::thread::sleep(duration);
 
-    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testtransactionbridge").unwrap();
-    rx_event.bind("inproc://testtransactionbridge").unwrap();
-    let mut syncer = MoneroSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "".to_string(),
-        monero_daemon: "http://localhost:18081".to_string(),
-        monero_rpc_wallet: "http://localhost:18084".to_string(),
-    };
-
-    syncer.run(
-        rx,
-        tx_event,
-        ServiceId::Syncer(Coin::Monero).into(),
-        syncer_servers,
-        true,
-    );
+    // create a monero syncer
+    let (tx, rx_event) = create_monero_syncer();
 
     // Send a WatchHeight task
     let task = SyncerdTask {
@@ -716,46 +588,16 @@ the complete existing transaction history
 many times the same event
 */
 async fn monero_syncer_address_test() {
-    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
-    let daemon = daemon_client.daemon();
-    let regtest = daemon.regtest();
-    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
-    let wallet = wallet_client.wallet();
-    match wallet
-        .create_wallet("test".to_string(), None, "English".to_string())
-        .await
-    {
-        _ => {
-            wallet.open_wallet("test".to_string(), None).await.unwrap();
-        }
-    }
-
+    let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
 
     // allow some time for things to happen, like the wallet server catching up
-    let duration = std::time::Duration::from_secs(10);
+    let duration = std::time::Duration::from_secs(20);
     std::thread::sleep(duration);
 
-    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testtransactionbridge").unwrap();
-    rx_event.bind("inproc://testtransactionbridge").unwrap();
-    let mut syncer = MoneroSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "".to_string(),
-        monero_daemon: "http://localhost:18081".to_string(),
-        monero_rpc_wallet: "http://localhost:18084".to_string(),
-    };
-
-    syncer.run(
-        rx,
-        tx_event,
-        ServiceId::Syncer(Coin::Monero).into(),
-        syncer_servers,
-        true,
-    );
+    // create a monero syncer
+    let (tx, rx_event) = create_monero_syncer();
 
     // Generate two addresses and watch them
     let view_key = wallet.query_view_key().await.unwrap();
@@ -874,21 +716,18 @@ async fn monero_syncer_address_test() {
     }
 }
 
-async fn monero_syncer_transaction_test() {
-    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
-    let daemon = daemon_client.daemon();
-    let regtest = daemon.regtest();
-    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
-    let wallet = wallet_client.wallet();
-    match wallet
-        .create_wallet("test".to_string(), None, "English".to_string())
-        .await
-    {
-        _ => {
-            wallet.open_wallet("test".to_string(), None).await.unwrap();
-        }
-    }
+/*
+We test for the following scenarios in the transaction tests:
 
+- Submit a WatchTransaction task for a transaction in the mempool, receive confirmation events until
+the threshold confs are reached
+
+- Submit a WatchTransaction task for a mined transaction, receive confirmation events
+
+- Submit two WatchTransaction tasks in parallel, receive confirmation events for both
+*/
+async fn monero_syncer_transaction_test() {
+    let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap().address;
     let blocks = regtest.generate_blocks(200, address).await.unwrap();
 
@@ -896,25 +735,8 @@ async fn monero_syncer_transaction_test() {
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
-    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testtransactionbridge").unwrap();
-    rx_event.bind("inproc://testtransactionbridge").unwrap();
-    let mut syncer = MoneroSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "".to_string(),
-        monero_daemon: "http://localhost:18081".to_string(),
-        monero_rpc_wallet: "http://localhost:18084".to_string(),
-    };
-
-    syncer.run(
-        rx,
-        tx_event,
-        ServiceId::Syncer(Coin::Monero).into(),
-        syncer_servers,
-        true,
-    );
+    // create a monero syncer
+    let (tx, rx_event) = create_monero_syncer();
 
     let txid_1 = send_monero(&wallet, address, 1).await;
 
@@ -1012,6 +834,45 @@ async fn monero_syncer_transaction_test() {
     assert_transaction_confirmations(request, 0, vec![0]);
 }
 
+async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletClient) {
+    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
+    let daemon = daemon_client.daemon();
+    let regtest = daemon.regtest();
+    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
+    let wallet = wallet_client.wallet();
+    match wallet
+        .create_wallet("test".to_string(), None, "English".to_string())
+        .await
+    {
+        _ => {
+            wallet.open_wallet("test".to_string(), None).await.unwrap();
+        }
+    }
+    (regtest, wallet)
+}
+
+fn create_monero_syncer() -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    tx_event.connect("inproc://testmonerobridge").unwrap();
+    rx_event.bind("inproc://testmonerobridge").unwrap();
+    let mut syncer = MoneroSyncer::new();
+    let syncer_servers = SyncerServers {
+        electrum_server: "".to_string(),
+        monero_daemon: "http://localhost:18081".to_string(),
+        monero_rpc_wallet: "http://localhost:18084".to_string(),
+    };
+    syncer.run(
+        rx,
+        tx_event,
+        ServiceId::Syncer(Coin::Monero).into(),
+        syncer_servers,
+        true,
+    );
+    (tx, rx_event)
+}
+
 async fn send_monero(
     wallet: &monero_rpc::WalletClient,
     address: monero::Address,
@@ -1081,4 +942,53 @@ size too big"
         );
     }
     RoutedFrame { hop, src, dst, msg }
+}
+
+fn assert_address_transaction(request: Request, expected_amount: u64, expected_txid: Vec<Vec<u8>>) {
+    match request {
+        Request::SyncerdBridgeEvent(event) => match event.event {
+            Event::AddressTransaction(address_transaction) => {
+                assert_eq!(address_transaction.amount, expected_amount);
+                assert!(expected_txid.contains(&address_transaction.hash));
+            }
+            _ => panic!("expected address transaction event"),
+        },
+        _ => panic!("expected syncerd bridge event"),
+    }
+}
+
+fn assert_received_height_changed(request: Request, expected_height: u64) {
+    match request {
+        Request::SyncerdBridgeEvent(event) => match event.event {
+            Event::HeightChanged(height_changed) => {
+                assert_eq!(height_changed.height, expected_height);
+            }
+            _ => {
+                panic!("expected height changed event");
+            }
+        },
+        _ => {
+            panic!("expected syncerd bridge event");
+        }
+    }
+}
+
+fn assert_transaction_confirmations(
+    request: Request,
+    expected_confirmations: u32,
+    expected_block_hash: Vec<u8>,
+) {
+    match request {
+        Request::SyncerdBridgeEvent(event) => match event.event {
+            Event::TransactionConfirmations(transaction_confirmations) => {
+                assert_eq!(
+                    transaction_confirmations.confirmations,
+                    Some(expected_confirmations)
+                );
+                assert_eq!(transaction_confirmations.block, expected_block_hash);
+            }
+            _ => panic!("expected address transaction event"),
+        },
+        _ => panic!("expected syncerd bridge event"),
+    }
 }
