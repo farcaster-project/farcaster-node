@@ -513,34 +513,28 @@ impl Runtime {
                     }
                     {
                         // refund
-                        if let Request::Protocol(Msg::RefundProcedureSignatures(refundsigs)) =
-                            request
-                        {
-                            let FullySignedRefund {
-                                refund_sig,
-                                refund_adapted_sig,
-                            } = bob.fully_sign_refund(
-                                key_manager,
-                                bob_params,
-                                core_arb_txs.clone(),
-                                signed_adaptor_refund,
-                            )?;
-                            let tx = core_arb_setup.refund.clone();
-                            let mut refund_tx = RefundTx::from_partial(tx);
+                        let FullySignedRefund {
+                            refund_sig,
+                            refund_adapted_sig,
+                        } = bob.fully_sign_refund(
+                            key_manager,
+                            bob_params,
+                            core_arb_txs.clone(),
+                            signed_adaptor_refund,
+                        )?;
+                        let tx = core_arb_setup.refund.clone();
+                        let mut refund_tx = RefundTx::from_partial(tx);
 
-                            refund_tx.add_witness(bob_params.refund, refund_sig)?;
-                            refund_tx.add_witness(alice_params.refund, refund_adapted_sig)?;
-                            let final_refund_tx =
-                                Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(
-                                    &mut refund_tx,
-                                )?;
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                my_id,
-                                source, // destination swapd
-                                Request::Datum(Datum::Refund(final_refund_tx)),
-                            )?;
-                        }
+                        refund_tx.add_witness(bob_params.refund, refund_sig)?;
+                        refund_tx.add_witness(alice_params.refund, refund_adapted_sig)?;
+                        let final_refund_tx =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut refund_tx)?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            my_id,
+                            source, // destination swapd
+                            Request::Tx(Tx::Refund(final_refund_tx)),
+                        )?;
                     }
                 } else {
                     error!("Unknown wallet and swap_id");
