@@ -76,7 +76,7 @@ pub struct WatchTransaction {
     pub id: u32,
     pub lifetime: u64,
     pub hash: Vec<u8>,
-    pub confirmation_bound: u16,
+    pub confirmation_bound: u32,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -134,7 +134,7 @@ pub struct AddressTransaction {
 pub struct TransactionConfirmations {
     pub id: u32,
     pub block: Vec<u8>,
-    pub confirmations: i32,
+    pub confirmations: Option<u32>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

@@ -114,6 +114,7 @@ pub fn run(
         race_thr: 1,
     };
 
+    temporal_safety.valid_params()?;
     let syncer_state = SyncerState {
         task_lifetime: u64::MAX,
         txs_status: none!(),
@@ -178,13 +179,38 @@ struct TemporalSafety {
     punish_timelock: CSVTimelock,
     race_thr: u32,
     tx_finality_thr: u32,
-    confirmation_bound: u16,
+    confirmation_bound: u32,
 }
 
 impl TemporalSafety {
-    fn safe_cancel(&self, lock_confirmations: u32) -> bool {
-        self.tx_finality_thr >= lock_confirmations
-            && lock_confirmations >= (self.cancel_timelock.as_u32() - self.race_thr)
+    /// check if temporal params are in correct order
+    fn valid_params(&self) -> Result<(), Error> {
+        let finality = self.tx_finality_thr;
+        let cancel = self.cancel_timelock.as_u32();
+        let punish = self.punish_timelock.as_u32();
+        let race = self.race_thr;
+        if finality < cancel && cancel < punish && finality < race && punish > race {
+            Ok(())
+        } else {
+            Err(Error::Farcaster(s!(
+                "unsafe and invalid temporal parameters, timelocks, race and tx finality params"
+            )))
+        }
+    }
+    fn final_tx(&self, confs: u32) -> bool {
+        confs >= self.tx_finality_thr
+    }
+    fn valid_cancel(&self, lock_confirmations: u32) -> bool {
+        // lock must be final, valid after lock_minedblock + cancel_timelock
+        self.final_tx(lock_confirmations) && lock_confirmations >= self.cancel_timelock.as_u32()
+    }
+    fn safe_refund(&self, cancel_confirmations: u32) -> bool {
+        // cancel must be final, but refund shall not be raced with punish
+        self.final_tx(cancel_confirmations)
+            && cancel_confirmations < (self.punish_timelock.as_u32() - self.race_thr)
+    }
+    fn valid_punish(&self, cancel_confirmations: u32) -> bool {
+        self.final_tx(cancel_confirmations) && cancel_confirmations >= self.punish_timelock.as_u32()
     }
 }
 
@@ -204,7 +230,7 @@ pub enum AliceState {
     #[display("Reveal")]
     RevealA(Commit), // remote
     #[display("RefundProcSigs")]
-    RefundProcedureSignatures,
+    RefundSigA(bool), // monero locked
     #[display("Finish")]
     FinishA,
 }
@@ -222,7 +248,7 @@ pub enum BobState {
     #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
     #[display("BuyProcSig")]
-    BuyProcSigB,
+    BuySigB,
     #[display("Finish")]
     FinishB,
 }
@@ -285,7 +311,12 @@ impl SyncerState {
     }
 
     fn watch_addr(&mut self, script_pubkey: Script, id: u32) -> Request {
-        let from_height = self.block_height - 100;
+        let lookback = 100; // blocks
+        let from_height = if self.block_height > lookback {
+            self.block_height - lookback
+        } else {
+            self.block_height
+        };
         let addendum = BtcAddressAddendum {
             address: None,
             from_height,
@@ -637,7 +668,7 @@ impl Runtime {
                     Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. }) => {
                         // Alice verifies that she has sent refund procedure signatures before
                         // processing the buy signatures from Bob
-                        if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
+                        if let State::Alice(AliceState::RefundSigA(..)) = self.state {
                             let tx = buy.clone().extract_tx();
 
                             let txid = tx.txid();
@@ -898,7 +929,7 @@ impl Runtime {
                                 )?;
                             }
                             TxLabel::Buy => {
-                                if let State::Bob(BobState::BuyProcSigB) = self.state {
+                                if let State::Bob(BobState::BuySigB) = self.state {
                                     info!(
                                         "found buy tx in mempool or blockchain, \
                                            sending it to wallet: {}",
@@ -908,6 +939,11 @@ impl Runtime {
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
                                 } else {
                                     error!("not BuyProcSigB")
+                                }
+                            }
+                            TxLabel::Refund => {
+                                if let State::Alice(AliceState::RefundSigA(true)) = self.state {
+                                    error!("forward tx to walletd to extract the refund monero key")
                                 }
                             }
                             txlabel => {
@@ -924,8 +960,8 @@ impl Runtime {
                 Event::TransactionConfirmations(TransactionConfirmations {
                     id,
                     block,
-                    confirmations,
-                }) if *confirmations as u32 >= self.temporal_safety.tx_finality_thr => {
+                    confirmations: Some(confirmations),
+                }) if self.temporal_safety.final_tx(*confirmations) => {
                     if let Some((txlabel, status)) = self.syncer_state.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
                         info!(
@@ -934,6 +970,11 @@ impl Runtime {
                         );
                         match txlabel {
                             TxLabel::Funding => {}
+                            TxLabel::Lock
+                                if self.temporal_safety.valid_cancel(*confirmations as u32) =>
+                            {
+                                error!("shall publish cancel transaction here");
+                            }
                             TxLabel::Lock => {
                                 if let Some(PendingRequest {
                                     request,
@@ -941,43 +982,51 @@ impl Runtime {
                                     bus_id,
                                 }) = self.pending_requests.remove(&source)
                                 {
-                                    if let Request::Protocol(Msg::BuyProcedureSignature(_)) =
-                                        request
+                                    if let (
+                                        Request::Protocol(Msg::BuyProcedureSignature(_)),
+                                        ServiceBus::Msg,
+                                    ) = (&request, &bus_id)
                                     {
-                                        if self.temporal_safety.safe_cancel(*confirmations as u32) {
-                                            warn!(
-                                                "Not in safe temporal zone to procede with protocol\
-                                                 due to potential race condition between buy and\
-                                                 cancel txs, waiting to publish cancel as soon as\
-                                                 it becomes valid"
-                                            );
-                                            return Ok(());
-                                        }
+                                        let next_state = match self.state {
+                                            State::Bob(BobState::CorearbB(..)) => {
+                                                Ok(State::Bob(BobState::BuySigB))
+                                            }
+                                            _ => Err(Error::Farcaster(s!(
+                                                "Wrong state: must be CorearbB "
+                                            ))),
+                                        }?;
                                         error!("this should be in Accordant lock, not Arbitrating lock finality");
                                         info!(
                                             "sending buyproceduresignature at state {}",
                                             &self.state
                                         );
                                         senders.send_to(bus_id, self.identity(), dest, request)?;
+                                        info!(
+                                            "State transition: {}",
+                                            next_state.bright_blue_bold()
+                                        );
+                                        self.state = next_state;
                                     } else {
                                         error!(
-                                            "Not buyproceduresignatures, found {}",
-                                            request.get_type()
+                                            "Not buyproceduresignatures {} or not Msg bus found {}",
+                                            request, bus_id
                                         );
                                     }
                                 }
                             }
-                            TxLabel::Cancel => {
-                                if let State::Bob(BobState::BuyProcSigB) = self.state {
-                                    if *confirmations as u32
-                                        >= (self.temporal_safety.punish_timelock.as_u32()
-                                            - self.temporal_safety.race_thr)
-                                    {
-                                        warn!("Danger zone: waited too long, race condition possible, but Bob publishes refund tx anyway");
-                                        todo!()
-                                    }
+                            TxLabel::Cancel
+                                if self.temporal_safety.valid_punish(*confirmations as u32) =>
+                            {
+                                error!("here Alice publishes punish tx")
+                            }
+                            TxLabel::Cancel
+                                if self.temporal_safety.safe_refund(*confirmations as u32) =>
+                            {
+                                if let State::Bob(BobState::BuySigB) = self.state {
+                                    error!("here Bob publishes refund tx")
                                 }
                             }
+
                             tx_label => warn!("tx label {} not supported", tx_label),
                         }
                     } else {
@@ -993,7 +1042,7 @@ impl Runtime {
                     confirmations,
                 }) => {
                     if let Some((txlabel, status)) = self.syncer_state.txs_status.get_mut(&id) {
-                        info!("tx {} has {} confirmations", txlabel, confirmations);
+                        info!("tx {} has {:?} confirmations", txlabel, confirmations);
                     } else {
                         error!(
                             "received event with unknown transaction and task id {}",
@@ -1085,7 +1134,7 @@ impl Runtime {
             }
             Request::Datum(Datum::FullySignedBuy(buy_tx)) => {
                 trace!("received fullysigned from wallet");
-                if let State::Alice(AliceState::RefundProcedureSignatures) = self.state {
+                if let State::Alice(AliceState::RefundSigA(..)) = self.state {
                     let req =
                         Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
                             id: self.syncer_state.new_taskid(),
@@ -1107,10 +1156,10 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                // must have received params before
+                let locked_monero = false;
                 let next_state = match self.state {
                     State::Alice(AliceState::RevealA(_)) => {
-                        Ok(State::Alice(AliceState::RefundProcedureSignatures))
+                        Ok(State::Alice(AliceState::RefundSigA(locked_monero)))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
                 }?;
@@ -1121,22 +1170,16 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig)) => {
-                let next_state = match self.state {
-                    State::Bob(BobState::CorearbB(..)) => Ok(State::Bob(BobState::BuyProcSigB)),
-                    _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
-                }?;
-                debug!("subscribing with syncer for receiving raw buy tx ");
+                if let State::Bob(BobState::CorearbB(..)) = self.state {
+                    debug!("subscribing with syncer for receiving raw buy tx ");
 
-                let buy_tx = buy_proc_sig.buy.clone().extract_tx();
-                let txid = buy_tx.txid();
-                // register Buy tx task
-                let id_tx = self.syncer_state.new_taskid();
-                if self
-                    .syncer_state
-                    .txs_status
-                    .insert(id_tx, (TxLabel::Buy, TxStatus::Notfinal))
-                    .is_none()
-                {
+                    let buy_tx = buy_proc_sig.buy.clone().extract_tx();
+                    let txid = buy_tx.txid();
+                    // register Buy tx task
+                    let id_tx = self.syncer_state.new_taskid();
+                    self.syncer_state
+                        .txs_status
+                        .insert(id_tx, (TxLabel::Buy, TxStatus::Notfinal));
                     info!("subscribing with syncer for receiving buy tx updates");
                     let task = Task::WatchTransaction(WatchTransaction {
                         id: id_tx,
@@ -1150,23 +1193,17 @@ impl Runtime {
                         ServiceId::Syncer(Coin::Bitcoin),
                         Request::SyncerTask(task),
                     )?;
-                } else {
-                    error!("Already subscribed for Buy transaction, skipping");
-                }
 
-                let script_pubkey = if buy_tx.output.len() == 1 {
-                    buy_tx.output[0].script_pubkey.clone()
-                } else {
-                    error!("more than one output");
-                    return Ok(());
-                };
-                let id_addr = self.syncer_state.new_taskid();
-                if self
-                    .syncer_state
-                    .txs_status
-                    .insert(id_addr, (TxLabel::Buy, TxStatus::Notfinal))
-                    .is_none()
-                {
+                    let script_pubkey = if buy_tx.output.len() == 1 {
+                        buy_tx.output[0].script_pubkey.clone()
+                    } else {
+                        error!("more than one output");
+                        return Ok(());
+                    };
+                    let id_addr = self.syncer_state.new_taskid();
+                    self.syncer_state
+                        .txs_status
+                        .insert(id_addr, (TxLabel::Buy, TxStatus::Notfinal));
                     debug!("subscribe Buy address task");
                     let req = self.syncer_state.watch_addr(script_pubkey, id_addr);
                     senders.send_to(
@@ -1175,22 +1212,26 @@ impl Runtime {
                         ServiceId::Syncer(Coin::Bitcoin),
                         req,
                     )?;
+
+                    let pending_request = PendingRequest {
+                        request,
+                        dest: self.peer_service.clone(),
+                        bus_id: ServiceBus::Msg,
+                    };
+                    if self
+                        .pending_requests
+                        .insert(ServiceId::Syncer(Coin::Bitcoin), pending_request)
+                        .is_none()
+                    {
+                        debug!("deferring BuyProcedureSignature msg");
+                    } else {
+                        error!("removed a pending request by mistake")
+                    };
+                // self.send_peer(senders,
+                // Msg::BuyProcedureSignature(buy_proc_sig))?;
                 } else {
-                    error!("task already registered")
-                }
-
-                let pending_request = PendingRequest {
-                    request,
-                    dest: self.peer_service.clone(),
-                    bus_id: ServiceBus::Msg,
+                    error!("Wrong state: must be CorearbB ");
                 };
-                self.pending_requests
-                    .insert(ServiceId::Syncer(Coin::Bitcoin), pending_request);
-                debug!("deferring BuyProcedureSignature msg");
-                // self.send_peer(senders, Msg::BuyProcedureSignature(buy_proc_sig))?;
-
-                info!("State transition: {}", next_state.bright_blue_bold());
-                self.state = next_state;
             }
 
             Request::GetInfo => {
