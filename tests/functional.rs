@@ -2,9 +2,11 @@ use bitcoincore_rpc::{Auth, Client, RpcApi};
 use farcaster_node::rpc::Request;
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::bitcoin_syncer::Synclet;
+use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
 use farcaster_node::syncerd::opts::Coin;
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::SyncerServers;
+use farcaster_node::syncerd::XmrAddressAddendum;
 use farcaster_node::ServiceId;
 use internet2::transport::MAX_FRAME_SIZE;
 use internet2::Decrypt;
@@ -12,7 +14,9 @@ use internet2::PlainTranscoder;
 use internet2::RoutedFrame;
 use internet2::ZMQ_CONTEXT;
 use monero::Address;
+use monero_rpc::GetBlockHeaderSelector;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
@@ -31,15 +35,23 @@ state of electrum and bitcoin
 */
 
 #[test]
-#[ignore] // it's too expensive
+#[ignore] // it's too expensive and requires
 fn bitcoin_syncer_test() {
     bitcoin_syncer_block_height_test();
     bitcoin_syncer_address_test();
     bitcoin_syncer_transaction_test();
 }
 
+#[tokio::test]
+#[ignore]
+async fn monero_syncer_test() {
+    monero_syncer_block_height_test().await;
+    monero_syncer_address_test().await;
+    monero_syncer_transaction_test().await;
+}
+
 /*
-We test for the following scenarios in the address block height tests:
+We test for the following scenarios in the block height tests:
 
 - Submit a WatchHeight task, and immediately receive a HeightChanged event
 
@@ -543,7 +555,7 @@ fn assert_received_height_changed(request: Request, expected_height: u64) {
 
 fn assert_transaction_confirmations(
     request: Request,
-    expected_confirmations: i32,
+    expected_confirmations: u32,
     expected_block_hash: Vec<u8>,
 ) {
     match request {
@@ -551,7 +563,7 @@ fn assert_transaction_confirmations(
             Event::TransactionConfirmations(transaction_confirmations) => {
                 assert_eq!(
                     transaction_confirmations.confirmations,
-                    expected_confirmations
+                    Some(expected_confirmations)
                 );
                 assert_eq!(transaction_confirmations.block, expected_block_hash);
             }
@@ -583,14 +595,21 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
     0
 }
 
-#[ignore]
-#[tokio::test]
+/*
+We test for the following scenarios in the block height tests:
+
+- Submit a WatchHeight task, and immediately receive a HeightChanged event
+
+- Mine a block and receive a single HeightChanged event
+
+- Submit another WatchHeigh task,and immediately receive a HeightChanged event
+
+- Mine another block and receive two HeightChanged events
+*/
 async fn monero_syncer_block_height_test() {
     let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
     let daemon = daemon_client.daemon();
     let regtest = daemon.regtest();
-    let count = regtest.get_block_count().await.unwrap();
-    println!("monero block count: {:?}", count);
     let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
     let wallet = wallet_client.wallet();
     match wallet
@@ -603,18 +622,403 @@ async fn monero_syncer_block_height_test() {
     }
 
     let address = wallet.get_address(0, None).await.unwrap();
-    let generate = regtest.generate_blocks(200, address.address).await.unwrap();
-    println!("generated: {:?}", generate);
-
-    let balance = wallet.get_balance(0, None).await.unwrap();
-    println!("balance: {:?}", balance);
+    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
 
     // allow some time for things to happen, like the wallet server catching up
-    let duration = std::time::Duration::from_secs(5);
+    let duration = std::time::Duration::from_secs(1);
     std::thread::sleep(duration);
 
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    tx_event.connect("inproc://testtransactionbridge").unwrap();
+    rx_event.bind("inproc://testtransactionbridge").unwrap();
+    let mut syncer = MoneroSyncer::new();
+    let syncer_servers = SyncerServers {
+        electrum_server: "".to_string(),
+        monero_daemon: "http://localhost:18081".to_string(),
+        monero_rpc_wallet: "http://localhost:18084".to_string(),
+    };
+
+    syncer.run(
+        rx,
+        tx_event,
+        ServiceId::Syncer(Coin::Monero).into(),
+        syncer_servers,
+        true,
+    );
+
+    // Send a WatchHeight task
+    let task = SyncerdTask {
+        task: Task::WatchHeight(WatchHeight {
+            id: 0,
+            lifetime: blocks + 2,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(task).unwrap();
+
+    // Receive the request and compare it to the actual block count
+    println!("waiting for height changed");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
+    let request = get_request_from_message(message);
+    assert_received_height_changed(request, blocks);
+    // Generate a single height changed event
+    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
+    println!("waiting for height changed");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
+    let request = get_request_from_message(message);
+    // let blocks = regtest.get_block_count().await.unwrap();
+    assert_received_height_changed(request, blocks);
+
+    // Send another WatchHeight task
+    let task = SyncerdTask {
+        task: Task::WatchHeight(WatchHeight {
+            id: 1,
+            lifetime: u64::from(blocks) + 2,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(task).unwrap();
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    assert_received_height_changed(request, blocks);
+
+    // generate another block - this should result in two height changed messages
+    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
+    println!("waiting for height changed");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
+    let request = get_request_from_message(message);
+    assert_received_height_changed(request, blocks);
+    println!("waiting for height changed");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
+    let request = get_request_from_message(message);
+    assert_received_height_changed(request, blocks);
+}
+
+/*
+We test for the following scenarios in the address transaction tests:
+
+- Submit a WatchAddress task with an address with no history yet, then create a
+transaction for it and check the respective event
+
+- Submit a WatchAddress task with another address in parallel, then create two
+transactions for it and check for both respective events
+
+- Submit a WatchAddress task with the same address again, observe if it receives
+the complete existing transaction history
+
+- Submit a WatchAddress task many times with the same address, ensure we receive
+many times the same event
+*/
+async fn monero_syncer_address_test() {
+    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
+    let daemon = daemon_client.daemon();
+    let regtest = daemon.regtest();
+    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
+    let wallet = wallet_client.wallet();
+    match wallet
+        .create_wallet("test".to_string(), None, "English".to_string())
+        .await
+    {
+        _ => {
+            wallet.open_wallet("test".to_string(), None).await.unwrap();
+        }
+    }
+
+    let address = wallet.get_address(0, None).await.unwrap();
+    let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
+
+    // allow some time for things to happen, like the wallet server catching up
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
+
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    tx_event.connect("inproc://testtransactionbridge").unwrap();
+    rx_event.bind("inproc://testtransactionbridge").unwrap();
+    let mut syncer = MoneroSyncer::new();
+    let syncer_servers = SyncerServers {
+        electrum_server: "".to_string(),
+        monero_daemon: "http://localhost:18081".to_string(),
+        monero_rpc_wallet: "http://localhost:18084".to_string(),
+    };
+
+    syncer.run(
+        rx,
+        tx_event,
+        ServiceId::Syncer(Coin::Monero).into(),
+        syncer_servers,
+        true,
+    );
+
+    // Generate two addresses and watch them
+    let view_key = wallet.query_view_key().await.unwrap();
+    let address1 = wallet.create_address(0, None).await.unwrap().0;
+    let tx_id = send_monero(&wallet, address1, 1).await;
+
+    let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
+        spend_key: address1.public_spend.as_bytes().try_into().unwrap(),
+        view_key: view_key.as_bytes().try_into().unwrap(),
+        from_height: 0,
+    });
+    let watch_address_task_1 = SyncerdTask {
+        task: Task::WatchAddress(WatchAddress {
+            id: 1,
+            lifetime: blocks + 1,
+            addendum: addendum_1,
+            include_tx: Boolean::True,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(watch_address_task_1).unwrap();
+
+    println!("waiting for watch transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, 1, vec![tx_id]);
+
+    // Generate two addresses and watch them
+    let address2 = wallet.create_address(0, None).await.unwrap().0;
+    let tx_id2_1 = send_monero(&wallet, address2, 1).await;
+    let tx_id2_2 = send_monero(&wallet, address2, 1).await;
+
+    let addendum_2 = AddressAddendum::Monero(XmrAddressAddendum {
+        spend_key: address2.public_spend.as_bytes().try_into().unwrap(),
+        view_key: view_key.as_bytes().try_into().unwrap(),
+        from_height: 0,
+    });
+    let watch_address_task_2 = SyncerdTask {
+        task: Task::WatchAddress(WatchAddress {
+            id: 1,
+            lifetime: blocks + 1,
+            addendum: addendum_2,
+            include_tx: Boolean::True,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(watch_address_task_2).unwrap();
+
+    println!("waiting for address transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received address transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+
+    println!("waiting for address transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received address transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+
+    let addendum_3 = AddressAddendum::Monero(XmrAddressAddendum {
+        spend_key: address2.public_spend.as_bytes().try_into().unwrap(),
+        view_key: view_key.as_bytes().try_into().unwrap(),
+        from_height: 0,
+    });
+    let watch_address_task_3 = SyncerdTask {
+        task: Task::WatchAddress(WatchAddress {
+            id: 1,
+            lifetime: blocks + 1,
+            addendum: addendum_3,
+            include_tx: Boolean::True,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(watch_address_task_3).unwrap();
+    println!("waiting for address transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received address transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+
+    println!("waiting for address transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received address transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
+
+    let address4 = wallet.create_address(0, None).await.unwrap().0;
+    let tx_id4 = send_monero(&wallet, address4, 1).await;
+
+    let addendum_4 = AddressAddendum::Monero(XmrAddressAddendum {
+        spend_key: address4.public_spend.as_bytes().try_into().unwrap(),
+        view_key: view_key.as_bytes().try_into().unwrap(),
+        from_height: 0,
+    });
+    for i in 0..5 {
+        tx.send(SyncerdTask {
+            task: Task::WatchAddress(WatchAddress {
+                id: i,
+                lifetime: blocks + 5,
+                addendum: addendum_4.clone(),
+                include_tx: Boolean::True,
+            }),
+            source: ServiceId::Syncer(Coin::Monero),
+        })
+        .unwrap();
+    }
+
+    for _ in 0..5 {
+        println!("waiting for repeated watch transaction message");
+        let message = rx_event.recv_multipart(0).unwrap();
+        println!("received repeated transaction message");
+        let request = get_request_from_message(message);
+        assert_address_transaction(request, 1, vec![tx_id4.clone()]);
+    }
+}
+
+async fn monero_syncer_transaction_test() {
+    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
+    let daemon = daemon_client.daemon();
+    let regtest = daemon.regtest();
+    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
+    let wallet = wallet_client.wallet();
+    match wallet
+        .create_wallet("test".to_string(), None, "English".to_string())
+        .await
+    {
+        _ => {
+            wallet.open_wallet("test".to_string(), None).await.unwrap();
+        }
+    }
+
+    let address = wallet.get_address(0, None).await.unwrap().address;
+    let blocks = regtest.generate_blocks(200, address).await.unwrap();
+
+    // allow some time for things to happen, like the wallet server catching up
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
+
+    let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
+    let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
+    tx_event.connect("inproc://testtransactionbridge").unwrap();
+    rx_event.bind("inproc://testtransactionbridge").unwrap();
+    let mut syncer = MoneroSyncer::new();
+    let syncer_servers = SyncerServers {
+        electrum_server: "".to_string(),
+        monero_daemon: "http://localhost:18081".to_string(),
+        monero_rpc_wallet: "http://localhost:18084".to_string(),
+    };
+
+    syncer.run(
+        rx,
+        tx_event,
+        ServiceId::Syncer(Coin::Monero).into(),
+        syncer_servers,
+        true,
+    );
+
+    let txid_1 = send_monero(&wallet, address, 1).await;
+
+    tx.send(SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: blocks + 5,
+            hash: txid_1.to_vec(),
+            confirmation_bound: 2,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    })
+    .unwrap();
+
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, 0, vec![0]);
+
+    let block_height = regtest.generate_blocks(1, address).await.unwrap();
+    let block_hash = get_block_hash_from_height(&regtest, block_height).await;
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, 1, block_hash.clone());
+
+    regtest.generate_blocks(1, address).await.unwrap();
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, 2, block_hash);
+
+    let tx_id2 = send_monero(&wallet, address, 1).await;
+    let block_height = regtest.generate_blocks(1, address).await.unwrap();
+    let block_hash = get_block_hash_from_height(&regtest, block_height).await;
+    tx.send(SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: block_height + 5,
+            hash: tx_id2,
+            confirmation_bound: 2,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    })
+    .unwrap();
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, 1, block_hash.clone());
+
+    regtest.generate_blocks(1, address).await.unwrap();
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, 2, block_hash);
+
+    let txid_2 = send_monero(&wallet, address, 1).await;
+    let txid_3 = send_monero(&wallet, address, 1).await;
+
+    tx.send(SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: blocks + 5,
+            hash: txid_2.to_vec(),
+            confirmation_bound: 2,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    })
+    .unwrap();
+    tx.send(SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: blocks + 5,
+            hash: txid_3.to_vec(),
+            confirmation_bound: 2,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    })
+    .unwrap();
+
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, 0, vec![0]);
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, 0, vec![0]);
+}
+
+async fn send_monero(
+    wallet: &monero_rpc::WalletClient,
+    address: monero::Address,
+    amount: u64,
+) -> Vec<u8> {
     let mut destination: HashMap<Address, u64> = HashMap::new();
-    destination.insert(address.address, 1);
+    destination.insert(address, amount);
     let options = monero_rpc::TransferOptions {
         account_index: None,
         subaddr_indices: None,
@@ -624,10 +1028,26 @@ async fn monero_syncer_block_height_test() {
         payment_id: None,
         do_not_relay: None,
     };
-    wallet
-        .transfer(destination, monero_rpc::TransferPriority::Default, options)
+    let transaction = wallet
+        .transfer(
+            destination.clone(),
+            monero_rpc::TransferPriority::Default,
+            options.clone(),
+        )
         .await
         .unwrap();
+    hex::decode(transaction.tx_hash.to_string()).unwrap()
+}
+
+async fn get_block_hash_from_height(
+    regtest: &monero_rpc::RegtestDaemonClient,
+    height: u64,
+) -> Vec<u8> {
+    let header = regtest
+        .get_block_header(GetBlockHeaderSelector::Height(height))
+        .await
+        .unwrap();
+    header.hash.0.to_vec()
 }
 
 fn get_request_from_message(message: Vec<Vec<u8>>) -> Request {

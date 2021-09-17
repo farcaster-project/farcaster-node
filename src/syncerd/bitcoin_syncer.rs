@@ -449,25 +449,3 @@ fn logging(txs: &Vec<AddressTx>, address: &BtcAddressAddendum) {
         )
     });
 }
-
-// #[test]
-// pub fn syncer_state() {
-//     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) =
-// std::sync::mpsc::channel();     let tx_event =
-// ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();     let rx_event =
-// ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();     tx_event.connect("inproc://
-// syncerdbridge").unwrap();     rx_event.bind("inproc://syncerdbridge").
-// unwrap();     let mut syncer = BitcoinSyncer::new();
-//     syncer.run(rx, tx_event, ServiceId::Syncer(Coin::Bitcoin).into());
-//     let task = SyncerdTask {
-//         task: Task::WatchHeight(WatchHeight {
-//             id: 0,
-//             lifetime: 100000000,
-//             addendum: vec![],
-//         }),
-//         source: ServiceId::Syncer(Coin::Bitcoin),
-//     };
-//     tx.send(task).unwrap();
-//     let message = rx_event.recv_multipart(0);
-//     assert!(message.is_ok());
-// }

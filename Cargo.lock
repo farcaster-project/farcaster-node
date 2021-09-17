@@ -1719,7 +1719,7 @@ dependencies = [
 [[package]]
 name = "monero-rpc"
 version = "0.1.0"
-source = "git+https://github.com/TheCharlatan/monero-rpc-rs?branch=changes#f083e89f9a684318d201b1f643e488359edddea7"
+source = "git+https://github.com/TheCharlatan/monero-rpc-rs?branch=changes#aaa3a4cc943547ddb9500b5ee32308fd0847902d"
 dependencies = [
  "anyhow",
  "chrono",
