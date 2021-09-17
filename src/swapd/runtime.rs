@@ -74,7 +74,7 @@ use internet2::{
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
-use request::{Commit, Tx, InitSwap, Params, Reveal, TakeCommit};
+use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 
 pub fn run(
     config: Config,
@@ -609,33 +609,26 @@ impl Runtime {
                             ]) {
                                 let txid = tx.clone().extract_tx().txid();
                                 let id = self.syncer_state.new_taskid();
-                                if self
-                                    .syncer_state
+                                self.syncer_state
                                     .txs_status
-                                    .insert(id, (tx_label.clone(), TxStatus::Notfinal))
-                                    .is_none()
-                                {
-                                    info!(
-                                        "Alice registers tx {} with syncer {}",
-                                        tx_label.addr(),
-                                        txid.addr()
-                                    );
-                                    let task = Task::WatchTransaction(WatchTransaction {
-                                        id,
-                                        lifetime: self.syncer_state.task_lifetime,
-                                        hash: txid.to_vec(),
-                                        confirmation_bound: self.temporal_safety.confirmation_bound,
-                                    });
-                                    senders.send_to(
-                                        ServiceBus::Ctl,
-                                        self.identity(),
-                                        ServiceId::Syncer(Coin::Bitcoin),
-                                        Request::SyncerTask(task),
-                                    )?;
-                                } else {
-                                    error!("task id already registered");
-                                    return Ok(());
-                                }
+                                    .insert(id, (tx_label.clone(), TxStatus::Notfinal));
+                                info!(
+                                    "Alice registers tx {} with syncer {}",
+                                    tx_label.addr(),
+                                    txid.addr()
+                                );
+                                let task = Task::WatchTransaction(WatchTransaction {
+                                    id,
+                                    lifetime: self.syncer_state.task_lifetime,
+                                    hash: txid.to_vec(),
+                                    confirmation_bound: self.temporal_safety.confirmation_bound,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    Request::SyncerTask(task),
+                                )?;
                             }
                             // senders.send_to(ServiceBus::Ctl, self.identity(),
                             // ServiceId::Syncer(Coin::Bitcoin), req)?;
@@ -673,27 +666,23 @@ impl Runtime {
 
                             let txid = tx.txid();
                             let id = self.syncer_state.new_taskid();
-                            if self
-                                .syncer_state
+                            self.syncer_state
                                 .txs_status
-                                .insert(id, (TxLabel::Buy, TxStatus::Notfinal))
-                                .is_none()
-                            {
-                                // notify the syncer to watch for the buy transaction
-                                let task = Task::WatchTransaction(WatchTransaction {
-                                    id,
-                                    lifetime: self.syncer_state.task_lifetime,
-                                    hash: txid.to_vec(),
-                                    confirmation_bound: self.temporal_safety.confirmation_bound,
-                                });
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Syncer(Coin::Bitcoin),
-                                    Request::SyncerTask(task),
-                                )?;
-                                self.send_wallet(msg_bus, senders, request)?
-                            }
+                                .insert(id, (TxLabel::Buy, TxStatus::Notfinal));
+                            // notify the syncer to watch for the buy transaction
+                            let task = Task::WatchTransaction(WatchTransaction {
+                                id,
+                                lifetime: self.syncer_state.task_lifetime,
+                                hash: txid.to_vec(),
+                                confirmation_bound: self.temporal_safety.confirmation_bound,
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Syncer(Coin::Bitcoin),
+                                Request::SyncerTask(task),
+                            )?;
+                            self.send_wallet(msg_bus, senders, request)?
                         } else {
                             error!("Wrong state: must be RefundProcedureSignatures");
                             return Ok(());
@@ -1079,33 +1068,26 @@ impl Runtime {
                 ]) {
                     let txid = tx.clone().extract_tx().txid();
                     let id = self.syncer_state.new_taskid();
-                    if self
-                        .syncer_state
+                    self.syncer_state
                         .txs_status
-                        .insert(id, (tx_label, TxStatus::Notfinal))
-                        .is_none()
-                    {
-                        info!(
-                            "Bob registers tx {} with syncer {}",
-                            tx_label.addr(),
-                            txid.addr()
-                        );
-                        let task = Task::WatchTransaction(WatchTransaction {
-                            id,
-                            lifetime: self.syncer_state.task_lifetime,
-                            hash: txid.to_vec(),
-                            confirmation_bound: self.temporal_safety.confirmation_bound,
-                        });
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Syncer(Coin::Bitcoin),
-                            Request::SyncerTask(task),
-                        )?;
-                    } else {
-                        error!("task id already registered");
-                        return Ok(());
-                    }
+                        .insert(id, (tx_label, TxStatus::Notfinal));
+                    info!(
+                        "Bob registers tx {} with syncer {}",
+                        tx_label.addr(),
+                        txid.addr()
+                    );
+                    let task = Task::WatchTransaction(WatchTransaction {
+                        id,
+                        lifetime: self.syncer_state.task_lifetime,
+                        hash: txid.to_vec(),
+                        confirmation_bound: self.temporal_safety.confirmation_bound,
+                    });
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Syncer(Coin::Bitcoin),
+                        Request::SyncerTask(task),
+                    )?;
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
