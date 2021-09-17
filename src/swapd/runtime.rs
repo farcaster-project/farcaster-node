@@ -179,7 +179,7 @@ struct TemporalSafety {
     punish_timelock: CSVTimelock,
     race_thr: u32,
     tx_finality_thr: u32,
-    confirmation_bound: u16,
+    confirmation_bound: u32,
 }
 
 impl TemporalSafety {
@@ -960,8 +960,8 @@ impl Runtime {
                 Event::TransactionConfirmations(TransactionConfirmations {
                     id,
                     block,
-                    confirmations,
-                }) if self.temporal_safety.final_tx(*confirmations as u32) => {
+                    confirmations: Some(confirmations),
+                }) if self.temporal_safety.final_tx(*confirmations) => {
                     if let Some((txlabel, status)) = self.syncer_state.txs_status.get_mut(&id) {
                         *status = TxStatus::Final;
                         info!(
@@ -1008,8 +1008,8 @@ impl Runtime {
                                         self.state = next_state;
                                     } else {
                                         error!(
-                                            "Not buyproceduresignatures {} or not (Msg) bus found {}",
-                                            request, dest, bus_id
+                                            "Not buyproceduresignatures {} or not Msg bus found {}",
+                                            request, bus_id
                                         );
                                     }
                                 }
@@ -1042,7 +1042,7 @@ impl Runtime {
                     confirmations,
                 }) => {
                     if let Some((txlabel, status)) = self.syncer_state.txs_status.get_mut(&id) {
-                        info!("tx {} has {} confirmations", txlabel, confirmations);
+                        info!("tx {} has {:?} confirmations", txlabel, confirmations);
                     } else {
                         error!(
                             "received event with unknown transaction and task id {}",

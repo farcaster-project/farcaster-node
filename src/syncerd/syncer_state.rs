@@ -149,7 +149,7 @@ impl SyncerState {
                 transaction_confirmations: TransactionConfirmations {
                     id: task.id,
                     block: none!(),
-                    confirmations: -1,
+                    confirmations: None,
                 },
             },
         );
@@ -285,12 +285,6 @@ impl SyncerState {
                 // per RFC, no block hash should be encoded as 0x0
                 None => hex::decode("00").unwrap(),
             };
-            let confirmations = match confirmations {
-                Some(confs) => confs as i32,
-                // per RFC, no confirmation should be encoded as -1
-                None => -1,
-            };
-
             *transactions = transactions
                 .drain()
                 .filter_map(|(id, watched_tx)| {
@@ -312,7 +306,7 @@ impl SyncerState {
                         watched_tx.transaction_confirmations
                     };
                     // prune the task once it has reached its confirmation bound
-                    if confirmations >= watched_tx.task.confirmation_bound as i32 {
+                    if confirmations >= Some(watched_tx.task.confirmation_bound) {
                         None
                     } else {
                         Some((
