@@ -269,13 +269,20 @@ pub enum Params {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("datum")]
-pub enum Datum {
-    SignedArbitratingLock(Transaction),
-    FullySignedBuy(Transaction),
+#[display(inner)]
+pub enum Tx {
+    #[display("lock")]
+    Lock(Transaction),
+    #[display("buy")]
+    Buy(Transaction),
+    #[display("funding")]
     Funding(Transaction),
+    #[display("cancel")]
     Cancel(Transaction),
+    #[display("refund")]
     Refund(Transaction),
+    #[display("punish")]
+    Punish(Transaction),
 }
 
 use crate::{Error, ServiceId};
@@ -410,7 +417,7 @@ pub enum Request {
 
     #[api(type = 196)]
     #[display("datum({0})")]
-    Datum(Datum),
+    Tx(Tx),
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]

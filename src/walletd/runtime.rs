@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::rpc::{
-    request::{self, Commit, Datum, Keys, Msg, Params, Reveal, Token},
+    request::{self, Commit, Keys, Msg, Params, Reveal, Token, Tx},
     Request, ServiceBus,
 };
 use crate::swapd::get_swap_id;
@@ -14,22 +14,27 @@ use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::Senders;
 use crate::{Config, CtlServer, Error, Service, ServiceId};
-use bitcoin::{PrivateKey, PublicKey, hashes::hex::FromHex, secp256k1::{self, Signature}, util::{
+use bitcoin::{
+    hashes::hex::FromHex,
+    secp256k1::{self, Signature},
+    util::{
         bip32::{DerivationPath, ExtendedPrivKey},
         psbt::serialize::Deserialize,
-    }};
+    },
+    PrivateKey, PublicKey,
+};
 use colored::Colorize;
 use farcaster_core::{
     bitcoin::{
-        segwitv0::{BuyTx, CancelTx, FundingTx, RefundTx},
+        segwitv0::{BuyTx, CancelTx, FundingTx, PunishTx, RefundTx},
         segwitv0::{LockTx, SegwitV0},
         Bitcoin, BitcoinSegwitV0,
     },
     blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FullySignedBuy,
-        FullySignedRefund, FundingTransaction, SignedAdaptorBuy, SignedAdaptorRefund,
-        SignedArbitratingLock,
+        FullySignedPunish, FullySignedRefund, FundingTransaction, SignedAdaptorBuy,
+        SignedAdaptorRefund, SignedArbitratingLock,
     },
     crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
@@ -471,9 +476,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
-                            Request::Datum(request::Datum::SignedArbitratingLock(
-                                finalized_lock_tx,
-                            )),
+                            Request::Tx(request::Tx::Lock(finalized_lock_tx)),
                         )?;
                     }
 
@@ -508,7 +511,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
-                            Request::Datum(Datum::Cancel(finalized_cancel_tx)),
+                            Request::Tx(Tx::Cancel(finalized_cancel_tx)),
                         )?;
                     }
                     {
@@ -549,29 +552,33 @@ impl Runtime {
                     public_offer,
                     _bob_commit,
                     Some(bob_parameters),
-                    core_arb_setup, // None
-                    alice_cancel_sig,
+                    core_arb_setup,   // None
+                    alice_cancel_sig, // None
                 )) = self.wallets.get_mut(&swap_id)
                 {
                     if core_arb_setup.is_some() {
                         error!("core_arb_txs already set for alice");
                         return Ok(());
                     }
+                    if alice_cancel_sig.is_some() {
+                        error!("alice_cancel_sig already set for alice");
+                        return Ok(());
+                    }
                     *core_arb_setup = Some(core_arbitrating_setup.clone());
-                    let arb_txs: CoreArbitratingTransactions<Bitcoin<SegwitV0>> =
+                    let core_arb_txs: CoreArbitratingTransactions<Bitcoin<SegwitV0>> =
                         core_arbitrating_setup.into();
                     let signed_adaptor_refund = alice.sign_adaptor_refund(
                         key_manager,
                         alice_params,
                         bob_parameters,
-                        &arb_txs,
+                        &core_arb_txs,
                         public_offer,
                     )?;
                     let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
                         key_manager,
                         alice_params,
                         bob_parameters,
-                        &arb_txs,
+                        &core_arb_txs,
                         public_offer,
                     )?;
                     let refund_proc_signatures = RefundProcedureSignatures::from((
@@ -579,11 +586,28 @@ impl Runtime {
                         cosigned_arb_cancel,
                         signed_adaptor_refund,
                     ));
-                    if alice_cancel_sig.is_some() {
-                        error!("alice_cancel_sig already set for alice");
-                        return Ok(());
+                    *alice_cancel_sig = Some(refund_proc_signatures.cancel_sig);
+
+                    {
+                        let FullySignedPunish { punish, punish_sig } = alice.fully_sign_punish(
+                            key_manager,
+                            alice_params,
+                            bob_parameters,
+                            &core_arb_txs,
+                            public_offer,
+                        )?;
+
+                        let mut punish_tx = PunishTx::from_partial(punish);
+                        punish_tx.add_witness(alice_params.punish, punish_sig)?;
+                        let tx =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut punish_tx)?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            source.clone(),
+                            Request::Tx(Tx::Punish(tx)),
+                        )?;
                     }
-                     *alice_cancel_sig = Some(refund_proc_signatures.cancel_sig);
 
                     let refund_proc_signatures =
                         Msg::RefundProcedureSignatures(refund_proc_signatures);
@@ -624,6 +648,22 @@ impl Runtime {
                 )) = self.wallets.get(&swap_id)
                 {
                     let core_arb_txs = &(core_arb_setup.clone()).into();
+
+                    // cancel
+                    let tx = core_arb_setup.cancel.clone();
+                    let mut cancel_tx = CancelTx::from_partial(tx);
+                    cancel_tx.add_witness(alice_params.cancel, alice_cancel_sig.clone())?;
+                    cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
+                    let finalized_cancel_tx =
+                        Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source.clone(), // destination swapd
+                        Request::Tx(Tx::Cancel(finalized_cancel_tx)),
+                    )?;
+
+                    // buy
                     let mut buy_tx = BuyTx::from_partial(buy);
                     alice.validate_adaptor_buy(
                         key_manager,
@@ -651,25 +691,11 @@ impl Runtime {
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
-                        source.clone(),
-                        Request::Datum(Datum::FullySignedBuy(tx)),
+                        source,
+                        Request::Tx(Tx::Buy(tx)),
                     )?;
-                    // cancel
-                    {
-                        // cancel
-                        let tx = core_arb_setup.cancel.clone();
-                        let mut cancel_tx = CancelTx::from_partial(tx);
-                        cancel_tx.add_witness(alice_params.cancel, alice_cancel_sig.clone())?;
-                        cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
-                        let finalized_cancel_tx =
-                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            source, // destination swapd
-                            Request::Datum(Datum::Cancel(finalized_cancel_tx)),
-                        )?;
-                    }
+
+
                     // buy_adaptor_sig
                 } else {
                     error!("could not get alice's wallet")
@@ -827,7 +853,7 @@ impl Runtime {
                     }
                 };
             }
-            Request::Datum(Datum::Funding(tx)) => {
+            Request::Tx(Tx::Funding(tx)) => {
                 if let Some(Wallet::Bob(.., Some(funding), _, _, _)) =
                     self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
@@ -845,7 +871,7 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::Datum(Datum::FullySignedBuy(tx)) => {
+            Request::Tx(Tx::Buy(tx)) => {
                 if let Some(Wallet::Bob(bob, .., Some(_), Some(_), Some(_), Some(_))) =
                     self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
