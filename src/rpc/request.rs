@@ -274,6 +274,7 @@ pub enum Datum {
     SignedArbitratingLock(Transaction),
     FullySignedBuy(Transaction),
     Funding(Transaction),
+    Cancel(Transaction),
 }
 
 use crate::{Error, ServiceId};

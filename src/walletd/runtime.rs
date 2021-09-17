@@ -26,14 +26,14 @@ use bitcoin::{
 use colored::Colorize;
 use farcaster_core::{
     bitcoin::{
-        segwitv0::{BuyTx, FundingTx},
+        segwitv0::{BuyTx, CancelTx, FundingTx},
         segwitv0::{LockTx, SegwitV0},
         Bitcoin, BitcoinSegwitV0,
     },
     blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, FullySignedBuy,
-        FundingTransaction, SignedAdaptorBuy, SignedArbitratingLock,
+        FundingTransaction, SignedAdaptorBuy, SignedAdaptorRefund, SignedArbitratingLock,
     },
     crypto::{ArbitratingKeyId, GenerateKey},
     monero::Monero,
@@ -88,7 +88,7 @@ pub enum Wallet {
         PublicOffer<BtcXmr>,
         Option<CommitBobParameters<BtcXmr>>,
         Option<BobParameters<BtcXmr>>,
-        Option<CoreArbitratingTransactions<Bitcoin<SegwitV0>>>,
+        Option<CoreArbitratingSetup<BtcXmr>>,
     ),
     Bob(
         Bob<BtcXmr>,
@@ -98,7 +98,7 @@ pub enum Wallet {
         Option<FundingTx>,
         Option<CommitAliceParameters<BtcXmr>>,
         Option<AliceParameters<BtcXmr>>,
-        Option<CoreArbitratingTransactions<Bitcoin<SegwitV0>>>,
+        Option<CoreArbitratingSetup<BtcXmr>>,
     ),
 }
 
@@ -406,7 +406,6 @@ impl Runtime {
                                 funding.clone(),
                                 public_offer,
                             )?;
-                            *core_arb_txs = Some(core_arbitrating_txs.clone());
                             let cosign_arbitrating_cancel = bob.cosign_arbitrating_cancel(
                                 key_manager,
                                 bob_params,
@@ -417,6 +416,7 @@ impl Runtime {
                                 core_arbitrating_txs,
                                 cosign_arbitrating_cancel,
                             ));
+                            *core_arb_txs = Some(core_arb_setup.clone());
                             let core_arb_setup = Msg::CoreArbitratingSetup(core_arb_setup);
                             self.send_ctl(senders, source, Request::Protocol(core_arb_setup))?;
                         } else {
@@ -425,9 +425,13 @@ impl Runtime {
                     }
                 }
             }
-            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
+            Request::Protocol(Msg::RefundProcedureSignatures(RefundProcedureSignatures {
+                swap_id,
+                cancel_sig: alice_cancel_sig,
+                refund_adaptor_sig,
+            })) => {
                 let swap_id = get_swap_id(source.clone())?;
-
+                let my_id = self.identity();
                 if let Some(Wallet::Bob(
                     bob,
                     bob_params,
@@ -436,49 +440,79 @@ impl Runtime {
                     Some(_funding_tx),
                     _commit,
                     Some(alice_params),
-                    Some(core_arbitrating_txs),
+                    Some(core_arb_setup),
                 )) = self.wallets.get_mut(&swap_id)
                 {
-                    // *refund_sigs = Some(refund_proc_sigs);
-                    let signed_adaptor_buy = bob.sign_adaptor_buy(
+                    error!("validate_adaptor_refund missing");
+                    let core_arb_txs = &(core_arb_setup.clone()).into();
+
+                    bob.validate_adaptor_refund(
                         key_manager,
                         alice_params,
                         bob_params,
-                        core_arbitrating_txs,
-                        public_offer,
-                    )?;
-                    let signed_arb_lock =
-                        bob.sign_arbitrating_lock(key_manager, key_manager, core_arbitrating_txs)?;
-
-                    let sig = signed_arb_lock.lock_sig;
-                    let tx = core_arbitrating_txs.lock.clone();
-                    let mut lock_tx = LockTx::from_partial(tx);
-                    let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Fund)?;
-                    lock_tx.add_witness(lock_pubkey, sig)?;
-                    let finalized_lock_tx =
-                        Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
-
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        source.clone(), // destination swapd
-                        Request::Datum(request::Datum::SignedArbitratingLock(finalized_lock_tx)),
+                        core_arb_txs,
+                        &SignedAdaptorRefund { refund_adaptor_sig },
                     )?;
 
-                    let buy_proc_sig =
-                        BuyProcedureSignature::<BtcXmr>::from((swap_id, signed_adaptor_buy));
-                    let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        source, // destination swapd
-                        Request::Protocol(buy_proc_sig),
-                    )?;
+                    // *refund_sigs = Some(refund_proc_sigs);
+                    {
+                        let signed_arb_lock =
+                            bob.sign_arbitrating_lock(key_manager, key_manager, core_arb_txs)?;
+                        let sig = signed_arb_lock.lock_sig;
+                        let tx = core_arb_setup.lock.clone();
+                        let mut lock_tx = LockTx::from_partial(tx);
+                        let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Fund)?;
+                        lock_tx.add_witness(lock_pubkey, sig)?;
+                        let finalized_lock_tx =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
+
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            my_id.clone(),
+                            source.clone(), // destination swapd
+                            Request::Datum(request::Datum::SignedArbitratingLock(finalized_lock_tx)),
+                        )?;
+                    }
+
+                    {
+                        let signed_adaptor_buy = bob.sign_adaptor_buy(
+                            key_manager,
+                            alice_params,
+                            bob_params,
+                            core_arb_txs,
+                            public_offer,
+                        )?;
+                        let buy_proc_sig =
+                            BuyProcedureSignature::<BtcXmr>::from((swap_id, signed_adaptor_buy));
+                        let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            my_id.clone(),
+                            source.clone(), // destination swapd
+                            Request::Protocol(buy_proc_sig),
+                        )?;
+                    }
+
+                    {
+                        // cancel
+                        let tx = core_arb_setup.cancel.clone();
+                        let mut cancel_tx = CancelTx::from_partial(tx);
+                        cancel_tx.add_witness(alice_params.cancel, alice_cancel_sig)?;
+                        cancel_tx.add_witness(bob_params.cancel, core_arb_setup.cancel_sig)?;
+                        let finalized_cancel_tx =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            my_id,
+                            source, // destination swapd
+                            Request::Datum(Datum::Cancel(finalized_cancel_tx)),
+                        )?;
+                    }
                 } else {
                     error!("Unknown wallet and swap_id");
                 }
             }
-            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
+            Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(source.clone())?;
                 if let Some(Wallet::Alice(
                     alice,
@@ -487,16 +521,16 @@ impl Runtime {
                     public_offer,
                     _bob_commit,
                     Some(bob_parameters),
-                    core_arb_txs, // None
+                    core_arb_setup, // None
                 )) = self.wallets.get_mut(&swap_id)
                 {
-                    if core_arb_txs.is_some() {
+                    if core_arb_setup.is_some() {
                         error!("core_arb_txs already set for alice");
                         return Ok(());
                     }
+                    *core_arb_setup = Some(core_arbitrating_setup.clone());
                     let arb_txs: CoreArbitratingTransactions<Bitcoin<SegwitV0>> =
-                        core_arb_setup.into();
-                    *core_arb_txs = Some(arb_txs.clone());
+                        core_arbitrating_setup.into();
                     let signed_adaptor_refund = alice.sign_adaptor_refund(
                         key_manager,
                         alice_params,
@@ -550,9 +584,10 @@ impl Runtime {
                     public_offer,
                     _bob_commit,
                     Some(bob_parameters),
-                    Some(core_arb_txs),
+                    Some(core_arb_setup),
                 )) = self.wallets.get(&swap_id)
                 {
+                    let core_arb_txs = &(core_arb_setup.clone()).into();
                     let mut buy_tx = BuyTx::from_partial(buy);
                     alice.validate_adaptor_buy(
                         key_manager,
@@ -793,14 +828,17 @@ impl Runtime {
 }
 
 fn address() -> bitcoin::Address {
-    bitcoin::Address::from_str("tb1qxcehz3p39vhmjxgl3754z74qu9lnjd5wam7prc")
+    bitcoin::Address::from_str("tb1qjrcl3e9yhnk73u3dersukh5ymy9qvjg8gj5e50")
         .expect("Parsable address")
 }
 
 pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Fund)?;
     debug!("bug to fix: not Fund, Lock^");
-    Ok(FundingTx::initialize(pk, farcaster_core::blockchain::Network::Testnet)?)
+    Ok(FundingTx::initialize(
+        pk,
+        farcaster_core::blockchain::Network::Testnet,
+    )?)
 }
 
 pub fn funding_update(funding: &mut FundingTx, tx: bitcoin::Transaction) -> Result<(), Error> {
