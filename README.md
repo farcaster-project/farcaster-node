@@ -1,4 +1,5 @@
 # Farcaster-node: Atomic swap node
+:warning: THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET :warning:
 
 ## Running the node
 ### Clone and build the project
@@ -42,22 +43,22 @@ swap0-cli make --help
 ARGS:
     <network>
             Type of offer and network to use [default: Testnet]
-    <arbitrating>
-            The chosen arbitrating blockchain [default: Bitcoin]
-    <accordant>
+    <arbitrating-blockchain>
+            The chosen arbitrating blockchain [default: ECDSA]
+    <accordant-blockchain>
             The chosen accordant blockchain [default: Monero]
-    <arbitrating-assets>
-            Amount of arbitrating assets to exchanged [default: 100]
-    <accordant-assets>
-            Amount of accordant assets to exchanged [default: 100]
+    <arbitrating-amount>
+            Amount of arbitrating assets to exchanged [default: 0.15 BTC]
+    <accordant-amount>
+            Amount of accordant assets to exchanged [default: 1 XMR]
     <cancel-timelock>
             The cancel timelock parameter of the arbitrating blockchain [default: 10]
     <punish-timelock>
             The punish timelock parameter of the arbitrating blockchain [default: 30]
     <fee-strategy>
-            The chosen fee strategy for the arbitrating transactions [default: 20]
+            The chosen fee strategy for the arbitrating transactions [default: 2 Satoshi/vByte]
     <maker-role>
-            The future maker swap role [default: Alice]
+            The future maker swap role [default: Alice] [possible values: Alice, Bob]
     <ip-addr>
             IPv4 or IPv6 address to bind to [default: 0.0.0.0]
     <port>
@@ -66,15 +67,17 @@ ARGS:
             Use overlay protocol (http, websocket etc) [default: tcp]
 ```
 
+The ECDSA below is a temporary hack, but it represents Bitcoin<ECDSA>, as Bitcoin can take many forms:
+
 ```
-swap0-cli make Testnet Bitcoin Monero 1000 201 10 10 21 Bob
+swap0-cli make Testnet ECDSA Monero "0.00001350 BTC" "0.1 XMR" 10 30 "1 satoshi/vByte" Alice
 ```
 
 This will produce the following hex encoded offer: 
 
-`464353574150010002000000808000008008e80300000000000008c900000000000000040a000000040a0000000108150000000000000002026981c0e141351c1aae13014379d629dfddb3b5375c1265c34203b5d13c69cd270000000000000000000000000000000000000000000000000000000000000000000000260700`
+`464353574150010002000000808000008008004605000000000000080000e876481700000004000a00000004001e000000010800010000000000000001210003d7855d33e4cd573502e1d5e25c2b61b6dc363c0e06af895b84d5167d7433266700000000000000000000000000000000000000000000000000000000000000000000260700`
 
-This public offer should be shared by maker with taker. It also contains information on how to connect to taker.
+This public offer should be shared by maker with taker. It also contains information on how to connect to maker.
 
 Additionally, it adds the public offers to the set of public offers in farcasterd that will be later used to initiate the swap upon takers message
  
@@ -88,7 +91,7 @@ arguments of `take`
 
 Example of taking the offer above produced by maker. 
 ```
-swap1-cli take 464353574150010002000000808000008008e80300000000000008c900000000000000040a000000040a0000000108150000000000000002026981c0e141351c1aae13014379d629dfddb3b5375c1265c34203b5d13c69cd270000000000000000000000000000000000000000000000000000000000000000000000260700
+swap1-cli take 464353574150010002000000808000008008004605000000000000080000e876481700000004000a00000004001e000000010800010000000000000001210003d7855d33e4cd573502e1d5e25c2b61b6dc363c0e06af895b84d5167d7433266700000000000000000000000000000000000000000000000000000000000000000000260700
 ```
 
 ## Remote client use
@@ -106,34 +109,6 @@ And the following client can instruct the above `farcasterd` to make a offer as 
 ``` sh
 ./target/debug/swap-cli -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" make
 ```
-
-## Listening and connecting
-
-`make` and `take` take care of listening and connecting, but if you would like to do it manually, read on.
-
-Create aliases for node address
-```
-node0=$(swap0-cli info | awk '/node_id/ {print $2"@127.0.0.1"}')
-node1=$(swap1-cli info | awk '/node_id/ {print $2"@127.0.0.1"}')
-```
-
-### `node0` listens and `node1` connect
-
-`node0` listens for a connection
-```
-swap0-cli listen
-```
-
-This will launch a `peerd` service for `node0`, which is a daemon that handles peer connections
-
-`node1` connect to `node0`
-```
-swap1-cli connect $node0
-```
-
-This will launch a `peerd` service for `node1`
-
-That is about all you can do for now.
 
 ## Docker usage
 
