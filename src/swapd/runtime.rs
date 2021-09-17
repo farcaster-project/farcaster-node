@@ -31,14 +31,17 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
-use bitcoin::util::{
-    bip143::SigHashCache,
-    psbt::{serialize::Deserialize, PartiallySignedTransaction},
-};
 use bitcoin::{consensus::Encodable, secp256k1};
 use bitcoin::{
     hashes::{hex::FromHex, sha256, Hash, HashEngine},
     Txid,
+};
+use bitcoin::{
+    util::{
+        bip143::SigHashCache,
+        psbt::{serialize::Deserialize, PartiallySignedTransaction},
+    },
+    Script,
 };
 use bitcoin::{OutPoint, SigHashType};
 
@@ -68,10 +71,6 @@ use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
-use lnp::payment::bolt3::{ScriptGenerators, TxGenerators};
-use lnp::payment::htlc::{HtlcKnown, HtlcSecret};
-use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, Messages, TempChannelId as TempSwapId};
 use lnpbp::{chain::AssetId, Chain};
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
@@ -127,7 +126,6 @@ pub fn run(
         peer_service: ServiceId::Loopback,
         chain,
         state: init_state,
-        funding_outpoint: default!(),
         maker_peer: None,
         started: SystemTime::now(),
         accordant_amount,
@@ -159,7 +157,6 @@ pub struct Runtime {
     chain: Chain,
     state: State,
     // remote_state: State,
-    funding_outpoint: OutPoint,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
     accordant_amount: monero::Amount,
@@ -286,6 +283,21 @@ impl SyncerState {
         self.task_counter += 1;
         self.task_counter
     }
+
+    fn watch_addr(&mut self, script_pubkey: Script, id: u32) -> Request {
+        let from_height = self.block_height - 100;
+        let addendum = BtcAddressAddendum {
+            address: None,
+            from_height,
+            script_pubkey,
+        };
+        Request::SyncerTask(Task::WatchAddress(WatchAddress {
+            id,
+            lifetime: self.task_lifetime,
+            addendum: AddressAddendum::Bitcoin(addendum),
+            include_tx: Boolean::True,
+        }))
+    }
 }
 impl Runtime {
     fn send_peer(&self, senders: &mut Senders, msg: request::Msg) -> Result<(), Error> {
@@ -345,12 +357,8 @@ impl Runtime {
                             )),
                             State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
                                 let id = self.syncer_state.new_taskid();
-                                let watch_addr_req = watch_addr(
-                                    AddressOrScript::Script(addr.script_pubkey()),
-                                    self.syncer_state.task_lifetime,
-                                    id,
-                                    self.syncer_state.block_height,
-                                );
+                                let watch_addr_req =
+                                    self.syncer_state.watch_addr(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
                                     .txs_status
@@ -377,23 +385,22 @@ impl Runtime {
                             ))),
                         }?;
 
-                        match &self.state {
-                            State::Alice(AliceState::CommitA(TradeRole::Taker, ..))
-                            | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) => {
-                                trace!("Watch height");
-                                let watch_height = Task::WatchHeight(WatchHeight {
-                                    id: self.syncer_state.new_taskid(),
-                                    lifetime: self.syncer_state.task_lifetime,
-                                });
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Syncer(Coin::Bitcoin),
-                                    Request::SyncerTask(watch_height),
-                                )?;
-                            }
-                            _ => unreachable!(),
+                        if let State::Alice(AliceState::CommitA(TradeRole::Taker, ..))
+                        | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) = &self.state
+                        {
+                            trace!("Watch height");
+                            let watch_height = Task::WatchHeight(WatchHeight {
+                                id: self.syncer_state.new_taskid(),
+                                lifetime: self.syncer_state.task_lifetime,
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Syncer(Coin::Bitcoin),
+                                Request::SyncerTask(watch_height),
+                            )?;
                         }
+
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
@@ -419,12 +426,8 @@ impl Runtime {
                             )),
                             State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
                                 let id = self.syncer_state.new_taskid();
-                                let watch_addr_req = watch_addr(
-                                    AddressOrScript::Script(addr.script_pubkey()),
-                                    self.syncer_state.task_lifetime,
-                                    id,
-                                    self.syncer_state.block_height,
-                                );
+                                let watch_addr_req =
+                                    self.syncer_state.watch_addr(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
                                     .txs_status
@@ -1165,12 +1168,7 @@ impl Runtime {
                     .is_none()
                 {
                     debug!("subscribe Buy address task");
-                    let req = watch_addr(
-                        AddressOrScript::Script(script_pubkey),
-                        self.syncer_state.task_lifetime,
-                        id_addr,
-                        self.syncer_state.block_height,
-                    );
+                    let req = self.syncer_state.watch_addr(script_pubkey, id_addr);
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -1333,33 +1331,6 @@ enum TxStatus {
 enum AddressOrScript {
     Address(bitcoin::Address),
     Script(bitcoin::Script),
-}
-
-fn watch_addr(
-    addr_or_script: AddressOrScript,
-    lifetime: u64,
-    id: u32,
-    from_height: u64,
-) -> Request {
-    let addendum = match addr_or_script {
-        AddressOrScript::Address(addr) => BtcAddressAddendum {
-            address: Some(addr.clone()),
-            from_height,
-            script_pubkey: addr.script_pubkey(),
-        },
-        AddressOrScript::Script(script_pubkey) => BtcAddressAddendum {
-            address: None,
-            from_height: 0,
-            script_pubkey,
-        },
-    };
-
-    Request::SyncerTask(Task::WatchAddress(WatchAddress {
-        id,
-        lifetime,
-        addendum: AddressAddendum::Bitcoin(addendum),
-        include_tx: Boolean::True,
-    }))
 }
 
 #[derive(Debug)]
