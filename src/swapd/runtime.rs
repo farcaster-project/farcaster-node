@@ -107,8 +107,8 @@ pub fn run(
     };
 
     let temporal_safety = TemporalSafety {
-        cancel_timelock,
-        punish_timelock,
+        cancel_timelock: cancel_timelock.as_u32(),
+        punish_timelock: punish_timelock.as_u32(),
         tx_finality_thr: 0,
         confirmation_bound: 50000,
         race_thr: 1,
@@ -175,8 +175,8 @@ pub struct Runtime {
 }
 
 struct TemporalSafety {
-    cancel_timelock: CSVTimelock,
-    punish_timelock: CSVTimelock,
+    cancel_timelock: u32,
+    punish_timelock: u32,
     race_thr: u32,
     tx_finality_thr: u32,
     confirmation_bound: u32,
@@ -186,8 +186,8 @@ impl TemporalSafety {
     /// check if temporal params are in correct order
     fn valid_params(&self) -> Result<(), Error> {
         let finality = self.tx_finality_thr;
-        let cancel = self.cancel_timelock.as_u32();
-        let punish = self.punish_timelock.as_u32();
+        let cancel = self.cancel_timelock;
+        let punish = self.punish_timelock;
         let race = self.race_thr;
         if finality < cancel && cancel < punish && finality < race && punish > race {
             Ok(())
@@ -202,15 +202,15 @@ impl TemporalSafety {
     }
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
         // lock must be final, valid after lock_minedblock + cancel_timelock
-        self.final_tx(lock_confirmations) && lock_confirmations >= self.cancel_timelock.as_u32()
+        self.final_tx(lock_confirmations) && lock_confirmations >= self.cancel_timelock
     }
     fn safe_refund(&self, cancel_confirmations: u32) -> bool {
         // cancel must be final, but refund shall not be raced with punish
         self.final_tx(cancel_confirmations)
-            && cancel_confirmations < (self.punish_timelock.as_u32() - self.race_thr)
+            && cancel_confirmations < (self.punish_timelock - self.race_thr)
     }
     fn valid_punish(&self, cancel_confirmations: u32) -> bool {
-        self.final_tx(cancel_confirmations) && cancel_confirmations >= self.punish_timelock.as_u32()
+        self.final_tx(cancel_confirmations) && cancel_confirmations >= self.punish_timelock
     }
 }
 
