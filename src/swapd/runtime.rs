@@ -145,6 +145,7 @@ pub fn run(
             }),
         )?),
         pending_requests: none!(),
+        txs: none!(),
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -170,6 +171,7 @@ pub struct Runtime {
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
     pending_requests: HashMap<ServiceId, PendingRequest>,
+    txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
 }
@@ -867,18 +869,26 @@ impl Runtime {
                     bus_id,
                 }) = self.pending_requests.remove(&source)
                 {
-                    // FIXME state management
-                    // if let State::Alice(AliceState::Re) =self.state {}
-                    if let Request::Protocol(Msg::Reveal(Reveal::Alice(_))) = &request {
-                        trace!(
-                            "sending request {} to {} on bus {}",
-                            &request,
-                            &dest,
-                            &bus_id
-                        );
-                        senders.send_to(bus_id, self.identity(), dest, request)?
+                    if let State::Bob(BobState::RevealB(..)) = self.state {
+                        // continuing request by sending it to wallet
+                        if let (
+                            Request::Protocol(Msg::Reveal(Reveal::Alice(_))),
+                            ServiceId::Wallet,
+                            ServiceBus::Msg,
+                        ) = (&request, &dest, &bus_id)
+                        {
+                            trace!(
+                                "sending request {} to {} on bus {}",
+                                &request,
+                                &dest,
+                                &bus_id
+                            );
+                            senders.send_to(bus_id, self.identity(), dest, request)?
+                        } else {
+                            error!("Not the expected request: found {:?}", request);
+                        }
                     } else {
-                        error!("Not the expected request: found {:?}", request);
+                        error!("Expected state RevealB, found {}", self.state);
                     }
                 } else {
                     error!("pending request not found")
@@ -927,7 +937,11 @@ impl Runtime {
                                     let req = Request::Tx(Tx::Buy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
                                 } else {
-                                    error!("not BuyProcSigB")
+                                    error!(
+                                        "expected BuySigB, found {}, maybe you reused the \
+                                         external address?",
+                                        self.state
+                                    )
                                 }
                             }
                             TxLabel::Refund => {
@@ -962,7 +976,32 @@ impl Runtime {
                             TxLabel::Lock
                                 if self.temporal_safety.valid_cancel(*confirmations as u32) =>
                             {
-                                error!("shall publish cancel transaction here");
+                                if let Some(cancel_tx) = self.txs.remove(&TxLabel::Cancel) {
+                                    // if let State::Bob(BobState::CorearbB(..)) = self.state
+                                    {
+                                        let req = Request::SyncerTask(Task::BroadcastTransaction(
+                                            BroadcastTransaction {
+                                                id: self.syncer_state.new_taskid(),
+                                                tx: bitcoin::consensus::serialize(&cancel_tx),
+                                            },
+                                        ));
+
+                                        info!(
+                                            "Broadcasting btc cancel {}",
+                                            cancel_tx.txid().addr()
+                                        );
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            ServiceId::Syncer(Coin::Bitcoin),
+                                            req,
+                                        )?;
+                                    }
+                                    // else {
+                                    //     error!("Wrong state: must be
+                                    // CorearbB, found {}", &self.state)
+                                    // }
+                                }
                             }
                             TxLabel::Lock => {
                                 if let Some(PendingRequest {
@@ -1006,16 +1045,60 @@ impl Runtime {
                             TxLabel::Cancel
                                 if self.temporal_safety.valid_punish(*confirmations as u32) =>
                             {
-                                error!("here Alice publishes punish tx")
+                                trace!("Alice publishes punish tx");
+                                if let Some(punish_tx) = self.txs.remove(&TxLabel::Punish) {
+                                    // true represents alice already locked monero
+                                    if let State::Alice(AliceState::RefundSigA(true)) = self.state {
+                                        let req = Request::SyncerTask(Task::BroadcastTransaction(
+                                            BroadcastTransaction {
+                                                id: self.syncer_state.new_taskid(),
+                                                tx: bitcoin::consensus::serialize(&punish_tx),
+                                            },
+                                        ));
+
+                                        info!(
+                                            "Broadcasting btc punish {}",
+                                            punish_tx.txid().addr()
+                                        );
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            ServiceId::Syncer(Coin::Bitcoin),
+                                            req,
+                                        )?;
+                                    }
+                                }
                             }
                             TxLabel::Cancel
                                 if self.temporal_safety.safe_refund(*confirmations as u32) =>
                             {
                                 if let State::Bob(BobState::BuySigB) = self.state {
-                                    error!("here Bob publishes refund tx")
+                                    trace!("here Bob publishes refund tx");
+                                    if let Some(refund_tx) = self.txs.remove(&TxLabel::Refund) {
+                                        // true represents alice already locked monero
+                                        let req = Request::SyncerTask(Task::BroadcastTransaction(
+                                            BroadcastTransaction {
+                                                id: self.syncer_state.new_taskid(),
+                                                tx: bitcoin::consensus::serialize(&refund_tx),
+                                            },
+                                        ));
+
+                                        info!(
+                                            "Broadcasting btc refund {}",
+                                            refund_tx.txid().addr()
+                                        );
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            ServiceId::Syncer(Coin::Bitcoin),
+                                            req,
+                                        )?;
+                                    }
                                 }
                             }
-
+                            TxLabel::Buy => {
+                                info!("found buy by txid")
+                            }
                             tx_label => warn!("tx label {} not supported", tx_label),
                         }
                     } else {
@@ -1096,7 +1179,7 @@ impl Runtime {
             }
 
             Request::Tx(Tx::Lock(btc_lock)) => {
-                if let State::Bob(BobState::CorearbB(ref core_arb)) = self.state {
+                if let State::Bob(BobState::CorearbB(..)) = self.state {
                     let req =
                         Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
                             id: self.syncer_state.new_taskid(),
@@ -1111,7 +1194,7 @@ impl Runtime {
                         req,
                     )?;
                 } else {
-                    error!("Wrong state: must be RevealB, found {}", &self.state)
+                    error!("Wrong state: must be CorearbB, found {}", &self.state)
                 }
             }
             Request::Tx(Tx::Buy(buy_tx)) => {
@@ -1136,6 +1219,23 @@ impl Runtime {
                     )
                 }
             }
+            Request::Tx(transaction) => match transaction {
+                Tx::Cancel(tx) => {
+                    debug!("received cancel");
+                    self.txs.insert(TxLabel::Cancel, tx);
+                }
+                Tx::Refund(tx) => {
+                    debug!("received refund");
+                    self.txs.insert(TxLabel::Refund, tx);
+                }
+                Tx::Punish(tx) => {
+                    debug!("received punish");
+                    self.txs.insert(TxLabel::Punish, tx);
+                }
+                Tx::Funding(_) => unreachable!("not handled in swapd"),
+                Tx::Lock(_) => unreachable!("handled above"),
+                Tx::Buy(_) => unreachable!("handled above"),
+            },
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 let locked_monero = false;
