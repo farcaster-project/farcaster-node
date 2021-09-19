@@ -136,7 +136,7 @@ pub enum Command {
         punish_timelock: CSVTimelock,
 
         /// The chosen fee strategy for the arbitrating transactions
-        #[clap(default_value = "2 Satoshi/vByte")]
+        #[clap(default_value = "2 satoshi/vByte")]
         fee_strategy: FeeStrategy<SatPerVByte>,
 
         /// The future maker swap role

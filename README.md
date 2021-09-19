@@ -56,7 +56,7 @@ ARGS:
     <punish-timelock>
             The punish timelock parameter of the arbitrating blockchain [default: 30]
     <fee-strategy>
-            The chosen fee strategy for the arbitrating transactions [default: 2 Satoshi/vByte]
+            The chosen fee strategy for the arbitrating transactions [default: 2 satoshi/vByte]
     <maker-role>
             The future maker swap role [default: Alice] [possible values: Alice, Bob]
     <ip-addr>
