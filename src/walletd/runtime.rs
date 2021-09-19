@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
+    io::{self, Write},
     ptr::swap_nonoverlapping,
     str::FromStr,
 };
@@ -905,9 +906,48 @@ impl Runtime {
     }
 }
 
-fn address() -> bitcoin::Address {
-    bitcoin::Address::from_str("tb1qjrcl3e9yhnk73u3dersukh5ymy9qvjg8gj5e50")
-        .expect("Parsable address")
+fn address() -> Result<bitcoin::Address, Error> {
+    let mut address = bitcoin::Address::from_str("tb1qa83aeqmfvn23llr2zc3gfkrwt8xvpv2k2cluzg")
+        .expect("Parsable address");
+    let path = &"./testnet.addrs";
+    if let Ok(lines) = read_lines(path) {
+        // use address from first line and drop that line
+        let updated_lines = lines
+            .enumerate()
+            .filter_map(|(ix, line)| {
+                if let Ok(addr) = line {
+                    if ix == 0 {
+                        address = bitcoin::Address::from_str(&addr).ok()?;
+                        None
+                    } else {
+                        Some(addr)
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        std::fs::File::create(path)
+            .unwrap()
+            .write_all(updated_lines.as_ref())
+            .unwrap();
+    };
+    Ok(address)
+}
+
+// The output is wrapped in a Result to allow matching on errors
+// Returns an Iterator to the Reader of the lines of the file.
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<std::fs::File>>>
+where
+    P: AsRef<std::path::Path>,
+{
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(filename)?;
+    Ok(io::BufRead::lines(io::BufReader::new(file)))
 }
 
 pub fn create_funding(key_manager: &KeyManager) -> Result<FundingTx, Error> {
