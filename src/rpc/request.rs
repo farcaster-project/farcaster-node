@@ -416,7 +416,7 @@ pub enum Request {
     Params(Params),
 
     #[api(type = 196)]
-    #[display("datum({0})")]
+    #[display("transaction: ({0})")]
     Tx(Tx),
 
     #[api(type = 205)]
@@ -505,7 +505,7 @@ impl rpc_connection::Request for Request {}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
-#[display("syncerd event")]
+#[display("{source}, {event}")]
 pub struct SyncerdBridgeEvent {
     pub event: Event,
     pub source: ServiceId,

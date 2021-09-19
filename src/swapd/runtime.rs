@@ -977,30 +977,20 @@ impl Runtime {
                                 if self.temporal_safety.valid_cancel(*confirmations as u32) =>
                             {
                                 if let Some(cancel_tx) = self.txs.remove(&TxLabel::Cancel) {
-                                    // if let State::Bob(BobState::CorearbB(..)) = self.state
-                                    {
-                                        let req = Request::SyncerTask(Task::BroadcastTransaction(
-                                            BroadcastTransaction {
-                                                id: self.syncer_state.new_taskid(),
-                                                tx: bitcoin::consensus::serialize(&cancel_tx),
-                                            },
-                                        ));
+                                    let req = Request::SyncerTask(Task::BroadcastTransaction(
+                                        BroadcastTransaction {
+                                            id: self.syncer_state.new_taskid(),
+                                            tx: bitcoin::consensus::serialize(&cancel_tx),
+                                        },
+                                    ));
 
-                                        info!(
-                                            "Broadcasting btc cancel {}",
-                                            cancel_tx.txid().addr()
-                                        );
-                                        senders.send_to(
-                                            ServiceBus::Ctl,
-                                            self.identity(),
-                                            ServiceId::Syncer(Coin::Bitcoin),
-                                            req,
-                                        )?;
-                                    }
-                                    // else {
-                                    //     error!("Wrong state: must be
-                                    // CorearbB, found {}", &self.state)
-                                    // }
+                                    info!("Broadcasting btc cancel {}", cancel_tx.txid().addr());
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        ServiceId::Syncer(Coin::Bitcoin),
+                                        req,
+                                    )?;
                                 }
                             }
                             TxLabel::Lock => {
@@ -1449,11 +1439,6 @@ pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
 enum TxStatus {
     Final,
     Notfinal,
-}
-
-enum AddressOrScript {
-    Address(bitcoin::Address),
-    Script(bitcoin::Script),
 }
 
 #[derive(Debug)]
