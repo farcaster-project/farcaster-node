@@ -110,7 +110,6 @@ pub fn run(
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
         tx_finality_thr: 0,
-        confirmation_bound: 50000,
         race_thr: 1,
     };
 
@@ -120,6 +119,7 @@ pub fn run(
         txs_status: none!(),
         block_height: 0,
         task_counter: 0,
+        confirmation_bound: 50000,
     };
 
     let runtime = Runtime {
@@ -179,7 +179,6 @@ struct TemporalSafety {
     punish_timelock: u32,
     race_thr: u32,
     tx_finality_thr: u32,
-    confirmation_bound: u32,
 }
 
 impl TemporalSafety {
@@ -219,6 +218,7 @@ struct SyncerState {
     txs_status: HashMap<u32, (TxLabel, TxStatus)>,
     block_height: u64,
     task_counter: u32,
+    confirmation_bound: u32,
 }
 
 #[derive(Display, Clone)]
@@ -621,7 +621,7 @@ impl Runtime {
                                     id,
                                     lifetime: self.syncer_state.task_lifetime,
                                     hash: txid.to_vec(),
-                                    confirmation_bound: self.temporal_safety.confirmation_bound,
+                                    confirmation_bound: self.syncer_state.confirmation_bound,
                                 });
                                 senders.send_to(
                                     ServiceBus::Ctl,
@@ -674,7 +674,7 @@ impl Runtime {
                                 id,
                                 lifetime: self.syncer_state.task_lifetime,
                                 hash: txid.to_vec(),
-                                confirmation_bound: self.temporal_safety.confirmation_bound,
+                                confirmation_bound: self.syncer_state.confirmation_bound,
                             });
                             senders.send_to(
                                 ServiceBus::Ctl,
@@ -1080,7 +1080,7 @@ impl Runtime {
                         id,
                         lifetime: self.syncer_state.task_lifetime,
                         hash: txid.to_vec(),
-                        confirmation_bound: self.temporal_safety.confirmation_bound,
+                        confirmation_bound: self.syncer_state.confirmation_bound,
                     });
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -1167,7 +1167,7 @@ impl Runtime {
                         id: id_tx,
                         lifetime: self.syncer_state.task_lifetime,
                         hash: txid.to_vec(),
-                        confirmation_bound: self.temporal_safety.confirmation_bound,
+                        confirmation_bound: self.syncer_state.confirmation_bound,
                     });
                     senders.send_to(
                         ServiceBus::Ctl,
