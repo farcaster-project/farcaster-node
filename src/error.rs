@@ -34,6 +34,8 @@ pub enum Error {
     /// Farcaster node errors: {0}
     Farcaster(String),
 
+    /// Wallet node errors: {0}
+    Wallet(String),
     /// I/O error: {0:?}
     #[from(io::Error)]
     Io(IoError),

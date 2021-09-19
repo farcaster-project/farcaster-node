@@ -190,9 +190,9 @@ impl Runtime {
                 let peer = daemon_service
                     .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                let external_address = address()?;
                 match offer.maker_role {
                     SwapRole::Bob => {
-                        let external_address = address();
                         let bob = Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
                         let key_manager = KeyManager::new(self.node_secrets.wallet_seed);
                         let local_params = bob.generate_parameters(&key_manager, &public_offer)?;
@@ -242,7 +242,6 @@ impl Runtime {
                         }
                     }
                     SwapRole::Alice => {
-                        let external_address = address();
                         let alice: Alice<BtcXmr> =
                             Alice::new(external_address.into(), FeePriority::Low);
                         let wallet_seed = self.node_secrets.wallet_seed;
@@ -696,7 +695,6 @@ impl Runtime {
                         Request::Tx(Tx::Buy(tx)),
                     )?;
 
-
                     // buy_adaptor_sig
                 } else {
                     error!("could not get alice's wallet")
@@ -762,16 +760,19 @@ impl Runtime {
                 // since we're takers, we are on the other side of the trade
                 let taker_role = offer.maker_role.other();
                 let key_manager = KeyManager::new(self.node_secrets.wallet_seed);
+                let external_address = address()?;
                 match taker_role {
                     SwapRole::Bob => {
-                        let address = address();
-                        let bob: Bob<BtcXmr> = Bob::new(address.into(), FeePriority::Low);
+                        let bob: Bob<BtcXmr> = Bob::new(external_address.into(), FeePriority::Low);
                         let local_params = bob.generate_parameters(&key_manager, &public_offer)?;
                         let funding = create_funding(&key_manager)?;
                         let funding_addr = funding.get_address()?;
+                        let funding_fee = 150;
+                        let funding_amount = offer.arbitrating_amount.as_sat() + funding_fee;
                         info!(
-                            "Send money to address: {}",
-                            funding_addr.bright_yellow_bold()
+                            "Send {} sats to address: {}",
+                            funding_amount.bright_green_bold(),
+                            funding_addr.addr(),
                         );
                         info!("Creating {}", "Wallet::Bob".bright_yellow());
                         if self.wallets.get(&swap_id).is_none() {
@@ -809,8 +810,8 @@ impl Runtime {
                         )?;
                     }
                     SwapRole::Alice => {
-                        let address = address();
-                        let alice: Alice<BtcXmr> = Alice::new(address.into(), FeePriority::Low);
+                        let alice: Alice<BtcXmr> =
+                            Alice::new(external_address.into(), FeePriority::Low);
                         let local_params =
                             alice.generate_parameters(&key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
