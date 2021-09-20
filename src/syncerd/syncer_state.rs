@@ -216,11 +216,12 @@ impl SyncerState {
 
             *addresses = addresses
                 .drain()
-                .map(|(id, addr)| {
+                .filter_map(|(id, addr)| {
                     trace!("processing taskid {} for address {:?}", id, addr);
+                    let mut res = Some((id, addr.clone()));
                     if addr.task.addendum != address_addendum {
                         trace!("address not changed or not address_addendum of interest");
-                        return (id, addr);
+                        return res;
                     }
                     // create events for new transactions
                     for new_tx in txs.difference(&addr.known_txs).cloned() {
@@ -239,15 +240,9 @@ impl SyncerState {
                                 .cloned()
                                 .expect("task source missing"),
                         ));
+                        res = None;
                     }
-
-                    (
-                        id,
-                        AddressTransactions {
-                            task: addr.task.clone(),
-                            known_txs: txs.clone(),
-                        },
-                    )
+                    res
                 })
                 .collect();
 
