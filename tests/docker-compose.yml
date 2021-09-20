@@ -1,0 +1,44 @@
+version: "3.7"
+services:
+    bitcoin-core:
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:latest
+        environment:
+            NETWORK: regtest
+            RPC_PORT: 18443
+            FALLBACKFEE: "0.00001"
+        volumes:
+            - ./data_dir:/data
+        ports:
+            - 18443:18443
+    electrs:
+        image: ghcr.io/farcaster-project/containers/electrs:latest
+        environment:
+            NETWORK: regtest
+            ELECTRUM_RPC_PORT: 50001
+            DAEMON_RPC_ADDR: bitcoin-core:18443
+        volumes:
+            - ./data_dir:/data
+        ports:
+            - 50001:50001
+    monerod:
+        image: ghcr.io/farcaster-project/containers/monerod:latest
+        environment:
+            NETWORK: regtest
+            MONEROD_RPC_PORT: 18081
+            OFFLINE: --offline
+            DIFFICULTY: 1
+        ports:
+            - 18081:18081
+    monero-wallet-rpc-1:
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
+        environment:
+            MONEROD_ADDRESS: monerod:18081
+        ports:
+            - 18083:18083
+    monero-wallet-rpc-2:
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
+        environment:
+            MONEROD_ADDRESS: monerod:18081
+        ports:
+            - 18084:18083
+

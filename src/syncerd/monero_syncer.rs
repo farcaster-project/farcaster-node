@@ -130,13 +130,21 @@ impl MoneroRpc {
         let mut transactions: Vec<Transaction> = vec![];
         if txs.txs.is_some() {
             for tx in txs.txs.unwrap().iter() {
-                let mut block_hash = none!();
-                if tx.block_height > 0 {
-                    block_hash = Some(self.get_block_hash(tx.block_height).await);
+                let mut block_hash: Option<Vec<u8>> = None;
+                let mut confirmations: Option<u32> = Some(0);
+                if let Some(tx_height) = tx.block_height {
+                    if tx_height > 0 {
+                        block_hash = Some(self.get_block_hash(tx_height).await);
+                    }
+                    println!(
+                        "tx_height: {:?}, block_height: {:?}",
+                        tx_height, block_height
+                    );
+                    confirmations = Some((block_height - tx_height + 1) as u32);
                 }
                 transactions.push(Transaction {
                     tx_id: hex::decode(tx.tx_hash.to_string()).unwrap(),
-                    confirmations: Some((block_height - tx.block_height) as u32),
+                    confirmations,
                     block_hash,
                 });
             }
@@ -172,7 +180,7 @@ impl MoneroRpc {
         address_addendum: XmrAddressAddendum,
     ) -> Result<AddressNotif, Error> {
         // TODO: Get network type from configuration
-        let network = monero::Network::Stagenet;
+        let network = monero::Network::Mainnet;
         let keypair = monero::ViewPair {
             spend: monero::PublicKey::from_slice(&address_addendum.spend_key.clone()).unwrap(),
             view: monero::PrivateKey::from_slice(&address_addendum.view_key.clone()).unwrap(),
@@ -195,7 +203,7 @@ impl MoneroRpc {
                         restore_height: Some(address_addendum.from_height),
                         filename: address.to_string(),
                         address,
-                        spendkey: none!(),
+                        spendkey: None,
                         viewkey: keypair.view,
                         password: "pass".to_string(),
                         autosave_current: Some(true),
@@ -233,15 +241,10 @@ impl MoneroRpc {
         let mut address_txs: Vec<AddressTx> = vec![];
         for (_category, txs) in transfers.iter() {
             for tx in txs.iter() {
-                let mut block_hash = vec![];
-                if let TransferHeight::Confirmed(height) = tx.height {
-                    block_hash = self.get_block_hash(height.into()).await;
-                }
                 error!("FIXME: tx set to vec![0]");
                 address_txs.push(AddressTx {
                     our_amount: tx.amount,
                     tx_id: tx.txid.0.clone(),
-                    block_hash,
                     tx: vec![0],
                 });
             }
@@ -393,111 +396,3 @@ impl Synclet for MoneroSyncer {
         });
     }
 }
-
-// #[test]
-// pub fn monero_syncer_address_test() {
-// let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-// let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-// let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-// tx_event.connect("inproc://xmrsyncerdbridge").unwrap();
-// rx_event.bind("inproc://xmrsyncerdbridge").unwrap();
-//
-// let viewkey: monero::PrivateKey = monero::PrivateKey::from_str(
-// "08b90e56278a92c6b937cb73080d2d09c8c7525531a5432d310098b295a09301",
-// )
-// .unwrap();
-// let spendkey: monero::PublicKey = monero::PublicKey::from_str(
-// "08c9ed3ab1efef7b56919603489aed4133e9f42f8a2be8078b645ae9cd93228e",
-// )
-// .unwrap();
-//
-// let addendum = XmrAddressAddendum {
-// spend_key: spendkey.as_bytes().try_into().unwrap(),
-// view_key: viewkey.as_bytes().try_into().unwrap(),
-// from_height: 902000,
-// };
-// let mut syncer = MoneroSyncer::new();
-// syncer.run(rx, tx_event, ServiceId::Syncer.into());
-// let task = SyncerdTask {
-// task: Task::WatchAddress(WatchAddress {
-// id: 0,
-// lifetime: 100000000,
-// addendum: consensus::serialize(&addendum),
-// }),
-// source: ServiceId::Syncer,
-// };
-// tx.send(task).unwrap();
-// let message = rx_event.recv_multipart(0);
-// assert!(message.is_ok());
-// println!("message received: {:?}", message);
-// let message = rx_event.recv_multipart(0);
-// assert!(message.is_ok());
-// println!("message received: {:?}", message);
-// let message = rx_event.recv_multipart(0);
-// assert!(message.is_ok());
-// println!("message received: {:?}", message);
-// }
-
-// #[test]
-// pub fn monero_syncer_state_transaction_event() {
-//     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-//     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-//     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-//     tx_event.connect("inproc://xmrsyncerdbridge").unwrap();
-//     rx_event.bind("inproc://xmrsyncerdbridge").unwrap();
-
-//     // let tx_id = "4c13a1ef5c0edb3c6000c65df031f216b12852b664c66ba42aa1489e37c7d7f1".to_string();
-//     let tx_id = "aa63ffd3b8e4589d1273c63db49bc2d986f1dcb087e52ba116b9894fc22a9ea7".to_string();
-
-//     let mut syncer = MoneroSyncer::new();
-//     syncer.run(rx, tx_event, ServiceId::Syncer.into());
-//     let task = SyncerdTask {
-//         task: Task::WatchTransaction(WatchTransaction {
-//             id: 0,
-//             lifetime: 100000000,
-//             hash: Vec::from_hex(&tx_id).unwrap(),
-//             confirmation_bound: 65535,
-//         }),
-//         source: ServiceId::Syncer,
-//     };
-//     tx.send(task).unwrap();
-//     let message = rx_event.recv_multipart(0);
-//     assert!(message.is_ok());
-//     println!("message received: {:?}", message);
-//     let message = rx_event.recv_multipart(0);
-//     assert!(message.is_ok());
-//     println!("message received: {:?}", message);
-//     let message = rx_event.recv_multipart(0);
-//     assert!(message.is_ok());
-//     println!("message received: {:?}", message);
-// }
-
-// #[test]
-// pub fn monero_syncer_state_height_event() {
-//     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
-//     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-//     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-//     tx_event.connect("inproc://monerosyncerdbridge").unwrap();
-//     rx_event.bind("inproc://monerosyncerdbridge").unwrap();
-
-//     let mut syncer = MoneroSyncer::new();
-//     syncer.run(rx, tx_event, ServiceId::Syncer.into());
-//     let task = SyncerdTask {
-//         task: Task::WatchHeight(WatchHeight {
-//             id: 0,
-//             lifetime: 100000000,
-//             addendum: vec![],
-//         }),
-//         source: ServiceId::Syncer,
-//     };
-//     tx.send(task).unwrap();
-//     let message = rx_event.recv_multipart(0);
-//     assert!(message.is_ok());
-//     println!("message received: {:?}", message);
-//     let message = rx_event.recv_multipart(0);
-//     assert!(message.is_ok());
-//     println!("message received: {:?}", message);
-//     let message = rx_event.recv_multipart(0);
-//     assert!(message.is_ok());
-//     println!("message received: {:?}", message);
-// }
