@@ -1015,7 +1015,6 @@ impl Runtime {
                                 if let Some((tx_label, cancel_tx)) =
                                     self.txs.remove_entry(&TxLabel::Cancel)
                                 {
-                                    info!("Broadcasting btc cancel {}", cancel_tx.txid().addr());
                                     self.broadcast(cancel_tx, tx_label, senders)?
                                 }
                             }
@@ -1025,7 +1024,6 @@ impl Runtime {
                             {
                                 if let State::Alice(AliceState::RefundSigA(_)) = self.state {
                                     if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
-                                        info!("broadcasting buy tx {}", buy_tx.txid().addr());
                                         self.broadcast(buy_tx, TxLabel::Buy, senders)?
                                     } else {
                                         warn!(
@@ -1081,10 +1079,6 @@ impl Runtime {
                                 {
                                     // true represents alice already locked monero
                                     if let State::Alice(AliceState::RefundSigA(true)) = self.state {
-                                        info!(
-                                            "Broadcasting btc punish {}",
-                                            punish_tx.txid().addr()
-                                        );
                                         self.broadcast(punish_tx, tx_label, senders)?
                                     }
                                 }
@@ -1095,10 +1089,6 @@ impl Runtime {
                                     if let Some((tx_label, refund_tx)) =
                                         self.txs.remove_entry(&TxLabel::Refund)
                                     {
-                                        info!(
-                                            "Broadcasting btc refund {}",
-                                            refund_tx.txid().addr()
-                                        );
                                         self.broadcast(refund_tx, tx_label, senders)?
                                     }
                                 }
@@ -1185,7 +1175,6 @@ impl Runtime {
 
             Request::Tx(Tx::Lock(btc_lock)) => {
                 if let State::Bob(BobState::CorearbB(..)) = self.state {
-                    info!("Broadcasting btc lock {}", btc_lock.txid().addr());
                     self.broadcast(btc_lock, TxLabel::Lock, senders)?
                 } else {
                     error!("Wrong state: must be CorearbB, found {}", &self.state)
