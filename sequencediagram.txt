@@ -58,9 +58,13 @@ m_swap->m_syncer:Ctl WatchHeight
 m_swap -> m_syncer:if Bob, Watch Arbitrating Funding Address
 peerd <- m_swap : Msg Reveal (maker is sender)
 m_swap <- m_syncer:If Bob, Arbitrating Funding event
+m_swap->m_wallet:if Bob, Ctl Tx::Funding
+m_swap<-m_wallet:If Bob, Ctl FundingUpdated
 m_swap -> m_wallet : Msg Reveal (taker is sender)
 peerd -> t_swap : Msg Reveal (maker is sender)
 t_syncer -> t_swap:If Bob, Arbitrating Funding event
+t_swap->t_wallet:if Bob, Ctl Tx::Funding
+t_swap<-t_wallet:If Bob, Ctl FundingUpdated
 t_swap -> t_wallet : Msg Reveal (maker is sender)
 ==Commit-Reveal Complete==
 ==Changing semantics: On Commit-Reveal, Maker and Taker were the key roles. From now on Bob or Alice are the key roles. Now t_ is bob_ on the left and m_ is alice_ on the right.==
@@ -119,26 +123,26 @@ t_wallet --> t_wallet : recover accordant assets
 
 ==Cancel Init t > t0: Bob is left, Alice right, either have a fully signed and valid cancel tx, and can publish==
 parallel
-t_swap <-- t_syncer : Ctl Cancel valid
-m_swap <-- m_syncer : Ctl Cancel valid
+t_swap <- t_syncer : Ctl Cancel valid
+m_swap <- m_syncer : Ctl Cancel valid
 parallel off
 parallel
-m_swap --> m_syncer : Broadcast cancel (Alice inits)
-t_swap --> t_syncer : Broadcast cancel (Bob inits)
+m_swap -> m_syncer : Broadcast cancel (Alice inits)
+t_swap -> t_syncer : Broadcast cancel (Bob inits)
 parallel off
 ==Cancel detected t > t0: Bob is left, Alice right==
-t_swap <-- t_syncer: Event cancel final
-t_swap --> t_syncer : Broadcast refund
+t_swap <- t_syncer: Event cancel final
+t_swap -> t_syncer : Broadcast refund
 parallel
-t_syncer --> t_swap : Event: refund seen
-m_syncer --> m_swap : Event: refund seen
+t_syncer -> t_swap : Event: refund seen
+m_syncer -> m_swap : Event: refund seen
 parallel off
-m_swap --> m_wallet : Ctl Datum refund tx
+m_swap -> m_wallet : Ctl Tx::Refund tx
 m_wallet --> m_wallet : recover accordant assets
 
 == Punish process t > t1 > t0 ==
-m_swap<--m_syncer:Ctl Event: punish valid
-m_swap-->m_wallet:Ctl Event: punish valid
-m_wallet-->m_wallet:fully sign punish
-m_swap<--m_wallet:Ctl Datum punish tx
-m_swap-->m_syncer:Ctl Broadcast punish tx
+m_swap<-m_syncer:Ctl Event: punish valid
+m_swap->m_wallet:Ctl Event: punish valid
+m_wallet->m_wallet:fully sign punish
+m_swap<-m_wallet:Ctl Tx::Punish
+m_swap->m_syncer:Ctl Broadcast punish tx
