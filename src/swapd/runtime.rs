@@ -56,13 +56,13 @@ use farcaster_core::{
     },
     blockchain::{self, FeeStrategy},
     consensus::{self, Encodable as FarEncodable},
+    crypto::CommitmentEngine,
     monero::Monero,
     negotiation::{Offer, PublicOffer},
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
     },
-    crypto::CommitmentEngine,
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::BtcXmr,
     swap::SwapId,
@@ -121,8 +121,8 @@ pub fn run(
         block_height: 0,
         task_counter: 0,
         confirmation_bound: 50000,
-        lock_confirmations: None,
-        cancel_confirmations: None,
+        lock_tx_confs: None,
+        cancel_tx_confs: None,
     };
 
     let runtime = Runtime {
@@ -230,8 +230,8 @@ struct SyncerState {
     block_height: u64,
     task_counter: u32,
     confirmation_bound: u32,
-    lock_confirmations: Option<u32>,
-    cancel_confirmations: Option<u32>,
+    lock_tx_confs: Option<Request>,
+    cancel_tx_confs: Option<Request>,
 }
 
 #[derive(Display, Clone)]
@@ -1009,6 +1009,17 @@ impl Runtime {
                             "Transaction {} is now final after {} confirmations",
                             txlabel, confirmations
                         );
+                        // saving requests of interest for later replaying latest event
+                        match &txlabel {
+                            TxLabel::Lock => {
+                                self.syncer_state.lock_tx_confs = Some(request.clone());
+                            }
+                            TxLabel::Cancel => {
+                                self.syncer_state.cancel_tx_confs = Some(request.clone());
+                            }
+                            _ => {}
+                        }
+
                         match txlabel {
                             TxLabel::Funding => {}
                             TxLabel::Lock if self.temporal_safety.valid_cancel(*confirmations) => {
@@ -1180,33 +1191,43 @@ impl Runtime {
                     error!("Wrong state: must be CorearbB, found {}", &self.state)
                 }
             }
-            Request::Tx(transaction) => match transaction {
-                Tx::Cancel(tx) => {
-                    info!("received cancel");
-                    self.txs.insert(TxLabel::Cancel, tx);
-                }
-                Tx::Refund(tx) => {
-                    info!("received refund");
-                    self.txs.insert(TxLabel::Refund, tx);
-                }
-                Tx::Punish(tx) => {
-                    info!("received punish");
-                    self.txs.insert(TxLabel::Punish, tx);
-                }
-                Tx::Buy(tx) => {
-                    if self
-                        .temporal_safety
-                        .safe_buy(self.syncer_state.lock_confirmations.unwrap_or(0))
-                    {
-                        self.broadcast(tx, TxLabel::Buy, senders)?
-                    } else {
+            Request::Tx(transaction) => {
+                // update state
+                match transaction.clone() {
+                    Tx::Cancel(tx) => {
+                        info!("received cancel");
+                        self.txs.insert(TxLabel::Cancel, tx);
+                    }
+                    Tx::Refund(tx) => {
+                        info!("received refund");
+                        self.txs.insert(TxLabel::Refund, tx);
+                    }
+                    Tx::Punish(tx) => {
+                        info!("received punish");
+                        self.txs.insert(TxLabel::Punish, tx);
+                    }
+                    Tx::Buy(tx) => {
                         info!("received buy");
                         self.txs.insert(TxLabel::Buy, tx);
                     }
+                    Tx::Funding(_) => unreachable!("not handled in swapd"),
+                    Tx::Lock(_) => unreachable!("handled above"),
                 }
-                Tx::Funding(_) => unreachable!("not handled in swapd"),
-                Tx::Lock(_) => unreachable!("handled above"),
-            },
+                // replay last tx confirmation event received from syncer, recursing
+                match transaction {
+                    Tx::Cancel(_) | Tx::Buy(_) => {
+                        if let Some(lock_tx_confs) = self.syncer_state.lock_tx_confs.clone() {
+                            self.handle_rpc_ctl(senders, source, lock_tx_confs)?;
+                        }
+                    }
+                    Tx::Refund(_) | Tx::Punish(_) => {
+                        if let Some(cancel_tx_confs) = self.syncer_state.cancel_tx_confs.clone() {
+                            self.handle_rpc_ctl(senders, source, cancel_tx_confs)?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
                 let locked_monero = false;
