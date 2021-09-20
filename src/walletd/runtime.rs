@@ -265,7 +265,7 @@ impl Runtime {
                 let peer = daemon_service
                     .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
                     .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
-                let external_address = address()?;
+                let external_address = address();
                 match offer.maker_role {
                     SwapRole::Bob => {
                         let bob = Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
@@ -828,7 +828,7 @@ impl Runtime {
                 let taker_role = offer.maker_role.other();
                 let wallet_index = self.wallet_counter.increment();
                 let mut key_manager = KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
-                let external_address = address()?;
+                let external_address = address();
                 match taker_role {
                     SwapRole::Bob => {
                         let bob: Bob<BtcXmr> = Bob::new(external_address.into(), FeePriority::Low);
@@ -987,35 +987,45 @@ impl Runtime {
     }
 }
 
-fn address() -> Result<bitcoin::Address, Error> {
+fn address() -> bitcoin::Address {
     let mut address = bitcoin::Address::from_str("tb1qa83aeqmfvn23llr2zc3gfkrwt8xvpv2k2cluzg")
         .expect("Parsable address");
-    let path = &"./testnet.addrs";
-    if let Ok(lines) = read_lines(path) {
-        // use address from first line and drop that line
-        let updated_lines = lines
-            .enumerate()
-            .filter_map(|(ix, line)| {
-                if let Ok(addr) = line {
-                    if ix == 0 {
-                        address = bitcoin::Address::from_str(&addr).ok()?;
-                        None
-                    } else {
-                        Some(addr)
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+    let path = &"./addresses.bitcoin";
+    // use address from first line and drop that line
+    match set_addr(&mut address, path) {
+        Ok(()) => address,
+        Err(e) => {
+            error!(
+                "make sure {} exists populated with bitcoin addresses you control \
+                 such as: \n\ntb1qh0hgmalfuancfe28wnmrp0lctlsdxqf2fcqlsh\n\\
+                 tb1qgd0m0qwssw7q8t8whh2d0ala0g8xqfq976y9eu\n\n\n\\
+                 with no extra spaces, now defaulting to hardcoded address {} \
+                 {}",
+                path, address, e
+            );
+            address
+        }
+    }
+}
 
-        std::fs::File::create(path)
-            .unwrap()
-            .write_all(updated_lines.as_ref())
-            .unwrap();
-    };
-    Ok(address)
+fn set_addr(address: &mut bitcoin::Address, path: &str) -> io::Result<()> {
+    let updated_lines = read_lines(path)?
+        .enumerate()
+        .filter_map(|(ix, line)| {
+            let addr = line.ok()?;
+            if ix == 0 {
+                *address = bitcoin::Address::from_str(&addr).ok()?;
+                // consume 1st line
+                None
+            } else {
+                Some(addr)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    std::fs::File::create(path)?.write_all(updated_lines.as_ref())?;
+    Ok(())
 }
 
 // The output is wrapped in a Result to allow matching on errors
