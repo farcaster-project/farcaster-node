@@ -62,8 +62,9 @@ use farcaster_core::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
         RefundProcedureSignatures,
     },
+    crypto::CommitmentEngine,
     role::{Arbitrating, SwapRole, TradeRole},
-    swap::btcxmr::{BtcXmr, KeyManager},
+    swap::btcxmr::BtcXmr,
     swap::SwapId,
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
@@ -539,7 +540,7 @@ impl Runtime {
                         }?;
 
                         // parameter processing irrespective of maker & taker role
-                        let core_wallet = KeyManager::new_keyless();
+                        let core_wallet = CommitmentEngine;
                         let remote_params = match reveal {
                             Reveal::Alice(reveal) => match &remote_commit {
                                 Commit::Alice(commit) => {
@@ -1351,15 +1352,15 @@ impl Runtime {
             self.swap_id().bright_blue_italic()
         );
         info!("{}", &msg);
-        let core_wallet = KeyManager::new_keyless();
+        let engine = CommitmentEngine;
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
                 self.swap_id(),
-                &core_wallet,
+                &engine,
                 params,
             )),
             Params::Alice(params) => request::Commit::Alice(
-                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params),
+                CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
         // Ignoring possible reporting errors here and after: do not want to
@@ -1390,15 +1391,15 @@ impl Runtime {
         let enquirer = self.enquirer.clone();
         let _ = self.report_progress_to(senders, &enquirer, msg);
 
-        let core_wallet = KeyManager::new_keyless();
+        let engine = CommitmentEngine;
         let commitment = match params.clone() {
             Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
                 self.swap_id(),
-                &core_wallet,
+                &engine,
                 params,
             )),
             Params::Alice(params) => request::Commit::Alice(
-                CommitAliceParameters::commit_to_bundle(self.swap_id(), &core_wallet, params),
+                CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
 
