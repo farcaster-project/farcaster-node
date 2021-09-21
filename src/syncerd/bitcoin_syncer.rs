@@ -37,6 +37,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
+use lnpbp::Chain;
 
 use hex;
 
@@ -292,6 +293,7 @@ pub trait Synclet {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
+        chain: Chain,
         polling: bool,
     );
 }
@@ -311,12 +313,13 @@ impl Synclet for BitcoinSyncer {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
+        _chain: Chain,
         polling: bool,
     ) {
         let _handle = std::thread::spawn(move || {
             let mut state = SyncerState::new();
             let mut rpc = ElectrumRpc::new(syncer_servers.electrum_server, polling)
-                .expect("Instatiating electrum client");
+                .expect("Instantiating electrum client");
             let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
