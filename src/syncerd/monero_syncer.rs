@@ -12,12 +12,6 @@ use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::ServiceId;
 use crate::{error::Error, syncerd::syncer_state::create_set};
-use bitcoin::hashes::hex::FromHex;
-use bitcoin::Script;
-use electrum_client::raw_client::ElectrumSslStream;
-use electrum_client::raw_client::RawClient;
-use electrum_client::Hex32Bytes;
-use electrum_client::{Client, ElectrumApi};
 use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
@@ -41,6 +35,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
+use lnpbp::Chain;
 
 use hex;
 
@@ -178,9 +173,8 @@ impl MoneroRpc {
     async fn check_address(
         &mut self,
         address_addendum: XmrAddressAddendum,
+        network: monero::Network,
     ) -> Result<AddressNotif, Error> {
-        // TODO: Get network type from configuration
-        let network = monero::Network::Mainnet;
         let keypair = monero::ViewPair {
             spend: monero::PublicKey::from_slice(&address_addendum.spend_key.clone()).unwrap(),
             view: monero::PrivateKey::from_slice(&address_addendum.view_key.clone()).unwrap(),
@@ -272,9 +266,19 @@ impl Synclet for MoneroSyncer {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
-        polling: bool,
+        chain: Chain,
+        _polling: bool,
     ) {
         let _handle = std::thread::spawn(move || {
+            let network = match chain {
+                Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
+                Chain::Testnet3 => monero::Network::Stagenet,
+                Chain::Signet => monero::Network::Testnet,
+                _ => {
+                    error!("invalid chain type for monero: {}", chain);
+                    return
+                }
+            };
             let mut state = SyncerState::new();
             let mut rpc = MoneroRpc::new(
                 syncer_servers.monero_daemon,
@@ -304,7 +308,7 @@ impl Synclet for MoneroSyncer {
                                         AddressAddendum::Monero(address_addendum) => {
                                             state.watch_address(task.clone(), syncerd_task.source).expect("Task::WatchAddress");
                                             let address_transactions =
-                                                rpc.check_address(address_addendum).await.unwrap();
+                                                rpc.check_address(address_addendum, network).await.unwrap();
                                             state.change_address(
                                                 task.addendum,
                                                 create_set(address_transactions.txs),
@@ -353,7 +357,7 @@ impl Synclet for MoneroSyncer {
                             _ => panic!("should never get an invalid address")
                         };
                         let address_transactions =
-                            rpc.check_address(address_addendum.clone()).await.unwrap();
+                            rpc.check_address(address_addendum.clone(), network).await.unwrap();
                         state.change_address(AddressAddendum::Monero(address_addendum), create_set(address_transactions.txs.clone()));
                     }
 

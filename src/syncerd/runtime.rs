@@ -65,19 +65,11 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
     tx_event.connect("inproc://syncerdbridge")?;
     rx_event.bind("inproc://syncerdbridge")?;
 
-    match coin {
-        Coin::Monero => {
-            syncer = Some(Box::new(MoneroSyncer::new()));
-        }
-        Coin::Bitcoin => match config.chain {
-            Chain::Testnet3 => {
-                syncer = Some(Box::new(BitcoinSyncer::new()));
-            }
-            _ => {
-                syncer = none!();
-            }
-        },
-    }
+    syncer = if coin == Coin::Monero {
+        Some(Box::new(MoneroSyncer::new()))
+    } else {
+        Some(Box::new(BitcoinSyncer::new()))
+    };
 
     let mut runtime = Runtime {
         identity: ServiceId::Syncer(coin),
@@ -92,6 +84,7 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
         tx_event,
         runtime.identity().into(),
         syncer_servers,
+        config.chain.clone(),
         polling,
     );
     let mut service = Service::service(config, runtime)?;
