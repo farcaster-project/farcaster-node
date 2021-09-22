@@ -649,7 +649,7 @@ impl Runtime {
 
                     let daemon_service = internet2::RemoteNodeAddr {
                         node_id,                                           // checked above
-                        remote_addr: RemoteSocketAddr::Ftcp(peer_address), // expected RemoteSocketAddr
+                        remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
                     };
                     let peer = daemon_service
                         .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
