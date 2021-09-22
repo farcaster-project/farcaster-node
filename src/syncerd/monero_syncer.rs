@@ -16,6 +16,7 @@ use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
 use internet2::ZMQ_CONTEXT;
+use lnpbp::Chain;
 use monero::Hash;
 use monero_rpc::BlockHash;
 use monero_rpc::GetBlockHeaderSelector;
@@ -35,7 +36,6 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use lnpbp::Chain;
 
 use hex;
 
@@ -276,7 +276,7 @@ impl Synclet for MoneroSyncer {
                 Chain::Signet => monero::Network::Testnet,
                 _ => {
                     error!("invalid chain type for monero: {}", chain);
-                    return
+                    return;
                 }
             };
             let mut state = SyncerState::new();

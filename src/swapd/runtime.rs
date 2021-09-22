@@ -1254,7 +1254,8 @@ impl Runtime {
                         }
                     }
                     Tx::Refund(_) | Tx::Punish(_) => {
-                        if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone() {
+                        if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone()
+                        {
                             self.handle_rpc_ctl(senders, source, cancel_tx_confs_req)?;
                         }
                     }

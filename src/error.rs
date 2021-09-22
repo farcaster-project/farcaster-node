@@ -87,7 +87,7 @@ pub enum Error {
 
     /// BitcoinHashes
     #[display(inner)]
-    BitcoinHashes(bitcoin::hashes::Error)
+    BitcoinHashes(bitcoin::hashes::Error),
 }
 
 #[derive(Debug, Display)]
