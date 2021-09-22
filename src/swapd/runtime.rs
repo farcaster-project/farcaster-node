@@ -319,7 +319,12 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl SyncerState {
     fn task_lifetime(&self, coin: Coin) -> u64 {
-        self.height(coin) + 500
+        let height = self.height(coin);
+        if height > 0 {
+            height + 500
+        } else {
+            u64::MAX
+        }
     }
 
     fn height(&self, coin: Coin) -> u64 {
@@ -1348,6 +1353,7 @@ impl Runtime {
                     Tx::Lock(_) => unreachable!("handled above"),
                 }
                 // replay last tx confirmation event received from syncer, recursing
+                let source = ServiceId::Syncer(Coin::Bitcoin);
                 match transaction {
                     Tx::Cancel(_) | Tx::Buy(_) => {
                         if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
