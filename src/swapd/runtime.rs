@@ -116,12 +116,9 @@ pub fn run(
 
     temporal_safety.valid_params()?;
     let syncer_state = SyncerState {
-        task_lifetime: u64::MAX,
         txs_status: none!(),
-        block_heights: BlockHeights {
-            monero_height: 0,
-            bitcoin_height: 0,
-        },
+        monero_height: 0,
+        bitcoin_height: 0,
         task_counter: 0,
         confirmation_bound: 50000,
         lock_tx_confs: None,
@@ -227,15 +224,10 @@ impl TemporalSafety {
     }
 }
 
-struct BlockHeights {
+struct SyncerState {
     bitcoin_height: u64,
     monero_height: u64,
-}
-
-struct SyncerState {
-    task_lifetime: u64,
     txs_status: HashMap<u32, TxLabel>,
-    block_heights: BlockHeights,
     task_counter: u32,
     confirmation_bound: u32,
     lock_tx_confs: Option<Request>,
@@ -326,18 +318,23 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl SyncerState {
-    fn handle_height_change(&mut self, block_height: u64, coin: Coin) {
-        let BlockHeights {
-            monero_height,
-            bitcoin_height,
-        } = &mut self.block_heights;
+    fn task_lifetime(&self, coin: Coin) -> u64 {
+        self.height(coin) + 500
+    }
+
+    fn height(&self, coin: Coin) -> u64 {
+        match coin {
+            Coin::Bitcoin => self.bitcoin_height,
+            Coin::Monero => self.monero_height,
+        }
+    }
+    fn handle_height_change(&mut self, new_height: u64, coin: Coin) {
         let height = match coin {
-            Coin::Bitcoin => bitcoin_height,
-            Coin::Monero => monero_height,
+            Coin::Bitcoin => &mut self.bitcoin_height,
+            Coin::Monero => &mut self.monero_height,
         };
-        if &block_height > &height {
-            *height = block_height;
-            self.task_lifetime = block_height + 500;
+        if &new_height > &height {
+            *height = new_height;
         } else {
             warn!("block height did not increment, maybe syncer sends multiple events");
         }
@@ -350,7 +347,7 @@ impl SyncerState {
 
     fn watch_addr(&mut self, script_pubkey: Script, id: u32) -> Request {
         let lookback = 100; // blocks
-        let height = self.block_heights.bitcoin_height;
+        let height = self.bitcoin_height;
         let from_height = if height > lookback {
             height - lookback
         } else {
@@ -363,7 +360,7 @@ impl SyncerState {
         };
         Request::SyncerTask(Task::WatchAddress(WatchAddress {
             id,
-            lifetime: self.task_lifetime,
+            lifetime: self.task_lifetime(Coin::Bitcoin),
             addendum: AddressAddendum::Bitcoin(addendum),
             include_tx: Boolean::True,
         }))
@@ -509,7 +506,7 @@ impl Runtime {
                             trace!("Watch height bitcoin");
                             let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
                                 id: self.syncer_state.new_taskid(),
-                                lifetime: self.syncer_state.task_lifetime,
+                                lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                             });
                             senders.send_to(
                                 ServiceBus::Ctl,
@@ -521,7 +518,7 @@ impl Runtime {
                             trace!("Watch height monero");
                             let watch_height_monero = Task::WatchHeight(WatchHeight {
                                 id: self.syncer_state.new_taskid(),
-                                lifetime: self.syncer_state.task_lifetime,
+                                lifetime: self.syncer_state.task_lifetime(Coin::Monero),
                             });
                             senders.send_to(
                                 ServiceBus::Ctl,
@@ -665,7 +662,7 @@ impl Runtime {
                                 trace!("Watch height bitcoin");
                                 let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
                                     id: self.syncer_state.new_taskid(),
-                                    lifetime: self.syncer_state.task_lifetime,
+                                    lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                                 });
                                 senders.send_to(
                                     ServiceBus::Ctl,
@@ -677,7 +674,7 @@ impl Runtime {
                                 trace!("Watch height monero");
                                 let watch_height_monero = Task::WatchHeight(WatchHeight {
                                     id: self.syncer_state.new_taskid(),
-                                    lifetime: self.syncer_state.task_lifetime,
+                                    lifetime: self.syncer_state.task_lifetime(Coin::Monero),
                                 });
                                 senders.send_to(
                                     ServiceBus::Ctl,
@@ -725,7 +722,7 @@ impl Runtime {
                                 );
                                 let task = Task::WatchTransaction(WatchTransaction {
                                     id,
-                                    lifetime: self.syncer_state.task_lifetime,
+                                    lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                                     hash: txid.to_vec(),
                                     confirmation_bound: self.syncer_state.confirmation_bound,
                                 });
@@ -774,7 +771,7 @@ impl Runtime {
                             // notify the syncer to watch for the buy transaction
                             let task = Task::WatchTransaction(WatchTransaction {
                                 id,
-                                lifetime: self.syncer_state.task_lifetime,
+                                lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                                 hash: txid.to_vec(),
                                 confirmation_bound: self.syncer_state.confirmation_bound,
                             });
@@ -1016,7 +1013,6 @@ impl Runtime {
                     Event::TaskAborted(_) => {}
                 }
             }
-
             Request::SyncerEvent(ref event) if &source == &ServiceId::Syncer(Coin::Bitcoin) => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
@@ -1024,56 +1020,55 @@ impl Runtime {
                             .handle_height_change(*height, Coin::Bitcoin);
                         info!("bitcoin height changed {}", height)
                     }
-                Event::AddressTransaction(AddressTransaction {
-                    id,
-                    hash,
-                    amount,
-                    block,
-                    tx,
-                }) => {
-                    let tx = bitcoin::Transaction::deserialize(tx)?;
-                    trace!(
-                        "Received AddressTransaction, processing tx {}",
-                        tx.txid().addr()
-                    );
-                    if let Some(txlabel) = self.syncer_state.txs_status.get(id) {
-                        match txlabel {
-                            TxLabel::Funding => {
-                                info!(
-                                    "Funding tx in mempool or blockchain, \
-                                     sending it to wallet: {}",
-                                    &tx.txid().addr()
-                                );
-                                let req = Request::Tx(Tx::Funding(tx));
-                                self.send_wallet(ServiceBus::Ctl, senders, req)?;
-                            }
-                            TxLabel::Buy => {
-                                if let State::Bob(BobState::BuySigB) = self.state {
+                    Event::AddressTransaction(AddressTransaction {
+                        id,
+                        hash,
+                        amount,
+                        block,
+                        tx,
+                    }) => {
+                        let tx = bitcoin::Transaction::deserialize(tx)?;
+                        trace!(
+                            "Received AddressTransaction, processing tx {}",
+                            tx.txid().addr()
+                        );
+                        if let Some(txlabel) = self.syncer_state.txs_status.get(id) {
+                            match txlabel {
+                                TxLabel::Funding => {
                                     info!(
-                                        "{} tx in mempool or blockchain, \
-                                           sending it to wallet: {}",
-                                        &TxLabel::Buy,
-                                        &tx.txid().addr(),
+                                        "Funding tx in mempool or blockchain, \
+                                     sending it to wallet: {}",
+                                        &tx.txid().addr()
                                     );
-                                    let req = Request::Tx(Tx::Buy(tx));
-                                    self.send_wallet(ServiceBus::Ctl, senders, req)?
-                                } else {
-                                    error!(
-                                        "expected BuySigB, found {}, maybe you reused the \
+                                    let req = Request::Tx(Tx::Funding(tx));
+                                    self.send_wallet(ServiceBus::Ctl, senders, req)?;
+                                }
+                                TxLabel::Buy => {
+                                    if let State::Bob(BobState::BuySigB) = self.state {
+                                        info!(
+                                            "{} tx in mempool or blockchain, \
+                                           sending it to wallet: {}",
+                                            &TxLabel::Buy,
+                                            &tx.txid().addr(),
+                                        );
+                                        let req = Request::Tx(Tx::Buy(tx));
+                                        self.send_wallet(ServiceBus::Ctl, senders, req)?
+                                    } else {
+                                        error!(
+                                            "expected BuySigB, found {}, maybe you reused the \
                                          external address?",
                                             self.state
                                         )
                                     }
                                 }
-                            }
-                            TxLabel::Refund => {
-                                // true represents alice already locked monero, and false, she didnt
-                                // broadcast buy yet
-                                if let State::Alice(AliceState::RefundSigA(true, false)) =
-                                    self.state
-                                {
-                                    info!(
-                                        "found refund tx in mempool or blockchain, \
+                                TxLabel::Refund => {
+                                    // true represents alice already locked monero, and false, she
+                                    // didnt broadcast buy yet
+                                    if let State::Alice(AliceState::RefundSigA(true, false)) =
+                                        self.state
+                                    {
+                                        info!(
+                                            "found refund tx in mempool or blockchain, \
                                              sending it to wallet: {}",
                                             &tx.txid().addr()
                                         );
@@ -1089,6 +1084,7 @@ impl Runtime {
                                         txlabel
                                     )
                                 }
+                            }
                         } else {
                             error!(
                             "Transaction event received, unknow address with task id {} and txid {:?}",
@@ -1096,47 +1092,50 @@ impl Runtime {
                         );
                         }
                     }
-                }
-                Event::TransactionConfirmations(TransactionConfirmations {
-                    id,
-                    block,
-                    confirmations: Some(confirmations),
-                }) if self.temporal_safety.final_tx(*confirmations) => {
-                    self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
-                    if let Some(txlabel) = self.syncer_state.txs_status.get_mut(&id) {
-                        info!(
-                            "Transaction {} is now final after {} confirmations",
-                            txlabel, confirmations
-                        );
-                        // saving requests of interest for later replaying latest event
-                        match &txlabel {
-                            TxLabel::Lock => {
-                                self.syncer_state.lock_tx_confs = Some(request.clone());
-                            }
-                            TxLabel::Cancel => {
-                                self.syncer_state.cancel_tx_confs = Some(request.clone());
-                            }
-                            _ => {}
-                        }
-
-                        match txlabel {
-                            TxLabel::Funding => {}
-                            TxLabel::Lock if self.temporal_safety.valid_cancel(*confirmations) => {
-                                if let Some((tx_label, cancel_tx)) =
-                                    self.txs.remove_entry(&TxLabel::Cancel)
-                                {
-                                    self.broadcast(cancel_tx, tx_label, senders)?
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        block,
+                        confirmations: Some(confirmations),
+                    }) if self.temporal_safety.final_tx(*confirmations) => {
+                        self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
+                        if let Some(txlabel) = self.syncer_state.txs_status.get_mut(&id) {
+                            info!(
+                                "Transaction {} is now final after {} confirmations",
+                                txlabel, confirmations
+                            );
+                            // saving requests of interest for later replaying latest event
+                            match &txlabel {
+                                TxLabel::Lock => {
+                                    self.syncer_state.lock_tx_confs = Some(request.clone());
                                 }
+                                TxLabel::Cancel => {
+                                    self.syncer_state.cancel_tx_confs = Some(request.clone());
+                                }
+                                _ => {}
                             }
-                            TxLabel::Lock
-                                if self.temporal_safety.safe_buy(*confirmations)
-                                    && self.state.swap_role() == SwapRole::Alice =>
-                            {
-                                if let State::Alice(AliceState::RefundSigA(_, false)) = self.state {
-                                    if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
-                                        self.broadcast(buy_tx, TxLabel::Buy, senders)?
-                                    } else {
-                                        warn!(
+
+                            match txlabel {
+                                TxLabel::Funding => {}
+                                TxLabel::Lock
+                                    if self.temporal_safety.valid_cancel(*confirmations) =>
+                                {
+                                    if let Some((tx_label, cancel_tx)) =
+                                        self.txs.remove_entry(&TxLabel::Cancel)
+                                    {
+                                        self.broadcast(cancel_tx, tx_label, senders)?
+                                    }
+                                }
+                                TxLabel::Lock
+                                    if self.temporal_safety.safe_buy(*confirmations)
+                                        && self.state.swap_role() == SwapRole::Alice =>
+                                {
+                                    if let State::Alice(AliceState::RefundSigA(_, false)) =
+                                        self.state
+                                    {
+                                        if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
+                                            self.broadcast(buy_tx, TxLabel::Buy, senders)?
+                                        } else {
+                                            warn!(
                                             "Alice doesn't have the buy tx, probably didnt receive \
                                              the BuySig yet: {}",
                                             self.state
@@ -1149,38 +1148,43 @@ impl Runtime {
                                     )
                                     }
                                 }
-                            }
-                            TxLabel::Lock if self.pending_requests.get(&source).is_some() => {
-                                let PendingRequest {
-                                    request,
-                                    dest,
-                                    bus_id,
-                                } = self.pending_requests.remove(&source).unwrap();
-                                if let (
-                                    Request::Protocol(Msg::BuyProcedureSignature(_)),
-                                    ServiceBus::Msg,
-                                ) = (&request, &bus_id)
-                                {
-                                    let next_state = match self.state {
-                                        State::Bob(BobState::CorearbB(..)) => {
-                                            Ok(State::Bob(BobState::BuySigB))
-                                        }
-                                        _ => Err(Error::Farcaster(s!(
-                                            "Wrong state: must be CorearbB "
-                                        ))),
-                                    }?;
-                                    error!("this should be in Accordant lock, not Arbitrating lock finality");
-                                    info!("sending buyproceduresignature at state {}", &self.state);
-                                    senders.send_to(bus_id, self.identity(), dest, request)?;
-                                    info!("State transition: {}", next_state.bright_blue_bold());
-                                    self.state = next_state;
-                                } else {
-                                    error!(
-                                        "Not buyproceduresignatures {} or not Msg bus found {}",
-                                        request, bus_id
-                                    );
+                                TxLabel::Lock if self.pending_requests.get(&source).is_some() => {
+                                    let PendingRequest {
+                                        request,
+                                        dest,
+                                        bus_id,
+                                    } = self.pending_requests.remove(&source).unwrap();
+                                    if let (
+                                        Request::Protocol(Msg::BuyProcedureSignature(_)),
+                                        ServiceBus::Msg,
+                                    ) = (&request, &bus_id)
+                                    {
+                                        let next_state = match self.state {
+                                            State::Bob(BobState::CorearbB(..)) => {
+                                                Ok(State::Bob(BobState::BuySigB))
+                                            }
+                                            _ => Err(Error::Farcaster(s!(
+                                                "Wrong state: must be CorearbB "
+                                            ))),
+                                        }?;
+                                        error!("this should be in Accordant lock, not Arbitrating lock finality");
+                                        info!(
+                                            "sending buyproceduresignature at state {}",
+                                            &self.state
+                                        );
+                                        senders.send_to(bus_id, self.identity(), dest, request)?;
+                                        info!(
+                                            "State transition: {}",
+                                            next_state.bright_blue_bold()
+                                        );
+                                        self.state = next_state;
+                                    } else {
+                                        error!(
+                                            "Not buyproceduresignatures {} or not Msg bus found {}",
+                                            request, bus_id
+                                        );
+                                    }
                                 }
-                            }
 
                                 TxLabel::Cancel
                                     if self.temporal_safety.valid_punish(*confirmations) =>
@@ -1190,7 +1194,7 @@ impl Runtime {
                                         self.txs.remove_entry(&TxLabel::Punish)
                                     {
                                         // true represents alice already locked monero
-                                        if let State::Alice(AliceState::RefundSigA(true)) =
+                                        if let State::Alice(AliceState::RefundSigA(true, true)) =
                                             self.state
                                         {
                                             info!(
@@ -1201,20 +1205,26 @@ impl Runtime {
                                         }
                                     }
                                 }
-                            TxLabel::Cancel if self.temporal_safety.safe_refund(*confirmations) => {
-                                if let State::Bob(BobState::BuySigB)
-                                | State::Bob(BobState::CorearbB(..)) = self.state
+                                TxLabel::Cancel
+                                    if self.temporal_safety.safe_refund(*confirmations) =>
                                 {
-                                    trace!("here Bob publishes refund tx");
-                                    if let Some((tx_label, refund_tx)) =
-                                        self.txs.remove_entry(&TxLabel::Refund)
+                                    if let State::Bob(BobState::BuySigB)
+                                    | State::Bob(BobState::CorearbB(..)) = self.state
                                     {
-                                        // true represents alice already locked monero, false didnt
-                                        // broadcast buy
-                                        if let State::Alice(AliceState::RefundSigA(true, false)) =
-                                            self.state
+                                        trace!("here Bob publishes refund tx");
+                                        if let Some((tx_label, refund_tx)) =
+                                            self.txs.remove_entry(&TxLabel::Refund)
                                         {
-                                            self.broadcast(refund_tx, tx_label, senders)?;
+                                            // true represents alice already locked monero, false
+                                            // didnt
+                                            // broadcast buy
+                                            if let State::Alice(AliceState::RefundSigA(
+                                                true,
+                                                false,
+                                            )) = self.state
+                                            {
+                                                self.broadcast(refund_tx, tx_label, senders)?;
+                                            }
                                         }
                                     }
                                 }
@@ -1246,13 +1256,13 @@ impl Runtime {
                             )
                         }
                     }
-                }
-                Event::TransactionConfirmations(TransactionConfirmations {
-                    id,
-                    block,
-                    confirmations,
-                }) => {
-                    self.syncer_state.handle_tx_confs(id, confirmations);
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        block,
+                        confirmations,
+                    }) => {
+                        self.syncer_state.handle_tx_confs(id, confirmations);
+                    }
                     Event::TransactionBroadcasted(event) => {
                         info!("{}", event)
                     }
@@ -1291,7 +1301,7 @@ impl Runtime {
                     );
                     let task = Task::WatchTransaction(WatchTransaction {
                         id,
-                        lifetime: self.syncer_state.task_lifetime,
+                        lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                         hash: txid.to_vec(),
                         confirmation_bound: self.syncer_state.confirmation_bound,
                     });
@@ -1381,7 +1391,7 @@ impl Runtime {
                     info!("subscribing with syncer for receiving buy tx updates");
                     let task = Task::WatchTransaction(WatchTransaction {
                         id: id_tx,
-                        lifetime: self.syncer_state.task_lifetime,
+                        lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                         hash: txid.to_vec(),
                         confirmation_bound: self.syncer_state.confirmation_bound,
                     });
@@ -1467,7 +1477,7 @@ impl Runtime {
             }
 
             _ => {
-                error!("Request is not supported by the CTL interface");
+                error!("Request is not supported by the CTL interface {}", request);
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
