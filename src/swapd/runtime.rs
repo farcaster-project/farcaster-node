@@ -118,7 +118,10 @@ pub fn run(
     let syncer_state = SyncerState {
         task_lifetime: u64::MAX,
         txs_status: none!(),
-        block_height: 0,
+        block_heights: BlockHeights {
+            monero_height: 0,
+            bitcoin_height: 0,
+        },
         task_counter: 0,
         confirmation_bound: 50000,
         lock_tx_confs: None,
@@ -224,10 +227,15 @@ impl TemporalSafety {
     }
 }
 
+struct BlockHeights {
+    bitcoin_height: u64,
+    monero_height: u64,
+}
+
 struct SyncerState {
     task_lifetime: u64,
     txs_status: HashMap<u32, TxLabel>,
-    block_height: u64,
+    block_heights: BlockHeights,
     task_counter: u32,
     confirmation_bound: u32,
     lock_tx_confs: Option<Request>,
@@ -318,9 +326,17 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl SyncerState {
-    fn handle_height_change(&mut self, block_height: u64) {
-        if &block_height > &self.block_height {
-            self.block_height = block_height;
+    fn handle_height_change(&mut self, block_height: u64, coin: Coin) {
+        let BlockHeights {
+            monero_height,
+            bitcoin_height,
+        } = &mut self.block_heights;
+        let height = match coin {
+            Coin::Bitcoin => bitcoin_height,
+            Coin::Monero => monero_height,
+        };
+        if &block_height > &height {
+            *height = block_height;
             self.task_lifetime = block_height + 500;
         } else {
             warn!("block height did not increment, maybe syncer sends multiple events");
@@ -334,10 +350,11 @@ impl SyncerState {
 
     fn watch_addr(&mut self, script_pubkey: Script, id: u32) -> Request {
         let lookback = 100; // blocks
-        let from_height = if self.block_height > lookback {
-            self.block_height - lookback
+        let height = self.block_heights.bitcoin_height;
+        let from_height = if height > lookback {
+            height - lookback
         } else {
-            self.block_height
+            height
         };
         let addendum = BtcAddressAddendum {
             address: None,
@@ -489,8 +506,8 @@ impl Runtime {
                         if let State::Alice(AliceState::CommitA(TradeRole::Taker, ..))
                         | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) = &self.state
                         {
-                            trace!("Watch height");
-                            let watch_height = Task::WatchHeight(WatchHeight {
+                            trace!("Watch height bitcoin");
+                            let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
                                 id: self.syncer_state.new_taskid(),
                                 lifetime: self.syncer_state.task_lifetime,
                             });
@@ -498,7 +515,19 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 ServiceId::Syncer(Coin::Bitcoin),
-                                Request::SyncerTask(watch_height),
+                                Request::SyncerTask(watch_height_bitcoin),
+                            )?;
+
+                            trace!("Watch height monero");
+                            let watch_height_monero = Task::WatchHeight(WatchHeight {
+                                id: self.syncer_state.new_taskid(),
+                                lifetime: self.syncer_state.task_lifetime,
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Syncer(Coin::Monero),
+                                Request::SyncerTask(watch_height_monero),
                             )?;
                         }
 
@@ -626,7 +655,6 @@ impl Runtime {
 
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
-                        let id = self.syncer_state.new_taskid();
                         match &self.state {
                             State::Alice(AliceState::CommitA(
                                 TradeRole::Maker,
@@ -634,17 +662,28 @@ impl Runtime {
                                 ..,
                             ))
                             | State::Bob(BobState::CommitB(TradeRole::Maker, local_params, ..)) => {
-                                trace!("Watch height");
-                                let watch_height = Task::WatchHeight(WatchHeight {
-                                    id,
+                                trace!("Watch height bitcoin");
+                                let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
+                                    id: self.syncer_state.new_taskid(),
                                     lifetime: self.syncer_state.task_lifetime,
                                 });
-
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Syncer(Coin::Bitcoin),
-                                    Request::SyncerTask(watch_height),
+                                    Request::SyncerTask(watch_height_bitcoin),
+                                )?;
+
+                                trace!("Watch height monero");
+                                let watch_height_monero = Task::WatchHeight(WatchHeight {
+                                    id: self.syncer_state.new_taskid(),
+                                    lifetime: self.syncer_state.task_lifetime,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Syncer(Coin::Monero),
+                                    Request::SyncerTask(watch_height_monero),
                                 )?;
 
                                 trace!("received commitment from counterparty, can now reveal");
@@ -776,14 +815,20 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, ServiceId::Syncer(Coin::Bitcoin)) => {
+            (Request::Hello, ServiceId::Syncer(_)) => {
                 info!("Source: {} is connected", source);
             }
 
             (Request::Hello, _) => {
                 info!("Source: {} is connected", source);
             }
-            (_, ServiceId::Farcasterd | ServiceId::Wallet | ServiceId::Syncer(Coin::Bitcoin)) => {}
+            (
+                _,
+                ServiceId::Farcasterd
+                | ServiceId::Wallet
+                | ServiceId::Syncer(Coin::Bitcoin)
+                | ServiceId::Syncer(Coin::Monero),
+            ) => {}
             _ => Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd"
                     .to_string(),
@@ -958,11 +1003,27 @@ impl Runtime {
             // Request::SyncerEvent(ref event) => match (&event, source) {
             // handle monero events here
             // }
-            Request::SyncerEvent(ref event) => match &event {
-                Event::HeightChanged(HeightChanged { height, .. }) => {
-                    self.syncer_state.handle_height_change(*height);
-                    info!("height changed {}", height)
+            Request::SyncerEvent(ref event) if &source == &ServiceId::Syncer(Coin::Monero) => {
+                match &event {
+                    Event::HeightChanged(HeightChanged { height, .. }) => {
+                        self.syncer_state
+                            .handle_height_change(*height, Coin::Monero);
+                        info!("monero height changed {}", height)
+                    }
+                    Event::AddressTransaction(_) => {}
+                    Event::TransactionConfirmations(_) => {}
+                    Event::TransactionBroadcasted(_) => {}
+                    Event::TaskAborted(_) => {}
                 }
+            }
+
+            Request::SyncerEvent(ref event) if &source == &ServiceId::Syncer(Coin::Bitcoin) => {
+                match &event {
+                    Event::HeightChanged(HeightChanged { height, .. }) => {
+                        self.syncer_state
+                            .handle_height_change(*height, Coin::Bitcoin);
+                        info!("bitcoin height changed {}", height)
+                    }
                 Event::AddressTransaction(AddressTransaction {
                     id,
                     hash,
@@ -991,7 +1052,7 @@ impl Runtime {
                                     info!(
                                         "{} tx in mempool or blockchain, \
                                            sending it to wallet: {}",
-                                        &TxLabel::Funding,
+                                        &TxLabel::Buy,
                                         &tx.txid().addr(),
                                     );
                                     let req = Request::Tx(Tx::Buy(tx));
@@ -1000,8 +1061,9 @@ impl Runtime {
                                     error!(
                                         "expected BuySigB, found {}, maybe you reused the \
                                          external address?",
-                                        self.state
-                                    )
+                                            self.state
+                                        )
+                                    }
                                 }
                             }
                             TxLabel::Refund => {
@@ -1013,23 +1075,26 @@ impl Runtime {
                                     info!(
                                         "found refund tx in mempool or blockchain, \
                                              sending it to wallet: {}",
-                                        &tx.txid().addr()
-                                    );
-                                    let req = Request::Tx(Tx::Refund(tx));
-                                    self.send_wallet(ServiceBus::Ctl, senders, req)?
-                                } else {
-                                    error!("expected RefundSigA(true), found {}", self.state);
+                                            &tx.txid().addr()
+                                        );
+                                        let req = Request::Tx(Tx::Refund(tx));
+                                        self.send_wallet(ServiceBus::Ctl, senders, req)?
+                                    } else {
+                                        error!("expected RefundSigA(true), found {}", self.state);
+                                    }
                                 }
-                            }
-                            txlabel => {
-                                error!("address transaction event not supported for tx {}", txlabel)
-                            }
-                        }
-                    } else {
-                        error!(
+                                txlabel => {
+                                    error!(
+                                        "address transaction event not supported for tx {}",
+                                        txlabel
+                                    )
+                                }
+                        } else {
+                            error!(
                             "Transaction event received, unknow address with task id {} and txid {:?}",
                             id.addr(), Txid::from_slice(hash).unwrap().addr()
                         );
+                        }
                     }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
@@ -1076,12 +1141,13 @@ impl Runtime {
                                              the BuySig yet: {}",
                                             self.state
                                         )
-                                    }
-                                } else {
-                                    error!(
+                                        }
+                                    } else {
+                                        error!(
                                         "wrong state: expected RefundProcedureSignatures, found {}",
                                         &self.state
                                     )
+                                    }
                                 }
                             }
                             TxLabel::Lock if self.pending_requests.get(&source).is_some() => {
@@ -1116,16 +1182,25 @@ impl Runtime {
                                 }
                             }
 
-                            TxLabel::Cancel
-                                if self.temporal_safety.valid_punish(*confirmations) =>
-                            {
-                                trace!("Alice publishes punish tx");
-                                if let Some((tx_label, punish_tx)) =
-                                    self.txs.remove_entry(&TxLabel::Punish)
+                                TxLabel::Cancel
+                                    if self.temporal_safety.valid_punish(*confirmations) =>
                                 {
-                                    self.broadcast(punish_tx, tx_label, senders)?;
+                                    trace!("Alice publishes punish tx");
+                                    if let Some((tx_label, punish_tx)) =
+                                        self.txs.remove_entry(&TxLabel::Punish)
+                                    {
+                                        // true represents alice already locked monero
+                                        if let State::Alice(AliceState::RefundSigA(true)) =
+                                            self.state
+                                        {
+                                            info!(
+                                                "Broadcasting btc punish {}",
+                                                punish_tx.txid().addr()
+                                            );
+                                            self.broadcast(punish_tx, tx_label, senders)?
+                                        }
+                                    }
                                 }
-                            }
                             TxLabel::Cancel if self.temporal_safety.safe_refund(*confirmations) => {
                                 if let State::Bob(BobState::BuySigB)
                                 | State::Bob(BobState::CorearbB(..)) = self.state
@@ -1143,17 +1218,33 @@ impl Runtime {
                                         }
                                     }
                                 }
+                                TxLabel::Cancel
+                                    if self.temporal_safety.safe_refund(*confirmations) =>
+                                {
+                                    if let State::Bob(BobState::BuySigB) = self.state {
+                                        trace!("here Bob publishes refund tx");
+                                        if let Some((tx_label, refund_tx)) =
+                                            self.txs.remove_entry(&TxLabel::Refund)
+                                        {
+                                            info!(
+                                                "Broadcasting btc refund {}",
+                                                refund_tx.txid().addr()
+                                            );
+                                            self.broadcast(refund_tx, tx_label, senders)?
+                                        }
+                                    }
+                                }
+                                TxLabel::Buy => {
+                                    info!("found buy by txid")
+                                }
+                                tx_label => warn!("tx label {} not supported", tx_label),
                             }
-                            TxLabel::Buy => {
-                                info!("found buy by txid")
-                            }
-                            tx_label => warn!("tx label {} not supported", tx_label),
+                        } else {
+                            warn!(
+                                "received event with unknown transaction and task id {}",
+                                &id
+                            )
                         }
-                    } else {
-                        warn!(
-                            "received event with unknown transaction and task id {}",
-                            &id
-                        )
                     }
                 }
                 Event::TransactionConfirmations(TransactionConfirmations {
@@ -1162,14 +1253,14 @@ impl Runtime {
                     confirmations,
                 }) => {
                     self.syncer_state.handle_tx_confs(id, confirmations);
+                    Event::TransactionBroadcasted(event) => {
+                        info!("{}", event)
+                    }
+                    Event::TaskAborted(event) => {
+                        info!("{}", event)
+                    }
                 }
-                Event::TransactionBroadcasted(event) => {
-                    info!("{}", event)
-                }
-                Event::TaskAborted(event) => {
-                    info!("{}", event)
-                }
-            },
+            }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
                 let next_state = match self.state {
                     State::Bob(BobState::RevealB(_)) => {
