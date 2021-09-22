@@ -110,8 +110,8 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        tx_finality_thr: 0,
-        race_thr: 1,
+        tx_finality_thr: 1,
+        race_thr: 2,
     };
 
     temporal_safety.valid_params()?;
@@ -671,7 +671,6 @@ impl Runtime {
                             return Ok(());
                         }
                         if let State::Alice(AliceState::RevealA(_)) = self.state {
-                            // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
                             for (&tx, tx_label) in [lock, cancel, refund].iter().zip([
                                 TxLabel::Lock,
                                 TxLabel::Cancel,
@@ -715,8 +714,6 @@ impl Runtime {
                         refund_adaptor_sig,
                     }) => {
                         if let State::Bob(BobState::CorearbB(_)) = self.state {
-                            // FIXME subscribe syncer to Accordant + arbitrating locks and buy +
-                            // cancel txs
                             self.send_wallet(msg_bus, senders, request)?;
                         } else {
                             error!(
@@ -981,16 +978,21 @@ impl Runtime {
                     if let Some(txlabel) = self.syncer_state.txs_status.get(id) {
                         match txlabel {
                             TxLabel::Funding => {
-                                info!("Funding transaction received, forwarding to wallet");
+                                info!(
+                                    "Funding tx in mempool or blockchain, \
+                                     sending it to wallet: {}",
+                                    &tx.txid().addr()
+                                );
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
                             TxLabel::Buy => {
                                 if let State::Bob(BobState::BuySigB) = self.state {
                                     info!(
-                                        "found buy tx in mempool or blockchain, \
+                                        "{} tx in mempool or blockchain, \
                                            sending it to wallet: {}",
-                                        &tx.txid().addr()
+                                        &TxLabel::Funding,
+                                        &tx.txid().addr(),
                                     );
                                     let req = Request::Tx(Tx::Buy(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?
@@ -1247,13 +1249,13 @@ impl Runtime {
                 // replay last tx confirmation event received from syncer, recursing
                 match transaction {
                     Tx::Cancel(_) | Tx::Buy(_) => {
-                        if let Some(lock_tx_confs) = self.syncer_state.lock_tx_confs.clone() {
-                            self.handle_rpc_ctl(senders, source, lock_tx_confs)?;
+                        if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
+                            self.handle_rpc_ctl(senders, source, lock_tx_confs_req)?;
                         }
                     }
                     Tx::Refund(_) | Tx::Punish(_) => {
-                        if let Some(cancel_tx_confs) = self.syncer_state.cancel_tx_confs.clone() {
-                            self.handle_rpc_ctl(senders, source, cancel_tx_confs)?;
+                        if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone() {
+                            self.handle_rpc_ctl(senders, source, cancel_tx_confs_req)?;
                         }
                     }
                     _ => {}
