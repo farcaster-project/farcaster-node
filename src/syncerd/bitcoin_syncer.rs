@@ -27,6 +27,7 @@ use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
 use internet2::ZMQ_CONTEXT;
+use lnpbp::Chain;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;
@@ -37,7 +38,6 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use lnpbp::Chain;
 
 use hex;
 
