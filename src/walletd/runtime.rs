@@ -997,8 +997,8 @@ fn address() -> bitcoin::Address {
         Err(e) => {
             error!(
                 "make sure {} exists populated with bitcoin addresses you control \
-                 such as: \n\ntb1qh0hgmalfuancfe28wnmrp0lctlsdxqf2fcqlsh\n\\
-                 tb1qgd0m0qwssw7q8t8whh2d0ala0g8xqfq976y9eu\n\n\n\\
+                 such as: \n\ntb1qh0hgmalfuancfe28wnmrp0lctlsdxqf2fcqlsh\n\
+                 tb1qgd0m0qwssw7q8t8whh2d0ala0g8xqfq976y9eu\n\n\n\
                  with no extra spaces, now defaulting to hardcoded address {} \
                  {}",
                 path, address, e
