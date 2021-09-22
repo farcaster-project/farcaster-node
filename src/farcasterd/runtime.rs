@@ -288,6 +288,7 @@ impl Runtime {
                     ));
 
                     launch("syncerd", &[Coin::Bitcoin.to_string()])?;
+                    launch("syncerd", &[Coin::Monero.to_string()])?;
 
                     // FIXME msgs should go to walletd?
                     senders.send_to(
@@ -312,6 +313,7 @@ impl Runtime {
                     ));
 
                     launch("syncerd", &[Coin::Bitcoin.to_string()])?;
+                    launch("syncerd", &[Coin::Monero.to_string()])?;
 
                     // FIXME msgs should go to walletd?
                     senders.send_to(
