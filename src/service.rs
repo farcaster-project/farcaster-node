@@ -102,7 +102,7 @@ pub enum ServiceId {
     #[display("client<{0}>")]
     Client(u64),
 
-    #[display("syncer")]
+    #[display("syncer<{0:?}>")]
     Syncer(Coin),
 
     #[display("walletd")]
