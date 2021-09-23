@@ -11,21 +11,21 @@ cargo build --all-features
 
 ### Launch two nodes
 
-On one terminal launch the farcasterd node `node0` with data dir 0
+On one terminal launch the farcasterd node `node0` with `data_dir_0`
 ```
- ./target/debug/farcasterd -vvvv -d .data_dir_0
+ ./target/debug/farcasterd -vv -d .data_dir_0 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081
  
 ```
-On a second terminal launch a second farcasterd node `node1` with data dir 1
+On a second terminal launch a second farcasterd node `node1` with `data_dir_1`
 ```
- ./target/debug/farcasterd -vvvv -d .data_dir_1
+ ./target/debug/farcasterd -vv -d .data_dir_1 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081
 ```
 
 ### Client
 
 On a third terminal
 
-Create aliases for nodes client
+Create aliases for nodes client. You will use them to make and take offers.
 ```
 # client for node0
 alias swap0-cli="./target/debug/swap-cli -d .data_dir_0" 
