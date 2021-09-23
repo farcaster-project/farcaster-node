@@ -341,11 +341,32 @@ impl Synclet for BitcoinSyncer {
                             Task::BroadcastTransaction(task) => {
                                 // TODO: match error and emit event with fail code
                                 trace!("trying to broadcast tx: {:?}", task.tx.to_hex());
-                                match rpc.send_raw_transaction(task.tx) {
+                                match rpc.send_raw_transaction(task.tx.clone()) {
                                     Ok(txid) => {
-                                        info!("successfully broadcasted tx {}", txid.addr())
+                                        state.events.push((
+                                            Event::TransactionBroadcasted(TransactionBroadcasted {
+                                                id: task.id,
+                                                tx: task.tx,
+                                                error: None,
+                                            }),
+                                            syncerd_task.source,
+                                        ));
+                                        info!("successfully broadcasted tx {}", txid.addr());
                                     }
-                                    Err(e) => error!("failed to broadcast tx: {}", e.err()),
+                                    Err(e) => {
+                                        state.events.push((
+                                            Event::TransactionBroadcasted(TransactionBroadcasted {
+                                                id: task.id,
+                                                tx: task.tx,
+                                                error: Some(format!(
+                                                    "failed to broadcast tx: {}",
+                                                    e.err()
+                                                )),
+                                            }),
+                                            syncerd_task.source,
+                                        ));
+                                        error!("failed to broadcast tx: {}", e.err());
+                                    }
                                 }
                             }
                             Task::WatchAddress(task) => match task.addendum.clone() {

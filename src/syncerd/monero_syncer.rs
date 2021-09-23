@@ -300,8 +300,16 @@ impl Synclet for MoneroSyncer {
                                 Task::Abort(task) => {
                                     state.abort(task.id, syncerd_task.source);
                                 }
-                                Task::BroadcastTransaction(_task) => {
+                                Task::BroadcastTransaction(task) => {
                                     error!("broadcast transaction not available for Monero");
+                                    state.events.push((
+                                        Event::TransactionBroadcasted(TransactionBroadcasted {
+                                            id: task.id,
+                                            tx: task.tx,
+                                            error: Some("broadcast transaction not available for Monero".to_string()),
+                                        }),
+                                        syncerd_task.source,
+                                    ));
                                 }
                                 Task::WatchAddress(task) => {
                                     match task.addendum.clone() {
