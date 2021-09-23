@@ -72,7 +72,7 @@ use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
-use lnpbp::{chain::AssetId, Chain};
+use lnpbp::Chain;
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
@@ -85,15 +85,10 @@ pub fn run(
     local_trade_role: TradeRole,
 ) -> Result<(), Error> {
     let Offer {
-        network,
-        arbitrating_blockchain,
-        accordant_blockchain,
-        arbitrating_amount,
-        accordant_amount,
         cancel_timelock,
         punish_timelock,
-        fee_strategy,
         maker_role, // SwapRole of maker (Alice or Bob)
+        ..
     } = public_offer.offer.clone();
 
     // alice or bob
@@ -110,7 +105,7 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        tx_finality_thr: 1,
+        tx_finality_thr: 0,
         race_thr: 2,
     };
 
@@ -128,16 +123,9 @@ pub fn run(
     let runtime = Runtime {
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
-        chain,
         state: init_state,
         maker_peer: None,
         started: SystemTime::now(),
-        accordant_amount,
-        arbitrating_amount,
-        fee_strategy,
-        accordant_blockchain,
-        arbitrating_blockchain,
-        network,
         syncer_state,
         temporal_safety,
         enquirer: None,
@@ -159,17 +147,9 @@ pub fn run(
 pub struct Runtime {
     identity: ServiceId,
     peer_service: ServiceId,
-    chain: Chain,
     state: State,
-    // remote_state: State,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    accordant_amount: monero::Amount,
-    arbitrating_amount: bitcoin::Amount,
-    fee_strategy: FeeStrategy<SatPerVByte>,
-    network: blockchain::Network,
-    arbitrating_blockchain: Bitcoin<SegwitV0>,
-    accordant_blockchain: Monero,
     enquirer: Option<ServiceId>,
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
@@ -179,12 +159,15 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
+
 struct TemporalSafety {
-    cancel_timelock: u32,
-    punish_timelock: u32,
-    race_thr: u32,
-    tx_finality_thr: u32,
+    cancel_timelock: BlockHeight,
+    punish_timelock: BlockHeight,
+    race_thr: BlockHeight,
+    tx_finality_thr: BlockHeight,
 }
+
+type BlockHeight = u32;
 
 impl TemporalSafety {
     /// check if temporal params are in correct order
