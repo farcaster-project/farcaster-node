@@ -25,8 +25,8 @@ use internet2::{CreateUnmarshaller, Unmarshall};
 use std::str::FromStr;
 
 use farcaster_node::syncerd::types::{
-    AddressAddendum, Boolean, BtcAddressAddendum, Event, Task, WatchAddress, WatchHeight,
-    WatchTransaction,
+    AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, Task, WatchAddress,
+    WatchHeight, WatchTransaction,
 };
 
 /*
@@ -35,19 +35,21 @@ state of electrum and bitcoin
 */
 
 #[test]
-#[ignore] // it's too expensive and requires
+#[ignore] // it's too expensive
 fn bitcoin_syncer_test() {
     bitcoin_syncer_block_height_test();
     bitcoin_syncer_address_test();
     bitcoin_syncer_transaction_test();
+    bitcoin_syncer_broadcast_tx_test();
 }
 
 #[tokio::test]
-#[ignore]
+#[ignore] // it's too expensive
 async fn monero_syncer_test() {
     monero_syncer_block_height_test().await;
     monero_syncer_address_test().await;
     monero_syncer_transaction_test().await;
+    monero_syncer_broadcast_tx_test().await;
 }
 
 /*
@@ -152,7 +154,7 @@ fn bitcoin_syncer_address_test() {
     // Generate over 101 blocks to reach block maturity, and some more for extra leeway
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
-    // allow some time for things to happen, like the electrum server catching
+    // allow some time for things to happen, like the electrum server catching up
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
@@ -332,7 +334,7 @@ fn bitcoin_syncer_transaction_test() {
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
 
-    // allow some time for things to happen, like the electrum server catching
+    // allow some time for things to happen, like the electrum server catching up
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
@@ -436,6 +438,95 @@ fn bitcoin_syncer_transaction_test() {
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 0, vec![0]);
+}
+
+/*
+We test the following scenarios in the broadcast tx tests:
+
+- Submit a BroadcastTransaction task, receive an event with a double spend error
+
+- Submit a BroadcastTransaction task, receive a success event
+*/
+fn bitcoin_syncer_broadcast_tx_test() {
+    let bitcoin_rpc = bitcoin_setup();
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
+
+    let (tx, rx_event) = create_bitcoin_syncer();
+
+    // 294 Satoshi is the dust limit for a segwit transaction
+    let amount = bitcoin::Amount::ONE_SAT * 294;
+    // send some coins to address1
+    let txid = bitcoin_rpc
+        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .unwrap();
+    let transaction = bitcoin_rpc.get_transaction(&txid, None).unwrap();
+
+    // Generate over 101 blocks to reach block maturity, and some more for extra leeway
+    bitcoin_rpc.generate_to_address(110, &address).unwrap();
+
+    // allow some time for things to happen, like the electrum server catching up
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
+
+    let task = SyncerdTask {
+        task: Task::BroadcastTransaction(BroadcastTransaction {
+            id: 0,
+            tx: transaction.hex,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(task).unwrap();
+
+    println!("waiting for transaction broadcasted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("transaction broadcasted");
+    let request = get_request_from_message(message);
+    assert_transaction_broadcasted(request, true, None);
+
+    use amplify::map;
+
+    let utxos = bitcoin_rpc
+        .list_unspent(Some(100), None, None, Some(false), None)
+        .unwrap();
+    let bitcoincore_rpc::bitcoincore_rpc_json::ListUnspentResultEntry {
+        txid,
+        vout,
+        amount: in_amount,
+        ..
+    } = &utxos[0];
+
+    let out_amount = *in_amount - amount - amount;
+    let transaction = bitcoin_rpc
+        .create_raw_transaction_hex(
+            &[
+                bitcoincore_rpc::bitcoincore_rpc_json::CreateRawTransactionInput {
+                    txid: *txid,
+                    vout: *vout,
+                    sequence: None,
+                },
+            ],
+            &map! {address.to_string() => out_amount},
+            None,
+            None,
+        )
+        .unwrap();
+    let signed_tx = bitcoin_rpc
+        .sign_raw_transaction_with_wallet(transaction, None, None)
+        .unwrap();
+    let task = SyncerdTask {
+        task: Task::BroadcastTransaction(BroadcastTransaction {
+            id: 0,
+            tx: signed_tx.hex,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(task).unwrap();
+
+    println!("waiting for transaction broadcasted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("transaction broadcasted");
+    let request = get_request_from_message(message);
+    assert_transaction_broadcasted(request, false, None);
 }
 
 fn create_bitcoin_syncer() -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
@@ -834,6 +925,33 @@ async fn monero_syncer_transaction_test() {
     assert_transaction_confirmations(request, 0, vec![0]);
 }
 
+/*
+Check that a monero BroadcastTransaction task generates an error
+*/
+async fn monero_syncer_broadcast_tx_test() {
+    let (regtest, wallet) = setup_monero().await;
+    let address = wallet.get_address(0, None).await.unwrap();
+    regtest.generate_blocks(1, address.address).await.unwrap();
+
+    let (tx, rx_event) = create_monero_syncer();
+
+    let task = SyncerdTask {
+        task: Task::BroadcastTransaction(BroadcastTransaction { id: 0, tx: vec![0] }),
+        source: ServiceId::Syncer(Coin::Monero),
+    };
+    tx.send(task).unwrap();
+
+    println!("waiting for transaction broadcasted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("transaction broadcasted");
+    let request = get_request_from_message(message);
+    assert_transaction_broadcasted(
+        request,
+        true,
+        Some("broadcast transaction not available for Monero".to_string()),
+    );
+}
+
 async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletClient) {
     let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
     let daemon = daemon_client.daemon();
@@ -990,5 +1108,28 @@ fn assert_transaction_confirmations(
             _ => panic!("expected address transaction event"),
         },
         _ => panic!("expected syncerd bridge event"),
+    }
+}
+
+fn assert_transaction_broadcasted(request: Request, has_error: bool, error_msg: Option<String>) {
+    match request {
+        Request::SyncerdBridgeEvent(event) => match event.event {
+            Event::TransactionBroadcasted(transaction_broadcasted) => {
+                if has_error {
+                    assert!(transaction_broadcasted.error.is_some());
+                    if error_msg.is_some() {
+                        assert_eq!(transaction_broadcasted.error.unwrap(), error_msg.unwrap());
+                    }
+                } else {
+                    assert!(transaction_broadcasted.error.is_none());
+                }
+            }
+            _ => {
+                panic!("expected height changed event");
+            }
+        },
+        _ => {
+            panic!("expected syncerd bridge event");
+        }
     }
 }

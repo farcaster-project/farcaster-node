@@ -142,9 +142,8 @@ pub struct TransactionConfirmations {
 #[display(Debug)]
 pub struct TransactionBroadcasted {
     pub id: u32,
-    pub tx_len: i16,
     pub tx: Vec<u8>,
-    pub success_broadcast: i32,
+    pub error: Option<String>,
 }
 
 /// Events returned by syncers to the daemon to update the blockchain states.  Events are
