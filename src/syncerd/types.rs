@@ -87,8 +87,8 @@ pub struct BroadcastTransaction {
     pub tx: Vec<u8>,
 }
 
-/// Tasks created by the daemon and handle by syncers to process a blockchain and generate
-/// [`Event`] back to the syncer.
+/// Tasks created by the daemon and handle by syncers to process a blockchain
+/// and generate [`Event`] back to the syncer.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
@@ -146,8 +146,9 @@ pub struct TransactionBroadcasted {
     pub error: Option<String>,
 }
 
-/// Events returned by syncers to the daemon to update the blockchain states.  Events are
-/// identified with a unique 32-bits integer that match the [`Task`] id.
+/// Events returned by syncers to the daemon to update the blockchain states.
+/// Events are identified with a unique 32-bits integer that match the [`Task`]
+/// id.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
@@ -157,7 +158,7 @@ pub enum Event {
     AddressTransaction(AddressTransaction),
     TransactionConfirmations(TransactionConfirmations),
     TransactionBroadcasted(TransactionBroadcasted),
-    /// Notify the daemon the task has been aborted with success or failure. Carries the status for
-    /// the task abortion.
+    /// Notify the daemon the task has been aborted with success or failure.
+    /// Carries the status for the task abortion.
     TaskAborted(TaskAborted),
 }

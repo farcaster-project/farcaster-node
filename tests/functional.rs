@@ -153,7 +153,8 @@ fn bitcoin_syncer_address_test() {
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
-    // Generate over 101 blocks to reach block maturity, and some more for extra leeway
+    // Generate over 101 blocks to reach block maturity, and some more for extra
+    // leeway
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
     // allow some time for things to happen, like the electrum server catching up
