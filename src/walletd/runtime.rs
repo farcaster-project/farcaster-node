@@ -533,7 +533,7 @@ impl Runtime {
                         let sig = signed_arb_lock.lock_sig;
                         let tx = core_arb_setup.lock.clone();
                         let mut lock_tx = LockTx::from_partial(tx);
-                        let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Fund)?;
+                        let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
                         lock_tx.add_witness(lock_pubkey, sig)?;
                         let finalized_lock_tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
@@ -1042,8 +1042,7 @@ where
 }
 
 pub fn create_funding(key_manager: &mut KeyManager) -> Result<FundingTx, Error> {
-    let pk = key_manager.get_pubkey(ArbitratingKeyId::Fund)?;
-    debug!("bug to fix: not Fund, Lock^");
+    let pk = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
     Ok(FundingTx::initialize(
         pk,
         farcaster_core::blockchain::Network::Testnet,
