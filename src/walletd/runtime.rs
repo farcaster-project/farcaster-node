@@ -37,8 +37,8 @@ use farcaster_core::{
         FullySignedPunish, FullySignedRefund, FundingTransaction, SignedAdaptorBuy,
         SignedAdaptorRefund, SignedArbitratingLock,
     },
-    crypto::CommitmentEngine,
     crypto::{ArbitratingKeyId, GenerateKey},
+    crypto::{CommitmentEngine, ProveCrossGroupDleq},
     monero::Monero,
     negotiation::PublicOffer,
     protocol_message::{
@@ -433,7 +433,18 @@ impl Runtime {
                             } else {
                                 trace!("Setting bob params: {}", reveal);
                                 bob_commit.verify_with_reveal(&CommitmentEngine, reveal.clone())?;
-                                *bob_params = Some(reveal.into());
+                                let remote_params_candidate: BobParameters<BtcXmr> = reveal.into();
+                                let proof_verification = key_manager.verify_proof(
+                                    &remote_params_candidate.spend,
+                                    &remote_params_candidate.adaptor,
+                                    remote_params_candidate.proof.clone(),
+                                );
+
+                                if !proof_verification.is_ok() {
+                                    error!("DLEQ proof invalid");
+                                    return Ok(());
+                                }
+                                *bob_params = Some(remote_params_candidate);
                                 // nothing to do yet, waiting for Msg
                                 // CoreArbitratingSetup to proceed
                                 return Ok(());
@@ -462,7 +473,20 @@ impl Runtime {
                                 error!("Alice params already set");
                                 return Ok(());
                             }
-                            *remote_params = Some(reveal.into());
+
+                            trace!("Setting remote params: {}", reveal);
+                            let remote_params_candidate: AliceParameters<BtcXmr> = reveal.into();
+                            let proof_verification = key_manager.verify_proof(
+                                &remote_params_candidate.spend,
+                                &remote_params_candidate.adaptor,
+                                remote_params_candidate.proof.clone(),
+                            );
+
+                            if !proof_verification.is_ok() {
+                                error!("DLEQ proof invalid");
+                                return Ok(());
+                            }
+                            *remote_params = Some(remote_params_candidate);
 
                             // set wallet core_arb_txs
                             if core_arb_setup.is_some() {
