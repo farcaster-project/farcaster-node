@@ -708,7 +708,7 @@ impl From<crate::Error> for Request {
 pub trait IntoProgressOrFalure {
     fn into_progress_or_failure(self) -> Request;
 }
-pub trait IntoSuccessOrFalure {
+pub trait IntoSuccessOrFailure {
     fn into_success_or_failure(self) -> Request;
 }
 
@@ -721,7 +721,7 @@ impl IntoProgressOrFalure for Result<String, crate::Error> {
     }
 }
 
-impl IntoSuccessOrFalure for Result<String, crate::Error> {
+impl IntoSuccessOrFailure for Result<String, crate::Error> {
     fn into_success_or_failure(self) -> Request {
         match self {
             Ok(val) => Request::Success(OptionDetails::with(val)),
@@ -730,7 +730,7 @@ impl IntoSuccessOrFalure for Result<String, crate::Error> {
     }
 }
 
-impl IntoSuccessOrFalure for Result<(), crate::Error> {
+impl IntoSuccessOrFailure for Result<(), crate::Error> {
     fn into_success_or_failure(self) -> Request {
         match self {
             Ok(_) => Request::Success(OptionDetails::new()),
