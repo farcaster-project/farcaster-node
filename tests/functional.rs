@@ -39,10 +39,14 @@ state of electrum and bitcoin
 #[test]
 #[ignore] // it's too expensive
 fn bitcoin_syncer_test() {
-    bitcoin_syncer_block_height_test();
-    bitcoin_syncer_address_test();
-    bitcoin_syncer_transaction_test();
-    bitcoin_syncer_broadcast_tx_test();
+    bitcoin_syncer_block_height_test(true);
+    bitcoin_syncer_address_test(true);
+    bitcoin_syncer_transaction_test(true);
+    bitcoin_syncer_broadcast_tx_test(true);
+    bitcoin_syncer_block_height_test(false);
+    bitcoin_syncer_address_test(false);
+    bitcoin_syncer_transaction_test(false);
+    bitcoin_syncer_broadcast_tx_test(false);
 }
 
 #[tokio::test]
@@ -65,12 +69,12 @@ We test for the following scenarios in the block height tests:
 
 - Mine another block and receive two HeightChanged events
 */
-fn bitcoin_syncer_block_height_test() {
+fn bitcoin_syncer_block_height_test(polling: bool) {
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer();
+    let (tx, rx_event) = create_bitcoin_syncer(polling);
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -146,7 +150,7 @@ the complete existing transaction history
 - Submit a WatchAddress task many times with the same address, ensure we receive
 many times the same event
 */
-fn bitcoin_syncer_address_test() {
+fn bitcoin_syncer_address_test(polling: bool) {
     let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
@@ -162,7 +166,7 @@ fn bitcoin_syncer_address_test() {
     std::thread::sleep(duration);
 
     // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer();
+    let (tx, rx_event) = create_bitcoin_syncer(polling);
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -324,7 +328,7 @@ the threshold confs are reached
 
 - Submit two WatchTransaction tasks in parallel, receive confirmation events for both
 */
-fn bitcoin_syncer_transaction_test() {
+fn bitcoin_syncer_transaction_test(polling: bool) {
     let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
@@ -332,7 +336,7 @@ fn bitcoin_syncer_transaction_test() {
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
     // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer();
+    let (tx, rx_event) = create_bitcoin_syncer(polling);
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
@@ -345,6 +349,7 @@ fn bitcoin_syncer_transaction_test() {
     let txid_1 = bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
+    std::thread::sleep(duration);
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
@@ -450,11 +455,11 @@ We test the following scenarios in the broadcast tx tests:
 
 - Submit a BroadcastTransaction task, receive a success event
 */
-fn bitcoin_syncer_broadcast_tx_test() {
+fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    let (tx, rx_event) = create_bitcoin_syncer();
+    let (tx, rx_event) = create_bitcoin_syncer(polling);
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
@@ -533,7 +538,7 @@ fn bitcoin_syncer_broadcast_tx_test() {
     assert_transaction_broadcasted(request, false, None);
 }
 
-fn create_bitcoin_syncer() -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+fn create_bitcoin_syncer(polling: bool) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
@@ -552,7 +557,7 @@ fn create_bitcoin_syncer() -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket
         ServiceId::Syncer(Coin::Bitcoin).into(),
         syncer_servers,
         Chain::Regtest(dummy),
-        true,
+        polling,
     );
     (tx, rx_event)
 }
@@ -650,7 +655,9 @@ async fn monero_syncer_block_height_test() {
         source: ServiceId::Syncer(Coin::Bitcoin),
     };
     tx.send(task).unwrap();
+    println!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
+    println!("height changed");
     let request = get_request_from_message(message);
     assert_received_height_changed(request, blocks);
 

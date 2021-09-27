@@ -1,57 +1,41 @@
-use crate::farcaster_core::consensus::Decodable;
+use crate::error::Error;
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
 use crate::syncerd::bitcoin_syncer::Synclet;
-use crate::syncerd::runtime::SyncerServers;
 use crate::syncerd::runtime::SyncerdTask;
+use crate::syncerd::syncer_state::create_set;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
-use crate::syncerd::syncer_state::WatchedTransaction;
-use crate::ServiceId;
-use crate::{error::Error, syncerd::syncer_state::create_set};
-use internet2::zmqsocket::Connection;
-use internet2::zmqsocket::ZmqType;
+use crate::syncerd::types::{AddressAddendum, Task};
+use crate::syncerd::Event;
+use crate::syncerd::SyncerServers;
+use crate::syncerd::TransactionBroadcasted;
+use crate::syncerd::XmrAddressAddendum;
+use internet2::zmqsocket::{Connection, ZmqType};
 use internet2::PlainTranscoder;
-use internet2::ZMQ_CONTEXT;
 use lnpbp::chain::Chain;
 use monero::Hash;
-use monero_rpc::BlockHash;
+use monero_rpc::GenerateFromKeysArgs;
 use monero_rpc::GetBlockHeaderSelector;
-use monero_rpc::JsonTransaction;
-use monero_rpc::{
-    GenerateFromKeysArgs, GetTransfersCategory, GetTransfersSelector, TransferHeight,
-};
-use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
-use std::io;
-use std::iter::FromIterator;
-use std::marker::{Send, Sized};
-use std::ops::Bound;
+use monero_rpc::GetTransfersCategory;
+use monero_rpc::GetTransfersSelector;
+use monero_rpc::TransferType;
+use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::{Receiver, TryRecvError};
-use std::thread;
-use std::time::Duration;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::TryRecvError;
+use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::mpsc::Receiver as TokioReceiver;
+use tokio::sync::mpsc::Sender as TokioSender;
+use tokio::sync::Mutex;
 
 use hex;
 
-use crate::syncerd::*;
-use std::str::FromStr;
-
-trait Rpc {
-    fn new() -> Self;
-
-    fn get_height(&mut self) -> Result<u64, Error>;
-
-    fn send_raw_transaction(&mut self, tx: Vec<u8>) -> Result<String, electrum_client::Error>;
-
-    fn ping(&mut self) -> Result<(), Error>;
-}
-
+#[derive(Debug, Clone)]
 pub struct MoneroRpc {
     height: u64,
     node_rpc_url: String,
@@ -65,8 +49,7 @@ pub struct Block {
 }
 
 #[derive(Debug)]
-pub struct AddressNotif {
-    address: XmrAddressAddendum,
+struct AddressNotif {
     txs: Vec<AddressTx>,
 }
 
@@ -90,7 +73,11 @@ impl MoneroRpc {
     async fn get_height(&mut self) -> u64 {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
-        let count: u64 = daemon.get_block_count().await.unwrap().into();
+        let count: u64 = daemon
+            .get_block_count()
+            .await
+            .expect("error getting height in monero syncer")
+            .into();
         count - 1
     }
 
@@ -98,11 +85,14 @@ impl MoneroRpc {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
         let selector = GetBlockHeaderSelector::Height(height.into());
-        let header = daemon.get_block_header(selector).await.unwrap();
+        let header = daemon
+            .get_block_header(selector)
+            .await
+            .expect("error getting block hash in monero syncer");
         header.hash.0.to_vec()
     }
 
-    async fn get_transactions(&mut self, tx_ids: Vec<Vec<u8>>) -> Vec<Transaction> {
+    async fn get_transactions(&mut self, tx_ids: Vec<Vec<u8>>) -> Result<Vec<Transaction>, Error> {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon_rpc();
 
@@ -117,8 +107,7 @@ impl MoneroRpc {
 
         let txs = daemon
             .get_transactions(monero_txids, Some(true), Some(true))
-            .await
-            .unwrap();
+            .await?;
 
         let block_height = self.get_height().await;
 
@@ -131,10 +120,6 @@ impl MoneroRpc {
                     if tx_height > 0 {
                         block_hash = Some(self.get_block_hash(tx_height).await);
                     }
-                    println!(
-                        "tx_height: {:?}, block_height: {:?}",
-                        tx_height, block_height
-                    );
                     confirmations = Some((block_height - tx_height + 1) as u32);
                 }
                 transactions.push(Transaction {
@@ -151,7 +136,7 @@ impl MoneroRpc {
                 block_hash: None,
             }));
         }
-        transactions
+        Ok(transactions)
     }
 
     async fn check_block(&mut self) -> Option<Block> {
@@ -180,9 +165,9 @@ impl MoneroRpc {
             view: monero::PrivateKey::from_slice(&address_addendum.view_key.clone()).unwrap(),
         };
         let address = monero::Address::from_viewpair(network, &keypair);
-        let wallet_client = monero_rpc::RpcClient::new(self.wallet_rpc_url.clone());
-        let wallet = wallet_client.wallet();
+        let wallet = monero_rpc::RpcClient::new(self.wallet_rpc_url.clone()).wallet();
         let password = s!(" ");
+
         match wallet
             .open_wallet(address.to_string(), Some(password.clone()))
             .await
@@ -207,7 +192,6 @@ impl MoneroRpc {
                     .open_wallet(address.to_string(), Some(password))
                     .await?;
                 debug!("Wallet successfully open {:?}", res)
-
             }
             Ok(res) => {
                 debug!("Wallet successfully open {:?}", res)
@@ -222,31 +206,27 @@ impl MoneroRpc {
         category_selector.insert(GetTransfersCategory::Pending, true);
         category_selector.insert(GetTransfersCategory::Pool, true);
 
-        let selector = GetTransfersSelector::<Range<u64>> {
+        let selector = GetTransfersSelector {
             category_selector,
             subaddr_indices: None,
             account_index: None,
-            filter_by_height: none!(),
         };
 
-        let transfers = wallet.get_transfers(selector).await?;
+        let mut transfers = wallet.get_transfers(selector).await?;
 
         let mut address_txs: Vec<AddressTx> = vec![];
-        for (_category, txs) in transfers.iter() {
-            for tx in txs.iter() {
+        for (_category, mut txs) in transfers.drain() {
+            for tx in txs.drain(..) {
                 debug!("FIXME: tx set to vec![0]");
                 address_txs.push(AddressTx {
                     our_amount: tx.amount,
-                    tx_id: tx.txid.0.clone(),
+                    tx_id: tx.txid.0,
                     tx: vec![0],
                 });
             }
         }
 
-        Ok(AddressNotif {
-            address: address_addendum,
-            txs: address_txs,
-        })
+        Ok(AddressNotif { txs: address_txs })
     }
 }
 
@@ -258,6 +238,230 @@ impl MoneroSyncer {
     }
 }
 
+async fn run_syncerd_task_receiver(
+    receive_task_channel: Receiver<SyncerdTask>,
+    state: Arc<Mutex<SyncerState>>,
+    tx_event: TokioSender<SyncerdBridgeEvent>,
+) {
+    let task_receiver = Arc::new(Mutex::new(receive_task_channel));
+    tokio::spawn(async move {
+        loop {
+            // this is a hack around the Receiver not being Sync
+            let guard = task_receiver.lock().await;
+            let syncerd_task = guard.try_recv();
+            drop(guard);
+            match syncerd_task {
+                Ok(syncerd_task) => {
+                    match syncerd_task.task {
+                        Task::Abort(task) => {
+                            let mut state_guard = state.lock().await;
+                            state_guard.abort(task.id, syncerd_task.source).await;
+                        }
+                        Task::BroadcastTransaction(task) => {
+                            error!("broadcast transaction not available for Monero");
+                            tx_event.send(SyncerdBridgeEvent{
+                                event: Event::TransactionBroadcasted(TransactionBroadcasted {
+                                    id: task.id,
+                                    tx: task.tx,
+                                    error: Some("broadcast transaction not available for Monero".to_string()),
+                                }),
+                                source: syncerd_task.source,
+                            }).await.expect("error sending the transaction broadcast event event from the syncer state");
+                        }
+                        Task::WatchAddress(task) => match task.addendum.clone() {
+                            AddressAddendum::Monero(_) => {
+                                let mut state_guard = state.lock().await;
+                                state_guard
+                                    .watch_address(task, syncerd_task.source)
+                                    .expect("Monero Task::WatchAddress");
+                            }
+                            _ => {
+                                error!("Aborting watch address task - unable to decode address addendum");
+                                let mut state_guard = state.lock().await;
+                                state_guard.abort(task.id, syncerd_task.source).await;
+                            }
+                        },
+                        Task::WatchHeight(task) => {
+                            let mut state_guard = state.lock().await;
+                            state_guard.watch_height(task, syncerd_task.source).await;
+                        }
+                        Task::WatchTransaction(task) => {
+                            let mut state_guard = state.lock().await;
+                            state_guard.watch_transaction(task, syncerd_task.source);
+                        }
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                Err(TryRecvError::Empty) => {
+                    // do nothing
+                }
+            }
+        }
+    });
+}
+
+fn address_polling(
+    state: Arc<Mutex<SyncerState>>,
+    syncer_servers: SyncerServers,
+    network: monero::Network,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        let mut rpc = MoneroRpc::new(
+            syncer_servers.monero_daemon,
+            syncer_servers.monero_rpc_wallet,
+        );
+        loop {
+            let state_guard = state.lock().await;
+            let mut addresses = state_guard.addresses.clone();
+            drop(state_guard);
+            for (_, watched_address) in addresses.drain() {
+                let address_addendum = match watched_address.task.addendum {
+                    AddressAddendum::Monero(address) => address,
+                    _ => panic!("should never get an invalid address"),
+                };
+                // we cannot parallelize polling here, since we have to open and close the
+                // wallet
+                let mut address_transactions = None;
+                match rpc
+                    .check_address(address_addendum.clone(), network.clone())
+                    .await
+                {
+                    Ok(addr_txs) => {
+                        address_transactions = Some(addr_txs);
+                    }
+                    Err(err) => {
+                        error!("error polling addresses: {:?}", err);
+                    }
+                }
+                if let Some(address_transactions) = address_transactions {
+                    let mut state_guard = state.lock().await;
+                    state_guard
+                        .change_address(
+                            AddressAddendum::Monero(address_addendum),
+                            create_set(address_transactions.txs.clone()),
+                        )
+                        .await;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    })
+}
+
+fn height_polling(
+    state: Arc<Mutex<SyncerState>>,
+    syncer_servers: SyncerServers,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        let mut rpc = MoneroRpc::new(
+            syncer_servers.monero_daemon,
+            syncer_servers.monero_rpc_wallet,
+        );
+        loop {
+            if let Some(block_notif) = rpc.check_block().await {
+                let mut state_guard = state.lock().await;
+                state_guard
+                    .change_height(block_notif.height, block_notif.block_hash.into())
+                    .await;
+                let mut transactions = state_guard.transactions.clone();
+                drop(state_guard);
+
+                if transactions.len() > 0 {
+                    let tx_ids: Vec<Vec<u8>> = transactions
+                        .drain()
+                        .map(|(_, tx)| tx.task.hash)
+                        .collect();
+                    let mut polled_transactions = vec![];
+                    match rpc.get_transactions(tx_ids).await {
+                        Ok(txs) => {
+                            polled_transactions = txs;
+                        }
+                        Err(err) => {
+                            error!("polling transactions error: {:?}", err);
+                        }
+                    }
+                    let mut state_guard = state.lock().await;
+                    for tx in polled_transactions.drain(..) {
+                        state_guard
+                            .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations)
+                            .await;
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    })
+}
+
+fn unseen_transaction_polling(
+    state: Arc<Mutex<SyncerState>>,
+    syncer_servers: SyncerServers,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        let mut rpc = MoneroRpc::new(
+            syncer_servers.monero_daemon,
+            syncer_servers.monero_rpc_wallet,
+        );
+        loop {
+            let state_guard = state.lock().await;
+            let unseen_transactions = state_guard.unseen_transactions.clone();
+            if unseen_transactions.len() > 0 {
+                let transactions = state_guard.transactions.clone();
+                let tx_ids: Vec<Vec<u8>> = unseen_transactions
+                    .iter()
+                    .map(|id| {
+                        let tx = transactions.get(id).expect("attempted fetching a monero syncer state transaction that does not exist");
+                        tx.task.hash.clone()
+                    })
+                    .collect();
+                drop(state_guard);
+
+                let mut polled_transactions = vec![];
+                match rpc.get_transactions(tx_ids).await {
+                    Ok(txs) => {
+                        polled_transactions = txs;
+                    }
+                    Err(err) => {
+                        error!("polling unseen transactions error: {:?}", err);
+                    }
+                }
+                let mut state_guard = state.lock().await;
+                for tx in polled_transactions.drain(..) {
+                    state_guard
+                        .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations)
+                        .await;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    })
+}
+
+async fn run_syncerd_bridge_event_sender(
+    tx: zmq::Socket,
+    mut event_rx: TokioReceiver<SyncerdBridgeEvent>,
+    syncer_address: Vec<u8>,
+) {
+    tokio::spawn(async move {
+        let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
+        while let Some(event) = event_rx.recv().await {
+            let mut transcoder = PlainTranscoder {};
+            let writer = connection.as_sender();
+
+            let request = Request::SyncerdBridgeEvent(event);
+            trace!("sending request over syncerd bridge: {:?}", request);
+            writer
+                .send_routed(
+                    &syncer_address,
+                    &syncer_address,
+                    &syncer_address,
+                    &transcoder.encrypt(request.serialize()),
+                )
+                .unwrap();
+        }
+    });
+}
+
 impl Synclet for MoneroSyncer {
     fn run(
         &mut self,
@@ -266,153 +470,53 @@ impl Synclet for MoneroSyncer {
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
         chain: Chain,
-        _polling: bool,
+        polling: bool,
     ) {
+        if !polling {
+            error!("monero syncer only supports polling for now - switching to polling=true");
+        }
         let _handle = std::thread::spawn(move || {
-            let network = match chain {
-                Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
-                Chain::Testnet3 => monero::Network::Stagenet,
-                Chain::Signet => monero::Network::Testnet,
-                _ => {
-                    error!("invalid chain type for monero: {}", chain);
-                    return;
-                }
-            };
-            let mut state = SyncerState::new();
-            let mut rpc = MoneroRpc::new(
-                syncer_servers.monero_daemon,
-                syncer_servers.monero_rpc_wallet,
-            );
-            let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
-            let mut transcoder = PlainTranscoder {};
-            let writer = connection.as_sender();
-
             let rt = Runtime::new().unwrap();
             rt.block_on(async {
-                let block = rpc.check_block().await.unwrap();
-                state.change_height(block.height, block.block_hash);
-                info!("Entering monero_syncer event loop");
-                loop {
-                    match receive_task_channel.try_recv() {
-                        Ok(syncerd_task) => {
-                            match syncerd_task.task {
-                                Task::Abort(task) => {
-                                    state.abort(task.id, syncerd_task.source);
-                                }
-                                Task::BroadcastTransaction(task) => {
-                                    error!("broadcast transaction not available for Monero");
-                                    state.events.push((
-                                        Event::TransactionBroadcasted(TransactionBroadcasted {
-                                            id: task.id,
-                                            tx: task.tx,
-                                            error: Some("broadcast transaction not available for Monero".to_string()),
-                                        }),
-                                        syncerd_task.source,
-                                    ));
-                                }
-                                Task::WatchAddress(task) => {
-                                    match task.addendum.clone() {
-                                        AddressAddendum::Monero(address_addendum) => {
-                                            state.watch_address(task.clone(), syncerd_task.source).expect("Task::WatchAddress");
-                                                match rpc.check_address(address_addendum, network).await {
-                                                    Ok(address_transactions) => {
-                                                        state.change_address(
-                                                            task.addendum,
-                                                            create_set(address_transactions.txs),
-                                                        );
-                                                    }
-                                                    Err(err) => {error!("{}", err)}
-                                                };
-                                        }
-                                        _ => {
-                                            error!("Aborting watch address task - unable to decode address addendum");
-                                            state.abort(task.id, syncerd_task.source);
-                                        }
-                                    }
-                                }
-                                Task::WatchHeight(task) => {
-                                    state.watch_height(task, syncerd_task.source);
-                                }
-                                Task::WatchTransaction(task) => {
-                                    state.watch_transaction(task, syncerd_task.source);
-                                    let tx_ids: Vec<Vec<u8>> = state
-                                        .transactions
-                                        .clone()
-                                        .iter()
-                                        .map(|(_, tx)| tx.task.hash.clone())
-                                        .collect();
-                                    let mut txs = rpc.get_transactions(tx_ids).await;
-                                    for tx in txs.drain(..) {
-                                        state.change_transaction(
-                                            tx.tx_id,
-                                            tx.block_hash,
-                                            tx.confirmations,
-                                        );
-                                    }
-                                }
-                            }
-                            // added data to state, check if we received more from the channel before sending out events
-                            continue;
-                        }
-                        Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
-                        Err(TryRecvError::Empty) => {
-                            // do nothing
-                        }
+                let (event_tx, event_rx): (
+                    TokioSender<SyncerdBridgeEvent>,
+                    TokioReceiver<SyncerdBridgeEvent>,
+                ) = tokio::sync::mpsc::channel(120);
+                let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
+
+                run_syncerd_task_receiver(
+                    receive_task_channel,
+                    Arc::clone(&state),
+                    event_tx.clone(),
+                )
+                .await;
+                run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
+
+                let network = match chain.clone() {
+                    Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
+                    Chain::Testnet3 => monero::Network::Stagenet,
+                    Chain::Signet => monero::Network::Testnet,
+                    _ => {
+                        error!(
+                            "invalid chain type for monero: {}- switching to mainnet",
+                            chain
+                        );
+                        monero::Network::Mainnet
                     }
+                };
 
-                    // check and process address/script_pubkey notifications
-                    for (_, watched_address) in state.addresses.clone().iter() {
-                        let address_addendum = match watched_address.task.addendum.clone() {
-                            AddressAddendum::Monero(address) => address,
-                            _ => panic!("should never get an invalid address")
-                        };
+                let address_handle =
+                    address_polling(Arc::clone(&state), syncer_servers.clone(), network);
 
-                        match rpc.check_address(address_addendum.clone(), network).await {
-                            Ok(address_transactions) => {
-                                state.change_address(
-                                    AddressAddendum::Monero(address_addendum),
-                                    create_set(address_transactions.txs),
-                                );
-                            }
-                            Err(err) => {error!("{}", err)}
-                        };
-                    }
+                // transaction polling is done in the same loop
+                let height_handle = height_polling(Arc::clone(&state), syncer_servers.clone());
 
-                    // check and process new block notifications
-                    if let Some(block_notif) = rpc.check_block().await {
-                        state.change_height(block_notif.height, block_notif.block_hash.into());
+                let unseen_transaction_handle =
+                    unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone());
 
-                        if state.transactions.len() > 0 {
-                            let tx_ids: Vec<Vec<u8>> = state
-                                .transactions
-                                .clone()
-                                .iter()
-                                .map(|(_, tx)| tx.task.hash.clone())
-                                .collect();
-                            let mut txs = rpc.get_transactions(tx_ids).await;
-                            for tx in txs.drain(..) {
-                                state.change_transaction(tx.tx_id, tx.block_hash, tx.confirmations);
-                            }
-                        }
-                    }
-                    trace!("pending events: {:?}", state.events);
-
-                    // now consume the requests
-                    for (event, source) in state.events.drain(..) {
-                        let request =
-                            Request::SyncerdBridgeEvent(SyncerdBridgeEvent { event, source });
-                        trace!("sending request over syncerd bridge: {:?}", request);
-                        writer
-                            .send_routed(
-                                &syncer_address,
-                                &syncer_address,
-                                &syncer_address,
-                                &transcoder.encrypt(request.serialize()),
-                            )
-                            .unwrap();
-                    }
-                    thread::sleep(std::time::Duration::from_secs(2));
-                }
+                let res =
+                    tokio::try_join!(address_handle, height_handle, unseen_transaction_handle);
+                debug!("exiting monero synclet run routine with: {:?}", res);
             });
         });
     }

@@ -1731,7 +1731,7 @@ dependencies = [
 [[package]]
 name = "monero-rpc"
 version = "0.1.0"
-source = "git+https://github.com/Lederstrumpf/monero-rpc-rs?branch=changes#5e7f230920aee8f599e2e77d58db0d9dee179837"
+source = "git+https://github.com/TheCharlatan/monero-rpc-rs?branch=changes#5b311c820d3420f66a4aa7b546662be65c6df316"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2988,9 +2988,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.9.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b7b349f11a7047e6d1276853e612d152f5e8a352c61917887cc2169e2366b4c"
+checksum = "c2c2416fdedca8443ae44b4527de1ea633af61d8f7169ffa6e72c5b53d24efcc"
 dependencies = [
  "autocfg 1.0.1",
  "bytes",
