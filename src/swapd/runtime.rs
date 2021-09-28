@@ -227,9 +227,18 @@ pub enum AliceState {
     #[display("Reveal")]
     RevealA(Commit), // remote
     #[display("RefundProcSigs")]
-    RefundSigA(bool, bool), // monero locked, buy published
+    RefundSigA(RefundSigA), // monero locked, buy published
     #[display("Finish")]
     FinishA,
+}
+
+#[derive(Clone, Display)]
+#[display("{xmr_locked} and {buy_published}")]
+pub struct RefundSigA {
+    #[display("xmr_locked({0})")]
+    xmr_locked: bool,
+    #[display("buy_published({0})")]
+    buy_published: bool,
 }
 
 #[derive(Display, Clone)]
@@ -1005,6 +1014,7 @@ impl Runtime {
                         && self.state.swap_role() == SwapRole::Bob
                         && self.pending_requests.get(&source).is_some() =>
                     {
+                        error!("not checking tx rcvd is accordant lock");
                         let PendingRequest {
                             request,
                             dest,
@@ -1019,9 +1029,6 @@ impl Runtime {
                                 }
                                 _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
                             }?;
-                            error!(
-                                "this should be in Accordant lock, not Arbitrating lock finality"
-                            );
                             info!("sending buyproceduresignature at state {}", &self.state);
                             senders.send_to(bus_id, self.identity(), dest, request)?;
                             info!("State transition: {}", next_state.bright_blue_bold());
@@ -1090,8 +1097,10 @@ impl Runtime {
                                 TxLabel::Refund => {
                                     // true represents alice already locked monero, and false, she
                                     // didnt broadcast buy yet
-                                    if let State::Alice(AliceState::RefundSigA(true, false)) =
-                                        self.state
+                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                        xmr_locked: true,
+                                        buy_published: false,
+                                    })) = self.state
                                     {
                                         info!(
                                             "found refund tx in mempool or blockchain, \
@@ -1155,8 +1164,10 @@ impl Runtime {
                                     if self.temporal_safety.safe_buy(*confirmations)
                                         && self.state.swap_role() == SwapRole::Alice =>
                                 {
-                                    if let State::Alice(AliceState::RefundSigA(_, false)) =
-                                        self.state
+                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                        buy_published: false,
+                                        ..
+                                    })) = self.state
                                     {
                                         if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
                                             self.broadcast(buy_tx, TxLabel::Buy, senders)?
@@ -1183,8 +1194,10 @@ impl Runtime {
                                         self.txs.remove_entry(&TxLabel::Punish)
                                     {
                                         // true represents alice already locked monero
-                                        if let State::Alice(AliceState::RefundSigA(true, true)) =
-                                            self.state
+                                        if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                            xmr_locked: true,
+                                            buy_published: true,
+                                        })) = self.state
                                         {
                                             info!(
                                                 "Broadcasting btc punish {}",
@@ -1208,8 +1221,10 @@ impl Runtime {
                                             // didnt
                                             // broadcast buy
                                             if let State::Alice(AliceState::RefundSigA(
-                                                true,
-                                                false,
+                                                RefundSigA {
+                                                    xmr_locked: true,
+                                                    buy_published: false,
+                                                },
                                             )) = self.state
                                             {
                                                 self.broadcast(refund_tx, tx_label, senders)?;
@@ -1355,12 +1370,13 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let locked_monero = false;
-                let broadcasted_buy = false;
                 let next_state = match self.state {
-                    State::Alice(AliceState::RevealA(_)) => Ok(State::Alice(
-                        AliceState::RefundSigA(locked_monero, broadcasted_buy),
-                    )),
+                    State::Alice(AliceState::RevealA(_)) => {
+                        Ok(State::Alice(AliceState::RefundSigA(RefundSigA {
+                            xmr_locked: false,
+                            buy_published: false,
+                        })))
+                    }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
                 }?;
                 debug!("sending peer RefundProcedureSignatures msg");
