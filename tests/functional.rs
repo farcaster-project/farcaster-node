@@ -581,8 +581,7 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
-    let bitcoin_rpc =
-        Client::new("http://localhost:18443".to_string(), Auth::CookieFile(path)).unwrap();
+    let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded
     match bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
