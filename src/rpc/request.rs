@@ -58,15 +58,14 @@ use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
 use lnp::payment::{self, AssetsBalance, Lifecycle};
 use lnp::{message, Messages, TempChannelId as TempSwapId};
-use lnpbp::strict_encoding::{
-    strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
-};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
+use strict_encoding::{
+    strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
+};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "lightning")]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(inner)]
 pub enum Msg {
     #[api(type = 28)]
@@ -163,7 +162,6 @@ impl lightning_encoding::Strategy for Reveal {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("request_id({0})")]
 pub struct RequestId(pub u64);
 
@@ -176,7 +174,6 @@ impl RequestId {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("commit")]
 pub enum Commit {
     Alice(CommitAliceParameters<BtcXmr>),
@@ -184,12 +181,10 @@ pub enum Commit {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("nodeid")]
 pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{public_offer}")]
 pub struct PubOffer {
     pub public_offer: PublicOffer<BtcXmr>,
@@ -206,17 +201,14 @@ impl From<PublicOffer<BtcXmr>> for PubOffer {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{0}")]
 pub struct Token(pub String);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("get keys(token({0}), req_id({1}))")]
 pub struct GetKeys(pub Token, pub RequestId);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("launch_swap")]
 pub struct LaunchSwap {
     pub peer: ServiceId,
@@ -229,7 +221,6 @@ pub struct LaunchSwap {
 }
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct TakeCommit {
     pub commit: Commit,
     pub public_offer_hex: String, // TODO: replace by public offer id
@@ -237,7 +228,6 @@ pub struct TakeCommit {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("keypair(sk:({0}),pk:({1})),id:({2})")]
 pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
@@ -246,7 +236,6 @@ pub struct Keys(
 );
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("reveal")]
 pub enum Reveal {
     Alice(RevealAliceParameters<BtcXmr>),
@@ -260,7 +249,6 @@ pub enum Reveal {
 //     serde(crate = "serde_crate")
 // )]
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("params")]
 pub enum Params {
     Alice(AliceParameters<BtcXmr>),
@@ -268,7 +256,6 @@ pub enum Params {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(inner)]
 pub enum Tx {
     #[display("lock")]
@@ -288,7 +275,6 @@ pub enum Tx {
 use crate::{Error, ServiceId};
 
 #[derive(Clone, Debug, Display, From, Api)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
 #[non_exhaustive]
 pub enum Request {
@@ -504,7 +490,6 @@ pub enum Request {
 impl rpc_connection::Request for Request {}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{source}, {event}")]
 pub struct SyncerdBridgeEvent {
     pub event: Event,
@@ -512,7 +497,6 @@ pub struct SyncerdBridgeEvent {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("{peerd}, {swap_id}")]
 pub struct InitSwap {
     pub peerd: ServiceId,
@@ -530,7 +514,6 @@ pub struct InitSwap {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(NodeInfo::to_yaml_string)]
 pub struct NodeInfo {
     pub node_ids: Vec<secp256k1::PublicKey>,
@@ -547,7 +530,6 @@ pub struct NodeInfo {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
@@ -562,7 +544,6 @@ pub struct ProtoPublicOffer {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(SyncerInfo::to_yaml_string)]
 pub struct SyncerInfo {
     #[serde_as(as = "DurationSeconds")]
@@ -579,7 +560,6 @@ pub struct SyncerInfo {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(PeerInfo::to_yaml_string)]
 pub struct PeerInfo {
     pub local_id: secp256k1::PublicKey,
@@ -604,7 +584,6 @@ pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(SwapInfo::to_yaml_string)]
 pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
@@ -635,7 +614,6 @@ impl ToYamlString for SwapInfo {}
 impl ToYamlString for SyncerInfo {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[wrapper(IndexRange)]
 pub struct List<T>(Vec<T>)
 where
@@ -677,7 +655,6 @@ where
 }
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct OptionDetails(pub Option<String>);
 
 impl Display for OptionDetails {

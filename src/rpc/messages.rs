@@ -10,7 +10,7 @@ use bitcoin::{Script, Txid};
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lightning_encoding::{self, LightningDecode, LightningEncode};
 use lnpbp::chain::AssetId;
-use lnpbp::strict_encoding::{self, StrictDecode, StrictEncode};
+use strict_encoding::{self, StrictDecode, StrictEncode};
 
 /// Some features don't make sense on a per-channels or per-node basis, so each
 /// feature defines how it is presented in those contexts. Some features may be
@@ -132,7 +132,6 @@ impl LightningDecode for Features {
     }
 }
 
-// #[strict_encoding_crate(lnpbp::strict_encoding)]
 // #[display("init({global_features}, {local_features}, {assets:#?})")]
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 pub struct Init {
@@ -145,7 +144,6 @@ pub struct Init {
 }
 
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 pub enum FarMsgs {
     // Part I: Generic messages outside of channel operations
     // ======================================================
@@ -197,7 +195,6 @@ pub enum FarMsgs {
     StrictEncode,
     StrictDecode,
 )]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct Ping {
     pub ignored: Vec<u8>,
@@ -219,7 +216,6 @@ pub struct Ping {
     StrictEncode,
     StrictDecode,
 )]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct Error {
     /// The channel is referred to by channel_id, unless channel_id is 0 (i.e.
     /// all bytes are 0), in which case it refers to all channels.

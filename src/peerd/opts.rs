@@ -18,7 +18,7 @@ use std::{fs, io::Read};
 use std::{io, net::IpAddr};
 
 use internet2::{FramingProtocol, LocalNode, RemoteNodeAddr};
-use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
+use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::opts::FARCASTER_NODE_KEY_FILE;
 
@@ -125,7 +125,6 @@ impl FromStr for TokenString {
 }
 
 use bitcoin::secp256k1::{rand::thread_rng, SecretKey};
-use lnpbp::strict_encoding;
 use std::str::FromStr;
 
 /// Hold secret keys and seeds
