@@ -222,22 +222,25 @@ struct SyncerState {
 
 #[derive(Display, Clone)]
 pub enum AliceState {
-    #[display("Start: {0:#?} {1:#?}")]
+    // #[display("Start: {0:#?} {1:#?}")]
+    #[display("Start")]
     StartA(TradeRole, PublicOffer<BtcXmr>), // local, both
-    #[display("Commit: {0}")]
+    // #[display("Commit: {0}")]
+    #[display("Commit")]
     CommitA(CommitC), // local, local, local, remote
-    #[display("Reveal: {0:#?}")]
+    // #[display("Reveal: {0:#?}")]
+    #[display("Reveal")]
     RevealA(Commit), // remote
-    #[display("RefundProcSigs: {0}")]
+    // #[display("RefundProcSigs: {0}")]
+    #[display("RefundProcSigs")]
     RefundSigA(RefundSigA), // monero locked, buy published
     #[display("Finish")]
     FinishA,
 }
 
+/// Content of Commit state Common to Bob and Alice
 #[derive(Clone, Display)]
 #[display("{trade_role:#?} {local_params:#?} {local_commit:#?} {remote_commit:#?}")]
-
-/// Commit Common to Bob and Alice
 pub struct CommitC {
     trade_role: TradeRole,
     local_params: Params,
@@ -256,15 +259,17 @@ pub struct RefundSigA {
 
 #[derive(Display, Clone)]
 pub enum BobState {
-    #[display("Start {0:#?} {1:#?}")]
+    // #[display("Start {0:#?} {1:#?}")]
+    #[display("Start")]
     StartB(TradeRole, PublicOffer<BtcXmr>), // local, both
-    #[display("Commit {0} {1}")]
-    CommitB(CommitC, bitcoin::Address), /* local, local,
-                                         * local, remote,
-                                         * local */
-    #[display("Reveal: {0:#?}")]
+    // #[display("Commit {0} {1}")]
+    #[display("Commit")]
+    CommitB(CommitC, bitcoin::Address),
+    // #[display("Reveal: {0:#?}")]
+    #[display("Reveal")]
     RevealB(Commit), // remote
-    #[display("CoreArb: {0:#?}")]
+    // #[display("CoreArb: {0:#?}")]
+    #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
     #[display("BuyProcSig")]
     BuySigB,
