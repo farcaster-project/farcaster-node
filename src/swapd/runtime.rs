@@ -222,28 +222,30 @@ struct SyncerState {
 
 #[derive(Display, Clone)]
 pub enum AliceState {
-    #[display("Start: {0:#?} {1:#?}")]
+    // #[display("Start: {0:#?} {1:#?}")]
+    #[display("Start")]
     StartA(TradeRole, PublicOffer<BtcXmr>), // local, both
-    #[display("Commit: {0}")]
-    CommitA(CommitA), // local, local, local, remote
-    #[display("Reveal: {0:#?}")]
+    // #[display("Commit: {0}")]
+    #[display("Commit")]
+    CommitA(CommitC), // local, local, local, remote
+    // #[display("Reveal: {0:#?}")]
+    #[display("Reveal")]
     RevealA(Commit), // remote
-    #[display("RefundProcSigs: {0}")]
+    // #[display("RefundProcSigs: {0}")]
+    #[display("RefundProcSigs")]
     RefundSigA(RefundSigA), // monero locked, buy published
     #[display("Finish")]
     FinishA,
 }
 
+/// Content of Commit state Common to Bob and Alice
 #[derive(Clone, Display)]
-#[display(
-    "{trade_role:#?} {local_params:#?} {local_commit:#?} {remote_commit:#?} {bobs_address:#?}"
-)]
-pub struct CommitA {
+#[display("{trade_role:#?} {local_params:#?} {local_commit:#?} {remote_commit:#?}")]
+pub struct CommitC {
     trade_role: TradeRole,
     local_params: Params,
     local_commit: Commit,
     remote_commit: Option<Commit>,
-    bobs_address: Option<bitcoin::Address>,
 }
 
 #[derive(Clone, Display)]
@@ -257,15 +259,17 @@ pub struct RefundSigA {
 
 #[derive(Display, Clone)]
 pub enum BobState {
-    #[display("Start {0:#?} {1:#?}")]
+    // #[display("Start {0:#?} {1:#?}")]
+    #[display("Start")]
     StartB(TradeRole, PublicOffer<BtcXmr>), // local, both
-    #[display("Commit {0:#?} {1:#?} {2:#?} {3:#?} {4:#?}")]
-    CommitB(TradeRole, Params, Commit, Option<Commit>, bitcoin::Address), /* local, local,
-                                                                           * local, remote,
-                                                                           * local */
-    #[display("Reveal: {0:#?}")]
+    // #[display("Commit {0} {1}")]
+    #[display("Commit")]
+    CommitB(CommitC, bitcoin::Address),
+    // #[display("Reveal: {0:#?}")]
+    #[display("Reveal")]
     RevealB(Commit), // remote
-    #[display("CoreArb: {0:#?}")]
+    // #[display("CoreArb: {0:#?}")]
+    #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
     #[display("BuyProcSig")]
     BuySigB,
@@ -478,15 +482,20 @@ impl Runtime {
                     Msg::MakerCommit(remote_commit) => {
                         trace!("received commitment from counterparty, can now reveal");
                         let (next_state, local_params) = match self.state.clone() {
-                            State::Alice(AliceState::CommitA(CommitA {
-                                local_params,
-                                bobs_address: None,
-                                ..
-                            })) => Ok((
-                                State::Alice(AliceState::RevealA(remote_commit.clone())),
-                                local_params,
-                            )),
-                            State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
+                            State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
+                                Ok((
+                                    State::Alice(AliceState::RevealA(remote_commit.clone())),
+                                    local_params,
+                                ))
+                            }
+                            State::Bob(BobState::CommitB(
+                                CommitC {
+                                    local_params,
+                                    remote_commit: None,
+                                    ..
+                                },
+                                addr,
+                            )) => {
                                 let id = self.syncer_state.new_taskid();
                                 let watch_addr_req =
                                     self.syncer_state.watch_addr(addr.script_pubkey(), id);
@@ -516,11 +525,17 @@ impl Runtime {
                             ))),
                         }?;
 
-                        if let State::Alice(AliceState::CommitA(CommitA {
+                        if let State::Alice(AliceState::CommitA(CommitC {
                             trade_role: TradeRole::Taker,
                             ..
                         }))
-                        | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) = &self.state
+                        | State::Bob(BobState::CommitB(
+                            CommitC {
+                                trade_role: TradeRole::Taker,
+                                ..
+                            },
+                            _,
+                        )) = &self.state
                         {
                             trace!("Watch height bitcoin");
                             let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
@@ -566,14 +581,20 @@ impl Runtime {
                         let (next_state, remote_commit) = match self.state.clone() {
                             // counterparty has already revealed commitment, i.e. we're
                             // maker and counterparty is taker. now proceed to reveal state.
-                            State::Alice(AliceState::CommitA(CommitA {
+                            State::Alice(AliceState::CommitA(CommitC {
                                 remote_commit: Some(remote_commit),
                                 ..
                             })) => Ok((
                                 State::Alice(AliceState::RevealA(remote_commit.clone())),
                                 remote_commit,
                             )),
-                            State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
+                            State::Bob(BobState::CommitB(
+                                CommitC {
+                                    remote_commit: Some(remote_commit),
+                                    ..
+                                },
+                                addr,
+                            )) => {
                                 let id = self.syncer_state.new_taskid();
                                 let watch_addr_req =
                                     self.syncer_state.watch_addr(addr.script_pubkey(), id);
@@ -675,12 +696,19 @@ impl Runtime {
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
                         match &self.state {
-                            State::Alice(AliceState::CommitA(CommitA {
+                            State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: TradeRole::Maker,
                                 local_params,
                                 ..
                             }))
-                            | State::Bob(BobState::CommitB(TradeRole::Maker, local_params, ..)) => {
+                            | State::Bob(BobState::CommitB(
+                                CommitC {
+                                    trade_role: TradeRole::Maker,
+                                    local_params,
+                                    ..
+                                },
+                                _,
+                            )) => {
                                 trace!("Watch height bitcoin");
                                 let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
                                     id: self.syncer_state.new_taskid(),
@@ -893,10 +921,12 @@ impl Runtime {
                     (State::Bob(BobState::StartB(local_trade_role, public_offer)), Some(addr)) => {
                         Ok((
                             (State::Bob(BobState::CommitB(
-                                local_trade_role,
-                                local_params.clone(),
-                                local_commit.clone(),
-                                None,
+                                CommitC {
+                                    trade_role: local_trade_role,
+                                    local_params: local_params.clone(),
+                                    local_commit: local_commit.clone(),
+                                    remote_commit: None,
+                                },
                                 addr,
                             ))),
                             public_offer,
@@ -904,12 +934,11 @@ impl Runtime {
                     }
                     (State::Alice(AliceState::StartA(local_trade_role, public_offer)), None) => {
                         Ok((
-                            (State::Alice(AliceState::CommitA(CommitA {
+                            (State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: local_trade_role,
                                 local_params: local_params.clone(),
                                 local_commit: local_commit.clone(),
                                 remote_commit: None,
-                                bobs_address: None,
                             }))),
                             public_offer,
                         ))
@@ -958,20 +987,21 @@ impl Runtime {
                 let next_state = match (&self.state, funding_address) {
                     (State::Bob(BobState::StartB(trade_role, _)), Some(addr)) => {
                         Ok(State::Bob(BobState::CommitB(
-                            *trade_role,
-                            local_params.clone(),
-                            local_commit.clone(),
-                            Some(remote_commit.clone()),
+                            CommitC {
+                                trade_role: *trade_role,
+                                local_params: local_params.clone(),
+                                local_commit: local_commit.clone(),
+                                remote_commit: Some(remote_commit.clone()),
+                            },
                             addr,
                         )))
                     }
                     (State::Alice(AliceState::StartA(trade_role, _)), None) => {
-                        Ok(State::Alice(AliceState::CommitA(CommitA {
+                        Ok(State::Alice(AliceState::CommitA(CommitC {
                             trade_role: *trade_role,
                             local_params: local_params.clone(),
                             local_commit: local_commit.clone(),
                             remote_commit: Some(remote_commit.clone()),
-                            bobs_address: None,
                         })))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
