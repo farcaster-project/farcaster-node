@@ -47,14 +47,16 @@ hex = "^0.4.3"
 # LNP/BP crates
 amplify = "3"
 amplify_derive = "2"
-lightning_encoding = "0.4.0-beta.1"
-lnpbp = {version = "0.4", features = ["all"]}
+lightning_encoding = "0.5.0-beta.3"
+lnpbp = {version = "0.5.0-beta.3", features = ["all"]}
 slip132 = "0.3"
 # lnp-core =  { path = "../ext/lnp-core" }
 # internet2 = { path = "../ext/rust-internet2" }
-lnp-core = { git = "https://github.com/zkao/lnp-core", branch = "farcaster", optional = true }
-internet2 = { git = "https://github.com/zkao/rust-internet2", branch = "farcaster" }
-bitcoin = "0.26"
+lnp-core = "0.4.0-beta.3"
+strict_encoding = "=1.7.4"
+strict_encoding_derive = "=1.7.4"
+internet2 = "0.5.0-alpha.2"
+bitcoin = "0.27"
 monero = "0.14"
 # Rust language
 lazy_static = "1.4"
@@ -63,7 +65,7 @@ nix = { version = "0.19", optional = true }
 regex = { version = "1.5", optional = true }
 # Serialization & parsing
 serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
-serde_with = { version = "1.5", optional = true }
+serde_with = { version = "1.8", optional = true }
 serde_json = { version = "1", optional = true }
 serde_yaml = { version = "0.8", optional = true }
 sysinfo = { version = "0.18.2" }
@@ -73,7 +75,7 @@ base64 = { version = "0.12", optional = true }
 # Congig & logging
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 env_logger = "0.7"
-clap = { version = "3.0.0-beta.2", optional = true }
+clap = { version = "3.0.0-beta.4", optional = true }
 settings = { version = "0.10", package = "config", optional = true }
 configure_me = { version = "0.4", optional = true }
 dotenv = { version = "0.15", optional = true }
@@ -85,7 +87,7 @@ zmq = "0.9"
 tokio = { version = "1.9.0", features = ["full"] }
 # Coin clients
 electrum-client = { git = "https://github.com/Lederstrumpf/rust-electrum-client", branch = "verboseTransactionGetRebased" }
-bitcoincore-rpc = "0.13.0"
+bitcoincore-rpc = "0.14.0"
 monero-rpc = { git = "https://github.com/TheCharlatan/monero-rpc-rs", branch = "changes" }
 # monero-rpc = { path = "../monero-rpc-rs/" }
 
@@ -98,19 +100,19 @@ toml = { version = "0.5", optional = true }
 
 amplify = "3"
 amplify_derive = "2"
-lnpbp = { version = "0.4", features = ["all"] }
-lightning_encoding = "0.4.0-beta.1"
+lnpbp = { version = "0.5.0-beta.3", features = ["all"] }
+lightning_encoding = "0.5.0-beta.3"
 # Bitcoin
-bitcoin = "0.26"
+bitcoin = "0.27"
 # Monero
 monero = "0.14"
 # lnp-core =  { path = "../ext/lnp-core" }
 # internet2 = { path = "../ext/rust-internet2" }
-lnp-core = { git = "https://github.com/zkao/lnp-core", branch = "farcaster", optional = true }
-internet2 = { git = "https://github.com/zkao/rust-internet2", branch = "farcaster" }
+lnp-core = "0.4.0-beta.3"
+internet2 = "0.5.0-alpha.2"
 lazy_static = "1.4"
-clap = "3.0.0-beta.2"
-clap_generate = "3.0.0-beta.2"
+clap = "3.0.0-beta.4"
+clap_generate = "3.0.0-beta.4"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 shellexpand = "2"
 configure_me_codegen = "0.4"
@@ -118,15 +120,15 @@ electrum-client = { git = "https://github.com/Lederstrumpf/rust-electrum-client"
 
 [dependencies.microservices]
 # path = '../ext/rust-internet2'
-git = 'https://github.com/zkao/rust-internet2.git'
-branch = 'farcaster'
+name = "rust-internet2"
+version = "0.5.0-alpha.1"
 default-features = false
 features = ['peer']
 
 [build-dependencies.microservices]
 # path = '../ext/rust-internet2'
-git = 'https://github.com/zkao/rust-internet2.git'
-branch = 'farcaster'
+name = "rust-internet2"
+version = "0.5.0-alpha.1"
 default-features = false
 features = ['peer']
 
