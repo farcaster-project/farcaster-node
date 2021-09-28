@@ -142,7 +142,7 @@ features = ['peer']
 # 5. Simple cli utility app: `shell`
 [features]
 default = ["server", "cli"]
-all = ["server", "cli", "serde", "tor", "vendored_openssl"]
+all = ["server", "cli", "serde", "tor"]
 
 # Server is a standalone application that runs daemon
 server = ["node", "shell", "microservices/server", "nix"]
@@ -179,7 +179,6 @@ serde = ["serde_crate", "serde_with", "serde_yaml", "serde_json", "toml",
     "amplify/serde", "internet2/serde", "microservices/serde",
     "lnpbp/serde", "lnp-core/serde" ]
 tor = ["microservices/tor", "internet2/tor"]
-vendored_openssl = ["microservices/vendored_openssl", "internet2/vendored_openssl"]
 
 integration_test = ["regex"]
 
