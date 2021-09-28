@@ -44,7 +44,7 @@ use bitcoin::{
 };
 use internet2::{addr::InetSocketAddr, NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
-use lnpbp::Chain;
+use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 

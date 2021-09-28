@@ -14,7 +14,7 @@ use internet2::Decrypt;
 use internet2::PlainTranscoder;
 use internet2::RoutedFrame;
 use internet2::ZMQ_CONTEXT;
-use lnpbp::Chain;
+use lnpbp::chain::Chain;
 use monero::Address;
 use monero_rpc::GetBlockHeaderSelector;
 use std::collections::HashMap;
