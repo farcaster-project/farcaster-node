@@ -224,7 +224,7 @@ where
                 .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Hello)?;
         }
 
-        let identity = self.esb.handler_ref().identity();
+        let identity = self.esb.handler().identity();
         info!("{} started", identity);
 
         self.esb.run_or_panic(&identity.to_string());
