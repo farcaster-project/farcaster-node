@@ -131,7 +131,7 @@ impl Msg {
 }
 
 impl LightningEncode for Msg {
-    fn lightning_encode<E: io::Write>(&self, e: E) -> Result<usize, io::Error> {
+    fn lightning_encode<E: io::Write>(&self, e: E) -> Result<usize, lightning_encoding::Error> {
         Payload::from(self.clone()).lightning_encode(e)
     }
 }

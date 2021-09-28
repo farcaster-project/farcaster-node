@@ -121,7 +121,7 @@ impl StrictDecode for Features {
 }
 
 impl LightningEncode for Features {
-    fn lightning_encode<E: io::Write>(&self, e: E) -> Result<usize, std::io::Error> {
+    fn lightning_encode<E: io::Write>(&self, e: E) -> Result<usize, lightning_encoding::Error> {
         Ok(0)
     }
 }
