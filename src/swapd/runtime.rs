@@ -105,8 +105,9 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        tx_finality_thr: 0,
+        btc_finality_thr: 0,
         race_thr: 2,
+        xmr_finality_thr: 0,
     };
 
     temporal_safety.valid_params()?;
@@ -163,7 +164,8 @@ struct TemporalSafety {
     cancel_timelock: BlockHeight,
     punish_timelock: BlockHeight,
     race_thr: BlockHeight,
-    tx_finality_thr: BlockHeight,
+    btc_finality_thr: BlockHeight,
+    xmr_finality_thr: BlockHeight,
 }
 
 type BlockHeight = u32;
@@ -171,7 +173,7 @@ type BlockHeight = u32;
 impl TemporalSafety {
     /// check if temporal params are in correct order
     fn valid_params(&self) -> Result<(), Error> {
-        let finality = self.tx_finality_thr;
+        let finality = self.btc_finality_thr;
         let cancel = self.cancel_timelock;
         let punish = self.punish_timelock;
         let race = self.race_thr;
@@ -185,7 +187,7 @@ impl TemporalSafety {
         }
     }
     fn final_tx(&self, confs: u32) -> bool {
-        confs >= self.tx_finality_thr
+        confs >= self.btc_finality_thr
     }
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
         // lock must be final, valid after lock_minedblock + cancel_timelock
@@ -995,9 +997,46 @@ impl Runtime {
                         info!("monero height changed {}", height)
                     }
                     Event::AddressTransaction(_) => {}
-                    Event::TransactionConfirmations(_) => {}
-                    Event::TransactionBroadcasted(_) => {}
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        block,
+                        confirmations: Some(confirmations),
+                    }) if confirmations > &self.temporal_safety.xmr_finality_thr
+                        && self.state.swap_role() == SwapRole::Bob
+                        && self.pending_requests.get(&source).is_some() =>
+                    {
+                        let PendingRequest {
+                            request,
+                            dest,
+                            bus_id,
+                        } = self.pending_requests.remove(&source).unwrap();
+                        if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
+                            (&request, &bus_id)
+                        {
+                            let next_state = match self.state {
+                                State::Bob(BobState::CorearbB(..)) => {
+                                    Ok(State::Bob(BobState::BuySigB))
+                                }
+                                _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
+                            }?;
+                            error!(
+                                "this should be in Accordant lock, not Arbitrating lock finality"
+                            );
+                            info!("sending buyproceduresignature at state {}", &self.state);
+                            senders.send_to(bus_id, self.identity(), dest, request)?;
+                            info!("State transition: {}", next_state.bright_blue_bold());
+                            self.state = next_state;
+                        } else {
+                            error!(
+                                "Not buyproceduresignatures {} or not Msg bus found {}",
+                                request, bus_id
+                            );
+                        }
+                    }
                     Event::TaskAborted(_) => {}
+                    event => {
+                        error!("event not handled {}", event)
+                    }
                 }
             }
             Request::SyncerEvent(ref event) if &source == &ServiceId::Syncer(Coin::Bitcoin) => {
@@ -1135,43 +1174,6 @@ impl Runtime {
                                     )
                                     }
                                 }
-                                TxLabel::Lock if self.pending_requests.get(&source).is_some() => {
-                                    let PendingRequest {
-                                        request,
-                                        dest,
-                                        bus_id,
-                                    } = self.pending_requests.remove(&source).unwrap();
-                                    if let (
-                                        Request::Protocol(Msg::BuyProcedureSignature(_)),
-                                        ServiceBus::Msg,
-                                    ) = (&request, &bus_id)
-                                    {
-                                        let next_state = match self.state {
-                                            State::Bob(BobState::CorearbB(..)) => {
-                                                Ok(State::Bob(BobState::BuySigB))
-                                            }
-                                            _ => Err(Error::Farcaster(s!(
-                                                "Wrong state: must be CorearbB "
-                                            ))),
-                                        }?;
-                                        error!("this should be in Accordant lock, not Arbitrating lock finality");
-                                        info!(
-                                            "sending buyproceduresignature at state {}",
-                                            &self.state
-                                        );
-                                        senders.send_to(bus_id, self.identity(), dest, request)?;
-                                        info!(
-                                            "State transition: {}",
-                                            next_state.bright_blue_bold()
-                                        );
-                                        self.state = next_state;
-                                    } else {
-                                        error!(
-                                            "Not buyproceduresignatures {} or not Msg bus found {}",
-                                            request, bus_id
-                                        );
-                                    }
-                                }
 
                                 TxLabel::Cancel
                                     if self.temporal_safety.valid_punish(*confirmations) =>
@@ -1251,7 +1253,7 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
                     Event::TransactionBroadcasted(event) => {
-                        info!("{}", event)
+                        debug!("{}", event)
                     }
                     Event::TaskAborted(event) => {
                         info!("{}", event)
