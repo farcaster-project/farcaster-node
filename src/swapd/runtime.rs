@@ -231,8 +231,7 @@ pub enum AliceState {
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
     RevealA(Commit), // remote
-    // #[display("RefundProcSigs: {0}")]
-    #[display("RefundProcSigs")]
+    #[display("RefundProcSigs: {0}")]
     RefundSigA(RefundSigA), // monero locked, buy published
     #[display("Finish")]
     FinishA,
