@@ -887,12 +887,12 @@ checksum = "d9435d864e017c3c6afeac1654189b06cdb491cf2ff73dbf0d73b0f292f42ff8"
 [[package]]
 name = "farcaster_core"
 version = "0.1.0"
-source = "git+https://github.com/Lederstrumpf/farcaster-core?rev=c343cb67398b08935df3fc54c7c4740bb04445ee#c343cb67398b08935df3fc54c7c4740bb04445ee"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#6f531852c42591cb02f118265c13d84cac4d49c5"
 dependencies = [
  "amplify",
  "bincode",
  "bitcoin 0.27.1",
- "bitcoin_hashes 0.9.7",
+ "bitcoin_hashes 0.10.0",
  "bitvec",
  "curve25519-dalek",
  "ecdsa_fun",
@@ -1711,9 +1711,9 @@ dependencies = [
 
 [[package]]
 name = "monero"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68106ed713fc19d2b169ce5a2510927950e466e7032704af5b61cc2f7b59763d"
+checksum = "0e65ccebd4c656eb7df22ea1132fd212be0986af9ea3c3bb489121137a76ea76"
 dependencies = [
  "base58-monero",
  "curve25519-dalek",
@@ -1730,7 +1730,7 @@ dependencies = [
 [[package]]
 name = "monero-rpc"
 version = "0.1.0"
-source = "git+https://github.com/TheCharlatan/monero-rpc-rs?branch=changes#aaa3a4cc943547ddb9500b5ee32308fd0847902d"
+source = "git+https://github.com/Lederstrumpf/monero-rpc-rs?branch=changes#5e7f230920aee8f599e2e77d58db0d9dee179837"
 dependencies = [
  "anyhow",
  "chrono",
