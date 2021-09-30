@@ -1225,11 +1225,16 @@ impl Runtime {
                                 {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: false,
-                                        ..
+                                        xmr_locked,
                                     })) = self.state
                                     {
                                         if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
-                                            self.broadcast(buy_tx, TxLabel::Buy, senders)?
+                                            self.broadcast(buy_tx, TxLabel::Buy, senders)?;
+                                            self.state =
+                                                State::Alice(AliceState::RefundSigA(RefundSigA {
+                                                    buy_published: true,
+                                                    xmr_locked,
+                                                }));
                                         } else {
                                             warn!(
                                             "Alice doesn't have the buy tx, probably didnt receive \
