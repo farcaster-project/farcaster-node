@@ -1280,31 +1280,7 @@ impl Runtime {
                                         if let Some((tx_label, refund_tx)) =
                                             self.txs.remove_entry(&TxLabel::Refund)
                                         {
-                                            if let State::Alice(AliceState::RefundSigA(
-                                                RefundSigA {
-                                                    xmr_locked: true,
-                                                    buy_published: false,
-                                                },
-                                            )) = self.state
-                                            {
-                                                self.broadcast(refund_tx, tx_label, senders)?;
-                                            }
-                                        }
-                                    }
-                                }
-                                TxLabel::Cancel
-                                    if self.temporal_safety.safe_refund(*confirmations) =>
-                                {
-                                    if let State::Bob(BobState::BuySigB) = self.state {
-                                        trace!("here Bob publishes refund tx");
-                                        if let Some((tx_label, refund_tx)) =
-                                            self.txs.remove_entry(&TxLabel::Refund)
-                                        {
-                                            info!(
-                                                "Broadcasting btc refund {}",
-                                                refund_tx.txid().addr()
-                                            );
-                                            self.broadcast(refund_tx, tx_label, senders)?
+                                            self.broadcast(refund_tx, tx_label, senders)?;
                                         }
                                     }
                                 }
