@@ -1064,7 +1064,28 @@ impl Runtime {
                             .handle_height_change(*height, Coin::Monero);
                         info!("monero height changed {}", height)
                     }
-                    Event::AddressTransaction(_) => {}
+                    Event::AddressTransaction(AddressTransaction {
+                        id,
+                        hash,
+                        amount,
+                        block,
+                        tx,
+                    }) => {
+                        let id = self.syncer_state.new_taskid();
+
+                        let watch_tx = Task::WatchTransaction(WatchTransaction {
+                            id,
+                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
+                            hash: hash.clone(),
+                            confirmation_bound: self.syncer_state.confirmation_bound,
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Syncer(Coin::Monero),
+                            Request::SyncerTask(watch_tx),
+                        )?;
+                    }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
                         block,
@@ -1078,7 +1099,10 @@ impl Runtime {
                             request,
                             dest,
                             bus_id,
-                        } = self.pending_requests.remove(&source).unwrap();
+                        } = self
+                            .pending_requests
+                            .remove(&source)
+                            .expect("Checked above");
                         if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
                             (&request, &bus_id)
                         {
