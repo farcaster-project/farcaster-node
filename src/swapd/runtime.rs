@@ -13,7 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::{opts::Coin, Abort, HeightChanged, WatchHeight};
+use crate::syncerd::{opts::Coin, Abort, HeightChanged, WatchHeight, XmrAddressAddendum};
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -55,9 +55,10 @@ use farcaster_core::{
         BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
+    bundle::BobParameters,
     consensus::{self, Encodable as FarEncodable},
-    crypto::CommitmentEngine,
-    monero::Monero,
+    crypto::{CommitmentEngine, SharedKeyId},
+    monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::{Offer, PublicOffer},
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
@@ -140,6 +141,7 @@ pub fn run(
         )?),
         pending_requests: none!(),
         txs: none!(),
+        remote_params: None,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -160,6 +162,7 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
+    remote_params: Option<Params>,
 }
 
 struct TemporalSafety {
@@ -231,7 +234,8 @@ pub enum AliceState {
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
     RevealA(Commit), // remote
-    #[display("RefundProcSigs: {0}")]
+    // #[display("RefundProcSigs: {0}")]
+    #[display("RefundProcSigs")]
     RefundSigA(RefundSigA), // monero locked, buy published
     #[display("Finish")]
     FinishA,
@@ -637,11 +641,11 @@ impl Runtime {
 
                         // parameter processing irrespective of maker & taker role
                         let core_wallet = CommitmentEngine;
-                        let remote_params = match reveal {
+                        self.remote_params = match reveal {
                             Reveal::Alice(reveal) => match &remote_commit {
                                 Commit::Alice(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
-                                    Params::Alice(reveal.clone().into())
+                                    Some(Params::Alice(reveal.clone().into()))
                                 }
                                 _ => {
                                     let err_msg = "expected Some(Commit::Alice(commit))";
@@ -652,7 +656,7 @@ impl Runtime {
                             Reveal::Bob(reveal) => match &remote_commit {
                                 Commit::Bob(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
-                                    Params::Bob(reveal.clone().into())
+                                    Some(Params::Bob(reveal.clone().into()))
                                 }
                                 _ => {
                                     let err_msg = "expected Some(Commit::Bob(commit))";
@@ -1248,7 +1252,6 @@ impl Runtime {
                                     if let Some((tx_label, punish_tx)) =
                                         self.txs.remove_entry(&TxLabel::Punish)
                                     {
-                                        // true represents alice already locked monero
                                         if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                             xmr_locked: true,
                                             buy_published: true,
@@ -1272,9 +1275,6 @@ impl Runtime {
                                         if let Some((tx_label, refund_tx)) =
                                             self.txs.remove_entry(&TxLabel::Refund)
                                         {
-                                            // true represents alice already locked monero, false
-                                            // didnt
-                                            // broadcast buy
                                             if let State::Alice(AliceState::RefundSigA(
                                                 RefundSigA {
                                                     xmr_locked: true,
@@ -1379,7 +1379,41 @@ impl Runtime {
 
             Request::Tx(Tx::Lock(btc_lock)) => {
                 if let State::Bob(BobState::CorearbB(..)) = self.state {
-                    self.broadcast(btc_lock, TxLabel::Lock, senders)?
+                    self.broadcast(btc_lock, TxLabel::Lock, senders)?;
+                    let id = self.syncer_state.new_taskid();
+                    if let Some(Params::Bob(BobParameters {
+                        spend,
+                        accordant_shared_keys,
+                        ..
+                    })) = self.remote_params.clone()
+                    {
+                        info!("Bob subscribes for monero lock address with syncer");
+                        let view_key = *accordant_shared_keys
+                            .into_iter()
+                            .find(|x| x.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                            .unwrap()
+                            .elem();
+
+                        let addendum = AddressAddendum::Monero(XmrAddressAddendum {
+                            spend_key: spend.to_bytes(),
+                            view_key: view_key.to_bytes(),
+                            from_height: self.syncer_state.height(Coin::Monero),
+                        });
+                        let watch_addr = WatchAddress {
+                            id,
+                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
+                            addendum,
+                            include_tx: Boolean::True,
+                        };
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Syncer(Coin::Monero),
+                            Request::SyncerTask(Task::WatchAddress(watch_addr)),
+                        )?
+                    } else {
+                        error!("remote_params not set")
+                    }
                 } else {
                     error!("Wrong state: must be CorearbB, found {}", &self.state)
                 }
