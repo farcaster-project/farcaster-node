@@ -55,9 +55,9 @@ use farcaster_core::{
         BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
-    bundle::BobParameters,
+    bundle::{AliceParameters, BobParameters},
     consensus::{self, Encodable as FarEncodable},
-    crypto::{CommitmentEngine, SharedKeyId},
+    crypto::{CommitmentEngine, SharedKeyId, TaggedElement},
     monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::{Offer, PublicOffer},
     protocol_message::{
@@ -236,7 +236,7 @@ pub enum AliceState {
     RevealA(Commit), // remote
     // #[display("RefundProcSigs: {0}")]
     #[display("RefundProcSigs")]
-    RefundSigA(RefundSigA), // monero locked, buy published
+    RefundSigA(RefundSigA),
     #[display("Finish")]
     FinishA,
 }
@@ -340,6 +340,18 @@ impl SyncerState {
             u64::MAX
         }
     }
+    fn from_height(&self, coin: Coin) -> u64 {
+        let lookback = match coin {
+            Coin::Monero => 300,
+            Coin::Bitcoin => 50,
+        }; // blocks
+        let height = self.height(coin);
+        if height > lookback {
+            height - lookback
+        } else {
+            height
+        }
+    }
 
     fn height(&self, coin: Coin) -> u64 {
         match coin {
@@ -364,27 +376,48 @@ impl SyncerState {
         self.task_counter
     }
 
-    fn watch_addr(&mut self, script_pubkey: Script, id: u32) -> Request {
-        let lookback = 100; // blocks
-        let height = self.bitcoin_height;
-        let from_height = if height > lookback {
-            height - lookback
-        } else {
-            height
-        };
+    fn watch_addr_btc(&mut self, script_pubkey: Script, id: u32) -> Task {
+        let from_height = self.from_height(Coin::Bitcoin);
         let addendum = BtcAddressAddendum {
             address: None,
             from_height,
             script_pubkey,
         };
-        Request::SyncerTask(Task::WatchAddress(WatchAddress {
+        Task::WatchAddress(WatchAddress {
             id,
             lifetime: self.task_lifetime(Coin::Bitcoin),
             addendum: AddressAddendum::Bitcoin(addendum),
             include_tx: Boolean::True,
-        }))
+        })
     }
+    fn watch_addr_xmr(
+        &mut self,
+        spend: monero::PublicKey,
+        accordant_shared_keys: Vec<TaggedElement<SharedKeyId, monero::PrivateKey>>,
+    ) -> Result<Task, Error> {
+        let view_key = *accordant_shared_keys
+            .into_iter()
+            .find(|x| x.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+            .unwrap()
+            .elem();
 
+        let from_height = self.from_height(Coin::Monero);
+
+        let addendum = AddressAddendum::Monero(XmrAddressAddendum {
+            spend_key: spend.to_bytes(),
+            view_key: view_key.to_bytes(),
+            from_height,
+        });
+
+        let id = self.new_taskid();
+        let watch_addr = WatchAddress {
+            id,
+            lifetime: self.task_lifetime(Coin::Monero),
+            addendum,
+            include_tx: Boolean::True,
+        };
+        Ok(Task::WatchAddress(watch_addr))
+    }
     fn handle_tx_confs(&self, id: &u32, confirmations: &Option<u32>) {
         if let Some(txlabel) = self.txs_status.get(id) {
             match confirmations {
@@ -500,8 +533,8 @@ impl Runtime {
                                 addr,
                             )) => {
                                 let id = self.syncer_state.new_taskid();
-                                let watch_addr_req =
-                                    self.syncer_state.watch_addr(addr.script_pubkey(), id);
+                                let task =
+                                    self.syncer_state.watch_addr_btc(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
                                     .txs_status
@@ -512,7 +545,7 @@ impl Runtime {
                                     self.send_ctl(
                                         senders,
                                         ServiceId::Syncer(Coin::Bitcoin),
-                                        watch_addr_req,
+                                        Request::SyncerTask(task),
                                     )?;
                                     Ok((
                                         State::Bob(BobState::RevealB(remote_commit.clone())),
@@ -599,8 +632,8 @@ impl Runtime {
                                 addr,
                             )) => {
                                 let id = self.syncer_state.new_taskid();
-                                let watch_addr_req =
-                                    self.syncer_state.watch_addr(addr.script_pubkey(), id);
+                                let watch_addr_task =
+                                    self.syncer_state.watch_addr_btc(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
                                     .txs_status
@@ -611,7 +644,7 @@ impl Runtime {
                                     self.send_ctl(
                                         senders,
                                         ServiceId::Syncer(Coin::Bitcoin),
-                                        watch_addr_req,
+                                        Request::SyncerTask(watch_addr_task),
                                     )?;
                                     Ok((
                                         State::Bob(BobState::RevealB(remote_commit.clone())),
@@ -1178,8 +1211,6 @@ impl Runtime {
                                     }
                                 }
                                 TxLabel::Refund => {
-                                    // true represents alice already locked monero, and false, she
-                                    // didnt broadcast buy yet
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         xmr_locked: true,
                                         buy_published: false,
@@ -1273,6 +1304,31 @@ impl Runtime {
                                     )
                                     }
                                 }
+                                TxLabel::Lock if self.state.swap_role() == SwapRole::Alice => {
+                                    error!("make state strict");
+                                    if let State::Alice(..) = self.state {
+                                        error!("here alice watchs accordant lock address, and broadcast accordant lock");
+                                        if let Some(Params::Alice(AliceParameters {
+                                            spend,
+                                            accordant_shared_keys,
+                                            ..
+                                        })) = self.remote_params.clone()
+                                        {
+                                            info!(
+                                                "Alice subscribes for monero address with syncer"
+                                            );
+                                            let task = self
+                                                .syncer_state
+                                                .watch_addr_xmr(spend, accordant_shared_keys)?;
+                                            senders.send_to(
+                                                ServiceBus::Ctl,
+                                                self.identity(),
+                                                ServiceId::Syncer(Coin::Monero),
+                                                Request::SyncerTask(task),
+                                            )?
+                                        }
+                                    }
+                                }
 
                                 TxLabel::Cancel
                                     if self.temporal_safety.valid_punish(*confirmations) =>
@@ -1283,7 +1339,7 @@ impl Runtime {
                                     {
                                         if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                             xmr_locked: true,
-                                            buy_published: true,
+                                            ..
                                         })) = self.state
                                         {
                                             info!(
@@ -1385,36 +1441,21 @@ impl Runtime {
             Request::Tx(Tx::Lock(btc_lock)) => {
                 if let State::Bob(BobState::CorearbB(..)) = self.state {
                     self.broadcast(btc_lock, TxLabel::Lock, senders)?;
-                    let id = self.syncer_state.new_taskid();
                     if let Some(Params::Bob(BobParameters {
                         spend,
                         accordant_shared_keys,
                         ..
                     })) = self.remote_params.clone()
                     {
-                        info!("Bob subscribes for monero lock address with syncer");
-                        let view_key = *accordant_shared_keys
-                            .into_iter()
-                            .find(|x| x.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                            .unwrap()
-                            .elem();
-
-                        let addendum = AddressAddendum::Monero(XmrAddressAddendum {
-                            spend_key: spend.to_bytes(),
-                            view_key: view_key.to_bytes(),
-                            from_height: self.syncer_state.height(Coin::Monero),
-                        });
-                        let watch_addr = WatchAddress {
-                            id,
-                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                            addendum,
-                            include_tx: Boolean::True,
-                        };
+                        info!("Bob subscribes for monero address with syncer");
+                        let task = self
+                            .syncer_state
+                            .watch_addr_xmr(spend, accordant_shared_keys)?;
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
                             ServiceId::Syncer(Coin::Monero),
-                            Request::SyncerTask(Task::WatchAddress(watch_addr)),
+                            Request::SyncerTask(task),
                         )?
                     } else {
                         error!("remote_params not set")
@@ -1511,12 +1552,12 @@ impl Runtime {
                     let id_addr = self.syncer_state.new_taskid();
                     self.syncer_state.txs_status.insert(id_addr, TxLabel::Buy);
                     debug!("subscribe Buy address task");
-                    let req = self.syncer_state.watch_addr(script_pubkey, id_addr);
+                    let task = self.syncer_state.watch_addr_btc(script_pubkey, id_addr);
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         ServiceId::Syncer(Coin::Bitcoin),
-                        req,
+                        Request::SyncerTask(task),
                     )?;
 
                     let pending_request = PendingRequest {
