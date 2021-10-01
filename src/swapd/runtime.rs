@@ -1317,15 +1317,27 @@ impl Runtime {
                                             info!(
                                                 "Alice subscribes for monero address with syncer"
                                             );
-                                            let task = self
+                                            let watch_addr_task = self
                                                 .syncer_state
                                                 .watch_addr_xmr(spend, accordant_shared_keys)?;
                                             senders.send_to(
                                                 ServiceBus::Ctl,
                                                 self.identity(),
                                                 ServiceId::Syncer(Coin::Monero),
-                                                Request::SyncerTask(task),
-                                            )?
+                                                Request::SyncerTask(watch_addr_task),
+                                            )?;
+                                            error!("xmr lock transaction not available, get it from wallet, commented out code");
+                                            // let id = self.syncer_state.new_taskid();
+                                            // let tx;
+                                            // let broadcast_task = Task::BroadcastTransaction(BroadcastTransaction{id, tx}) ;
+                                            // senders.send_to(
+                                            //     ServiceBus::Ctl,
+                                            //     self.identity(),
+                                            //     ServiceId::Syncer(Coin::Monero),
+                                            //     Request::SyncerTask(broadcast_task),
+                                            // )?;
+
+
                                         }
                                     }
                                 }
