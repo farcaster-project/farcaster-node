@@ -182,13 +182,13 @@ impl MoneroRpc {
         let address = monero::Address::from_viewpair(network, &keypair);
         let wallet_client = monero_rpc::RpcClient::new(self.wallet_rpc_url.clone());
         let wallet = wallet_client.wallet();
-
+        let password = s!(" ");
         match wallet
-            .open_wallet(address.to_string(), Some("pass".to_string()))
+            .open_wallet(address.to_string(), Some(password.clone()))
             .await
         {
             Err(err) => {
-                trace!(
+                error!(
                     "error opening wallet: {:?}, falling back to generating a new wallet",
                     err
                 );
@@ -199,23 +199,22 @@ impl MoneroRpc {
                         address,
                         spendkey: None,
                         viewkey: keypair.view,
-                        password: "pass".to_string(),
+                        password: password.clone(),
                         autosave_current: Some(true),
                     })
-                    .await
-                    .unwrap();
-                wallet
-                    .open_wallet(address.to_string(), Some("pass".to_string()))
-                    .await
-                    .unwrap();
+                    .await?;
+                let res = wallet
+                    .open_wallet(address.to_string(), Some(password))
+                    .await?;
+                info!("Wallet successfully open {:?}", res)
+
             }
-            _ => {}
+            Ok(res) => {
+                info!("Wallet successfully open {:?}", res)
+            }
         }
 
-        wallet
-            .refresh(Some(address_addendum.from_height))
-            .await
-            .unwrap();
+        wallet.refresh(Some(address_addendum.from_height)).await?;
 
         let mut category_selector: HashMap<GetTransfersCategory, bool> = HashMap::new();
         category_selector.insert(GetTransfersCategory::In, true);
@@ -230,7 +229,7 @@ impl MoneroRpc {
             filter_by_height: none!(),
         };
 
-        let transfers = wallet.get_transfers(selector).await.unwrap();
+        let transfers = wallet.get_transfers(selector).await?;
 
         let mut address_txs: Vec<AddressTx> = vec![];
         for (_category, txs) in transfers.iter() {
@@ -315,12 +314,15 @@ impl Synclet for MoneroSyncer {
                                     match task.addendum.clone() {
                                         AddressAddendum::Monero(address_addendum) => {
                                             state.watch_address(task.clone(), syncerd_task.source).expect("Task::WatchAddress");
-                                            let address_transactions =
-                                                rpc.check_address(address_addendum, network).await.unwrap();
-                                            state.change_address(
-                                                task.addendum,
-                                                create_set(address_transactions.txs),
-                                            );
+                                                match rpc.check_address(address_addendum, network).await {
+                                                    Ok(address_transactions) => {
+                                                        state.change_address(
+                                                            task.addendum,
+                                                            create_set(address_transactions.txs),
+                                                        );
+                                                    }
+                                                    Err(err) => {error!("{}", err)}
+                                                };
                                         }
                                         _ => {
                                             error!("Aborting watch address task - unable to decode address addendum");
@@ -364,9 +366,16 @@ impl Synclet for MoneroSyncer {
                             AddressAddendum::Monero(address) => address,
                             _ => panic!("should never get an invalid address")
                         };
-                        let address_transactions =
-                            rpc.check_address(address_addendum.clone(), network).await.unwrap();
-                        state.change_address(AddressAddendum::Monero(address_addendum), create_set(address_transactions.txs.clone()));
+
+                        match rpc.check_address(address_addendum.clone(), network).await {
+                            Ok(address_transactions) => {
+                                state.change_address(
+                                    AddressAddendum::Monero(address_addendum),
+                                    create_set(address_transactions.txs),
+                                );
+                            }
+                            Err(err) => {error!("{}", err)}
+                        };
                     }
 
                     // check and process new block notifications
