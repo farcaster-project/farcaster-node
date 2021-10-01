@@ -868,6 +868,7 @@ version = "0.0.2"
 dependencies = [
  "amplify",
  "amplify_derive",
+ "anyhow",
  "base64 0.12.3",
  "bech32",
  "bitcoin",
