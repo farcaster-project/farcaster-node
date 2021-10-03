@@ -206,11 +206,11 @@ impl MoneroRpc {
                 let res = wallet
                     .open_wallet(address.to_string(), Some(password))
                     .await?;
-                info!("Wallet successfully open {:?}", res)
+                debug!("Wallet successfully open {:?}", res)
 
             }
             Ok(res) => {
-                info!("Wallet successfully open {:?}", res)
+                debug!("Wallet successfully open {:?}", res)
             }
         }
 
@@ -234,7 +234,7 @@ impl MoneroRpc {
         let mut address_txs: Vec<AddressTx> = vec![];
         for (_category, txs) in transfers.iter() {
             for tx in txs.iter() {
-                error!("FIXME: tx set to vec![0]");
+                debug!("FIXME: tx set to vec![0]");
                 address_txs.push(AddressTx {
                     our_amount: tx.amount,
                     tx_id: tx.txid.0.clone(),
