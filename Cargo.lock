@@ -840,7 +840,7 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "farcaster_core"
 version = "0.1.0"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#adc6dbceeda0bf50482f76b38c01e267e900af4d"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#037b95b3f85f9d6f88af861253e5a3f5eef93547"
 dependencies = [
  "amplify",
  "bincode",
