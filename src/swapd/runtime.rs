@@ -108,14 +108,14 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: 0,
-        race_thr: 2,
-        xmr_finality_thr: 0,
+        btc_finality_thr: 1,
+        race_thr: 3,
+        xmr_finality_thr: 2,
     };
 
     temporal_safety.valid_params()?;
     let syncer_state = SyncerState {
-        txs_status: none!(),
+        tx_tasks: none!(),
         monero_height: 0,
         bitcoin_height: 0,
         task_counter: 0,
@@ -178,11 +178,17 @@ type BlockHeight = u32;
 impl TemporalSafety {
     /// check if temporal params are in correct order
     fn valid_params(&self) -> Result<(), Error> {
-        let finality = self.btc_finality_thr;
+        let btc_finality = self.btc_finality_thr;
+        let xmr_finality = self.xmr_finality_thr;
         let cancel = self.cancel_timelock;
         let punish = self.punish_timelock;
         let race = self.race_thr;
-        if finality < cancel && cancel < punish && finality < race && punish > race && cancel > race
+        if btc_finality < cancel
+            && cancel < punish
+            && btc_finality < race
+            && punish > race
+            && cancel > race
+            && btc_finality < xmr_finality
         {
             Ok(())
         } else {
@@ -194,17 +200,17 @@ impl TemporalSafety {
     fn final_tx(&self, confs: u32) -> bool {
         confs >= self.btc_finality_thr
     }
+    /// lock must be final, valid after lock_minedblock + cancel_timelock
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
-        // lock must be final, valid after lock_minedblock + cancel_timelock
         self.final_tx(lock_confirmations) && lock_confirmations >= self.cancel_timelock
     }
+    /// lock must be final, but buy shall not be raced with cancel
     fn safe_buy(&self, lock_confirmations: u32) -> bool {
-        // lock must be final, but buy shall not be raced with cancel
         self.final_tx(lock_confirmations)
             && lock_confirmations < (self.cancel_timelock - self.race_thr)
     }
+    /// cancel must be final, but refund shall not be raced with punish
     fn safe_refund(&self, cancel_confirmations: u32) -> bool {
-        // cancel must be final, but refund shall not be raced with punish
         self.final_tx(cancel_confirmations)
             && cancel_confirmations < (self.punish_timelock - self.race_thr)
     }
@@ -216,7 +222,7 @@ impl TemporalSafety {
 struct SyncerState {
     bitcoin_height: u64,
     monero_height: u64,
-    txs_status: HashMap<u32, TxLabel>,
+    tx_tasks: HashMap<u32, TxLabel>,
     task_counter: u32,
     confirmation_bound: u32,
     lock_tx_confs: Option<Request>,
@@ -299,6 +305,13 @@ impl State {
     fn xmr_locked(&self) -> bool {
         if let State::Alice(AliceState::RefundSigA(RefundSigA { xmr_locked, .. })) = self {
             *xmr_locked
+        } else {
+            false
+        }
+    }
+    fn buy_published(&self) -> bool {
+        if let State::Alice(AliceState::RefundSigA(RefundSigA { buy_published, .. })) = self {
+            *buy_published
         } else {
             false
         }
@@ -405,16 +418,18 @@ impl SyncerState {
     ) -> Result<Task, Error> {
         let view_key = *accordant_shared_keys
             .into_iter()
-            .find(|addr| addr.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-            .map(|addr| {
-                if swap_role == SwapRole::Alice {
-                    info!("Alice, please send xmr to {}", addr.addr());
-                }
-                addr
-            })
+            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
             .unwrap()
             .elem();
 
+        if swap_role == SwapRole::Alice {
+            let keypair = monero::ViewPair {
+                spend,
+                view: view_key.clone(),
+            };
+            let address = monero::Address::from_viewpair(monero::Network::Stagenet, &keypair);
+            info!("Alice, please send xmr to {}", address.addr());
+        }
         let from_height = self.from_height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
@@ -432,8 +447,14 @@ impl SyncerState {
         };
         Ok(Task::WatchAddress(watch_addr))
     }
+    fn acc_lock_watched(&self) -> bool {
+        self.tx_tasks
+            .values()
+            .find(|&&x| x == TxLabel::AccLock)
+            .is_some()
+    }
     fn handle_tx_confs(&self, id: &u32, confirmations: &Option<u32>) {
-        if let Some(txlabel) = self.txs_status.get(id) {
+        if let Some(txlabel) = self.tx_tasks.get(id) {
             match confirmations {
                 Some(0) => {
                     info!(
@@ -551,7 +572,7 @@ impl Runtime {
                                     self.syncer_state.watch_addr_btc(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
-                                    .txs_status
+                                    .tx_tasks
                                     .insert(id, TxLabel::Funding)
                                     .is_none()
                                 {
@@ -650,7 +671,7 @@ impl Runtime {
                                     self.syncer_state.watch_addr_btc(addr.script_pubkey(), id);
                                 if self
                                     .syncer_state
-                                    .txs_status
+                                    .tx_tasks
                                     .insert(id, TxLabel::Funding)
                                     .is_none()
                                 {
@@ -816,10 +837,10 @@ impl Runtime {
                             ]) {
                                 let txid = tx.clone().extract_tx().txid();
                                 let id = self.syncer_state.new_taskid();
-                                self.syncer_state.txs_status.insert(id, tx_label.clone());
+                                self.syncer_state.tx_tasks.insert(id, tx_label.clone());
                                 info!(
-                                    "Alice registers tx {} with syncer {}",
-                                    tx_label.addr(),
+                                    "Alice watches tx {} {}",
+                                    tx_label.bright_green_bold(),
                                     txid.addr()
                                 );
                                 let task = Task::WatchTransaction(WatchTransaction {
@@ -865,7 +886,7 @@ impl Runtime {
 
                             let txid = tx.txid();
                             let id = self.syncer_state.new_taskid();
-                            self.syncer_state.txs_status.insert(id, TxLabel::Buy);
+                            self.syncer_state.tx_tasks.insert(id, TxLabel::Buy);
                             // notify the syncer to watch for the buy transaction
                             let task = Task::WatchTransaction(WatchTransaction {
                                 id,
@@ -1107,7 +1128,7 @@ impl Runtime {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
                             .handle_height_change(*height, Coin::Monero);
-                        info!("monero height changed {}", height)
+                        info!("monero new height {}", height.bright_green_italic())
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1117,7 +1138,18 @@ impl Runtime {
                         tx,
                     }) => {
                         let id = self.syncer_state.new_taskid();
-
+                        if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                            xmr_locked, ..
+                        })) = &mut self.state
+                        {
+                            if !*xmr_locked {
+                                *xmr_locked = true;
+                            } else {
+                                warn!("xmr_locked was already set to true")
+                            }
+                        }
+                        info!("subscribing for monero lock {}", hex::encode(&hash));
+                        self.syncer_state.tx_tasks.insert(id, TxLabel::AccLock);
                         let watch_tx = Task::WatchTransaction(WatchTransaction {
                             id,
                             lifetime: self.syncer_state.task_lifetime(Coin::Monero),
@@ -1168,6 +1200,14 @@ impl Runtime {
                             );
                         }
                     }
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        block,
+                        confirmations,
+                    }) if self.syncer_state.tx_tasks.get(id).is_some() => {
+                        self.syncer_state.handle_tx_confs(id, confirmations);
+                    }
+
                     Event::TaskAborted(_) => {}
                     event => {
                         error!("event not handled {}", event)
@@ -1179,7 +1219,7 @@ impl Runtime {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
                             .handle_height_change(*height, Coin::Bitcoin);
-                        info!("bitcoin height changed {}", height)
+                        info!("bitcoin new height {}", height.bright_green_italic())
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1193,7 +1233,7 @@ impl Runtime {
                             "Received AddressTransaction, processing tx {}",
                             tx.txid().addr()
                         );
-                        if let Some(txlabel) = self.syncer_state.txs_status.get(id) {
+                        if let Some(txlabel) = self.syncer_state.tx_tasks.get(id) {
                             match txlabel {
                                 TxLabel::Funding => {
                                     info!(
@@ -1260,10 +1300,11 @@ impl Runtime {
                         confirmations: Some(confirmations),
                     }) if self.temporal_safety.final_tx(*confirmations) => {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
-                        if let Some(txlabel) = self.syncer_state.txs_status.get_mut(&id) {
+                        if let Some(txlabel) = self.syncer_state.tx_tasks.get(&id) {
                             info!(
-                                "Transaction {} is now final after {} confirmations",
-                                txlabel, confirmations
+                                "tx {} final: {} confirmations",
+                                txlabel.bright_green_bold(),
+                                confirmations.bright_green_bold()
                             );
                             // saving requests of interest for later replaying latest event
                             match &txlabel {
@@ -1278,13 +1319,17 @@ impl Runtime {
 
                             match txlabel {
                                 TxLabel::Funding => {}
-                                TxLabel::Lock if !self.state.xmr_locked() => {
+                                TxLabel::Lock
+                                    if !self.state.xmr_locked()
+                                        && self.remote_params.is_some()
+                                        && !self.syncer_state.acc_lock_watched() =>
+                                {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: false,
                                         xmr_locked: false,
                                     })) = self.state
                                     {
-                                        if let Some(Params::Alice(AliceParameters {
+                                        if let Some(Params::Bob(BobParameters {
                                             spend,
                                             accordant_shared_keys,
                                             ..
@@ -1307,7 +1352,10 @@ impl Runtime {
                                                 Request::SyncerTask(watch_addr_task),
                                             )?;
                                         } else {
-                                            error!("not Alice or remote_params not set for Alice, state {}", self.state)
+                                            error!(
+                                                "remote_params not set for Bob, state {}",
+                                                self.state
+                                            )
                                         }
                                     }
                                 }
@@ -1322,7 +1370,8 @@ impl Runtime {
                                 }
                                 TxLabel::Lock
                                     if self.temporal_safety.safe_buy(*confirmations)
-                                        && self.state.swap_role() == SwapRole::Alice =>
+                                        && self.state.swap_role() == SwapRole::Alice
+                                        && !self.state.buy_published() =>
                                 {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: false,
@@ -1434,7 +1483,7 @@ impl Runtime {
                 ]) {
                     let txid = tx.clone().extract_tx().txid();
                     let id = self.syncer_state.new_taskid();
-                    self.syncer_state.txs_status.insert(id, tx_label);
+                    self.syncer_state.tx_tasks.insert(id, tx_label);
                     info!(
                         "Bob registers tx {} with syncer {}",
                         tx_label.addr(),
@@ -1551,7 +1600,7 @@ impl Runtime {
                     let txid = buy_tx.txid();
                     // register Buy tx task
                     let id_tx = self.syncer_state.new_taskid();
-                    self.syncer_state.txs_status.insert(id_tx, TxLabel::Buy);
+                    self.syncer_state.tx_tasks.insert(id_tx, TxLabel::Buy);
                     info!("subscribing with syncer for receiving buy tx updates");
                     let task = Task::WatchTransaction(WatchTransaction {
                         id: id_tx,
@@ -1573,7 +1622,7 @@ impl Runtime {
                         return Ok(());
                     };
                     let id_addr = self.syncer_state.new_taskid();
-                    self.syncer_state.txs_status.insert(id_addr, TxLabel::Buy);
+                    self.syncer_state.tx_tasks.insert(id_addr, TxLabel::Buy);
                     debug!("subscribe Buy address task");
                     let task = self.syncer_state.watch_addr_btc(script_pubkey, id_addr);
                     senders.send_to(
@@ -1590,7 +1639,7 @@ impl Runtime {
                     };
                     if self
                         .pending_requests
-                        .insert(ServiceId::Syncer(Coin::Bitcoin), pending_request)
+                        .insert(ServiceId::Syncer(Coin::Monero), pending_request)
                         .is_none()
                     {
                         debug!("deferring BuyProcedureSignature msg");
