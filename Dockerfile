@@ -1,7 +1,7 @@
 ARG BUILDER_DIR=/srv/farcaster
 
 
-FROM rust:1.53.0-slim-buster as builder
+FROM rust:1.54.0-slim-buster as builder
 
 ARG SRC_DIR=/usr/local/src/farcaster
 ARG BUILDER_DIR
@@ -21,7 +21,7 @@ COPY doc ${SRC_DIR}/doc
 COPY shell ${SRC_DIR}/shell
 COPY src ${SRC_DIR}/src
 COPY build.rs Cargo.lock Cargo.toml codecov.yml config_spec.toml \
-     LICENSE license_header.txt README.md ${SRC_DIR}/
+     LICENSE README.md ${SRC_DIR}/
 
 WORKDIR ${SRC_DIR}
 
