@@ -464,7 +464,8 @@ fn bitcoin_syncer_broadcast_tx_test() {
         .unwrap();
     let transaction = bitcoin_rpc.get_transaction(&txid, None).unwrap();
 
-    // Generate over 101 blocks to reach block maturity, and some more for extra leeway
+    // Generate over 101 blocks to reach block maturity, and some more for extra
+    // leeway
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
     // allow some time for things to happen, like the electrum server catching up

@@ -159,7 +159,6 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
-
 struct TemporalSafety {
     cancel_timelock: BlockHeight,
     punish_timelock: BlockHeight,
