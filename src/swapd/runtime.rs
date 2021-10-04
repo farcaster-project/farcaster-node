@@ -72,7 +72,7 @@ use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
-use lnpbp::Chain;
+use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};

@@ -17,7 +17,6 @@ use microservices::{rpc, rpc_connection};
 use crate::Error;
 
 #[derive(Clone, Debug, Display, From, Api)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[api(encoding = "strict")]
 #[display(Debug)]
 #[non_exhaustive]

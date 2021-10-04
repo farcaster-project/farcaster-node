@@ -16,7 +16,7 @@ use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
 use internet2::ZMQ_CONTEXT;
-use lnpbp::Chain;
+use lnpbp::chain::Chain;
 use monero::Hash;
 use monero_rpc::BlockHash;
 use monero_rpc::GetBlockHeaderSelector;

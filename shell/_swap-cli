@@ -19,8 +19,8 @@ _swap-cli() {
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -30,12 +30,12 @@ _swap-cli() {
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 ":: :_swap-cli_commands" \
 "*::: :->swap-cli" \
 && ret=0
@@ -57,8 +57,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -68,12 +68,12 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 && ret=0
 ;;
 (connect)
@@ -82,8 +82,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -93,12 +93,12 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 ':peer -- Address of the remote node, in '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>\[\:<port>\]' format:' \
 && ret=0
 ;;
@@ -108,8 +108,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -119,12 +119,12 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 ':peer -- Address of the remote node, in '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>\[\:<port>\]' format:' \
 && ret=0
 ;;
@@ -134,8 +134,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -145,12 +145,12 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 '::subject -- Remote peer address or temporary/permanent/short channel id. If absent, returns information about the node itself:' \
 && ret=0
 ;;
@@ -160,8 +160,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -171,12 +171,12 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 && ret=0
 ;;
 (ls)
@@ -185,8 +185,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -196,12 +196,12 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 && ret=0
 ;;
 (make)
@@ -210,8 +210,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -221,12 +221,12 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 '::network -- Type of offer and network to use:' \
 '::arbitrating-blockchain -- The chosen arbitrating blockchain:' \
 '::accordant-blockchain -- The chosen accordant blockchain:' \
@@ -247,8 +247,8 @@ _arguments "${_arguments_options[@]}" \
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -258,21 +258,38 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 ':public-offer -- Hex encoded offer:' \
 && ret=0
 ;;
 (help)
 _arguments "${_arguments_options[@]}" \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
+'-d+[Data directory path]: :_files -/' \
+'--data-dir=[Data directory path]: :_files -/' \
+'-c+[Path to the configuration file]: :_files' \
+'--config=[Path to the configuration file]: :_files' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
+'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
+'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
+'-n+[Blockchain to use]' \
+'--chain=[Blockchain to use]' \
+'--electrum-server=[Electrum server to use]' \
+'--monero-daemon=[Monero daemon to use]' \
+'--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
+'*-v[Set verbosity level]' \
+'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
         esac
@@ -283,79 +300,61 @@ esac
 (( $+functions[_swap-cli_commands] )) ||
 _swap-cli_commands() {
     local commands; commands=(
-        "listen:Bind to a socket and start listening for incoming LN peer connections, Maker's action" \
-"connect:Connect to the remote lightning network peer" \
-"ping:Ping remote peer (must be already connected)" \
-"info:General information about the running node" \
-"peers:Lists existing peer connections" \
-"ls:Lists running swaps" \
-"make:Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make Testnet Bitcoin Monero "100000 BTC" "200 XMR" 10 10 20 Alice`" \
-"take:Taker accepts offer and connects to Maker's daemon" \
-"help:Prints this message or the help of the given subcommand(s)" \
+'listen:Bind to a socket and start listening for incoming LN peer connections, Maker'\''s action' \
+'connect:Connect to the remote lightning network peer' \
+'ping:Ping remote peer (must be already connected)' \
+'info:General information about the running node' \
+'peers:Lists existing peer connections' \
+'ls:Lists running swaps' \
+'make:Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make Testnet Bitcoin Monero "100000 BTC" "200 XMR" 10 10 20 Alice`' \
+'take:Taker accepts offer and connects to Maker'\''s daemon' \
+'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'swap-cli commands' commands "$@"
 }
 (( $+functions[_swap-cli__connect_commands] )) ||
 _swap-cli__connect_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli connect commands' commands "$@"
 }
 (( $+functions[_swap-cli__help_commands] )) ||
 _swap-cli__help_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli help commands' commands "$@"
 }
 (( $+functions[_swap-cli__info_commands] )) ||
 _swap-cli__info_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli info commands' commands "$@"
 }
 (( $+functions[_swap-cli__listen_commands] )) ||
 _swap-cli__listen_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli listen commands' commands "$@"
 }
 (( $+functions[_swap-cli__ls_commands] )) ||
 _swap-cli__ls_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli ls commands' commands "$@"
 }
 (( $+functions[_swap-cli__make_commands] )) ||
 _swap-cli__make_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli make commands' commands "$@"
 }
 (( $+functions[_swap-cli__peers_commands] )) ||
 _swap-cli__peers_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli peers commands' commands "$@"
 }
 (( $+functions[_swap-cli__ping_commands] )) ||
 _swap-cli__ping_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli ping commands' commands "$@"
 }
 (( $+functions[_swap-cli__take_commands] )) ||
 _swap-cli__take_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swap-cli take commands' commands "$@"
 }
 

@@ -19,8 +19,8 @@ _swapd() {
 '--data-dir=[Data directory path]: :_files -/' \
 '-c+[Path to the configuration file]: :_files' \
 '--config=[Path to the configuration file]: :_files' \
-'*-T+[Use Tor]: :_hosts' \
-'*--tor-proxy=[Use Tor]: :_hosts' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
 '-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
@@ -30,12 +30,12 @@ _swapd() {
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-h[Prints help information]' \
-'--help[Prints help information]' \
-'-V[Prints version information]' \
-'--version[Prints version information]' \
 ':swap-id -- Channel id:' \
 ':public-offer -- Public offer to initiate swapd runtime:' \
 ':trade-role -- Trade role of participant (Maker or Taker):' \
@@ -45,9 +45,7 @@ _swapd() {
 
 (( $+functions[_swapd_commands] )) ||
 _swapd_commands() {
-    local commands; commands=(
-        
-    )
+    local commands; commands=()
     _describe -t commands 'swapd commands' commands "$@"
 }
 
