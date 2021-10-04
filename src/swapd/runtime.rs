@@ -102,11 +102,14 @@ pub fn run(
         SwapRole::Bob => State::Bob(BobState::StartB(local_trade_role, public_offer)),
     };
 
+    info!("Initial state: {}", init_state.bright_white_bold());
+
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        tx_finality_thr: 0,
+        btc_finality_thr: 0,
         race_thr: 2,
+        xmr_finality_thr: 0,
     };
 
     temporal_safety.valid_params()?;
@@ -163,7 +166,8 @@ struct TemporalSafety {
     cancel_timelock: BlockHeight,
     punish_timelock: BlockHeight,
     race_thr: BlockHeight,
-    tx_finality_thr: BlockHeight,
+    btc_finality_thr: BlockHeight,
+    xmr_finality_thr: BlockHeight,
 }
 
 type BlockHeight = u32;
@@ -171,7 +175,7 @@ type BlockHeight = u32;
 impl TemporalSafety {
     /// check if temporal params are in correct order
     fn valid_params(&self) -> Result<(), Error> {
-        let finality = self.tx_finality_thr;
+        let finality = self.btc_finality_thr;
         let cancel = self.cancel_timelock;
         let punish = self.punish_timelock;
         let race = self.race_thr;
@@ -185,7 +189,7 @@ impl TemporalSafety {
         }
     }
     fn final_tx(&self, confs: u32) -> bool {
-        confs >= self.tx_finality_thr
+        confs >= self.btc_finality_thr
     }
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
         // lock must be final, valid after lock_minedblock + cancel_timelock
@@ -218,29 +222,49 @@ struct SyncerState {
 
 #[derive(Display, Clone)]
 pub enum AliceState {
-    #[display("Start")]
+    #[display("Start: {0:#?} {1:#?}")]
     StartA(TradeRole, PublicOffer<BtcXmr>), // local, both
-    #[display("Commit")]
-    CommitA(TradeRole, Params, Commit, Option<Commit>), // local, local, local, remote
-    #[display("Reveal")]
+    #[display("Commit: {0}")]
+    CommitA(CommitC), // local, local, local, remote
+    #[display("Reveal: {0:#?}")]
     RevealA(Commit), // remote
-    #[display("RefundProcSigs")]
-    RefundSigA(bool, bool), // monero locked, buy published
+    #[display("RefundProcSigs: {0}")]
+    RefundSigA(RefundSigA), // monero locked, buy published
     #[display("Finish")]
     FinishA,
 }
 
+#[derive(Clone, Display)]
+#[display("{trade_role:#?} {local_params:#?} {local_commit:#?} {remote_commit:#?}")]
+
+/// Commit Common to Bob and Alice
+pub struct CommitC {
+    trade_role: TradeRole,
+    local_params: Params,
+    local_commit: Commit,
+    remote_commit: Option<Commit>,
+}
+
+#[derive(Clone, Display)]
+#[display("{xmr_locked} and {buy_published}")]
+pub struct RefundSigA {
+    #[display("xmr_locked({0})")]
+    xmr_locked: bool,
+    #[display("buy_published({0})")]
+    buy_published: bool,
+}
+
 #[derive(Display, Clone)]
 pub enum BobState {
-    #[display("Start")]
+    #[display("Start {0:#?} {1:#?}")]
     StartB(TradeRole, PublicOffer<BtcXmr>), // local, both
-    #[display("Commit")]
-    CommitB(TradeRole, Params, Commit, Option<Commit>, bitcoin::Address), /* local, local,
-                                                                           * local, remote,
-                                                                           * local */
-    #[display("Reveal")]
+    #[display("Commit {0} {1}")]
+    CommitB(CommitC, bitcoin::Address), /* local, local,
+                                         * local, remote,
+                                         * local */
+    #[display("Reveal: {0:#?}")]
     RevealB(Commit), // remote
-    #[display("CoreArb")]
+    #[display("CoreArb: {0:#?}")]
     CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
     #[display("BuyProcSig")]
     BuySigB,
@@ -453,11 +477,20 @@ impl Runtime {
                     Msg::MakerCommit(remote_commit) => {
                         trace!("received commitment from counterparty, can now reveal");
                         let (next_state, local_params) = match self.state.clone() {
-                            State::Alice(AliceState::CommitA(_, local_params, _, None)) => Ok((
-                                State::Alice(AliceState::RevealA(remote_commit.clone())),
-                                local_params,
-                            )),
-                            State::Bob(BobState::CommitB(_, local_params, _, None, addr)) => {
+                            State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
+                                Ok((
+                                    State::Alice(AliceState::RevealA(remote_commit.clone())),
+                                    local_params,
+                                ))
+                            }
+                            State::Bob(BobState::CommitB(
+                                CommitC {
+                                    local_params,
+                                    remote_commit: None,
+                                    ..
+                                },
+                                addr,
+                            )) => {
                                 let id = self.syncer_state.new_taskid();
                                 let watch_addr_req =
                                     self.syncer_state.watch_addr(addr.script_pubkey(), id);
@@ -487,8 +520,17 @@ impl Runtime {
                             ))),
                         }?;
 
-                        if let State::Alice(AliceState::CommitA(TradeRole::Taker, ..))
-                        | State::Bob(BobState::CommitB(TradeRole::Taker, ..)) = &self.state
+                        if let State::Alice(AliceState::CommitA(CommitC {
+                            trade_role: TradeRole::Taker,
+                            ..
+                        }))
+                        | State::Bob(BobState::CommitB(
+                            CommitC {
+                                trade_role: TradeRole::Taker,
+                                ..
+                            },
+                            _,
+                        )) = &self.state
                         {
                             trace!("Watch height bitcoin");
                             let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
@@ -518,7 +560,7 @@ impl Runtime {
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
-                        info!("State transition: {}", next_state.bright_blue_bold());
+                        info!("State transition: {}", next_state.bright_white_bold());
                         self.state = next_state;
                     }
                     Msg::TakerCommit(_) => {
@@ -534,11 +576,20 @@ impl Runtime {
                         let (next_state, remote_commit) = match self.state.clone() {
                             // counterparty has already revealed commitment, i.e. we're
                             // maker and counterparty is taker. now proceed to reveal state.
-                            State::Alice(AliceState::CommitA(.., Some(remote_commit))) => Ok((
+                            State::Alice(AliceState::CommitA(CommitC {
+                                remote_commit: Some(remote_commit),
+                                ..
+                            })) => Ok((
                                 State::Alice(AliceState::RevealA(remote_commit.clone())),
                                 remote_commit,
                             )),
-                            State::Bob(BobState::CommitB(.., Some(remote_commit), addr)) => {
+                            State::Bob(BobState::CommitB(
+                                CommitC {
+                                    remote_commit: Some(remote_commit),
+                                    ..
+                                },
+                                addr,
+                            )) => {
                                 let id = self.syncer_state.new_taskid();
                                 let watch_addr_req =
                                     self.syncer_state.watch_addr(addr.script_pubkey(), id);
@@ -640,12 +691,19 @@ impl Runtime {
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
                         match &self.state {
-                            State::Alice(AliceState::CommitA(
-                                TradeRole::Maker,
+                            State::Alice(AliceState::CommitA(CommitC {
+                                trade_role: TradeRole::Maker,
                                 local_params,
-                                ..,
-                            ))
-                            | State::Bob(BobState::CommitB(TradeRole::Maker, local_params, ..)) => {
+                                ..
+                            }))
+                            | State::Bob(BobState::CommitB(
+                                CommitC {
+                                    trade_role: TradeRole::Maker,
+                                    local_params,
+                                    ..
+                                },
+                                _,
+                            )) => {
                                 trace!("Watch height bitcoin");
                                 let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
                                     id: self.syncer_state.new_taskid(),
@@ -673,7 +731,7 @@ impl Runtime {
                                 trace!("received commitment from counterparty, can now reveal");
                                 let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
-                                info!("State transition: {}", next_state.bright_blue_bold());
+                                info!("State transition: {}", next_state.bright_white_bold());
                                 self.state = next_state;
                             }
                             _ => debug!(
@@ -858,10 +916,12 @@ impl Runtime {
                     (State::Bob(BobState::StartB(local_trade_role, public_offer)), Some(addr)) => {
                         Ok((
                             (State::Bob(BobState::CommitB(
-                                local_trade_role,
-                                local_params.clone(),
-                                local_commit.clone(),
-                                None,
+                                CommitC {
+                                    trade_role: local_trade_role,
+                                    local_params: local_params.clone(),
+                                    local_commit: local_commit.clone(),
+                                    remote_commit: None,
+                                },
                                 addr,
                             ))),
                             public_offer,
@@ -869,12 +929,12 @@ impl Runtime {
                     }
                     (State::Alice(AliceState::StartA(local_trade_role, public_offer)), None) => {
                         Ok((
-                            (State::Alice(AliceState::CommitA(
-                                local_trade_role,
-                                local_params.clone(),
-                                local_commit.clone(),
-                                None,
-                            ))),
+                            (State::Alice(AliceState::CommitA(CommitC {
+                                trade_role: local_trade_role,
+                                local_params: local_params.clone(),
+                                local_commit: local_commit.clone(),
+                                remote_commit: None,
+                            }))),
                             public_offer,
                         ))
                     }
@@ -889,7 +949,7 @@ impl Runtime {
                     swap_id,
                 };
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
-                info!("State transition: {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_white_bold());
                 self.state = next_state;
             }
 
@@ -922,20 +982,22 @@ impl Runtime {
                 let next_state = match (&self.state, funding_address) {
                     (State::Bob(BobState::StartB(trade_role, _)), Some(addr)) => {
                         Ok(State::Bob(BobState::CommitB(
-                            *trade_role,
-                            local_params.clone(),
-                            local_commit.clone(),
-                            Some(remote_commit.clone()),
+                            CommitC {
+                                trade_role: *trade_role,
+                                local_params: local_params.clone(),
+                                local_commit: local_commit.clone(),
+                                remote_commit: Some(remote_commit.clone()),
+                            },
                             addr,
                         )))
                     }
                     (State::Alice(AliceState::StartA(trade_role, _)), None) => {
-                        Ok(State::Alice(AliceState::CommitA(
-                            *trade_role,
-                            local_params.clone(),
-                            local_commit.clone(),
-                            Some(remote_commit.clone()),
-                        )))
+                        Ok(State::Alice(AliceState::CommitA(CommitC {
+                            trade_role: *trade_role,
+                            local_params: local_params.clone(),
+                            local_commit: local_commit.clone(),
+                            remote_commit: Some(remote_commit.clone()),
+                        })))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
                 }?;
@@ -943,7 +1005,7 @@ impl Runtime {
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
 
-                info!("State transition: {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_white_bold());
                 trace!("setting commit_remote and commit_local msg");
                 self.state = next_state;
             }
@@ -995,9 +1057,44 @@ impl Runtime {
                         info!("monero height changed {}", height)
                     }
                     Event::AddressTransaction(_) => {}
-                    Event::TransactionConfirmations(_) => {}
-                    Event::TransactionBroadcasted(_) => {}
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        block,
+                        confirmations: Some(confirmations),
+                    }) if confirmations > &self.temporal_safety.xmr_finality_thr
+                        && self.state.swap_role() == SwapRole::Bob
+                        && self.pending_requests.get(&source).is_some() =>
+                    {
+                        error!("not checking tx rcvd is accordant lock");
+                        let PendingRequest {
+                            request,
+                            dest,
+                            bus_id,
+                        } = self.pending_requests.remove(&source).unwrap();
+                        if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
+                            (&request, &bus_id)
+                        {
+                            let next_state = match self.state {
+                                State::Bob(BobState::CorearbB(..)) => {
+                                    Ok(State::Bob(BobState::BuySigB))
+                                }
+                                _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
+                            }?;
+                            info!("sending buyproceduresignature at state {}", &self.state);
+                            senders.send_to(bus_id, self.identity(), dest, request)?;
+                            info!("State transition: {}", next_state.bright_white_bold());
+                            self.state = next_state;
+                        } else {
+                            error!(
+                                "Not buyproceduresignatures {} or not Msg bus found {}",
+                                request, bus_id
+                            );
+                        }
+                    }
                     Event::TaskAborted(_) => {}
+                    event => {
+                        error!("event not handled {}", event)
+                    }
                 }
             }
             Request::SyncerEvent(ref event) if &source == &ServiceId::Syncer(Coin::Bitcoin) => {
@@ -1051,8 +1148,10 @@ impl Runtime {
                                 TxLabel::Refund => {
                                     // true represents alice already locked monero, and false, she
                                     // didnt broadcast buy yet
-                                    if let State::Alice(AliceState::RefundSigA(true, false)) =
-                                        self.state
+                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                        xmr_locked: true,
+                                        buy_published: false,
+                                    })) = self.state
                                     {
                                         info!(
                                             "found refund tx in mempool or blockchain, \
@@ -1116,8 +1215,10 @@ impl Runtime {
                                     if self.temporal_safety.safe_buy(*confirmations)
                                         && self.state.swap_role() == SwapRole::Alice =>
                                 {
-                                    if let State::Alice(AliceState::RefundSigA(_, false)) =
-                                        self.state
+                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                        buy_published: false,
+                                        ..
+                                    })) = self.state
                                     {
                                         if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
                                             self.broadcast(buy_tx, TxLabel::Buy, senders)?
@@ -1135,43 +1236,6 @@ impl Runtime {
                                     )
                                     }
                                 }
-                                TxLabel::Lock if self.pending_requests.get(&source).is_some() => {
-                                    let PendingRequest {
-                                        request,
-                                        dest,
-                                        bus_id,
-                                    } = self.pending_requests.remove(&source).unwrap();
-                                    if let (
-                                        Request::Protocol(Msg::BuyProcedureSignature(_)),
-                                        ServiceBus::Msg,
-                                    ) = (&request, &bus_id)
-                                    {
-                                        let next_state = match self.state {
-                                            State::Bob(BobState::CorearbB(..)) => {
-                                                Ok(State::Bob(BobState::BuySigB))
-                                            }
-                                            _ => Err(Error::Farcaster(s!(
-                                                "Wrong state: must be CorearbB "
-                                            ))),
-                                        }?;
-                                        error!("this should be in Accordant lock, not Arbitrating lock finality");
-                                        info!(
-                                            "sending buyproceduresignature at state {}",
-                                            &self.state
-                                        );
-                                        senders.send_to(bus_id, self.identity(), dest, request)?;
-                                        info!(
-                                            "State transition: {}",
-                                            next_state.bright_blue_bold()
-                                        );
-                                        self.state = next_state;
-                                    } else {
-                                        error!(
-                                            "Not buyproceduresignatures {} or not Msg bus found {}",
-                                            request, bus_id
-                                        );
-                                    }
-                                }
 
                                 TxLabel::Cancel
                                     if self.temporal_safety.valid_punish(*confirmations) =>
@@ -1181,8 +1245,10 @@ impl Runtime {
                                         self.txs.remove_entry(&TxLabel::Punish)
                                     {
                                         // true represents alice already locked monero
-                                        if let State::Alice(AliceState::RefundSigA(true, true)) =
-                                            self.state
+                                        if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                            xmr_locked: true,
+                                            buy_published: true,
+                                        })) = self.state
                                         {
                                             info!(
                                                 "Broadcasting btc punish {}",
@@ -1206,8 +1272,10 @@ impl Runtime {
                                             // didnt
                                             // broadcast buy
                                             if let State::Alice(AliceState::RefundSigA(
-                                                true,
-                                                false,
+                                                RefundSigA {
+                                                    xmr_locked: true,
+                                                    buy_published: false,
+                                                },
                                             )) = self.state
                                             {
                                                 self.broadcast(refund_tx, tx_label, senders)?;
@@ -1251,7 +1319,7 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
                     Event::TransactionBroadcasted(event) => {
-                        info!("{}", event)
+                        debug!("{}", event)
                     }
                     Event::TaskAborted(event) => {
                         info!("{}", event)
@@ -1301,7 +1369,7 @@ impl Runtime {
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
-                info!("State transition: {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_white_bold());
                 self.state = next_state;
             }
 
@@ -1353,17 +1421,18 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let locked_monero = false;
-                let broadcasted_buy = false;
                 let next_state = match self.state {
-                    State::Alice(AliceState::RevealA(_)) => Ok(State::Alice(
-                        AliceState::RefundSigA(locked_monero, broadcasted_buy),
-                    )),
+                    State::Alice(AliceState::RevealA(_)) => {
+                        Ok(State::Alice(AliceState::RefundSigA(RefundSigA {
+                            xmr_locked: false,
+                            buy_published: false,
+                        })))
+                    }
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
                 }?;
                 debug!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
-                info!("State transition: {}", next_state.bright_blue_bold());
+                info!("State transition: {}", next_state.bright_white_bold());
                 self.state = next_state;
             }
 
@@ -1481,8 +1550,8 @@ impl Runtime {
     ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} {} with id {:#}",
-            "Proposing to the Maker".bright_blue_bold(),
-            "that I take the swap offer".bright_blue_bold(),
+            "Proposing to the Maker".bright_white_bold(),
+            "that I take the swap offer".bright_white_bold(),
             self.swap_id().bright_blue_italic()
         );
         info!("{}", &msg);
@@ -1514,7 +1583,7 @@ impl Runtime {
     ) -> Result<request::Commit, Error> {
         let msg = format!(
             "{} as Maker with swap id {:#} from Taker remote peer {}",
-            "Accepting swap".bright_blue_bold(),
+            "Accepting swap".bright_white_bold(),
             swap_id.bright_blue_italic(),
             peerd.bright_blue_italic()
         );
