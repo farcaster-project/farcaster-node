@@ -57,8 +57,8 @@ use crate::{Config, Error, LogStyle, Service, ServiceId};
 use farcaster_core::{
     blockchain::FeePriority,
     bundle::{
-        AliceParameters, AliceProof, BobParameters, BobProof, CoreArbitratingTransactions,
-        FundingTransaction, SignedArbitratingLock,
+        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction, Proof,
+        SignedArbitratingLock,
     },
     negotiation::PublicOffer,
     protocol_message::{
@@ -345,6 +345,7 @@ impl Runtime {
                 local_trade_role,
                 public_offer,
                 local_params,
+                local_proof,
                 swap_id,
                 remote_commit,
                 funding_address,
@@ -363,6 +364,7 @@ impl Runtime {
                         local_trade_role,
                         public_offer,
                         local_params,
+                        local_proof,
                         swap_id,
                         remote_commit,
                         funding_address,
@@ -844,6 +846,7 @@ fn launch_swapd(
     local_trade_role: TradeRole,
     public_offer: PublicOffer<BtcXmr>,
     local_params: Params,
+    local_proof: Proof<BtcXmr>,
     swap_id: SwapId,
     remote_commit: Option<Commit>,
     funding_address: Option<bitcoin::Address>,
@@ -870,6 +873,7 @@ fn launch_swapd(
             peerd,
             report_to,
             local_params,
+            local_proof,
             swap_id,
             remote_commit,
             funding_address,

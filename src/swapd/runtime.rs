@@ -55,14 +55,14 @@ use farcaster_core::{
         BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
-    bundle::{AliceParameters, BobParameters},
+    bundle::{AliceParameters, BobParameters, Proof},
     consensus::{self, Encodable as FarEncodable},
     crypto::{CommitmentEngine, SharedKeyId, TaggedElement},
     monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::{Offer, PublicOffer},
     protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures,
+        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CommitProof,
+        CoreArbitratingSetup, RefundProcedureSignatures,
     },
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::BtcXmr,
@@ -253,6 +253,7 @@ pub enum AliceState {
 pub struct CommitC {
     trade_role: TradeRole,
     local_params: Params,
+    local_proof: Proof<BtcXmr>,
     local_commit: Commit,
     remote_commit: Option<Commit>,
 }
@@ -553,16 +554,18 @@ impl Runtime {
                     // whether we're Bob or Alice and that we're on a compatible state
                     Msg::MakerCommit(remote_commit) => {
                         trace!("received commitment from counterparty, can now reveal");
-                        let (next_state, local_params) = match self.state.clone() {
-                            State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
+                        let (next_state, local_params, local_proof) = match self.state.clone() {
+                            State::Alice(AliceState::CommitA(CommitC { local_params, local_proof, .. })) => {
                                 Ok((
                                     State::Alice(AliceState::RevealA(remote_commit.clone())),
                                     local_params,
+                                    local_proof,
                                 ))
                             }
                             State::Bob(BobState::CommitB(
                                 CommitC {
                                     local_params,
+                                    local_proof,
                                     remote_commit: None,
                                     ..
                                 },
@@ -586,6 +589,7 @@ impl Runtime {
                                     Ok((
                                         State::Bob(BobState::RevealB(remote_commit.clone())),
                                         local_params,
+                                        local_proof,
                                     ))
                                 } else {
                                     Err(Error::Farcaster(s!("tx already registered with that id")))
@@ -733,8 +737,7 @@ impl Runtime {
                                     Err(Error::Farcaster(err_msg.to_string()))?
                                 }
                             },
-                            Reveal::AliceProof(reveal) => todo!(),
-                            Reveal::BobProof(reveal) => todo!(),
+                            Reveal::Proof(reveal) => todo!(),
                         };
                         info!("{:?} sets remote_params", self.state.swap_role());
 
@@ -960,6 +963,7 @@ impl Runtime {
                 peerd,
                 report_to,
                 local_params,
+                local_proof,
                 swap_id,
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
@@ -989,6 +993,7 @@ impl Runtime {
                                 },
                             )
                         })?;
+                let local_commit_proof = self.taker_commit_proof(senders, local_proof.clone());
                 let (next_state, public_offer) = match (self.state.clone(), funding_address) {
                     (State::Bob(BobState::StartB(local_trade_role, public_offer)), Some(addr)) => {
                         Ok((
@@ -996,6 +1001,7 @@ impl Runtime {
                                 CommitC {
                                     trade_role: local_trade_role,
                                     local_params: local_params.clone(),
+                                    local_proof: local_proof.clone(),
                                     local_commit: local_commit.clone(),
                                     remote_commit: None,
                                 },
@@ -1009,6 +1015,7 @@ impl Runtime {
                             (State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: local_trade_role,
                                 local_params: local_params.clone(),
+                                local_proof: local_proof.clone(),
                                 local_commit: local_commit.clone(),
                                 remote_commit: None,
                             }))),
@@ -1034,6 +1041,7 @@ impl Runtime {
                 peerd,
                 report_to,
                 local_params,
+                local_proof,
                 swap_id,
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
@@ -1062,6 +1070,7 @@ impl Runtime {
                             CommitC {
                                 trade_role: *trade_role,
                                 local_params: local_params.clone(),
+                                local_proof: local_proof.clone(),
                                 local_commit: local_commit.clone(),
                                 remote_commit: Some(remote_commit.clone()),
                             },
@@ -1072,6 +1081,7 @@ impl Runtime {
                         Ok(State::Alice(AliceState::CommitA(CommitC {
                             trade_role: *trade_role,
                             local_params: local_params.clone(),
+                            local_proof: local_proof.clone(),
                             local_commit: local_commit.clone(),
                             remote_commit: Some(remote_commit.clone()),
                         })))
@@ -1842,6 +1852,32 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the client disconnected
+        let enquirer = self.enquirer.clone();
+        let _ = self.report_progress_to(senders, &enquirer, msg)?;
+
+        Ok(commitment)
+    }
+
+    pub fn taker_commit_proof(
+        &mut self,
+        senders: &mut Senders,
+        proof: Proof<BtcXmr>,
+    ) -> Result<request::Commit, Error> {
+        let msg = format!(
+            "{} {} with id {:#}",
+            "Proposing to the Maker".bright_blue_bold(),
+            "that I take the swap offer".bright_blue_bold(),
+            self.swap_id().bright_blue_italic()
+        );
+        info!("{}", &msg);
+        let engine = CommitmentEngine;
+        let commitment = request::Commit::Proof(CommitProof::commit_to_bundle(
+            self.swap_id(),
+            &engine,
+            proof,
+        ));
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();

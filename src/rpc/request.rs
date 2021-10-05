@@ -44,14 +44,14 @@ use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
     blockchain::FeePriority,
     bundle::{
-        AliceParameters, AliceProof, BobParameters, BobProof, CoreArbitratingTransactions,
-        CosignedArbitratingCancel,
+        AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
+        Proof,
     },
     monero::Monero,
     negotiation::{Offer, PublicOffer},
     protocol_message::{
-        self, CommitAliceParameters, CommitAliceProof, CommitBobParameters, CommitBobProof,
-        RevealAliceParameters, RevealAliceProof, RevealBobParameters, RevealBobProof,
+        self, CommitAliceParameters, CommitBobParameters, CommitProof, RevealAliceParameters,
+        RevealBobParameters, RevealProof,
     },
     role::TradeRole,
     swap::btcxmr::BtcXmr,
@@ -108,16 +108,14 @@ impl Msg {
         match self {
             Msg::MakerCommit(m) => match m {
                 Commit::AliceParameters(n) => n.swap_id,
-                Commit::AliceProof(n) => n.swap_id,
                 Commit::BobParameters(n) => n.swap_id,
-                Commit::BobProof(n) => n.swap_id,
+                Commit::Proof(n) => n.swap_id,
             },
             Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
             Msg::Reveal(m) => match m {
                 Reveal::AliceParameters(n) => n.swap_id,
-                Reveal::AliceProof(n) => n.swap_id,
                 Reveal::BobParameters(n) => n.swap_id,
-                Reveal::BobProof(n) => n.swap_id,
+                Reveal::Proof(n) => n.swap_id,
             },
             Msg::RefundProcedureSignatures(protocol_message::RefundProcedureSignatures {
                 swap_id,
@@ -184,9 +182,8 @@ impl RequestId {
 #[display("commit")]
 pub enum Commit {
     AliceParameters(CommitAliceParameters<BtcXmr>),
-    AliceProof(CommitAliceProof<BtcXmr>),
     BobParameters(CommitBobParameters<BtcXmr>),
-    BobProof(CommitBobProof<BtcXmr>),
+    Proof(CommitProof<BtcXmr>),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -224,6 +221,7 @@ pub struct LaunchSwap {
     pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub local_params: Params,
+    pub local_proof: Proof<BtcXmr>,
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
     pub funding_address: Option<bitcoin::Address>,
@@ -248,9 +246,8 @@ pub struct Keys(
 #[display("reveal")]
 pub enum Reveal {
     AliceParameters(RevealAliceParameters<BtcXmr>),
-    AliceProof(RevealAliceProof<BtcXmr>),
     BobParameters(RevealBobParameters<BtcXmr>),
-    BobProof(RevealBobProof<BtcXmr>),
+    Proof(RevealProof<BtcXmr>),
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -513,6 +510,7 @@ pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
     pub local_params: Params,
+    pub local_proof: Proof<BtcXmr>,
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
     pub funding_address: Option<bitcoin::Address>,
