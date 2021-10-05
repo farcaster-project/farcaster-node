@@ -94,6 +94,7 @@ pub enum Wallet {
         PublicOffer<BtcXmr>,
         Option<CommitBobParameters<BtcXmr>>,
         Option<BobParameters<BtcXmr>>,
+        Option<CommitBobParameters<BtcXmr>>,
         Option<BobProof<BtcXmr>>,
         Option<CoreArbitratingSetup<BtcXmr>>,
         Option<Signature>,
@@ -153,8 +154,9 @@ pub struct BobState {
     key_manager: KeyManager,
     pub_offer: PublicOffer<BtcXmr>,
     funding_tx: Option<FundingTx>,
-    remote_commit: Option<CommitAliceParameters<BtcXmr>>,
+    remote_commit_params: Option<CommitAliceParameters<BtcXmr>>,
     remote_params: Option<AliceParameters<BtcXmr>>,
+    remote_commit_proof: Option<CommitAliceProof<BtcXmr>>,
     remote_proof: Option<AliceProof<BtcXmr>>,
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
     adaptor_buy: Option<SignedAdaptorBuy<Bitcoin<SegwitV0>>>,
@@ -169,7 +171,7 @@ impl BobState {
         key_manager: KeyManager,
         pub_offer: PublicOffer<BtcXmr>,
         funding_tx: Option<FundingTx>,
-        remote_commit: Option<CommitAliceParameters<BtcXmr>>,
+        remote_commit_params: Option<CommitAliceParameters<BtcXmr>>,
     ) -> Self {
         Self {
             wallet_ix,
@@ -179,8 +181,9 @@ impl BobState {
             key_manager,
             pub_offer,
             funding_tx,
-            remote_commit,
+            remote_commit_params,
             remote_params: None,
+            remote_commit_proof: None,
             remote_proof: None,
             core_arb_setup: None,
             adaptor_buy: None,
@@ -353,6 +356,7 @@ impl Runtime {
                                         None,
                                         None,
                                         None,
+                                        None,
                                     ),
                                 );
 
@@ -391,21 +395,22 @@ impl Runtime {
                             _alice,
                             _alice_params,
                             _alice_proof,
-                            key_manager,
+                            _key_manager,
                             _public_offer,
-                            bob_commit, // None
-                            bob_params, // None
-                            bob_proof,
+                            bob_commit_params, // None
+                            _bob_params, // None
+                            _bob_commit_proof,
+                            _bob_proof,
                             _core_arb_txs,
                             alice_cancel_sig, // None
                             _,
                         )) = self.wallets.get_mut(&swap_id)
                         {
-                            if let Some(_) = bob_commit {
+                            if let Some(_) = bob_commit_params {
                                 error!("Bob commit (remote) already set");
                             } else if let Commit::BobParameters(commit) = commit {
                                 trace!("Setting bob commit");
-                                *bob_commit = Some(commit);
+                                *bob_commit_params = Some(commit);
                             }
                         } else {
                             error!("Wallet not found or not on correct state");
@@ -414,15 +419,15 @@ impl Runtime {
                     }
                     Commit::AliceParameters(CommitAliceParameters { swap_id, .. }) => {
                         if let Some(Wallet::Bob(BobState {
-                            remote_commit, // None
+                            remote_commit_params, // None
                             ..
                         })) = self.wallets.get_mut(&swap_id)
                         {
-                            if let Some(_) = remote_commit {
+                            if let Some(_) = remote_commit_params {
                                 error!("Alice commit (remote) already set");
                             } else if let Commit::AliceParameters(commit) = commit {
                                 trace!("Setting alice commit");
-                                *remote_commit = Some(commit);
+                                *remote_commit_params = Some(commit);
                             }
                         } else {
                             error!("Wallet not found or not on correct state");
@@ -450,6 +455,7 @@ impl Runtime {
                             _public_offer,
                             Some(bob_commit),
                             bob_params,      // None
+                            Some(bob_commit_proof), // Should be Some() at this stage
                             Some(bob_proof), // Should be Some() at this stage
                             _core_arb_txs,
                             alice_cancel_sig,
@@ -494,7 +500,7 @@ impl Runtime {
                             pub_offer,
                             funding_tx: Some(funding_tx),
                             remote_params,                    // None
-                            remote_proof: Some(remote_proof), // None
+                            remote_proof: Some(remote_proof), // Some
                             core_arb_setup,                   // None
                             ..
                         })) = self.wallets.get_mut(&swap_id)
@@ -683,8 +689,9 @@ impl Runtime {
                     alice_proof,
                     key_manager,
                     public_offer,
-                    _bob_commit,
+                    _bob_commit_params,
                     Some(bob_parameters),
+                    _bob_commit_proof,
                     Some(bob_proof),
                     core_arb_setup,   // None
                     alice_cancel_sig, // None
@@ -779,8 +786,9 @@ impl Runtime {
                     alice_proof,
                     key_manager,
                     public_offer,
-                    _bob_commit,
+                    _bob_commit_params,
                     Some(bob_parameters),
+                    _bob_commit_proof,
                     Some(bob_proof),
                     Some(core_arb_setup),
                     Some(alice_cancel_sig),
@@ -965,6 +973,7 @@ impl Runtime {
                                     local_proof.clone(),
                                     key_manager,
                                     public_offer.clone(),
+                                    None,
                                     None,
                                     None,
                                     None,
