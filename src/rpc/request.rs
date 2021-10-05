@@ -44,12 +44,15 @@ use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
     blockchain::FeePriority,
     bundle::{
-        AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
+        AliceParameters, AliceProof, BobParameters, BobProof, CoreArbitratingTransactions,
+        CosignedArbitratingCancel,
     },
     monero::Monero,
     negotiation::{Offer, PublicOffer},
-    protocol_message::{self, RevealAliceParameters, RevealBobParameters},
-    protocol_message::{CommitAliceParameters, CommitBobParameters},
+    protocol_message::{
+        self, CommitAliceParameters, CommitAliceProof, CommitBobParameters, CommitBobProof,
+        RevealAliceParameters, RevealAliceProof, RevealBobParameters, RevealBobProof,
+    },
     role::TradeRole,
     swap::btcxmr::BtcXmr,
     swap::SwapId,
@@ -104,8 +107,10 @@ impl Msg {
     pub fn swap_id(&self) -> SwapId {
         match self {
             Msg::MakerCommit(m) => match m {
-                Commit::Alice(n) => n.swap_id,
-                Commit::Bob(n) => n.swap_id,
+                Commit::AliceParameters(n) => n.swap_id,
+                Commit::AliceProof(n) => n.swap_id,
+                Commit::BobParameters(n) => n.swap_id,
+                Commit::BobProof(n) => n.swap_id,
             },
             Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
             Msg::Reveal(m) => match m {
@@ -176,8 +181,10 @@ impl RequestId {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("commit")]
 pub enum Commit {
-    Alice(CommitAliceParameters<BtcXmr>),
-    Bob(CommitBobParameters<BtcXmr>),
+    AliceParameters(CommitAliceParameters<BtcXmr>),
+    AliceProof(CommitAliceProof<BtcXmr>),
+    BobParameters(CommitBobParameters<BtcXmr>),
+    BobProof(CommitBobProof<BtcXmr>),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]

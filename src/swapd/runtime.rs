@@ -712,7 +712,7 @@ impl Runtime {
                         let core_wallet = CommitmentEngine;
                         self.remote_params = match reveal {
                             Reveal::Alice(reveal) => match &remote_commit {
-                                Commit::Alice(commit) => {
+                                Commit::AliceParameters(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Some(Params::Alice(reveal.clone().into()))
                                 }
@@ -723,7 +723,7 @@ impl Runtime {
                                 }
                             },
                             Reveal::Bob(reveal) => match &remote_commit {
-                                Commit::Bob(commit) => {
+                                Commit::BobParameters(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Some(Params::Bob(reveal.clone().into()))
                                 }
@@ -1833,12 +1833,10 @@ impl Runtime {
         info!("{}", &msg);
         let engine = CommitmentEngine;
         let commitment = match params.clone() {
-            Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
-                self.swap_id(),
-                &engine,
-                params,
-            )),
-            Params::Alice(params) => request::Commit::Alice(
+            Params::Bob(params) => request::Commit::BobParameters(
+                CommitBobParameters::commit_to_bundle(self.swap_id(), &engine, params),
+            ),
+            Params::Alice(params) => request::Commit::AliceParameters(
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
@@ -1872,12 +1870,10 @@ impl Runtime {
 
         let engine = CommitmentEngine;
         let commitment = match params.clone() {
-            Params::Bob(params) => request::Commit::Bob(CommitBobParameters::commit_to_bundle(
-                self.swap_id(),
-                &engine,
-                params,
-            )),
-            Params::Alice(params) => request::Commit::Alice(
+            Params::Bob(params) => request::Commit::BobParameters(
+                CommitBobParameters::commit_to_bundle(self.swap_id(), &engine, params),
+            ),
+            Params::Alice(params) => request::Commit::AliceParameters(
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };

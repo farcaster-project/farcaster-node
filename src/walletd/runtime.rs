@@ -42,8 +42,8 @@ use farcaster_core::{
     monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::PublicOffer,
     protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures,
+        BuyProcedureSignature, CommitAliceParameters, CommitAliceProof, CommitBobParameters,
+        CommitBobProof, CoreArbitratingSetup, RefundProcedureSignatures,
     },
     role::{Alice, Bob, SwapRole, TradeRole},
     swap::btcxmr::{BtcXmr, KeyManager},
@@ -290,7 +290,9 @@ impl Runtime {
                                 &funding_addr.bright_yellow_bold()
                             );
                             info!("Creating {}", "Wallet::Bob".bright_yellow());
-                            if let request::Commit::Alice(remote_commit) = remote_commit.clone() {
+                            if let request::Commit::AliceParameters(remote_commit) =
+                                remote_commit.clone()
+                            {
                                 let bob_wallet = BobState::new(
                                     wallet_index,
                                     bob,
@@ -335,7 +337,9 @@ impl Runtime {
                             alice.generate_parameters(&mut key_manager, &pub_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             info!("Creating {}", "Wallet::Alice".bright_yellow());
-                            if let request::Commit::Bob(bob_commit) = remote_commit.clone() {
+                            if let request::Commit::BobParameters(bob_commit) =
+                                remote_commit.clone()
+                            {
                                 self.wallets.insert(
                                     swap_id,
                                     Wallet::Alice(
@@ -382,7 +386,7 @@ impl Runtime {
                 }
 
                 match commit {
-                    Commit::Bob(CommitBobParameters { swap_id, .. }) => {
+                    Commit::BobParameters(CommitBobParameters { swap_id, .. }) => {
                         if let Some(Wallet::Alice(
                             _alice,
                             _alice_params,
@@ -399,7 +403,7 @@ impl Runtime {
                         {
                             if let Some(_) = bob_commit {
                                 error!("Bob commit (remote) already set");
-                            } else if let Commit::Bob(commit) = commit {
+                            } else if let Commit::BobParameters(commit) = commit {
                                 trace!("Setting bob commit");
                                 *bob_commit = Some(commit);
                             }
@@ -408,7 +412,7 @@ impl Runtime {
                             return Ok(());
                         }
                     }
-                    Commit::Alice(CommitAliceParameters { swap_id, .. }) => {
+                    Commit::AliceParameters(CommitAliceParameters { swap_id, .. }) => {
                         if let Some(Wallet::Bob(BobState {
                             remote_commit, // None
                             ..
@@ -416,7 +420,7 @@ impl Runtime {
                         {
                             if let Some(_) = remote_commit {
                                 error!("Alice commit (remote) already set");
-                            } else if let Commit::Alice(commit) = commit {
+                            } else if let Commit::AliceParameters(commit) = commit {
                                 trace!("Setting alice commit");
                                 *remote_commit = Some(commit);
                             }
@@ -424,6 +428,12 @@ impl Runtime {
                             error!("Wallet not found or not on correct state");
                             return Ok(());
                         }
+                    }
+                    Commit::BobProof(CommitBobProof { swap_id, .. }) => {
+                        todo!()
+                    }
+                    Commit::AliceProof(CommitAliceProof { swap_id, .. }) => {
+                        todo!()
                     }
                 }
             }

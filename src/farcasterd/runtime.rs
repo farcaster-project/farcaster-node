@@ -57,8 +57,8 @@ use crate::{Config, Error, LogStyle, Service, ServiceId};
 use farcaster_core::{
     blockchain::FeePriority,
     bundle::{
-        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
-        SignedArbitratingLock,
+        AliceParameters, AliceProof, BobParameters, BobProof, CoreArbitratingTransactions,
+        FundingTransaction, SignedArbitratingLock,
     },
     negotiation::PublicOffer,
     protocol_message::{
