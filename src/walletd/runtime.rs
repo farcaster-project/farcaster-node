@@ -441,7 +441,7 @@ impl Runtime {
                 let swap_id = get_swap_id(source.clone())?;
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
-                    Reveal::Bob(reveal) => {
+                    Reveal::BobParameters(reveal) => {
                         if let Some(Wallet::Alice(
                             _alice,
                             _alice_params,
@@ -486,7 +486,7 @@ impl Runtime {
                     }
                     // getting parameters from counterparty alice routed through
                     // swapd, thus I'm Bob on this swap: Bob can proceed
-                    Reveal::Alice(reveal) => {
+                    Reveal::AliceParameters(reveal) => {
                         if let Some(Wallet::Bob(BobState {
                             bob,
                             local_params,
@@ -548,6 +548,12 @@ impl Runtime {
                         } else {
                             error!("only Some(Wallet::Bob)");
                         }
+                    }
+                    Reveal::BobProof(reveal) => {
+                        todo!()
+                    }
+                    Reveal::AliceProof(reveal) => {
+                        todo!()
                     }
                 }
             }

@@ -711,7 +711,7 @@ impl Runtime {
                         // parameter processing irrespective of maker & taker role
                         let core_wallet = CommitmentEngine;
                         self.remote_params = match reveal {
-                            Reveal::Alice(reveal) => match &remote_commit {
+                            Reveal::AliceParameters(reveal) => match &remote_commit {
                                 Commit::AliceParameters(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Some(Params::Alice(reveal.clone().into()))
@@ -722,7 +722,7 @@ impl Runtime {
                                     Err(Error::Farcaster(err_msg.to_string()))?
                                 }
                             },
-                            Reveal::Bob(reveal) => match &remote_commit {
+                            Reveal::BobParameters(reveal) => match &remote_commit {
                                 Commit::BobParameters(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
                                     Some(Params::Bob(reveal.clone().into()))
@@ -733,6 +733,8 @@ impl Runtime {
                                     Err(Error::Farcaster(err_msg.to_string()))?
                                 }
                             },
+                            Reveal::AliceProof(reveal) => todo!(),
+                            Reveal::BobProof(reveal) => todo!(),
                         };
                         info!("{:?} sets remote_params", self.state.swap_role());
 
@@ -1099,7 +1101,7 @@ impl Runtime {
                     if let State::Bob(BobState::RevealB(..)) = self.state {
                         // continuing request by sending it to wallet
                         if let (
-                            Request::Protocol(Msg::Reveal(Reveal::Alice(_))),
+                            Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
                             ServiceId::Wallet,
                             ServiceBus::Msg,
                         ) = (&request, &dest, &bus_id)

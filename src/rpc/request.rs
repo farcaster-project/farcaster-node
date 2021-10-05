@@ -114,8 +114,10 @@ impl Msg {
             },
             Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
             Msg::Reveal(m) => match m {
-                Reveal::Alice(n) => n.swap_id,
-                Reveal::Bob(n) => n.swap_id,
+                Reveal::AliceParameters(n) => n.swap_id,
+                Reveal::AliceProof(n) => n.swap_id,
+                Reveal::BobParameters(n) => n.swap_id,
+                Reveal::BobProof(n) => n.swap_id,
             },
             Msg::RefundProcedureSignatures(protocol_message::RefundProcedureSignatures {
                 swap_id,
@@ -245,8 +247,10 @@ pub struct Keys(
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("reveal")]
 pub enum Reveal {
-    Alice(RevealAliceParameters<BtcXmr>),
-    Bob(RevealBobParameters<BtcXmr>),
+    AliceParameters(RevealAliceParameters<BtcXmr>),
+    AliceProof(RevealAliceProof<BtcXmr>),
+    BobParameters(RevealBobParameters<BtcXmr>),
+    BobProof(RevealBobProof<BtcXmr>),
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -726,8 +730,8 @@ impl IntoSuccessOrFailure for Result<(), crate::Error> {
 impl Into<Reveal> for (SwapId, Params) {
     fn into(self) -> Reveal {
         match self {
-            (swap_id, Params::Alice(params)) => Reveal::Alice((swap_id, params).into()),
-            (swap_id, Params::Bob(params)) => Reveal::Bob((swap_id, params).into()),
+            (swap_id, Params::Alice(params)) => Reveal::AliceParameters((swap_id, params).into()),
+            (swap_id, Params::Bob(params)) => Reveal::BobParameters((swap_id, params).into()),
         }
     }
 }
