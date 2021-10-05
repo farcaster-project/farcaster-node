@@ -100,6 +100,8 @@ pub enum SyncerError {
     ScriptAlreadyRegistered,
     #[display("syncer creating error")]
     UnknownNetwork,
+    #[display(inner)]
+    MoneroRpc(anyhow::Error)
 }
 
 impl microservices::error::Error for Error {}
@@ -111,6 +113,12 @@ impl From<Error> for esb::Error {
             Error::Esb(err) => err,
             err => esb::Error::ServiceError(err.to_string()),
         }
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::Syncer(SyncerError::MoneroRpc(err))
     }
 }
 

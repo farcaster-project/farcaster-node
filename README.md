@@ -9,16 +9,37 @@ cd farcaster-node
 cargo build --all-features
 ```
 
-### Launch two nodes
+### Launch full nodes, electrum, monero-wallet-rpc
+#### Launch bitcoind
+``` sh
+bitcoind -server -testnet
+```
+
+#### Launch electrs (electrum server in rust)
+``` sh
+electrs -vvvv --network testnet
+```
+
+#### Launch monerod
+``` sh
+monerod --stagenet
+```
+
+#### Launch wallet-rpc
+``` sh
+monero-wallet-rpc --stagenet --rpc-bind-port 18083 --disable-rpc-login --trusted-daemon --password "pw" --wallet-dir ~/.monero_wallets
+```
+
+### Launch two farcaster nodes for trading
 
 On one terminal launch the farcasterd node `node0` with `data_dir_0`
 ```
- ./target/debug/farcasterd -vv -d .data_dir_0 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081
+ ./target/debug/farcasterd -vv -d .data_dir_0 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
  
 ```
 On a second terminal launch a second farcasterd node `node1` with `data_dir_1`
 ```
- ./target/debug/farcasterd -vv -d .data_dir_1 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081
+ ./target/debug/farcasterd -vv -d .data_dir_1 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
 ```
 
 ### Client

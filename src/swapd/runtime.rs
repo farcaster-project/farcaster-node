@@ -296,6 +296,13 @@ impl State {
             State::Bob(_) => SwapRole::Bob,
         }
     }
+    fn xmr_locked(&self) -> bool {
+        if let State::Alice(AliceState::RefundSigA(RefundSigA { xmr_locked, .. })) = self {
+            *xmr_locked
+        } else {
+            false
+        }
+    }
 }
 
 impl CtlServer for Runtime {}
@@ -394,10 +401,17 @@ impl SyncerState {
         &mut self,
         spend: monero::PublicKey,
         accordant_shared_keys: Vec<TaggedElement<SharedKeyId, monero::PrivateKey>>,
+        swap_role: SwapRole,
     ) -> Result<Task, Error> {
         let view_key = *accordant_shared_keys
             .into_iter()
-            .find(|x| x.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+            .find(|addr| addr.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+            .map(|addr| {
+                if swap_role == SwapRole::Alice {
+                    info!("Alice, please send xmr to {}", addr.addr());
+                }
+                addr
+            })
             .unwrap()
             .elem();
 
@@ -698,6 +712,8 @@ impl Runtime {
                                 }
                             },
                         };
+                        info!("{:?} sets remote_params", self.state.swap_role());
+
                         // pass request on to wallet daemon so that it can set remote params
                         match self.state {
                             // validaded state above, no need to check again
@@ -830,11 +846,7 @@ impl Runtime {
                         }
                     }
                     // bob receives, alice sends
-                    Msg::RefundProcedureSignatures(RefundProcedureSignatures {
-                        swap_id,
-                        cancel_sig,
-                        refund_adaptor_sig,
-                    }) => {
+                    Msg::RefundProcedureSignatures(_) => {
                         if let State::Bob(BobState::CorearbB(_)) = self.state {
                             self.send_wallet(msg_bus, senders, request)?;
                         } else {
@@ -1205,8 +1217,9 @@ impl Runtime {
                                     } else {
                                         error!(
                                             "expected BuySigB, found {}, maybe you reused the \
-                                         external address?",
-                                            self.state
+                                         external address? txid {}",
+                                            self.state,
+                                            tx.txid().addr(),
                                         )
                                     }
                                 }
@@ -1265,6 +1278,39 @@ impl Runtime {
 
                             match txlabel {
                                 TxLabel::Funding => {}
+                                TxLabel::Lock if !self.state.xmr_locked() => {
+                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                        buy_published: false,
+                                        xmr_locked: false,
+                                    })) = self.state
+                                    {
+                                        if let Some(Params::Alice(AliceParameters {
+                                            spend,
+                                            accordant_shared_keys,
+                                            ..
+                                        })) = self.remote_params.clone()
+                                        {
+                                            error!("here alice watches accordant lock address, broadcast manually");
+                                            info!(
+                                                "Alice subscribes for monero address with syncer"
+                                            );
+                                            let watch_addr_task =
+                                                self.syncer_state.watch_addr_xmr(
+                                                    spend,
+                                                    accordant_shared_keys,
+                                                    self.state.swap_role(),
+                                                )?;
+                                            senders.send_to(
+                                                ServiceBus::Ctl,
+                                                self.identity(),
+                                                ServiceId::Syncer(Coin::Monero),
+                                                Request::SyncerTask(watch_addr_task),
+                                            )?;
+                                        } else {
+                                            error!("not Alice or remote_params not set for Alice, state {}", self.state)
+                                        }
+                                    }
+                                }
                                 TxLabel::Lock
                                     if self.temporal_safety.valid_cancel(*confirmations) =>
                                 {
@@ -1295,7 +1341,7 @@ impl Runtime {
                                             "Alice doesn't have the buy tx, probably didnt receive \
                                              the BuySig yet: {}",
                                             self.state
-                                        )
+                                        );
                                         }
                                     } else {
                                         error!(
@@ -1317,9 +1363,12 @@ impl Runtime {
                                             info!(
                                                 "Alice subscribes for monero address with syncer"
                                             );
-                                            let watch_addr_task = self
-                                                .syncer_state
-                                                .watch_addr_xmr(spend, accordant_shared_keys)?;
+                                            let watch_addr_task =
+                                                self.syncer_state.watch_addr_xmr(
+                                                    spend,
+                                                    accordant_shared_keys,
+                                                    self.state.swap_role(),
+                                                )?;
                                             senders.send_to(
                                                 ServiceBus::Ctl,
                                                 self.identity(),
@@ -1442,16 +1491,18 @@ impl Runtime {
             Request::Tx(Tx::Lock(btc_lock)) => {
                 if let State::Bob(BobState::CorearbB(..)) = self.state {
                     self.broadcast(btc_lock, TxLabel::Lock, senders)?;
-                    if let Some(Params::Bob(BobParameters {
+                    if let Some(Params::Alice(AliceParameters {
                         spend,
                         accordant_shared_keys,
                         ..
                     })) = self.remote_params.clone()
                     {
                         info!("Bob subscribes for monero address with syncer");
-                        let task = self
-                            .syncer_state
-                            .watch_addr_xmr(spend, accordant_shared_keys)?;
+                        let task = self.syncer_state.watch_addr_xmr(
+                            spend,
+                            accordant_shared_keys,
+                            self.state.swap_role(),
+                        )?;
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -1459,7 +1510,7 @@ impl Runtime {
                             Request::SyncerTask(task),
                         )?
                     } else {
-                        error!("remote_params not set")
+                        error!("remote_params not set, state {}", self.state)
                     }
                 } else {
                     error!("Wrong state: must be CorearbB, found {}", &self.state)
