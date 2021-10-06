@@ -50,7 +50,7 @@ use farcaster_core::{
     monero::Monero,
     negotiation::{Offer, PublicOffer},
     protocol_message::{
-        self, CommitAliceParameters, CommitBobParameters, CommitProof, RevealAliceParameters,
+        self, CommitAliceParameters, CommitBobParameters, RevealAliceParameters,
         RevealBobParameters, RevealProof,
     },
     role::TradeRole,
@@ -109,7 +109,6 @@ impl Msg {
             Msg::MakerCommit(m) => match m {
                 Commit::AliceParameters(n) => n.swap_id,
                 Commit::BobParameters(n) => n.swap_id,
-                Commit::Proof(n) => n.swap_id,
             },
             Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
             Msg::Reveal(m) => match m {
@@ -183,7 +182,6 @@ impl RequestId {
 pub enum Commit {
     AliceParameters(CommitAliceParameters<BtcXmr>),
     BobParameters(CommitBobParameters<BtcXmr>),
-    Proof(CommitProof<BtcXmr>),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]

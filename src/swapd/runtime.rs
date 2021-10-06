@@ -61,7 +61,7 @@ use farcaster_core::{
     monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::{Offer, PublicOffer},
     protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CommitProof,
+        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters,
         CoreArbitratingSetup, RefundProcedureSignatures,
     },
     role::{Arbitrating, SwapRole, TradeRole},
@@ -993,7 +993,6 @@ impl Runtime {
                                 },
                             )
                         })?;
-                let local_commit_proof = self.taker_commit_proof(senders, local_proof.clone());
                 let (next_state, public_offer) = match (self.state.clone(), funding_address) {
                     (State::Bob(BobState::StartB(local_trade_role, public_offer)), Some(addr)) => {
                         Ok((
@@ -1852,32 +1851,6 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(senders, &enquirer, msg)?;
-
-        Ok(commitment)
-    }
-
-    pub fn taker_commit_proof(
-        &mut self,
-        senders: &mut Senders,
-        proof: Proof<BtcXmr>,
-    ) -> Result<request::Commit, Error> {
-        let msg = format!(
-            "{} {} with id {:#}",
-            "Proposing to the Maker".bright_blue_bold(),
-            "that I take the swap offer".bright_blue_bold(),
-            self.swap_id().bright_blue_italic()
-        );
-        info!("{}", &msg);
-        let engine = CommitmentEngine;
-        let commitment = request::Commit::Proof(CommitProof::commit_to_bundle(
-            self.swap_id(),
-            &engine,
-            proof,
-        ));
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();
