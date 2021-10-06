@@ -207,7 +207,6 @@ impl MoneroRpc {
                     .open_wallet(address.to_string(), Some(password))
                     .await?;
                 debug!("Wallet successfully open {:?}", res)
-
             }
             Ok(res) => {
                 debug!("Wallet successfully open {:?}", res)
