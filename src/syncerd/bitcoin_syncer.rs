@@ -27,7 +27,7 @@ use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
 use internet2::ZMQ_CONTEXT;
-use lnpbp::Chain;
+use lnpbp::chain::Chain;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;

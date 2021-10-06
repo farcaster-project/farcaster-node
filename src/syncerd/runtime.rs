@@ -35,7 +35,7 @@ use internet2::{
     presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
 };
 use lnp::{message, Messages, TempChannelId as TempSwapId};
-use lnpbp::Chain;
+use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 

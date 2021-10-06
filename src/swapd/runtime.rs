@@ -73,7 +73,7 @@ use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
 use internet2::{
     session, CreateUnmarshaller, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
-use lnpbp::Chain;
+use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use monero::cryptonote::hash::keccak_256;
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
@@ -430,6 +430,7 @@ impl SyncerState {
             let address = monero::Address::from_viewpair(monero::Network::Stagenet, &keypair);
             info!("Alice, please send xmr to {}", address.addr());
         }
+
         let from_height = self.from_height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
@@ -1207,7 +1208,65 @@ impl Runtime {
                     }) if self.syncer_state.tx_tasks.get(id).is_some() => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
+                    Event::AddressTransaction(AddressTransaction {
+                        id,
+                        hash,
+                        amount,
+                        block,
+                        tx,
+                    }) => {
+                        let id = self.syncer_state.new_taskid();
 
+                        let watch_tx = Task::WatchTransaction(WatchTransaction {
+                            id,
+                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
+                            hash: hash.clone(),
+                            confirmation_bound: self.syncer_state.confirmation_bound,
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Syncer(Coin::Monero),
+                            Request::SyncerTask(watch_tx),
+                        )?;
+                    }
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        block,
+                        confirmations: Some(confirmations),
+                    }) if confirmations > &self.temporal_safety.xmr_finality_thr
+                        && self.state.swap_role() == SwapRole::Bob
+                        && self.pending_requests.get(&source).is_some() =>
+                    {
+                        error!("not checking tx rcvd is accordant lock");
+                        let PendingRequest {
+                            request,
+                            dest,
+                            bus_id,
+                        } = self
+                            .pending_requests
+                            .remove(&source)
+                            .expect("Checked above");
+                        if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
+                            (&request, &bus_id)
+                        {
+                            let next_state = match self.state {
+                                State::Bob(BobState::CorearbB(..)) => {
+                                    Ok(State::Bob(BobState::BuySigB))
+                                }
+                                _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
+                            }?;
+                            info!("sending buyproceduresignature at state {}", &self.state);
+                            senders.send_to(bus_id, self.identity(), dest, request)?;
+                            info!("State transition: {}", next_state.bright_white_bold());
+                            self.state = next_state;
+                        } else {
+                            error!(
+                                "Not buyproceduresignatures {} or not Msg bus found {}",
+                                request, bus_id
+                            );
+                        }
+                    }
                     Event::TaskAborted(_) => {}
                     event => {
                         error!("event not handled {}", event)
@@ -1319,6 +1378,39 @@ impl Runtime {
 
                             match txlabel {
                                 TxLabel::Funding => {}
+                                TxLabel::Lock if !self.state.xmr_locked() => {
+                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                        buy_published: false,
+                                        xmr_locked: false,
+                                    })) = self.state
+                                    {
+                                        if let Some(Params::Alice(AliceParameters {
+                                            spend,
+                                            accordant_shared_keys,
+                                            ..
+                                        })) = self.remote_params.clone()
+                                        {
+                                            error!("here alice watches accordant lock address, broadcast manually");
+                                            info!(
+                                                "Alice subscribes for monero address with syncer"
+                                            );
+                                            let watch_addr_task =
+                                                self.syncer_state.watch_addr_xmr(
+                                                    spend,
+                                                    accordant_shared_keys,
+                                                    self.state.swap_role(),
+                                                )?;
+                                            senders.send_to(
+                                                ServiceBus::Ctl,
+                                                self.identity(),
+                                                ServiceId::Syncer(Coin::Monero),
+                                                Request::SyncerTask(watch_addr_task),
+                                            )?;
+                                        } else {
+                                            error!("not Alice or remote_params not set for Alice, state {}", self.state)
+                                        }
+                                    }
+                                }
                                 TxLabel::Lock
                                     if !self.state.xmr_locked()
                                         && self.remote_params.is_some()
@@ -1399,7 +1491,35 @@ impl Runtime {
                                     )
                                     }
                                 }
-
+                                TxLabel::Lock if self.state.swap_role() == SwapRole::Alice => {
+                                    error!("make state strict");
+                                    if let State::Alice(..) = self.state {
+                                        error!("here alice watchs accordant lock address, and broadcast accordant lock");
+                                        if let Some(Params::Alice(AliceParameters {
+                                            spend,
+                                            accordant_shared_keys,
+                                            ..
+                                        })) = self.remote_params.clone()
+                                        {
+                                            info!(
+                                                "Alice subscribes for monero address with syncer"
+                                            );
+                                            let watch_addr_task =
+                                                self.syncer_state.watch_addr_xmr(
+                                                    spend,
+                                                    accordant_shared_keys,
+                                                    self.state.swap_role(),
+                                                )?;
+                                            senders.send_to(
+                                                ServiceBus::Ctl,
+                                                self.identity(),
+                                                ServiceId::Syncer(Coin::Monero),
+                                                Request::SyncerTask(watch_addr_task),
+                                            )?;
+                                            error!("xmr lock transaction not available, get it from wallet, commented out code");
+                                        }
+                                    }
+                                }
                                 TxLabel::Cancel
                                     if self.temporal_safety.valid_punish(*confirmations) =>
                                 {

@@ -20,10 +20,11 @@ use std::str::FromStr;
 use bitcoin::hashes::hex::{self, ToHex};
 use internet2::{zmqsocket, NodeAddr, ZmqType};
 // use lnp::{TempChannelId as TempSwapId};
-use lnpbp::strict_encoding::{strict_deserialize, strict_serialize};
 #[cfg(feature = "node")]
 use microservices::node::TryService;
 use microservices::{esb, rpc};
+use strict_encoding::{strict_deserialize, strict_serialize};
+use strict_encoding::{StrictDecode, StrictEncode};
 
 use farcaster_core::swap::SwapId;
 
@@ -46,7 +47,6 @@ use crate::Error;
     StrictEncode,
     StrictDecode,
 )]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 pub struct ClientName([u8; 32]);
 
 impl Display for ClientName {
@@ -82,7 +82,6 @@ impl FromStr for ClientName {
 
 /// Identifiers of daemons participating in LNP Node
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, From, StrictEncode, StrictDecode)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 pub enum ServiceId {
     #[display("loopback")]
     Loopback,
@@ -225,7 +224,7 @@ where
                 .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Hello)?;
         }
 
-        let identity = self.esb.handler_ref().identity();
+        let identity = self.esb.handler().identity();
         info!("{} started", identity);
 
         self.esb.run_or_panic(&identity.to_string());

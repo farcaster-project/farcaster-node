@@ -75,8 +75,8 @@ use bitcoin::secp256k1::{
     rand::{rngs::ThreadRng, thread_rng},
     PublicKey, Secp256k1, SecretKey,
 };
-use lnpbp::strict_encoding;
-use lnpbp::strict_encoding::{StrictDecode, StrictEncode};
+use strict_encoding;
+use strict_encoding::{StrictDecode, StrictEncode};
 
 /// Hold secret keys and seeds
 #[derive(StrictEncode, StrictDecode, Clone, PartialEq, Eq, Debug)]

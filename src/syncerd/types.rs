@@ -1,5 +1,6 @@
+use strict_encoding::{StrictDecode, StrictEncode};
+
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub enum AddressAddendum {
     Monero(XmrAddressAddendum),
@@ -7,7 +8,6 @@ pub enum AddressAddendum {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct BtcAddressAddendum {
     /// The address the syncer will watch and query.
@@ -19,7 +19,6 @@ pub struct BtcAddressAddendum {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct XmrAddressAddendum {
     pub spend_key: [u8; 32],
@@ -28,14 +27,12 @@ pub struct XmrAddressAddendum {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct Abort {
     pub id: u32,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct WatchHeight {
     pub id: u32,
@@ -43,7 +40,6 @@ pub struct WatchHeight {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct WatchAddress {
     pub id: u32,
@@ -53,7 +49,6 @@ pub struct WatchAddress {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub enum Boolean {
     True,
@@ -70,7 +65,6 @@ impl From<Boolean> for bool {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct WatchTransaction {
     pub id: u32,
@@ -80,7 +74,6 @@ pub struct WatchTransaction {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct BroadcastTransaction {
     pub id: u32,
@@ -90,7 +83,6 @@ pub struct BroadcastTransaction {
 /// Tasks created by the daemon and handle by syncers to process a blockchain
 /// and generate [`Event`] back to the syncer.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub enum Task {
     Abort(Abort),
@@ -101,7 +93,6 @@ pub enum Task {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct TaskAborted {
     pub id: u32,
@@ -109,7 +100,6 @@ pub struct TaskAborted {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct HeightChanged {
     pub id: u32,
@@ -118,7 +108,6 @@ pub struct HeightChanged {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct AddressTransaction {
     pub id: u32,
@@ -129,7 +118,6 @@ pub struct AddressTransaction {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct TransactionConfirmations {
     pub id: u32,
@@ -138,7 +126,6 @@ pub struct TransactionConfirmations {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub struct TransactionBroadcasted {
     pub id: u32,
@@ -150,7 +137,6 @@ pub struct TransactionBroadcasted {
 /// Events are identified with a unique 32-bits integer that match the [`Task`]
 /// id.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
-#[strict_encoding_crate(lnpbp::strict_encoding)]
 #[display(Debug)]
 pub enum Event {
     /// Notify the daemon the blockchain height changed.
