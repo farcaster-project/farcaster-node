@@ -37,9 +37,9 @@ use farcaster_core::{
         FullySignedPunish, FullySignedRefund, FundingTransaction, SignedAdaptorBuy,
         SignedAdaptorRefund, SignedArbitratingLock,
     },
-    crypto::{ArbitratingKeyId, GenerateKey},
+    crypto::{ArbitratingKeyId, GenerateKey, SharedKeyId},
     crypto::{CommitmentEngine, ProveCrossGroupDleq},
-    monero::Monero,
+    monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::PublicOffer,
     protocol_message::{
         BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
@@ -95,6 +95,7 @@ pub enum Wallet {
         Option<BobParameters<BtcXmr>>,
         Option<CoreArbitratingSetup<BtcXmr>>,
         Option<Signature>,
+        Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
     ),
     Bob(BobState),
 }
@@ -336,6 +337,7 @@ impl Runtime {
                                         None,
                                         None,
                                         None,
+                                        None,
                                     ),
                                 );
 
@@ -379,6 +381,7 @@ impl Runtime {
                             bob_params, // None
                             _core_arb_txs,
                             alice_cancel_sig, // None
+                            _,
                         )) = self.wallets.get_mut(&swap_id)
                         {
                             if let Some(_) = bob_commit {
@@ -425,6 +428,7 @@ impl Runtime {
                             bob_params, // None
                             _core_arb_txs,
                             alice_cancel_sig,
+                            _,
                         )) = self.wallets.get_mut(&swap_id)
                         {
                             if let Some(remote_params) = bob_params {
@@ -649,6 +653,7 @@ impl Runtime {
                     Some(bob_parameters),
                     core_arb_setup,   // None
                     alice_cancel_sig, // None
+                    adaptor_refund,   // None
                 )) = self.wallets.get_mut(&swap_id)
                 {
                     if core_arb_setup.is_some() {
@@ -669,6 +674,7 @@ impl Runtime {
                         &core_arb_txs,
                         public_offer,
                     )?;
+                    *adaptor_refund = Some(signed_adaptor_refund.clone());
                     let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
                         key_manager,
                         alice_params,
@@ -741,6 +747,7 @@ impl Runtime {
                     Some(bob_parameters),
                     Some(core_arb_setup),
                     Some(alice_cancel_sig),
+                    _,
                 )) = self.wallets.get_mut(&swap_id)
                 {
                     let core_arb_txs = &(core_arb_setup.clone()).into();
@@ -923,6 +930,7 @@ impl Runtime {
                                     None,
                                     None,
                                     None,
+                                    None,
                                 ),
                             );
                         } else {
@@ -966,7 +974,7 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::Tx(Tx::Buy(tx)) => {
+            Request::Tx(Tx::Buy(buy_tx)) => {
                 if let Some(Wallet::Bob(BobState {
                     bob,
                     key_manager,
@@ -976,13 +984,67 @@ impl Runtime {
                     ..
                 })) = self.wallets.get_mut(&get_swap_id(source.clone())?)
                 {
-                    let sk = bob.recover_accordant_assets(
+                    let sk_a_btc = bob.recover_accordant_assets(
                         key_manager,
                         alice_params,
                         adaptor_buy.clone(),
-                        tx,
+                        buy_tx,
                     );
-                    info!("Extracted monero key from Buy tx: {}", sk);
+                    let mut sk_a_btc_buf: Vec<u8> = (*sk_a_btc.as_ref()).into();
+                    sk_a_btc_buf.reverse();
+                    let sk_a = monero::PrivateKey::from_slice(sk_a_btc_buf.as_ref())
+                        .expect("Valid Monero Private Key");
+                    info!("Extracted alice's monero key from Buy tx: {}", sk_a);
+
+                    let sk_b = key_manager.get_or_derive_monero_spend_key()?;
+                    info!("Full secret monero spending key: {}", sk_a + sk_b);
+
+                    let view_key = *alice_params
+                        .accordant_shared_keys
+                        .clone()
+                        .into_iter()
+                        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                        .unwrap()
+                        .elem();
+                    info!("Full secret monero view key: {}", view_key);
+                }
+            }
+            Request::Tx(Tx::Refund(refund_tx)) => {
+                if let Some(Wallet::Alice(
+                    alice,
+                    _,
+                    key_manager,
+                    _,
+                    _,
+                    Some(bob_params), //remote
+                    Some(_),
+                    _,
+                    Some(adaptor_refund),
+                )) = self.wallets.get_mut(&get_swap_id(source.clone())?)
+                {
+                    let sk_b_btc = alice.recover_accordant_assets(
+                        key_manager,
+                        bob_params,
+                        adaptor_refund.clone(),
+                        refund_tx,
+                    );
+                    let mut sk_b_btc_buf: Vec<u8> = (*sk_b_btc.as_ref()).into();
+                    sk_b_btc_buf.reverse();
+                    let sk_b = monero::PrivateKey::from_slice(sk_b_btc_buf.as_ref())
+                        .expect("Valid Monero Private Key");
+                    info!("Extracted alice's monero key from Buy tx: {}", sk_b);
+
+                    let sk_c = key_manager.get_or_derive_monero_spend_key()?;
+                    info!("Full secret monero spending key: {}", sk_b + sk_c);
+
+                    let view_key = *bob_params
+                        .accordant_shared_keys
+                        .clone()
+                        .into_iter()
+                        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                        .unwrap()
+                        .elem();
+                    info!("Full secret monero view key: {}", view_key);
                 }
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
