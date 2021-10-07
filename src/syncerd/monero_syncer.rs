@@ -176,8 +176,8 @@ impl MoneroRpc {
         network: monero::Network,
     ) -> Result<AddressNotif, Error> {
         let keypair = monero::ViewPair {
-            spend: monero::PublicKey::from_slice(&address_addendum.spend_key.clone()).unwrap(),
-            view: monero::PrivateKey::from_slice(&address_addendum.view_key.clone()).unwrap(),
+            spend: address_addendum.spend_key,
+            view: address_addendum.view_key,
         };
         let address = monero::Address::from_viewpair(network, &keypair);
         let wallet_client = monero_rpc::RpcClient::new(self.wallet_rpc_url.clone());
@@ -207,7 +207,6 @@ impl MoneroRpc {
                     .open_wallet(address.to_string(), Some(password))
                     .await?;
                 debug!("Wallet successfully open {:?}", res)
-
             }
             Ok(res) => {
                 debug!("Wallet successfully open {:?}", res)

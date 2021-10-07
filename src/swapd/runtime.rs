@@ -434,8 +434,8 @@ impl SyncerState {
         let from_height = self.from_height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
-            spend_key: spend.to_bytes(),
-            view_key: view_key.to_bytes(),
+            spend_key: spend,
+            view_key,
             from_height,
         });
 

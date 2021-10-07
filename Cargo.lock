@@ -1724,6 +1724,7 @@ dependencies = [
  "sealed",
  "serde 1.0.127",
  "serde-big-array",
+ "strict_encoding",
  "thiserror",
  "tiny-keccak",
 ]

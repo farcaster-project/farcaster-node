@@ -21,8 +21,8 @@ pub struct BtcAddressAddendum {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct XmrAddressAddendum {
-    pub spend_key: [u8; 32],
-    pub view_key: [u8; 32],
+    pub spend_key: monero::PublicKey,
+    pub view_key: monero::PrivateKey,
     pub from_height: u64,
 }
 
