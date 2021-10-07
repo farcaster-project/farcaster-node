@@ -28,6 +28,35 @@ pub struct XmrAddressAddendum {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
+pub struct SweepAddress {
+    pub id: u32,
+    pub addendum: SweepAddressAddendum,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub enum SweepAddressAddendum {
+    Monero(SweepXmrAddress),
+    Bitcoin(SweepBitcoinAddress),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct SweepXmrAddress {
+    pub spend_key: [u8; 32],
+    pub view_key: [u8; 32],
+    pub address: String,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct SweepBitcoinAddress {
+    pub private_key: [u8; 32],
+    pub address: bitcoin::Address,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
 pub struct Abort {
     pub id: u32,
 }
