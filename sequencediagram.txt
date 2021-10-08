@@ -34,21 +34,19 @@ t_farcasterd -> t_farcasterd : launch\npeerd connect
 t_wallet <- t_farcasterd : Ctl TakeOffer
 t_wallet -> t_wallet : create taker wallet
 t_wallet -> t_farcasterd : Ctl LaunchSwap
-t_wallet -> t_farcasterd : Ctl RevealProof
 t_swap -> t_farcasterd : Ctl Hello
 t_farcasterd -> t_farcasterd:launch syncer
 t_swap <- t_farcasterd : Ctl TakeSwap
-t_swap <- t_farcasterd : Msg RevealProof
+t_wallet -> t_swap : Msg RevealProof
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
 m_farcasterd -> m_wallet : Msg TakerCommit
 m_wallet -> m_wallet : create maker wallet
 m_wallet -> m_farcasterd : Ctl LaunchSwap
-m_wallet -> m_farcasterd : Ctl RevealProof
 m_swap -> m_farcasterd : Ctl Hello
 m_farcasterd -> m_farcasterd:launch syncer
 m_farcasterd -> m_swap : Ctl MakeSwap
-m_farcasterd -> m_swap : Msg RevealProof
+m_wallet -> m_swap : Msg RevealProof
 
 m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
