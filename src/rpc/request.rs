@@ -55,7 +55,7 @@ use farcaster_core::{
     },
     role::TradeRole,
     swap::btcxmr::BtcXmr,
-    swap::SwapId,
+    swap::{Swap, SwapId},
 };
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
@@ -219,7 +219,7 @@ pub struct LaunchSwap {
     pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub local_params: Params,
-    pub local_proof: Proof<BtcXmr>,
+    // pub local_proof: Proof<BtcXmr>,
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
     pub funding_address: Option<bitcoin::Address>,
@@ -508,7 +508,7 @@ pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
     pub local_params: Params,
-    pub local_proof: Proof<BtcXmr>,
+    // pub local_proof: Proof<BtcXmr>,
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
     pub funding_address: Option<bitcoin::Address>,
@@ -729,5 +729,12 @@ impl Into<Reveal> for (SwapId, Params) {
             (swap_id, Params::Alice(params)) => Reveal::AliceParameters((swap_id, params).into()),
             (swap_id, Params::Bob(params)) => Reveal::BobParameters((swap_id, params).into()),
         }
+    }
+}
+
+impl From<(SwapId, Proof<BtcXmr>)> for Reveal
+{
+    fn from(tuple: (SwapId, Proof<BtcXmr>)) -> Self {
+        Reveal::Proof((tuple.0, tuple.1).into())
     }
 }

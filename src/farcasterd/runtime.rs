@@ -14,7 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
-    rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token},
+    rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Reveal, Token},
     swapd::get_swap_id,
     syncerd::opts::Coin,
     walletd::NodeSecrets,
@@ -345,7 +345,7 @@ impl Runtime {
                 local_trade_role,
                 public_offer,
                 local_params,
-                local_proof,
+                // local_proof,
                 swap_id,
                 remote_commit,
                 funding_address,
@@ -364,7 +364,7 @@ impl Runtime {
                         local_trade_role,
                         public_offer,
                         local_params,
-                        local_proof,
+                        // local_proof,
                         swap_id,
                         remote_commit,
                         funding_address,
@@ -374,6 +374,10 @@ impl Runtime {
                     error!("{}", msg);
                     Error::Farcaster(msg);
                 }
+            }
+            Request::Protocol(Msg::Reveal(Reveal::Proof(_proof))) => {
+                let swap_id = get_swap_id(source.clone())?;
+                senders.send_to(ServiceBus::Msg, source, ServiceId::Swap(swap_id), request)?;
             }
             Request::Params(_) => {
                 get_swap_id(source)?;
@@ -846,7 +850,7 @@ fn launch_swapd(
     local_trade_role: TradeRole,
     public_offer: PublicOffer<BtcXmr>,
     local_params: Params,
-    local_proof: Proof<BtcXmr>,
+    // local_proof: Proof<BtcXmr>,
     swap_id: SwapId,
     remote_commit: Option<Commit>,
     funding_address: Option<bitcoin::Address>,
@@ -873,7 +877,7 @@ fn launch_swapd(
             peerd,
             report_to,
             local_params,
-            local_proof,
+            // local_proof,
             swap_id,
             remote_commit,
             funding_address,

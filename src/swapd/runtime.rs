@@ -61,8 +61,8 @@ use farcaster_core::{
     monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::{Offer, PublicOffer},
     protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters,
-        CoreArbitratingSetup, RefundProcedureSignatures,
+        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+        RefundProcedureSignatures,
     },
     role::{Arbitrating, SwapRole, TradeRole},
     swap::btcxmr::BtcXmr,
@@ -639,8 +639,10 @@ impl Runtime {
                         }
 
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
+                        let reveal_proof: Reveal = (msg.swap_id(), local_proof.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
+                        self.send_peer(senders, Msg::Reveal(reveal_proof))?;
                         info!("State transition: {}", next_state.bright_white_bold());
                         self.state = next_state;
                     }
@@ -692,7 +694,7 @@ impl Runtime {
                                     ))
                                 } else {
                                     Err(Error::Farcaster(s!(
-                                        "there is already a tx registered iwth that id"
+                                        "there is already a tx registered with that id"
                                     )))
                                 }
                             }
@@ -712,6 +714,7 @@ impl Runtime {
                             ))),
                         }?;
 
+                        // this code is dead?
                         // parameter processing irrespective of maker & taker role
                         let core_wallet = CommitmentEngine;
                         self.remote_params = match reveal {
@@ -737,13 +740,15 @@ impl Runtime {
                                     Err(Error::Farcaster(err_msg.to_string()))?
                                 }
                             },
-                            Reveal::Proof(reveal) => todo!(),
+                            Reveal::Proof(_reveal) => {
+                                // commitment verification performed by walletd - so what's the point here?
+                            },
                         };
                         info!("{:?} sets remote_params", self.state.swap_role());
 
                         // pass request on to wallet daemon so that it can set remote params
                         match self.state {
-                            // validaded state above, no need to check again
+                            // validated state above, no need to check again
                             State::Alice(..) => self.send_wallet(msg_bus, senders, request)?,
                             State::Bob(..) => {
                                 // sending this request will initialize the
@@ -778,12 +783,14 @@ impl Runtime {
                             State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: TradeRole::Maker,
                                 local_params,
+                                Some(local_proof)
                                 ..
                             }))
                             | State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: TradeRole::Maker,
                                     local_params,
+                                    Some(local_proof),
                                     ..
                                 },
                                 _,
@@ -814,7 +821,10 @@ impl Runtime {
 
                                 trace!("received commitment from counterparty, can now reveal");
                                 let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
+                                let reveal_proof: Reveal =
+                                    (self.swap_id(), local_proof.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
+                                self.send_peer(senders, Msg::Reveal(reveal_proof))?;
                                 info!("State transition: {}", next_state.bright_white_bold());
                                 self.state = next_state;
                             }
@@ -963,7 +973,7 @@ impl Runtime {
                 peerd,
                 report_to,
                 local_params,
-                local_proof,
+                // local_proof,
                 swap_id,
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
@@ -1040,7 +1050,7 @@ impl Runtime {
                 peerd,
                 report_to,
                 local_params,
-                local_proof,
+                // local_proof,
                 swap_id,
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
