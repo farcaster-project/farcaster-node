@@ -323,17 +323,11 @@ impl Runtime {
                                 remote_commit: Some(remote_commit),
                                 funding_address: Some(funding_addr),
                             };
-                            let reveal_proof: Reveal = (swap_id, local_proof).into();
                             self.swaps.insert(swap_id, None);
                             self.send_ctl(
                                 senders,
                                 ServiceId::Farcasterd,
                                 Request::LaunchSwap(launch_swap),
-                            )?;
-                            self.send_ctl(
-                                senders,
-                                ServiceId::Farcasterd,
-                                Request::Protocol(Msg::Reveal(reveal_proof)),
                             )?;
                         } else {
                             error!("Wallet already existed");

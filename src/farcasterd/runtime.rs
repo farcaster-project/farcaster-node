@@ -57,7 +57,7 @@ use crate::{Config, Error, LogStyle, Service, ServiceId};
 use farcaster_core::{
     blockchain::FeePriority,
     bundle::{
-        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction, Proof,
+        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
         SignedArbitratingLock,
     },
     negotiation::PublicOffer,
@@ -374,10 +374,6 @@ impl Runtime {
                     error!("{}", msg);
                     Error::Farcaster(msg);
                 }
-            }
-            Request::Protocol(Msg::Reveal(Reveal::Proof(_proof))) => {
-                let swap_id = get_swap_id(source.clone())?;
-                senders.send_to(ServiceBus::Msg, source, ServiceId::Swap(swap_id), request)?;
             }
             Request::Params(_) => {
                 get_swap_id(source)?;
