@@ -562,10 +562,64 @@ impl Runtime {
                         }
                     }
                     Reveal::Proof(reveal) => {
-                        todo!()
-                    }
-                    Reveal::Proof(reveal) => {
-                        todo!()
+                        match self.wallets.get_mut(&swap_id) {
+                            Some(Wallet::Alice(
+                                ..,
+                                bob_proof, // Should be Some() at this stage
+                                _,
+                                _,
+                            )) => {
+                                *bob_proof = Some(Proof {
+                                    proof: reveal.proof,
+                                });
+                                todo!()
+                            }
+                            Some(Wallet::Bob(BobState {
+                                wallet_ix: _,
+                                bob: _,
+                                local_params: _,
+                                local_proof: _,
+                                key_manager,
+                                pub_offer: _,
+                                funding_tx: _,
+                                remote_commit_params: _,
+                                remote_params,
+                                remote_proof,
+                                core_arb_setup: _,
+                                adaptor_buy: _,
+                            })) => {
+                                match (remote_params, remote_proof.clone()) {
+                                    (None, None) => {
+                                        *remote_proof = Some(Proof {
+                                            proof: reveal.proof,
+                                        });
+                                    }
+                                    (Some(params), None) => {
+                                        let verification_result = key_manager.verify_proof(
+                                            &params.spend,
+                                            &params.adaptor,
+                                            reveal.proof.clone(),
+                                        );
+                                        if verification_result.is_ok() {
+                                            *remote_proof = Some(Proof {
+                                                proof: reveal.proof,
+                                            });
+                                        } else {
+                                            error!("DLEQ proof invalid")
+                                        }
+                                    }
+                                    (None, Some(_)) => {
+                                        error!("already set DLEQ proof")
+                                    }
+                                    (Some(_), Some(_)) => {
+                                        error!("already set DLEQ proof and parameters")
+                                    }
+                                };
+                            }
+                            None => {
+                                error!("only Some(Wallet::_)");
+                            }
+                        }
                     }
                 }
             }
