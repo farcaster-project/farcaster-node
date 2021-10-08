@@ -965,7 +965,7 @@ impl Runtime {
                         return Ok(());
                     }
                     funding_update(funding, tx)?;
-                    info!("bob's wallet informs swapd that funding was succesfully updated");
+                    info!("bob's wallet informs swapd that funding was successfully updated");
                     senders.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
