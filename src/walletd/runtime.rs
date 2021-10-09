@@ -377,11 +377,6 @@ impl Runtime {
                                     ServiceId::Farcasterd,
                                     Request::LaunchSwap(launch_swap),
                                 )?;
-                                self.send_ctl(
-                                    senders,
-                                    ServiceId::Farcasterd,
-                                    Request::Protocol(Msg::Reveal((swap_id, proof).into())),
-                                )?;
                             } else {
                                 error!("Not Commit::Bob");
                             }
@@ -1003,11 +998,6 @@ impl Runtime {
                             source,
                             ServiceId::Farcasterd,
                             Request::LaunchSwap(launch_swap),
-                        )?;
-                        self.send_ctl(
-                            senders,
-                            ServiceId::Farcasterd,
-                            Request::Protocol(Msg::Reveal((swap_id, local_proof).into())),
                         )?;
                     }
                     SwapRole::Alice => {
