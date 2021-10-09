@@ -1045,6 +1045,10 @@ impl Runtime {
                 info!("State transition: {}", next_state.bright_white_bold());
                 self.state = next_state;
             }
+            Request::Protocol(Msg::Reveal(reveal)) => {
+                info!("forwarding reveal: {:?}", reveal);
+                self.send_peer(senders, Msg::Reveal(reveal))?;
+            }
 
             Request::MakeSwap(InitSwap {
                 peerd,

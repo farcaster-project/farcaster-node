@@ -387,7 +387,8 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::MakerCommit(commit)) => {
-                if get_swap_id(source)? != Msg::MakerCommit(commit.clone()).swap_id() {
+                let swap_id = get_swap_id(source.clone())?;
+                if swap_id != Msg::MakerCommit(commit.clone()).swap_id() {
                     error!("wrong swapid");
                     return Ok(());
                 }
@@ -437,6 +438,30 @@ impl Runtime {
                         }
                     }
                 }
+                let proof: &Proof<BtcXmr> = match self.wallets.get(&swap_id).unwrap() {
+                    Wallet::Alice(
+                        _,
+                        _,
+                        local_proof,
+                        ..
+                    ) => local_proof,
+                    Wallet::Bob(
+                    BobState{ wallet_ix: _,
+                        bob: _,
+                        local_params: _,
+                        local_proof,
+                        ..
+ }) => local_proof,
+
+                };
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Wallet,
+                    // TODO: (maybe) what if the message responded to is not sent by swapd?
+                    source,
+                    Request::Protocol(Msg::Reveal((swap_id, proof.clone()).into())),
+                )?;
+
             }
             Request::Protocol(Msg::Reveal(reveal)) => {
                 let swap_id = get_swap_id(source.clone())?;
@@ -1065,6 +1090,7 @@ impl Runtime {
                     senders.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
+                        // TODO: (maybe) what if this message responded to is not sent by swapd?
                         source,
                         Request::FundingUpdated,
                     )?;
