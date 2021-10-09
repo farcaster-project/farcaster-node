@@ -67,15 +67,15 @@ m_swap<-m_wallet:If Bob, Ctl FundingUpdated
 m_swap -> m_wallet : SEND PENDING Msg RevealProof (taker is sender) 
 m_swap -> m_wallet : SEND PENDING Msg Reveal (taker is sender)
 m_wallet -> m_swap : Msg RevealProof (maker is sender)
-peerd <- m_swap : Msg Reveal (maker is sender)
 peerd <- m_swap : Msg RevealProof (maker is sender)
-peerd -> t_swap : Msg Reveal (maker is sender)
+peerd <- m_swap : Msg Reveal (maker is sender)
 peerd -> t_swap : Msg RevealProof (maker is sender)
+peerd -> t_swap : Msg Reveal (maker is sender)
 t_syncer -> t_swap:If Bob, Arbitrating Funding event
 t_swap->t_wallet:if Bob, Ctl Tx::Funding
 t_swap<-t_wallet:If Bob, Ctl FundingUpdated
-t_swap -> t_wallet : Msg Reveal (maker is sender)
 t_swap -> t_wallet : Msg RevealProof (maker is sender)
+t_swap -> t_wallet : Msg Reveal (maker is sender)
 ==Commit-Reveal Complete==
 ==Changing semantics: On Commit-Reveal, Maker and Taker were the key roles. From now on Bob or Alice are the key roles. Now t_ is bob_ on the left and m_ is alice_ on the right.==
 ==Swap setup: Bob is left, Alice right==
