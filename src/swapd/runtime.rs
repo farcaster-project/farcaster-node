@@ -1608,6 +1608,9 @@ impl Runtime {
                     Event::TaskAborted(event) => {
                         info!("{}", event)
                     }
+                    Event::SweepSuccess(event) => {
+                        debug!("{}", event)
+                    }
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {

@@ -25,6 +25,7 @@ pub struct SyncerState {
     pub addresses: HashMap<u32, AddressTransactions>,
     pub transactions: HashMap<u32, WatchedTransaction>,
     pub unseen_transactions: HashSet<u32>,
+    pub sweep_addresses: HashMap<u32, SweepAddress>,
     tx_event: TokioSender<SyncerdBridgeEvent>,
     task_count: u32,
 }
@@ -63,6 +64,7 @@ impl SyncerState {
             addresses: HashMap::new(),
             transactions: HashMap::new(),
             unseen_transactions: HashSet::new(),
+            sweep_addresses: HashMap::new(),
             tx_event,
             task_count: 0,
         }
@@ -165,6 +167,38 @@ impl SyncerState {
             }
         }
 
+        // check sweep address tasks
+        let ids: Vec<u32> = self
+            .sweep_addresses
+            .iter()
+            .filter_map(|(id, sweep_address)| {
+                if sweep_address.id == task_id {
+                    return Some(id.clone());
+                } else {
+                    return None;
+                }
+            })
+            .collect();
+        for id in ids.iter() {
+            if let Some(source_id) = self.tasks_sources.get(&id) {
+                if *source_id == source {
+                    self.remove_sweep_address(id);
+                    send_event(
+                        &self.tx_event,
+                        &mut vec![(
+                            Event::TaskAborted(TaskAborted {
+                                id: task_id.clone(),
+                                error: None,
+                            }),
+                            source.clone(),
+                        )],
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
+
         send_event(
             &self.tx_event,
             &mut vec![(
@@ -243,6 +277,18 @@ impl SyncerState {
             },
         );
         self.unseen_transactions.insert(self.task_count);
+    }
+
+    pub fn sweep_address(&mut self, task: SweepAddress, source: ServiceId) {
+        self.task_count += 1;
+        // This is technically valid behavior; immediately prune the task for being past
+        // its lifetime by never inserting it
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+            error!("{}", e);
+            return;
+        }
+        self.sweep_addresses.insert(self.task_count, task.clone());
+        self.tasks_sources.insert(self.task_count, source.clone());
     }
 
     pub async fn change_height(&mut self, height: u64, block: Vec<u8>) {
@@ -434,6 +480,33 @@ impl SyncerState {
         send_event(&self.tx_event, &mut events).await;
     }
 
+    pub async fn success_sweep(&mut self, id: &u32, txids: Vec<Vec<u8>>) {
+        if let Some(sweep_address) = self.sweep_addresses.get(id) {
+            send_event(
+                &self.tx_event,
+                &mut vec![(
+                    Event::SweepSuccess(SweepSuccess {
+                        id: sweep_address.id,
+                        txids,
+                    }),
+                    self.tasks_sources
+                        .get(&id)
+                        .cloned()
+                        .expect("task source missing"),
+                )],
+            )
+            .await;
+            if let Some(ids) = self.lifetimes.get_mut(&sweep_address.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&sweep_address.lifetime);
+                }
+            }
+            self.sweep_addresses.remove(id);
+            self.tasks_sources.remove(id);
+        }
+    }
+
     fn drop_lifetimes(&mut self) {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
@@ -466,6 +539,7 @@ impl SyncerState {
                 self.transactions.remove(task);
                 self.unseen_transactions.remove(task);
                 self.watch_height.remove(task);
+                self.sweep_addresses.remove(task);
                 self.tasks_sources.remove(task);
             }
         } else {
@@ -510,6 +584,19 @@ impl SyncerState {
             }
         }
         self.watch_height.remove(id);
+        self.tasks_sources.remove(id);
+    }
+
+    fn remove_sweep_address(&mut self, id: &u32) {
+        if let Some(sweep_address) = self.sweep_addresses.get(id) {
+            if let Some(ids) = self.lifetimes.get_mut(&sweep_address.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&sweep_address.lifetime);
+                }
+            }
+        }
+        self.sweep_addresses.remove(id);
         self.tasks_sources.remove(id);
     }
 }
@@ -791,6 +878,52 @@ async fn syncer_state_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 0);
+    assert!(event_rx.try_recv().is_ok());
+}
+
+#[tokio::test]
+async fn syncer_state_sweep_addresses() {
+    use std::str::FromStr;
+    use tokio::sync::mpsc::Receiver as TokioReceiver;
+    let (event_tx, mut event_rx): (
+        TokioSender<SyncerdBridgeEvent>,
+        TokioReceiver<SyncerdBridgeEvent>,
+    ) = tokio::sync::mpsc::channel(120);
+    let mut state = SyncerState::new(event_tx.clone());
+    let sweep_task = SweepAddress {
+        id: 0,
+        lifetime: 11,
+        addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
+            view_key: monero::PrivateKey::from_str(
+                "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
+            )
+            .unwrap(),
+            spend_key: monero::PrivateKey::from_str(
+                "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
+            )
+            .unwrap(),
+            address: "address".to_string(),
+        }),
+    };
+
+    state.sweep_address(sweep_task.clone(), ServiceId::Syncer(Coin::Monero));
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.sweep_addresses.len(), 1);
+    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    assert_eq!(state.lifetimes.len(), 0);
+    assert_eq!(state.tasks_sources.len(), 0);
+    assert_eq!(state.sweep_addresses.len(), 0);
+    assert!(event_rx.try_recv().is_ok());
+
+    state.sweep_address(sweep_task, ServiceId::Syncer(Coin::Monero));
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.sweep_addresses.len(), 1);
+    state.success_sweep(&2, vec![vec![0]]).await;
+    assert_eq!(state.lifetimes.len(), 0);
+    assert_eq!(state.tasks_sources.len(), 0);
+    assert_eq!(state.sweep_addresses.len(), 0);
     assert!(event_rx.try_recv().is_ok());
 }
 

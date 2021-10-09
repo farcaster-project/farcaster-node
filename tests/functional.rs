@@ -6,6 +6,9 @@ use farcaster_node::syncerd::bitcoin_syncer::Synclet;
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
 use farcaster_node::syncerd::opts::Coin;
 use farcaster_node::syncerd::runtime::SyncerdTask;
+use farcaster_node::syncerd::SweepAddress;
+use farcaster_node::syncerd::SweepAddressAddendum;
+use farcaster_node::syncerd::SweepXmrAddress;
 use farcaster_node::syncerd::SyncerServers;
 use farcaster_node::syncerd::XmrAddressAddendum;
 use farcaster_node::ServiceId;
@@ -52,6 +55,7 @@ fn bitcoin_syncer_test() {
 #[tokio::test]
 #[ignore] // it's too expensive
 async fn monero_syncer_test() {
+    monero_syncer_sweep_test().await;
     monero_syncer_block_height_test().await;
     monero_syncer_address_test().await;
     monero_syncer_transaction_test().await;
@@ -717,6 +721,81 @@ async fn monero_syncer_block_height_test() {
     println!("height changed");
     let request = get_request_from_message(message);
     assert_received_height_changed(request, blocks);
+}
+
+async fn monero_syncer_sweep_test() {
+    let (regtest, wallet) = setup_monero().await;
+    let address = wallet.get_address(0, None).await.unwrap();
+    let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
+
+    let duration = std::time::Duration::from_secs(20);
+    std::thread::sleep(duration);
+
+    println!("creating syncer");
+
+    // create a monero syncer
+    let (tx, rx_event) = create_monero_syncer();
+
+    let spend_key = monero::PrivateKey::from_str(
+        "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
+    )
+    .unwrap();
+    let view_key = monero::PrivateKey::from_str(
+        "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09",
+    )
+    .unwrap();
+    let keypair = monero::KeyPair {
+        view: view_key,
+        spend: spend_key,
+    };
+    let account_address = monero::Address::from_keypair(monero::Network::Mainnet, &keypair);
+    send_monero(&wallet, account_address, 1).await;
+    let dest_address = "4ADT1BtbxqEWeMKp9GgPr2NeyJXXtNxvoDawpyA4WpzFcGcoHUvXeijE66DNfohE9r1bQYaBiQjEtKE7CtkTdLwiDznFzra";
+    let separate_address = monero::Address::from_str(&dest_address).unwrap();
+
+    let task = SyncerdTask {
+        task: Task::SweepAddress(SweepAddress {
+            id: 0,
+            lifetime: blocks + 220,
+            addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
+                spend_key,
+                view_key,
+                address: dest_address.to_string(),
+            }),
+        }),
+        source: ServiceId::Syncer(Coin::Monero),
+    };
+    tx.send(task).unwrap();
+
+    regtest
+        .generate_blocks(200, separate_address)
+        .await
+        .unwrap();
+    let duration = std::time::Duration::from_secs(20);
+    std::thread::sleep(duration);
+
+    // let args = monero_rpc::SweepAllArgs {
+    //     address: monero::Address::from_str(dest_address).unwrap(),
+    //     account_index: 0,
+    //     subaddr_indices: None,
+    //     priority: monero_rpc::TransferPriority::Default,
+    //     mixin: 10,
+    //     ring_size: 11,
+    //     unlock_time: 0,
+    //     get_tx_keys: Some(true),
+    //     below_amount: None,
+    //     do_not_relay: None,
+    //     get_tx_hex: Some(true),
+    //     get_tx_metadata: Some(true),
+    // };
+    // let res = wallet.sweep_all(args).await.unwrap();
+    // println!("resullt from sweep wallet: {:?}", res);
+
+    println!("waiting for sweep address message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received sweep success message");
+    let request = get_request_from_message(message);
+    println!("request: {:?}", request);
 }
 
 /*
