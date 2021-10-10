@@ -158,7 +158,7 @@ pub struct Runtime {
     enquirer: Option<ServiceId>,
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
-    pending_requests: HashMap<ServiceId, PendingRequest>,
+    pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
@@ -732,7 +732,7 @@ impl Runtime {
                             Reveal::Proof(_reveal) => {
                                 None
                                 // commitment verification performed by walletd - so what's the point here?
-                            },
+                            }
                         };
                         if remote_params_candidate.is_some() {self.remote_params = remote_params_candidate}
                         info!("{:?} sets remote_params", self.state.swap_role());
@@ -756,9 +756,10 @@ impl Runtime {
                                     "This pending request will be called later: {:?}",
                                     &pending_request
                                 );
+                                // let mut pending_requests = self.pending_requests.get_mut(&ServiceId::Wallet);
                                 if self
                                     .pending_requests
-                                    .insert(ServiceId::Wallet, pending_request)
+                                    .insert(ServiceId::Wallet, vec![pending_request])
                                     .is_none()
                                 {
                                 } else {
@@ -1117,27 +1118,66 @@ impl Runtime {
                     return Ok(());
                 }
                 trace!("funding updated received from wallet");
-                if let Some(PendingRequest {
-                    request,
-                    dest,
-                    bus_id,
-                }) = self.pending_requests.remove(&source)
-                {
+                let mut pending_requests = self
+                    .pending_requests
+                    .remove(&source)
+                    .expect("should have pending Reveal{Proof} requests");
+                if pending_requests.len() == 2 {
+                    let PendingRequest {
+                        request: request_parameters,
+                        dest: dest_parameters,
+                        bus_id: bus_id_parameters,
+                    } = pending_requests.pop().expect("checked .len() == 2");
+                    let PendingRequest {
+                        request: request_proof,
+                        dest: dest_proof,
+                        bus_id: bus_id_proof,
+                    } = pending_requests.pop().expect("checked .len() == 2");
                     if let State::Bob(BobState::RevealB(..)) = self.state {
+                        // continue RevealProof
+                        // continuing request by sending it to wallet
+                        if let (
+                            Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
+                            ServiceId::Wallet,
+                            ServiceBus::Msg,
+                        ) = (&request_proof, &dest_proof, &bus_id_proof)
+                        {
+                            trace!(
+                                "sending request {} to {} on bus {}",
+                                &request_proof,
+                                &dest_proof,
+                                &bus_id_proof
+                            );
+                            senders.send_to(
+                                bus_id_proof,
+                                self.identity(),
+                                dest_proof,
+                                request_proof,
+                            )?
+                        } else {
+                            error!("Not the expected request: found {:?}", request);
+                        }
+
+                        // continue Reveal
                         // continuing request by sending it to wallet
                         if let (
                             Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
                             ServiceId::Wallet,
                             ServiceBus::Msg,
-                        ) = (&request, &dest, &bus_id)
+                        ) = (&request_parameters, &dest_parameters, &bus_id_parameters)
                         {
                             trace!(
                                 "sending request {} to {} on bus {}",
-                                &request,
-                                &dest,
-                                &bus_id
+                                &request_parameters,
+                                &dest_parameters,
+                                &bus_id_parameters
                             );
-                            senders.send_to(bus_id, self.identity(), dest, request)?
+                            senders.send_to(
+                                bus_id_parameters,
+                                self.identity(),
+                                dest_parameters,
+                                request_parameters,
+                            )?
                         } else {
                             error!("Not the expected request: found {:?}", request);
                         }
@@ -1145,7 +1185,7 @@ impl Runtime {
                         error!("Expected state RevealB, found {}", self.state);
                     }
                 } else {
-                    error!("pending request not found")
+                    error!("pending requests not found")
                 }
             }
             // Request::SyncerEvent(ref event) => match (&event, source) {
@@ -1200,6 +1240,7 @@ impl Runtime {
                         && self.pending_requests.get(&source).is_some() =>
                     {
                         error!("not checking tx rcvd is accordant lock");
+                        // TODO: Check length of pending_requests == 1
                         let PendingRequest {
                             request,
                             dest,
@@ -1207,7 +1248,9 @@ impl Runtime {
                         } = self
                             .pending_requests
                             .remove(&source)
-                            .expect("Checked above");
+                            .expect("Checked above")
+                            .pop()
+                            .unwrap();
                         if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
                             (&request, &bus_id)
                         {
@@ -1266,6 +1309,7 @@ impl Runtime {
                         && self.pending_requests.get(&source).is_some() =>
                     {
                         error!("not checking tx rcvd is accordant lock");
+                        // TODO: Check length of pending_requests == 1
                         let PendingRequest {
                             request,
                             dest,
@@ -1273,7 +1317,9 @@ impl Runtime {
                         } = self
                             .pending_requests
                             .remove(&source)
-                            .expect("Checked above");
+                            .expect("Checked above")
+                            .pop()
+                            .unwrap();
                         if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
                             (&request, &bus_id)
                         {
@@ -1786,7 +1832,7 @@ impl Runtime {
                     };
                     if self
                         .pending_requests
-                        .insert(ServiceId::Syncer(Coin::Monero), pending_request)
+                        .insert(ServiceId::Syncer(Coin::Monero), vec![pending_request])
                         .is_none()
                     {
                         debug!("deferring BuyProcedureSignature msg");
