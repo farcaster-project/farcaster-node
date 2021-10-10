@@ -586,7 +586,6 @@ impl Runtime {
                                     Ok((
                                         State::Bob(BobState::RevealB(remote_commit.clone())),
                                         local_params,
-                                        // local_proof,
                                     ))
                                 } else {
                                     Err(Error::Farcaster(s!("tx already registered with that id")))
@@ -970,7 +969,6 @@ impl Runtime {
                 peerd,
                 report_to,
                 local_params,
-                // local_proof,
                 swap_id,
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
@@ -1049,7 +1047,6 @@ impl Runtime {
                 peerd,
                 report_to,
                 local_params,
-                // local_proof,
                 swap_id,
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
@@ -1078,7 +1075,6 @@ impl Runtime {
                             CommitC {
                                 trade_role: *trade_role,
                                 local_params: local_params.clone(),
-                                // local_proof: local_proof.clone(),
                                 local_commit: local_commit.clone(),
                                 remote_commit: Some(remote_commit.clone()),
                             },
@@ -1089,7 +1085,6 @@ impl Runtime {
                         Ok(State::Alice(AliceState::CommitA(CommitC {
                             trade_role: *trade_role,
                             local_params: local_params.clone(),
-                            // local_proof: local_proof.clone(),
                             local_commit: local_commit.clone(),
                             remote_commit: Some(remote_commit.clone()),
                         })))
