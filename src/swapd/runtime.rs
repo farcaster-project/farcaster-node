@@ -553,12 +553,9 @@ impl Runtime {
                     // whether we're Bob or Alice and that we're on a compatible state
                     Msg::MakerCommit(remote_commit) => {
                         trace!("received commitment from counterparty, can now reveal");
-                        let (next_state, local_params) = match self.state.clone() {
+                        let next_state = match self.state.clone() {
                             State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
-                                Ok((
-                                    State::Alice(AliceState::RevealA(Some(local_params.clone()), remote_commit.clone())),
-                                    local_params,
-                                ))
+                                Ok(State::Alice(AliceState::RevealA(Some(local_params), remote_commit.clone())))
                             }
                             State::Bob(BobState::CommitB(
                                 CommitC {
@@ -583,10 +580,8 @@ impl Runtime {
                                         ServiceId::Syncer(Coin::Bitcoin),
                                         Request::SyncerTask(task),
                                     )?;
-                                    Ok((
-                                        State::Bob(BobState::RevealB(Some(local_params.clone()), remote_commit.clone())),
-                                        local_params,
-                                    ))
+                                    Ok(State::Bob(BobState::RevealB(Some(local_params), remote_commit.clone())),
+)
                                 } else {
                                     Err(Error::Farcaster(s!("tx already registered with that id")))
                                 }
@@ -634,11 +629,7 @@ impl Runtime {
                             )?;
                         }
 
-                        // let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
-                        // let reveal_proof: Reveal = (msg.swap_id(), local_proof.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
-                        // self.send_peer(senders, Msg::Reveal(reveal))?;
-                        // self.send_peer(senders, Msg::Reveal(reveal_proof))?;
                         info!("State transition: {}", next_state.bright_white_bold());
                         self.state = next_state;
                     }
