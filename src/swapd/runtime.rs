@@ -1033,18 +1033,24 @@ impl Runtime {
             }
             Request::Protocol(Msg::Reveal(reveal)) => {
                 match self.state.clone() {
-                    State::Alice(AliceState::RevealA(Some(local_params), _)) |
-                    State::Bob(BobState::RevealB(Some(local_params), _)) => {
+                    State::Alice(AliceState::RevealA(Some(local_params), remote_commit)) |
+                    State::Bob(BobState::RevealB(Some(local_params), remote_commit)) => {
                         let reveal_proof = Msg::Reveal(reveal);
                         let swap_id = reveal_proof.swap_id();
                         self.send_peer(senders, reveal_proof)?;
                         info!("forwarded reveal_proof");
-                        let reveal_params: Reveal = (swap_id, local_params).into();
+                        let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                         self.send_peer(senders, Msg::Reveal(reveal_params))?;
                         info!("sent reveal_proof to peerd");
+                        let next_state = match self.state {
+                            State::Alice(_) => State::Alice(AliceState::RevealA(None, remote_commit)),
+                            State::Bob(_) => State::Bob(BobState::RevealB(None, remote_commit)),
+                        };
+                        info!("State transition: {}", next_state.bright_white_bold());
+                        self.state = next_state;
                     },
                     _ => {
-                        // Err(Error::Farcaster(s!("Wrong state: Expects RevealA | RevealB")));
+                        error!("Wrong state: Expects RevealA | RevealB");
                     }
                 }
             }
