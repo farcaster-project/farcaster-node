@@ -359,6 +359,7 @@ impl Runtime {
                                         None,
                                         None,
                                         None,
+                                        None,
                                     ),
                                 );
 
@@ -580,6 +581,7 @@ impl Runtime {
                             Some(Wallet::Alice(
                                 ..,
                                 bob_proof, // Should be Some() at this stage
+                                _,
                                 _,
                                 _,
                             )) => {
@@ -1051,6 +1053,7 @@ impl Runtime {
                                     None,
                                     None,
                                     None,
+                                    None,
                                 ),
                             );
                         } else {
@@ -1135,11 +1138,13 @@ impl Runtime {
                 if let Some(Wallet::Alice(
                     alice,
                     _,
+                    _,
                     key_manager,
                     _,
                     _,
                     Some(bob_params), //remote
                     Some(_),
+                    _,
                     _,
                     Some(adaptor_refund),
                 )) = self.wallets.get_mut(&get_swap_id(source.clone())?)

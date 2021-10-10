@@ -253,7 +253,6 @@ pub enum AliceState {
 pub struct CommitC {
     trade_role: TradeRole,
     local_params: Params,
-    local_proof: Proof<BtcXmr>,
     local_commit: Commit,
     remote_commit: Option<Commit>,
 }
@@ -554,18 +553,16 @@ impl Runtime {
                     // whether we're Bob or Alice and that we're on a compatible state
                     Msg::MakerCommit(remote_commit) => {
                         trace!("received commitment from counterparty, can now reveal");
-                        let (next_state, local_params, local_proof) = match self.state.clone() {
-                            State::Alice(AliceState::CommitA(CommitC { local_params, local_proof, .. })) => {
+                        let (next_state, local_params) = match self.state.clone() {
+                            State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
                                 Ok((
                                     State::Alice(AliceState::RevealA(remote_commit.clone())),
                                     local_params,
-                                    local_proof,
                                 ))
                             }
                             State::Bob(BobState::CommitB(
                                 CommitC {
                                     local_params,
-                                    local_proof,
                                     remote_commit: None,
                                     ..
                                 },
@@ -589,7 +586,7 @@ impl Runtime {
                                     Ok((
                                         State::Bob(BobState::RevealB(remote_commit.clone())),
                                         local_params,
-                                        local_proof,
+                                        // local_proof,
                                     ))
                                 } else {
                                     Err(Error::Farcaster(s!("tx already registered with that id")))
@@ -639,10 +636,10 @@ impl Runtime {
                         }
 
                         let reveal: Reveal = (msg.swap_id(), local_params.clone()).into();
-                        let reveal_proof: Reveal = (msg.swap_id(), local_proof.clone()).into();
+                        // let reveal_proof: Reveal = (msg.swap_id(), local_proof.clone()).into();
                         self.send_wallet(msg_bus, senders, request)?;
                         self.send_peer(senders, Msg::Reveal(reveal))?;
-                        self.send_peer(senders, Msg::Reveal(reveal_proof))?;
+                        // self.send_peer(senders, Msg::Reveal(reveal_proof))?;
                         info!("State transition: {}", next_state.bright_white_bold());
                         self.state = next_state;
                     }
@@ -717,7 +714,7 @@ impl Runtime {
                         // this code is dead?
                         // parameter processing irrespective of maker & taker role
                         let core_wallet = CommitmentEngine;
-                        self.remote_params = match reveal {
+                        let remote_params_candidate = match reveal {
                             Reveal::AliceParameters(reveal) => match &remote_commit {
                                 Commit::AliceParameters(commit) => {
                                     commit.verify_with_reveal(&core_wallet, reveal.clone())?;
@@ -741,9 +738,11 @@ impl Runtime {
                                 }
                             },
                             Reveal::Proof(_reveal) => {
+                                None
                                 // commitment verification performed by walletd - so what's the point here?
                             },
                         };
+                        if remote_params_candidate.is_some() {self.remote_params = remote_params_candidate}
                         info!("{:?} sets remote_params", self.state.swap_role());
 
                         // pass request on to wallet daemon so that it can set remote params
@@ -783,14 +782,12 @@ impl Runtime {
                             State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: TradeRole::Maker,
                                 local_params,
-                                Some(local_proof)
                                 ..
                             }))
                             | State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: TradeRole::Maker,
                                     local_params,
-                                    Some(local_proof),
                                     ..
                                 },
                                 _,
@@ -821,10 +818,10 @@ impl Runtime {
 
                                 trace!("received commitment from counterparty, can now reveal");
                                 let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
-                                let reveal_proof: Reveal =
-                                    (self.swap_id(), local_proof.clone()).into();
+                                // let reveal_proof: Reveal =
+                                //     (self.swap_id(), local_proof.clone()).into();
                                 self.send_peer(senders, Msg::Reveal(reveal))?;
-                                self.send_peer(senders, Msg::Reveal(reveal_proof))?;
+                                // self.send_peer(senders, Msg::Reveal(reveal_proof))?;
                                 info!("State transition: {}", next_state.bright_white_bold());
                                 self.state = next_state;
                             }
@@ -1010,7 +1007,6 @@ impl Runtime {
                                 CommitC {
                                     trade_role: local_trade_role,
                                     local_params: local_params.clone(),
-                                    local_proof: local_proof.clone(),
                                     local_commit: local_commit.clone(),
                                     remote_commit: None,
                                 },
@@ -1024,7 +1020,6 @@ impl Runtime {
                             (State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: local_trade_role,
                                 local_params: local_params.clone(),
-                                local_proof: local_proof.clone(),
                                 local_commit: local_commit.clone(),
                                 remote_commit: None,
                             }))),
@@ -1083,7 +1078,7 @@ impl Runtime {
                             CommitC {
                                 trade_role: *trade_role,
                                 local_params: local_params.clone(),
-                                local_proof: local_proof.clone(),
+                                // local_proof: local_proof.clone(),
                                 local_commit: local_commit.clone(),
                                 remote_commit: Some(remote_commit.clone()),
                             },
@@ -1094,7 +1089,7 @@ impl Runtime {
                         Ok(State::Alice(AliceState::CommitA(CommitC {
                             trade_role: *trade_role,
                             local_params: local_params.clone(),
-                            local_proof: local_proof.clone(),
+                            // local_proof: local_proof.clone(),
                             local_commit: local_commit.clone(),
                             remote_commit: Some(remote_commit.clone()),
                         })))
