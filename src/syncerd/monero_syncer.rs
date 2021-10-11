@@ -70,26 +70,24 @@ impl MoneroRpc {
         }
     }
 
-    async fn get_height(&mut self) -> u64 {
+    async fn get_height(&mut self) -> Result<u64, Error> {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
         let count: u64 = daemon
             .get_block_count()
-            .await
-            .expect("error getting height in monero syncer")
+            .await?
             .into();
-        count - 1
+        Ok(count - 1)
     }
 
-    async fn get_block_hash(&mut self, height: u64) -> Vec<u8> {
+    async fn get_block_hash(&mut self, height: u64) -> Result<Vec<u8>, Error> {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
         let selector = GetBlockHeaderSelector::Height(height.into());
         let header = daemon
             .get_block_header(selector)
-            .await
-            .expect("error getting block hash in monero syncer");
-        header.hash.0.to_vec()
+            .await?;
+        Ok(header.hash.0.to_vec())
     }
 
     async fn get_transactions(&mut self, tx_ids: Vec<Vec<u8>>) -> Result<Vec<Transaction>, Error> {
@@ -109,7 +107,7 @@ impl MoneroRpc {
             .get_transactions(monero_txids, Some(true), Some(true))
             .await?;
 
-        let block_height = self.get_height().await;
+        let block_height = self.get_height().await?;
 
         let mut transactions: Vec<Transaction> = vec![];
         if txs.txs.is_some() {
@@ -118,7 +116,7 @@ impl MoneroRpc {
                 let mut confirmations: Option<u32> = Some(0);
                 if let Some(tx_height) = tx.block_height {
                     if tx_height > 0 {
-                        block_hash = Some(self.get_block_hash(tx_height).await);
+                        block_hash = Some(self.get_block_hash(tx_height).await?);
                     }
                     confirmations = Some((block_height - tx_height + 1) as u32);
                 }
@@ -139,12 +137,12 @@ impl MoneroRpc {
         Ok(transactions)
     }
 
-    async fn check_block(&mut self) -> Option<Block> {
+    async fn check_block(&mut self) -> Result<Option<Block>, Error> {
         let mut block: Option<Block> = none!();
-        let height = self.get_height().await;
+        let height = self.get_height().await?;
 
         if height != self.height {
-            let block_hash = self.get_block_hash(height).await;
+            let block_hash = self.get_block_hash(height).await?;
             self.height = height;
             self.block_hash = block_hash.clone();
             block = Some(Block {
@@ -152,7 +150,7 @@ impl MoneroRpc {
                 block_hash: block_hash,
             });
         }
-        block
+        Ok(block)
     }
 
     async fn check_address(
@@ -358,7 +356,16 @@ fn height_polling(
             syncer_servers.monero_rpc_wallet,
         );
         loop {
-            if let Some(block_notif) = rpc.check_block().await {
+            let mut block_notif = None;
+            match rpc.check_block().await {
+                Ok(notif) => {
+                    block_notif = notif;
+                }
+                Err(err) => {
+                    error!("error processing height polling: {}", err);
+                }
+            }
+            if let Some(block_notif) = block_notif {
                 let mut state_guard = state.lock().await;
                 state_guard
                     .change_height(block_notif.height, block_notif.block_hash.into())
