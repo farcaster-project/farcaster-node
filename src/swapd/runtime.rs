@@ -645,20 +645,36 @@ impl Runtime {
                         )
                     }
                     Msg::Reveal(Reveal::Proof(_)) => {
-                        // These messages are always saved as pending and then forwarded once the
-                        // parameter reveal forward is triggered
-                        let pending_request = PendingRequest {
-                            request,
-                            dest: ServiceId::Wallet,
-                            bus_id: ServiceBus::Msg,
-                        };
-                        trace!("Added pending request to be forwarded later",);
-                        if self
-                            .pending_requests
-                            .insert(ServiceId::Wallet, vec![pending_request])
-                            .is_some()
-                        {
-                            error!("Pending requests already existed prior to Reveal::Proof!")
+                        // These messages are saved as pending if Bob and then forwarded once the
+                        // parameter reveal forward is triggered. If Alice, send immediately.
+                        match self.state.swap_role() {
+                            SwapRole::Bob => {
+                                let pending_request = PendingRequest {
+                                    request,
+                                    dest: ServiceId::Wallet,
+                                    bus_id: ServiceBus::Msg,
+                                };
+                                trace!("Added pending request to be forwarded later",);
+                                if self
+                                    .pending_requests
+                                    .insert(ServiceId::Wallet, vec![pending_request])
+                                    .is_some()
+                                {
+                                    error!(
+                                        "Pending requests already existed prior to Reveal::Proof!"
+                                    )
+                                }
+                            }
+                            SwapRole::Alice => {
+                                info!("Alice: forwarding reveal");
+                                trace!(
+                                    "sending request {} to {} on bus {}",
+                                    &request,
+                                    &ServiceId::Wallet,
+                                    &ServiceBus::Msg
+                                );
+                                self.send_wallet(msg_bus, senders, request)?
+                            }
                         }
                     }
                     // bob and alice
@@ -775,55 +791,15 @@ impl Runtime {
                         match self.state {
                             // validated state above, no need to check again
                             State::Alice(..) => {
-                                trace!("received Reveal, now forwarding RevealProof and Reveal to wallet");
-                                let mut pending_requests = self
-                                    .pending_requests
-                                    .remove(&ServiceId::Wallet)
-                                    .expect("should have pending RevealProof request");
-                                if pending_requests.len() == 1 {
-                                    trace!("had one pending request and forwarding");
-                                    let PendingRequest {
-                                        request: request_proof,
-                                        dest: dest_proof,
-                                        bus_id: bus_id_proof,
-                                    } = pending_requests.pop().expect("checked .len() == 2");
-
-                                    // continue RevealProof
-                                    // continuing request by sending it to wallet
-                                    if let (
-                                        Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
-                                        ServiceId::Wallet,
-                                        ServiceBus::Msg,
-                                    ) = (&request_proof, &dest_proof, &bus_id_proof)
-                                    {
-                                        trace!(
-                                            "sending request {} to {} on bus {}",
-                                            &request_proof,
-                                            &dest_proof,
-                                            &bus_id_proof
-                                        );
-                                        senders.send_to(
-                                            bus_id_proof,
-                                            self.identity(),
-                                            dest_proof,
-                                            request_proof,
-                                        )?
-                                    } else {
-                                        error!("Not the expected request: found {:?}", request);
-                                    }
-
-                                    // continue Reveal
-                                    // continuing request by sending it to wallet
-                                    trace!(
-                                        "sending request {} to {} on bus {}",
-                                        &request,
-                                        &ServiceId::Wallet,
-                                        &ServiceBus::Msg
-                                    );
-                                    self.send_wallet(msg_bus, senders, request)?
-                                } else {
-                                    error!("only expected to find one pending request FIXME")
-                                }
+                                // Alice already sends RevealProof immediately, so only have to
+                                // forward Reveal now
+                                trace!(
+                                    "sending request {} to {} on bus {}",
+                                    &request,
+                                    &ServiceId::Wallet,
+                                    &ServiceBus::Msg
+                                );
+                                self.send_wallet(msg_bus, senders, request)?
                             }
                             State::Bob(..) => {
                                 // sending this request will initialize the
