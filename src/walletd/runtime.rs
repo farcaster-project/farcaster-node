@@ -462,6 +462,28 @@ impl Runtime {
                 )?;
 
             }
+            Request::Protocol(Msg::Reveal(Reveal::Proof(proof))) => {
+                let wallet = self.wallets.get_mut(&get_swap_id(source)?);
+                match wallet {
+                    Some(Wallet::Alice(.., bob_proof, _, _, _)) => {
+                        *bob_proof = Some(Proof { proof: proof.proof })
+                    }
+                    Some(Wallet::Bob(BobState {
+                        wallet_ix: _,
+                        bob: _,
+                        local_params: _,
+                        local_proof: _,
+                        key_manager: _,
+                        pub_offer: _,
+                        funding_tx: _,
+                        remote_commit_params: _,
+                        remote_params: _,
+                        remote_proof,
+                        ..
+                    })) => *remote_proof = Some(Proof { proof: proof.proof }),
+                    None => error!("wallet for specified swap does not exist"),
+                }
+            }
             Request::Protocol(Msg::Reveal(reveal)) => {
                 let swap_id = get_swap_id(source.clone())?;
                 match reveal {

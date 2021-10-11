@@ -719,7 +719,6 @@ impl Runtime {
                             ))),
                         }?;
 
-                        // this code is dead?
                         // parameter processing irrespective of maker & taker role
                         let core_wallet = CommitmentEngine;
                         let remote_params_candidate = match reveal {
@@ -745,7 +744,8 @@ impl Runtime {
                                     Err(Error::Farcaster(err_msg.to_string()))?
                                 }
                             },
-                            Reveal::Proof(_reveal) => {
+                            Reveal::Proof(_) => {
+                                error!("this should have been caught by another pattern!");
                                 None
                                 // commitment verification performed by walletd - so what's the point here?
                             }
