@@ -492,7 +492,7 @@ impl Runtime {
                         if let Some(Wallet::Alice(
                             _alice,
                             _alice_params,
-                            _alice_proof,
+                            alice_proof,
                             key_manager,
                             _public_offer,
                             Some(bob_commit),
@@ -524,6 +524,15 @@ impl Runtime {
                                 *bob_params = Some(remote_params_candidate);
                                 // nothing to do yet, waiting for Msg
                                 // CoreArbitratingSetup to proceed
+                                // temporary: send this whatever happens
+                                // FIXME
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    ServiceId::Wallet,
+                                    // TODO: (maybe) what if the message responded to is not sent by swapd?
+                                    source,
+                                    Request::Protocol(Msg::Reveal((swap_id, alice_proof.clone()).into())),
+                                )?;
                                 return Ok(());
                             }
                         } else {
@@ -537,6 +546,7 @@ impl Runtime {
                         if let Some(Wallet::Bob(BobState {
                             bob,
                             local_params,
+                            local_proof,
                             key_manager,
                             pub_offer,
                             funding_tx: Some(funding_tx),
@@ -565,6 +575,16 @@ impl Runtime {
                                 return Ok(());
                             }
                             *remote_params = Some(remote_params_candidate);
+
+                            // temporary: send this whatever happens
+                            // FIXME
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                ServiceId::Wallet,
+                                // TODO: (maybe) what if the message responded to is not sent by swapd?
+                                source.clone(),
+                                Request::Protocol(Msg::Reveal((swap_id, local_proof.clone()).into())),
+                            )?;
 
                             // set wallet core_arb_txs
                             if core_arb_setup.is_some() {
