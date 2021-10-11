@@ -757,7 +757,58 @@ impl Runtime {
                         // pass request on to wallet daemon so that it can set remote params
                         match self.state {
                             // validated state above, no need to check again
-                            State::Alice(..) => self.send_wallet(msg_bus, senders, request)?,
+                            State::Alice(..) => {
+                                trace!("received Reveal, now forwarding RevealProof and Reveal to wallet");
+                                let mut pending_requests = self
+                                    .pending_requests
+                                    .remove(&ServiceId::Wallet)
+                                    .expect("should have pending RevealProof request");
+                                if pending_requests.len() == 1 {
+                                    trace!("had one pending request and forwarding");
+                                    let PendingRequest {
+                                        request: request_proof,
+                                        dest: dest_proof,
+                                        bus_id: bus_id_proof,
+                                    } = pending_requests.pop().expect("checked .len() == 2");
+
+                                    // continue RevealProof
+                                    // continuing request by sending it to wallet
+                                    if let (
+                                        Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
+                                        ServiceId::Wallet,
+                                        ServiceBus::Msg,
+                                    ) = (&request_proof, &dest_proof, &bus_id_proof)
+                                    {
+                                        trace!(
+                                            "sending request {} to {} on bus {}",
+                                            &request_proof,
+                                            &dest_proof,
+                                            &bus_id_proof
+                                        );
+                                        senders.send_to(
+                                            bus_id_proof,
+                                            self.identity(),
+                                            dest_proof,
+                                            request_proof,
+                                        )?
+                                    } else {
+                                        error!("Not the expected request: found {:?}", request);
+                                    }
+
+                                    // continue Reveal
+                                    // continuing request by sending it to wallet
+                                    trace!(
+                                        "sending request {} to {} on bus {}",
+                                        &request,
+                                        &ServiceId::Wallet,
+                                        &ServiceBus::Msg
+                                    );
+                                    self.send_wallet(msg_bus, senders, request)?
+
+                                } else {
+                                    error!("only expected to find one pending request FIXME")
+                                }
+                            },
                             State::Bob(..) => {
                                 // sending this request will initialize the
                                 // arbitrating setup, that can be only performed
