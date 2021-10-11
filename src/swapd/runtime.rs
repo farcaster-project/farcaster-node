@@ -659,6 +659,7 @@ impl Runtime {
                     // store parameters from counterparty if we have not received them yet.
                     // if we're maker, also reveal to taker if their commitment is valid.
                     Msg::Reveal(reveal) => {
+                        // TODO: since we're not actually revealing, find other name for intermediary state
                         let (next_state, remote_commit) = match self.state.clone() {
                             // counterparty has already revealed commitment, i.e. we're
                             // maker and counterparty is taker. now proceed to reveal state.
@@ -772,15 +773,11 @@ impl Runtime {
                                     "This pending request will be called later: {:?}",
                                     &pending_request
                                 );
-                                // let mut pending_requests = self.pending_requests.get_mut(&ServiceId::Wallet);
-                                if self
-                                    .pending_requests
-                                    .insert(ServiceId::Wallet, vec![pending_request])
-                                    .is_none()
-                                {
-                                } else {
-                                    error!("A pending request was removed, FIXME")
+                                let pending_requests = self.pending_requests.get_mut(&ServiceId::Wallet).expect("should already have received Reveal::Proof, so this key should exist.");
+                                if pending_requests.len() != 1 {
+                                    error!("should have a single pending Reveal::Proof only FIXME")
                                 }
+                                pending_requests.push(pending_request);
                             }
                         }
                         // up to here for both maker and taker, following only Maker
@@ -825,12 +822,12 @@ impl Runtime {
                                     Request::SyncerTask(watch_height_monero),
                                 )?;
 
-                                trace!("received commitment from counterparty, can now reveal");
-                                let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
+                                // trace!("received commitment from counterparty, can now reveal");
+                                // let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
                                 // let reveal_proof: Reveal =
                                 //     (self.swap_id(), local_proof.clone()).into();
-                                self.send_peer(senders, Msg::Reveal(reveal))?;
                                 // self.send_peer(senders, Msg::Reveal(reveal_proof))?;
+                                // self.send_peer(senders, Msg::Reveal(reveal))?;
                                 info!("State transition: {}", next_state.bright_white_bold());
                                 self.state = next_state;
                             }
