@@ -639,6 +639,22 @@ impl Runtime {
                              Ctl Request::MakeSwap"
                         )
                     }
+                    Msg::Reveal(Reveal::Proof(_)) => {
+                        // These messages are always saved as pending and then forwarded once the parameter reveal forward is triggered
+                        let pending_request = PendingRequest {
+                            request,
+                            dest: ServiceId::Wallet,
+                            bus_id: ServiceBus::Msg,
+                        };
+                        trace!("Added pending request to be forwarded later",);
+                        if self
+                            .pending_requests
+                            .insert(ServiceId::Wallet, vec![pending_request])
+                            .is_some()
+                        {
+                            error!("Pending requests already existed prior to Reveal::Proof!")
+                        }
+                    }
                     // bob and alice
                     // store parameters from counterparty if we have not received them yet.
                     // if we're maker, also reveal to taker if their commitment is valid.
