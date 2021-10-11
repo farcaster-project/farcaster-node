@@ -494,7 +494,7 @@ impl Runtime {
                             _alice_params,
                             alice_proof,
                             key_manager,
-                            _public_offer,
+                            pub_offer,
                             Some(bob_commit),
                             bob_params,      // None
                             Some(bob_proof), // Should be Some() at this stage
@@ -522,17 +522,17 @@ impl Runtime {
                                     return Ok(());
                                 }
                                 *bob_params = Some(remote_params_candidate);
+                                // if we're maker, send Ctl RevealProof to counterparty
+                                if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Alice {
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        ServiceId::Wallet,
+                                        // TODO: (maybe) what if the message responded to is not sent by swapd?
+                                        source,
+                                        Request::Protocol(Msg::Reveal((swap_id, alice_proof.clone()).into())),
+                                    )?;}
                                 // nothing to do yet, waiting for Msg
                                 // CoreArbitratingSetup to proceed
-                                // temporary: send this whatever happens
-                                // FIXME
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    ServiceId::Wallet,
-                                    // TODO: (maybe) what if the message responded to is not sent by swapd?
-                                    source,
-                                    Request::Protocol(Msg::Reveal((swap_id, alice_proof.clone()).into())),
-                                )?;
                                 return Ok(());
                             }
                         } else {
@@ -576,15 +576,15 @@ impl Runtime {
                             }
                             *remote_params = Some(remote_params_candidate);
 
-                            // temporary: send this whatever happens
-                            // FIXME
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                ServiceId::Wallet,
-                                // TODO: (maybe) what if the message responded to is not sent by swapd?
-                                source.clone(),
-                                Request::Protocol(Msg::Reveal((swap_id, local_proof.clone()).into())),
-                            )?;
+                            // if we're maker, send Ctl RevealProof to counterparty
+                            if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Bob {
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    ServiceId::Wallet,
+                                    // TODO: (maybe) what if the message responded to is not sent by swapd?
+                                    source.clone(),
+                                    Request::Protocol(Msg::Reveal((swap_id, local_proof.clone()).into())),
+                                )?;}
 
                             // set wallet core_arb_txs
                             if core_arb_setup.is_some() {
