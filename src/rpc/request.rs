@@ -730,8 +730,7 @@ impl Into<Reveal> for (SwapId, Params) {
     }
 }
 
-impl From<(SwapId, Proof<BtcXmr>)> for Reveal
-{
+impl From<(SwapId, Proof<BtcXmr>)> for Reveal {
     fn from(tuple: (SwapId, Proof<BtcXmr>)) -> Self {
         Reveal::Proof((tuple.0, tuple.1).into())
     }

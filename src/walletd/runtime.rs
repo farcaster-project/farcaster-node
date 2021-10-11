@@ -438,20 +438,14 @@ impl Runtime {
                     }
                 }
                 let proof: &Proof<BtcXmr> = match self.wallets.get(&swap_id).unwrap() {
-                    Wallet::Alice(
-                        _,
-                        _,
-                        local_proof,
-                        ..
-                    ) => local_proof,
-                    Wallet::Bob(
-                    BobState{ wallet_ix: _,
+                    Wallet::Alice(_, _, local_proof, ..) => local_proof,
+                    Wallet::Bob(BobState {
+                        wallet_ix: _,
                         bob: _,
                         local_params: _,
                         local_proof,
                         ..
- }) => local_proof,
-
+                    }) => local_proof,
                 };
                 senders.send_to(
                     ServiceBus::Ctl,
@@ -460,7 +454,6 @@ impl Runtime {
                     source,
                     Request::Protocol(Msg::Reveal((swap_id, proof.clone()).into())),
                 )?;
-
             }
             Request::Protocol(Msg::Reveal(Reveal::Proof(proof))) => {
                 let wallet = self.wallets.get_mut(&get_swap_id(source)?);
@@ -527,10 +520,14 @@ impl Runtime {
                                     senders.send_to(
                                         ServiceBus::Ctl,
                                         ServiceId::Wallet,
-                                        // TODO: (maybe) what if the message responded to is not sent by swapd?
+                                        // TODO: (maybe) what if the message responded to is not
+                                        // sent by swapd?
                                         source,
-                                        Request::Protocol(Msg::Reveal((swap_id, alice_proof.clone()).into())),
-                                    )?;}
+                                        Request::Protocol(Msg::Reveal(
+                                            (swap_id, alice_proof.clone()).into(),
+                                        )),
+                                    )?;
+                                }
                                 // nothing to do yet, waiting for Msg
                                 // CoreArbitratingSetup to proceed
                                 return Ok(());
@@ -581,10 +578,14 @@ impl Runtime {
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     ServiceId::Wallet,
-                                    // TODO: (maybe) what if the message responded to is not sent by swapd?
+                                    // TODO: (maybe) what if the message responded to is not sent
+                                    // by swapd?
                                     source.clone(),
-                                    Request::Protocol(Msg::Reveal((swap_id, local_proof.clone()).into())),
-                                )?;}
+                                    Request::Protocol(Msg::Reveal(
+                                        (swap_id, local_proof.clone()).into(),
+                                    )),
+                                )?;
+                            }
 
                             // set wallet core_arb_txs
                             if core_arb_setup.is_some() {

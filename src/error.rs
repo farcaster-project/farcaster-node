@@ -101,7 +101,7 @@ pub enum SyncerError {
     #[display("syncer creating error")]
     UnknownNetwork,
     #[display(inner)]
-    MoneroRpc(anyhow::Error)
+    MoneroRpc(anyhow::Error),
 }
 
 impl microservices::error::Error for Error {}

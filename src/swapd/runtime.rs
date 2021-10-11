@@ -555,7 +555,10 @@ impl Runtime {
                         trace!("received commitment from counterparty, can now reveal");
                         let next_state = match self.state.clone() {
                             State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
-                                Ok(State::Alice(AliceState::RevealA(Some(local_params), remote_commit.clone())))
+                                Ok(State::Alice(AliceState::RevealA(
+                                    Some(local_params),
+                                    remote_commit.clone(),
+                                )))
                             }
                             State::Bob(BobState::CommitB(
                                 CommitC {
@@ -580,8 +583,10 @@ impl Runtime {
                                         ServiceId::Syncer(Coin::Bitcoin),
                                         Request::SyncerTask(task),
                                     )?;
-                                    Ok(State::Bob(BobState::RevealB(Some(local_params), remote_commit.clone())),
-)
+                                    Ok(State::Bob(BobState::RevealB(
+                                        Some(local_params),
+                                        remote_commit.clone(),
+                                    )))
                                 } else {
                                     Err(Error::Farcaster(s!("tx already registered with that id")))
                                 }
@@ -640,7 +645,8 @@ impl Runtime {
                         )
                     }
                     Msg::Reveal(Reveal::Proof(_)) => {
-                        // These messages are always saved as pending and then forwarded once the parameter reveal forward is triggered
+                        // These messages are always saved as pending and then forwarded once the
+                        // parameter reveal forward is triggered
                         let pending_request = PendingRequest {
                             request,
                             dest: ServiceId::Wallet,
@@ -659,7 +665,8 @@ impl Runtime {
                     // store parameters from counterparty if we have not received them yet.
                     // if we're maker, also reveal to taker if their commitment is valid.
                     Msg::Reveal(reveal) => {
-                        // TODO: since we're not actually revealing, find other name for intermediary state
+                        // TODO: since we're not actually revealing, find other name for
+                        // intermediary state
                         let (next_state, remote_commit) = match self.state.clone() {
                             // counterparty has already revealed commitment, i.e. we're
                             // maker and counterparty is taker. now proceed to reveal state.
@@ -668,7 +675,10 @@ impl Runtime {
                                 local_params,
                                 ..
                             })) => Ok((
-                                State::Alice(AliceState::RevealA(Some(local_params), remote_commit.clone())),
+                                State::Alice(AliceState::RevealA(
+                                    Some(local_params),
+                                    remote_commit.clone(),
+                                )),
                                 remote_commit,
                             )),
                             State::Bob(BobState::CommitB(
@@ -695,7 +705,10 @@ impl Runtime {
                                         Request::SyncerTask(watch_addr_task),
                                     )?;
                                     Ok((
-                                        State::Bob(BobState::RevealB(Some(local_params), remote_commit.clone())),
+                                        State::Bob(BobState::RevealB(
+                                            Some(local_params),
+                                            remote_commit.clone(),
+                                        )),
                                         remote_commit,
                                     ))
                                 } else {
@@ -707,7 +720,10 @@ impl Runtime {
                             // we're already in reveal state, i.e. we're taker, so don't change
                             // state once counterparty reveals too.
                             State::Alice(AliceState::RevealA(local_params, remote_commit)) => Ok((
-                                State::Alice(AliceState::RevealA(local_params, remote_commit.clone())),
+                                State::Alice(AliceState::RevealA(
+                                    local_params,
+                                    remote_commit.clone(),
+                                )),
                                 remote_commit,
                             )),
                             State::Bob(BobState::RevealB(local_params, remote_commit)) => Ok((
@@ -748,10 +764,11 @@ impl Runtime {
                             Reveal::Proof(_) => {
                                 error!("this should have been caught by another pattern!");
                                 None
-                                // commitment verification performed by walletd - so what's the point here?
                             }
                         };
-                        if remote_params_candidate.is_some() {self.remote_params = remote_params_candidate}
+                        if remote_params_candidate.is_some() {
+                            self.remote_params = remote_params_candidate
+                        }
                         info!("{:?} sets remote_params", self.state.swap_role());
 
                         // pass request on to wallet daemon so that it can set remote params
@@ -804,11 +821,10 @@ impl Runtime {
                                         &ServiceBus::Msg
                                     );
                                     self.send_wallet(msg_bus, senders, request)?
-
                                 } else {
                                     error!("only expected to find one pending request FIXME")
                                 }
-                            },
+                            }
                             State::Bob(..) => {
                                 // sending this request will initialize the
                                 // arbitrating setup, that can be only performed
@@ -1096,29 +1112,27 @@ impl Runtime {
                 info!("State transition: {}", next_state.bright_white_bold());
                 self.state = next_state;
             }
-            Request::Protocol(Msg::Reveal(reveal)) => {
-                match self.state.clone() {
-                    State::Alice(AliceState::RevealA(Some(local_params), remote_commit)) |
-                    State::Bob(BobState::RevealB(Some(local_params), remote_commit)) => {
-                        let reveal_proof = Msg::Reveal(reveal);
-                        let swap_id = reveal_proof.swap_id();
-                        self.send_peer(senders, reveal_proof)?;
-                        info!("forwarded reveal_proof");
-                        let reveal_params: Reveal = (swap_id, local_params.clone()).into();
-                        self.send_peer(senders, Msg::Reveal(reveal_params))?;
-                        info!("sent reveal_proof to peerd");
-                        let next_state = match self.state {
-                            State::Alice(_) => State::Alice(AliceState::RevealA(None, remote_commit)),
-                            State::Bob(_) => State::Bob(BobState::RevealB(None, remote_commit)),
-                        };
-                        info!("State transition: {}", next_state.bright_white_bold());
-                        self.state = next_state;
-                    },
-                    _ => {
-                        error!("Wrong state: Expects RevealA | RevealB");
-                    }
+            Request::Protocol(Msg::Reveal(reveal)) => match self.state.clone() {
+                State::Alice(AliceState::RevealA(Some(local_params), remote_commit))
+                | State::Bob(BobState::RevealB(Some(local_params), remote_commit)) => {
+                    let reveal_proof = Msg::Reveal(reveal);
+                    let swap_id = reveal_proof.swap_id();
+                    self.send_peer(senders, reveal_proof)?;
+                    info!("forwarded reveal_proof");
+                    let reveal_params: Reveal = (swap_id, local_params.clone()).into();
+                    self.send_peer(senders, Msg::Reveal(reveal_params))?;
+                    info!("sent reveal_proof to peerd");
+                    let next_state = match self.state {
+                        State::Alice(_) => State::Alice(AliceState::RevealA(None, remote_commit)),
+                        State::Bob(_) => State::Bob(BobState::RevealB(None, remote_commit)),
+                    };
+                    info!("State transition: {}", next_state.bright_white_bold());
+                    self.state = next_state;
                 }
-            }
+                _ => {
+                    error!("Wrong state: Expects RevealA | RevealB");
+                }
+            },
 
             Request::MakeSwap(InitSwap {
                 peerd,
