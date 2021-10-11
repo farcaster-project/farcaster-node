@@ -889,12 +889,6 @@ impl Runtime {
                                     Request::SyncerTask(watch_height_monero),
                                 )?;
 
-                                // trace!("received commitment from counterparty, can now reveal");
-                                // let reveal: Reveal = (self.swap_id(), local_params.clone()).into();
-                                // let reveal_proof: Reveal =
-                                //     (self.swap_id(), local_proof.clone()).into();
-                                // self.send_peer(senders, Msg::Reveal(reveal_proof))?;
-                                // self.send_peer(senders, Msg::Reveal(reveal))?;
                                 info!("State transition: {}", next_state.bright_white_bold());
                                 self.state = next_state;
                             }
