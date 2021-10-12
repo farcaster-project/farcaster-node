@@ -73,10 +73,7 @@ impl MoneroRpc {
     async fn get_height(&mut self) -> Result<u64, Error> {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
-        let count: u64 = daemon
-            .get_block_count()
-            .await?
-            .into();
+        let count: u64 = daemon.get_block_count().await?.into();
         Ok(count - 1)
     }
 
@@ -84,9 +81,7 @@ impl MoneroRpc {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
         let selector = GetBlockHeaderSelector::Height(height.into());
-        let header = daemon
-            .get_block_header(selector)
-            .await?;
+        let header = daemon.get_block_header(selector).await?;
         Ok(header.hash.0.to_vec())
     }
 
@@ -374,10 +369,8 @@ fn height_polling(
                 drop(state_guard);
 
                 if transactions.len() > 0 {
-                    let tx_ids: Vec<Vec<u8>> = transactions
-                        .drain()
-                        .map(|(_, tx)| tx.task.hash)
-                        .collect();
+                    let tx_ids: Vec<Vec<u8>> =
+                        transactions.drain().map(|(_, tx)| tx.task.hash).collect();
                     let mut polled_transactions = vec![];
                     match rpc.get_transactions(tx_ids).await {
                         Ok(txs) => {
