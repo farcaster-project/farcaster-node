@@ -1499,39 +1499,6 @@ impl Runtime {
 
                             match txlabel {
                                 TxLabel::Funding => {}
-                                TxLabel::Lock if !self.state.xmr_locked() => {
-                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                                        buy_published: false,
-                                        xmr_locked: false,
-                                    })) = self.state
-                                    {
-                                        if let Some(Params::Alice(AliceParameters {
-                                            spend,
-                                            accordant_shared_keys,
-                                            ..
-                                        })) = self.remote_params.clone()
-                                        {
-                                            error!("here alice watches accordant lock address, broadcast manually");
-                                            info!(
-                                                "Alice subscribes for monero address with syncer"
-                                            );
-                                            let watch_addr_task =
-                                                self.syncer_state.watch_addr_xmr(
-                                                    spend,
-                                                    accordant_shared_keys,
-                                                    self.state.swap_role(),
-                                                )?;
-                                            senders.send_to(
-                                                ServiceBus::Ctl,
-                                                self.identity(),
-                                                ServiceId::Syncer(Coin::Monero),
-                                                Request::SyncerTask(watch_addr_task),
-                                            )?;
-                                        } else {
-                                            error!("not Alice or remote_params not set for Alice, state {}", self.state)
-                                        }
-                                    }
-                                }
                                 TxLabel::Lock
                                     if !self.state.xmr_locked()
                                         && self.remote_params.is_some()
