@@ -50,6 +50,9 @@ use tokio::sync::Mutex;
 
 use hex;
 
+const RETRY_TIMEOUT: u64 = 5;
+const PING_WAIT: u8 = 2;
+
 pub trait Synclet {
     fn run(
         &mut self,
@@ -93,8 +96,8 @@ pub struct AddressNotif {
 }
 
 impl ElectrumRpc {
-    fn new(electrum_server: String, polling: bool) -> Result<Self, electrum_client::Error> {
-        let client = Client::new(&electrum_server)?;
+    fn new(electrum_server: &String, polling: bool) -> Result<Self, electrum_client::Error> {
+        let client = Client::new(electrum_server)?;
         let header = client.block_headers_subscribe()?;
         info!("New ElectrumRpc at height {:?}", header.height);
 
@@ -108,17 +111,13 @@ impl ElectrumRpc {
         })
     }
 
-    fn ping(&mut self) {
-        if self.ping_count % 10 == 0 {
-            match self.client.ping() {
-                Err(err) => {
-                    error!("electrum ping failed with error: {:?}", err);
-                }
-                _ => {}
-            }
+    fn ping(&mut self) -> Result<(), Error> {
+        if self.ping_count % PING_WAIT == 0 {
+            self.client.ping()?;
             self.ping_count = 0;
         }
         self.ping_count += 1;
+        Ok(())
     }
 
     pub fn script_subscribe(
@@ -158,19 +157,17 @@ impl ElectrumRpc {
         Ok(notif)
     }
 
-    pub fn new_block_check(&mut self) -> Vec<Block> {
+    pub fn new_block_check(&mut self) -> Result<Vec<Block>, Error> {
         let mut blocks = vec![];
         if self.polling {
-            if let Ok(HeaderNotification { height, header }) = self.client.block_headers_subscribe()
-            {
-                self.height = height as u64;
-                self.block_hash = header.block_hash();
-                trace!("new height received: {:?}", self.height);
-                blocks.push(Block {
-                    height: self.height,
-                    block_hash: self.block_hash,
-                });
-            }
+            let HeaderNotification { height, header } = self.client.block_headers_subscribe()?;
+            self.height = height as u64;
+            self.block_hash = header.block_hash();
+            trace!("new height received: {:?}", self.height);
+            blocks.push(Block {
+                height: self.height,
+                block_hash: self.block_hash,
+            });
         } else {
             while let Ok(Some(HeaderNotification { height, header })) =
                 self.client.block_headers_pop()
@@ -184,7 +181,7 @@ impl ElectrumRpc {
                 });
             }
         }
-        blocks
+        Ok(blocks)
     }
 
     /// check if a subscribed address received a new transaction
@@ -338,7 +335,6 @@ async fn run_syncerd_task_receiver(
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
     tx_event: TokioSender<SyncerdBridgeEvent>,
-    electrum_client: Arc<Mutex<ElectrumRpc>>,
 ) {
     let task_receiver = Arc::new(Mutex::new(receive_task_channel));
     tokio::spawn(async move {
@@ -357,8 +353,9 @@ async fn run_syncerd_task_receiver(
                         Task::BroadcastTransaction(task) => {
                             // TODO: match error and emit event with fail code
                             trace!("trying to broadcast tx: {:?}", task.tx.to_hex());
-                            let broadcast_client = Client::new(&electrum_server).unwrap();
-                            match broadcast_client.transaction_broadcast_raw(&task.tx.clone()) {
+                            match Client::new(&electrum_server).and_then(|broadcast_client| {
+                                broadcast_client.transaction_broadcast_raw(&task.tx.clone())
+                            }) {
                                 Ok(txid) => {
                                     tx_event
                                         .send(SyncerdBridgeEvent {
@@ -397,38 +394,11 @@ async fn run_syncerd_task_receiver(
                             }
                         }
                         Task::WatchAddress(task) => match task.addendum.clone() {
-                            AddressAddendum::Bitcoin(address_addendum) => {
+                            AddressAddendum::Bitcoin(_) => {
                                 let mut state_guard = state.lock().await;
                                 state_guard
                                     .watch_address(task.clone(), syncerd_task.source)
                                     .expect("Bitcoin Task::WatchAddress");
-                                drop(state_guard);
-                                let mut electrum_client_guard = electrum_client.lock().await;
-                                let mut tx_set = HashSet::new();
-                                match electrum_client_guard
-                                    .script_subscribe(address_addendum.clone())
-                                {
-                                    Ok(addr_notif) if addr_notif.txs.is_empty() => {
-                                        let msg = "Address subscription successful, but no \
-                                                 transactions on this BTC address yet, events \
-                                                 will be emmited when transactions are observed";
-                                        warn!("{}", &msg);
-                                    }
-                                    Ok(addr_notif) => {
-                                        logging(&addr_notif.txs, &address_addendum);
-                                        tx_set = create_set(addr_notif.txs);
-                                    }
-                                    Err(e) => {
-                                        warn!("{}", e)
-                                    }
-                                }
-                                let mut state_guard = state.lock().await;
-                                state_guard
-                                    .change_address(
-                                        AddressAddendum::Bitcoin(address_addendum.clone()),
-                                        tx_set,
-                                    )
-                                    .await;
                                 drop(state_guard);
                             }
                             _ => {
@@ -458,23 +428,80 @@ async fn run_syncerd_task_receiver(
 
 fn address_polling(
     state: Arc<Mutex<SyncerState>>,
-    rpc: Arc<Mutex<ElectrumRpc>>,
+    syncer_servers: SyncerServers,
+    polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
-            let mut rpc_guard = rpc.lock().await;
-            rpc_guard.ping();
-            let mut addrs_notifs = rpc_guard.address_change_check();
-            drop(rpc_guard);
-            let mut state_guard = state.lock().await;
-            while let Some(AddressNotif { address, txs }) = addrs_notifs.pop() {
-                logging(&txs, &address);
-                state_guard
-                    .change_address(AddressAddendum::Bitcoin(address), create_set(txs))
-                    .await;
+            let mut rpc = match ElectrumRpc::new(&syncer_servers.electrum_server, polling) {
+                Ok(client) => client,
+                Err(err) => {
+                    error!(
+                        "failed to spawn electrum rpc client in address polling: {:?}",
+                        err
+                    );
+                    // wait a bit before retrying the connection
+                    tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
+                    continue;
+                }
+            };
+
+            loop {
+                match rpc.ping() {
+                    Err(err) => {
+                        error!("error ping electrum client in address polling: {:?}", err);
+                        // break this loop and retry, since the electrum rpc client is probably broken
+                        break;
+                    }
+                    _ => {}
+                }
+                let state_guard = state.lock().await;
+                let addresses = state_guard.addresses.clone();
+                drop(state_guard);
+                for (_, address) in addresses.clone() {
+                    if let AddressAddendum::Bitcoin(address_addendum) = address.task.addendum {
+                        let mut tx_set = HashSet::new();
+                        match rpc.script_subscribe(address_addendum.clone()) {
+                            Ok(addr_notif) if addr_notif.txs.is_empty() => {
+                                let msg = "Address subscription successful, but no \
+                                         transactions on this BTC address yet, events \
+                                         will be emmited when transactions are observed";
+                                warn!("{}", &msg);
+                            }
+                            Ok(addr_notif) => {
+                                logging(&addr_notif.txs, &address_addendum);
+                                tx_set = create_set(addr_notif.txs);
+                            }
+                            // do nothing if we are already subscribed
+                            Err(Error::Syncer(SyncerError::Electrum(
+                                electrum_client::Error::AlreadySubscribed(_),
+                            ))) => {}
+                            Err(e) => {
+                                error!("error in bitcoin address polling: {}", e);
+                                break;
+                            }
+                        }
+                        let mut state_guard = state.lock().await;
+                        state_guard
+                            .change_address(
+                                AddressAddendum::Bitcoin(address_addendum.clone()),
+                                tx_set,
+                            )
+                            .await;
+                        drop(state_guard);
+                    }
+                }
+                let mut addrs_notifs = rpc.address_change_check();
+                let mut state_guard = state.lock().await;
+                while let Some(AddressNotif { address, txs }) = addrs_notifs.pop() {
+                    logging(&txs, &address);
+                    state_guard
+                        .change_address(AddressAddendum::Bitcoin(address), create_set(txs))
+                        .await;
+                }
+                drop(state_guard);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
-            drop(state_guard);
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     })
 }
@@ -485,25 +512,55 @@ fn height_polling(
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = ElectrumRpc::new(syncer_servers.electrum_server, polling).unwrap();
-        let mut state_guard = state.lock().await;
-        state_guard
-            .change_height(rpc.height, rpc.block_hash.to_vec())
-            .await;
-        drop(state_guard);
-        rpc.client
-            .block_headers_subscribe()
-            .expect("failed subscribing to block headers in height polling");
+        // outer loop ensures the polling restarts if there is an error
         loop {
-            rpc.ping();
+            let mut rpc = match ElectrumRpc::new(&syncer_servers.electrum_server, polling) {
+                Ok(client) => client,
+                Err(err) => {
+                    error!(
+                        "failed to spawn electrum rpc client in height polling: {:?}",
+                        err
+                    );
+                    // wait a bit before retrying the connection
+                    tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
+                    continue;
+                }
+            };
+
             let mut state_guard = state.lock().await;
-            for block_notif in rpc.new_block_check().iter() {
-                state_guard
-                    .change_height(block_notif.height, block_notif.block_hash.to_vec())
-                    .await;
-            }
+            state_guard
+                .change_height(rpc.height, rpc.block_hash.to_vec())
+                .await;
             drop(state_guard);
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            // inner loop actually polls
+            loop {
+                match rpc.ping() {
+                    Err(err) => {
+                        error!("error ping electrum client in height polling: {:?}", err);
+                        // break this loop and retry, since the electrum rpc client is probably broken
+                        break;
+                    }
+                    _ => {}
+                }
+                let mut blocks = match rpc.new_block_check() {
+                    Ok(blks) => blks,
+                    Err(err) => {
+                        error!("error polling bitcoin block height: {:?}", err);
+                        // break this loop and retry, since the electrum rpc client is probably broken
+                        break;
+                    }
+                };
+                let mut state_guard = state.lock().await;
+                for block_notif in blocks.drain(..) {
+                    state_guard
+                        .change_height(block_notif.height, block_notif.block_hash.to_vec())
+                        .await;
+                }
+                drop(state_guard);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            // wait a bit before retrying the connection
+            tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
         }
     })
 }
@@ -514,10 +571,24 @@ fn transaction_polling(
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let rpc = ElectrumRpc::new(syncer_servers.electrum_server, polling).unwrap();
+        // outer loop ensures the polling restarts if there is an error
         loop {
-            rpc.query_transactions(Arc::clone(&state)).await;
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            let rpc = match ElectrumRpc::new(&syncer_servers.electrum_server, polling) {
+                Ok(client) => client,
+                Err(err) => {
+                    error!(
+                        "failed to spawn electrum rpc client in transaction polling: {:?}",
+                        err
+                    );
+                    // wait a bit before retrying the connection
+                    tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
+                    continue;
+                }
+            };
+            loop {
+                rpc.query_transactions(Arc::clone(&state)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            }
         }
     })
 }
@@ -548,22 +619,18 @@ impl Synclet for BitcoinSyncer {
                     TokioReceiver<SyncerdBridgeEvent>,
                 ) = tokio::sync::mpsc::channel(120);
                 let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
-                let electrum_client = Arc::new(Mutex::new(
-                    ElectrumRpc::new(syncer_servers.electrum_server.clone(), polling).unwrap(),
-                ));
 
                 run_syncerd_task_receiver(
                     syncer_servers.electrum_server.clone(),
                     receive_task_channel,
                     Arc::clone(&state),
                     event_tx.clone(),
-                    Arc::clone(&electrum_client),
                 )
                 .await;
                 run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
 
                 let address_handle =
-                    address_polling(Arc::clone(&state), Arc::clone(&electrum_client));
+                    address_polling(Arc::clone(&state), syncer_servers.clone(), polling);
 
                 let height_handle =
                     height_polling(Arc::clone(&state), syncer_servers.clone(), polling);
