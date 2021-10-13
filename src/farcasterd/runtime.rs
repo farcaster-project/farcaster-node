@@ -14,7 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
-    rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Token},
+    rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Reveal, Token},
     swapd::get_swap_id,
     syncerd::opts::Coin,
     walletd::NodeSecrets,

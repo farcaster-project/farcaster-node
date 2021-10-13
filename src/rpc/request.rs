@@ -45,14 +45,17 @@ use farcaster_core::{
     blockchain::FeePriority,
     bundle::{
         AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
+        Proof,
     },
     monero::Monero,
     negotiation::{Offer, PublicOffer},
-    protocol_message::{self, RevealAliceParameters, RevealBobParameters},
-    protocol_message::{CommitAliceParameters, CommitBobParameters},
+    protocol_message::{
+        self, CommitAliceParameters, CommitBobParameters, RevealAliceParameters,
+        RevealBobParameters, RevealProof,
+    },
     role::TradeRole,
     swap::btcxmr::BtcXmr,
-    swap::SwapId,
+    swap::{Swap, SwapId},
 };
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
@@ -104,13 +107,14 @@ impl Msg {
     pub fn swap_id(&self) -> SwapId {
         match self {
             Msg::MakerCommit(m) => match m {
-                Commit::Alice(n) => n.swap_id,
-                Commit::Bob(n) => n.swap_id,
+                Commit::AliceParameters(n) => n.swap_id,
+                Commit::BobParameters(n) => n.swap_id,
             },
             Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
             Msg::Reveal(m) => match m {
-                Reveal::Alice(n) => n.swap_id,
-                Reveal::Bob(n) => n.swap_id,
+                Reveal::AliceParameters(n) => n.swap_id,
+                Reveal::BobParameters(n) => n.swap_id,
+                Reveal::Proof(n) => n.swap_id,
             },
             Msg::RefundProcedureSignatures(protocol_message::RefundProcedureSignatures {
                 swap_id,
@@ -176,8 +180,8 @@ impl RequestId {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("commit")]
 pub enum Commit {
-    Alice(CommitAliceParameters<BtcXmr>),
-    Bob(CommitBobParameters<BtcXmr>),
+    AliceParameters(CommitAliceParameters<BtcXmr>),
+    BobParameters(CommitBobParameters<BtcXmr>),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -238,8 +242,9 @@ pub struct Keys(
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("reveal")]
 pub enum Reveal {
-    Alice(RevealAliceParameters<BtcXmr>),
-    Bob(RevealBobParameters<BtcXmr>),
+    AliceParameters(RevealAliceParameters<BtcXmr>),
+    BobParameters(RevealBobParameters<BtcXmr>),
+    Proof(RevealProof<BtcXmr>),
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -719,8 +724,14 @@ impl IntoSuccessOrFailure for Result<(), crate::Error> {
 impl Into<Reveal> for (SwapId, Params) {
     fn into(self) -> Reveal {
         match self {
-            (swap_id, Params::Alice(params)) => Reveal::Alice((swap_id, params).into()),
-            (swap_id, Params::Bob(params)) => Reveal::Bob((swap_id, params).into()),
+            (swap_id, Params::Alice(params)) => Reveal::AliceParameters((swap_id, params).into()),
+            (swap_id, Params::Bob(params)) => Reveal::BobParameters((swap_id, params).into()),
         }
+    }
+}
+
+impl From<(SwapId, Proof<BtcXmr>)> for Reveal {
+    fn from(tuple: (SwapId, Proof<BtcXmr>)) -> Self {
+        Reveal::Proof((tuple.0, tuple.1).into())
     }
 }
