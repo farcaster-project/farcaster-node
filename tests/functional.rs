@@ -26,8 +26,8 @@ use internet2::{CreateUnmarshaller, Unmarshall};
 use std::str::FromStr;
 
 use farcaster_node::syncerd::types::{
-    AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, Task, WatchAddress,
-    WatchHeight, WatchTransaction,
+    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, Task,
+    WatchAddress, WatchHeight, WatchTransaction,
 };
 
 /*
@@ -46,6 +46,7 @@ fn bitcoin_syncer_test() {
     bitcoin_syncer_address_test(false);
     bitcoin_syncer_transaction_test(false);
     bitcoin_syncer_broadcast_tx_test(false);
+    bitcoin_syncer_abort_test();
 }
 
 #[tokio::test]
@@ -55,6 +56,7 @@ async fn monero_syncer_test() {
     monero_syncer_address_test().await;
     monero_syncer_transaction_test().await;
     monero_syncer_broadcast_tx_test().await;
+    monero_syncer_abort_test().await;
 }
 
 /*
@@ -445,6 +447,49 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, 0, vec![0]);
+}
+
+fn bitcoin_syncer_abort_test() {
+    let (tx, rx_event) = create_bitcoin_syncer(true);
+    let bitcoin_rpc = bitcoin_setup();
+    let blocks = bitcoin_rpc.get_block_count().unwrap();
+
+    let task = SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 0,
+            lifetime: blocks + 2,
+            hash: vec![0; 32],
+            confirmation_bound: 2,
+        }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(task).unwrap();
+
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: 0 }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(request, None, 0);
+
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: 0 }),
+        source: ServiceId::Syncer(Coin::Bitcoin),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(
+        request,
+        Some("abort failed, task with id 0 from source syncer<Bitcoin> not found".to_string()),
+        0,
+    );
 }
 
 /*
@@ -936,6 +981,50 @@ async fn monero_syncer_transaction_test() {
     assert_transaction_confirmations(request, 0, vec![0]);
 }
 
+async fn monero_syncer_abort_test() {
+    let (tx, rx_event) = create_monero_syncer();
+    let (regtest, wallet) = setup_monero().await;
+    let address = wallet.get_address(0, None).await.unwrap();
+    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
+
+    let task = SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 0,
+            lifetime: blocks + 2,
+            hash: vec![0; 32],
+            confirmation_bound: 2,
+        }),
+        source: ServiceId::Syncer(Coin::Monero),
+    };
+    tx.send(task).unwrap();
+
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: 0 }),
+        source: ServiceId::Syncer(Coin::Monero),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(request, None, 0);
+
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: 0 }),
+        source: ServiceId::Syncer(Coin::Monero),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(
+        request,
+        Some("abort failed, task with id 0 from source syncer<Monero> not found".to_string()),
+        0,
+    );
+}
+
 /*
 Check that a monero BroadcastTransaction task generates an error
 */
@@ -1121,6 +1210,23 @@ fn assert_transaction_confirmations(
             _ => panic!("expected address transaction event"),
         },
         _ => panic!("expected syncerd bridge event"),
+    }
+}
+
+fn assert_task_aborted(request: Request, expected_error: Option<String>, expected_id: u32) {
+    match request {
+        Request::SyncerdBridgeEvent(event) => match event.event {
+            Event::TaskAborted(task_aborted) => {
+                assert_eq!(task_aborted.id, expected_id);
+                assert_eq!(task_aborted.error, expected_error);
+            }
+            _ => {
+                panic!("expected task aborted event");
+            }
+        },
+        _ => {
+            panic!("expected syncerd bridge event");
+        }
     }
 }
 

@@ -69,39 +69,113 @@ impl SyncerState {
     }
 
     pub async fn abort(&mut self, task_id: u32, source: ServiceId) {
-        let status = 0;
-        // match self.tasks.remove(&task.id) {
-        //     None => {}
-        //     Some(task) => {
-        //         match task {
-        //             Task::Abort(_abort) => {}
-        //             Task::WatchHeight(height) => {
-        //                 self.remove_watch_height(height.lifetime, height.id);
-        //             }
-        //             Task::WatchAddress(address) => {
-        //                 self.remove_address(address.lifetime, address.id);
-        //             }
-        //             Task::WatchTransaction(tx) => {
-        //                 self.remove_transaction(tx.lifetime, tx.id);
-        //             }
+        // check addresses tasks
+        let ids: Vec<u32> = self
+            .addresses
+            .iter()
+            .filter_map(|(id, address_transaction)| {
+                if address_transaction.task.id == task_id {
+                    return Some(id.clone());
+                } else {
+                    return None;
+                }
+            })
+            .collect();
+        for id in ids.iter() {
+            if let Some(source_id) = self.tasks_sources.get(&id) {
+                if *source_id == source {
+                    self.remove_address(id);
+                    send_event(
+                        &self.tx_event,
+                        &mut vec![(
+                            Event::TaskAborted(TaskAborted {
+                                id: task_id.clone(),
+                                error: None,
+                            }),
+                            source.clone(),
+                        )],
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
 
-        //             // Just set an error code as we immediately attempt to broadcast
-        // a transaction when told to
-        // Task::BroadcastTransaction(_tx) => {                 status = 1;
-        //             }
-        //         }
-        //     }
-        // }
+        // check transactions tasks
+        let ids: Vec<u32> = self
+            .transactions
+            .iter()
+            .filter_map(|(id, watched_transaction)| {
+                if watched_transaction.task.id == task_id {
+                    return Some(id.clone());
+                } else {
+                    return None;
+                }
+            })
+            .collect();
+        for id in ids.iter() {
+            if let Some(source_id) = self.tasks_sources.get(&id) {
+                if *source_id == source {
+                    self.remove_transaction(id);
+                    send_event(
+                        &self.tx_event,
+                        &mut vec![(
+                            Event::TaskAborted(TaskAborted {
+                                id: task_id.clone(),
+                                error: None,
+                            }),
+                            source.clone(),
+                        )],
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
 
-        // Emit the task_aborted event
+        // check height tasks
+        let ids: Vec<u32> = self
+            .watch_height
+            .iter()
+            .filter_map(|(id, watch_height)| {
+                if watch_height.id == task_id {
+                    return Some(id.clone());
+                } else {
+                    return None;
+                }
+            })
+            .collect();
+        for id in ids.iter() {
+            if let Some(source_id) = self.tasks_sources.get(&id) {
+                if *source_id == source {
+                    self.remove_height(id);
+                    send_event(
+                        &self.tx_event,
+                        &mut vec![(
+                            Event::TaskAborted(TaskAborted {
+                                id: task_id.clone(),
+                                error: None,
+                            }),
+                            source.clone(),
+                        )],
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
+
         send_event(
             &self.tx_event,
             &mut vec![(
                 Event::TaskAborted(TaskAborted {
-                    id: task_id,
-                    success_abort: status,
+                    id: task_id.clone(),
+                    error: Some(format!(
+                        "abort failed, task with id {} from source {} not found",
+                        task_id, source
+                    )),
                 }),
-                source,
+                source.clone(),
             )],
         )
         .await;
@@ -360,12 +434,6 @@ impl SyncerState {
         send_event(&self.tx_event, &mut events).await;
     }
 
-    fn remove_transaction(&mut self, transaction_lifetime: u64, id: u32) {
-        self.remove_lifetime(transaction_lifetime, id);
-        self.transactions.remove(&id);
-        self.unseen_transactions.remove(&id);
-    }
-
     fn drop_lifetimes(&mut self) {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
@@ -391,12 +459,6 @@ impl SyncerState {
         Ok(())
     }
 
-    fn remove_lifetime(&mut self, lifetime: u64, id: u32) {
-        if let Some(lifetimes) = self.lifetimes.get_mut(&lifetime) {
-            lifetimes.remove(&id);
-        }
-    }
-
     fn drop_lifetime(&mut self, lifetime: u64) {
         if let Some(tasks) = self.lifetimes.remove(&lifetime) {
             for task in &tasks {
@@ -411,14 +473,44 @@ impl SyncerState {
         }
     }
 
-    fn remove_address(&mut self, address_lifetime: u64, id: u32) {
-        self.remove_lifetime(address_lifetime, id);
-        self.addresses.remove(&id);
+    fn remove_transaction(&mut self, id: &u32) {
+        if let Some(watch_transactions) = self.transactions.get(id) {
+            if let Some(ids) = self.lifetimes.get_mut(&watch_transactions.task.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&watch_transactions.task.lifetime);
+                }
+            }
+        }
+        self.transactions.remove(id);
+        self.unseen_transactions.remove(id);
+        self.tasks_sources.remove(id);
     }
 
-    fn remove_watch_height(&mut self, height_lifetime: u64, id: u32) {
-        self.remove_lifetime(height_lifetime, id);
-        self.watch_height.remove(&id);
+    fn remove_address(&mut self, id: &u32) {
+        if let Some(address_transactions) = self.addresses.get(id) {
+            if let Some(ids) = self.lifetimes.get_mut(&address_transactions.task.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&address_transactions.task.lifetime);
+                }
+            }
+        }
+        self.addresses.remove(id);
+        self.tasks_sources.remove(id);
+    }
+
+    fn remove_height(&mut self, id: &u32) {
+        if let Some(watch_height) = self.watch_height.get(id) {
+            if let Some(ids) = self.lifetimes.get_mut(&watch_height.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&watch_height.lifetime);
+                }
+            }
+        }
+        self.watch_height.remove(id);
+        self.tasks_sources.remove(id);
     }
 }
 
@@ -456,8 +548,22 @@ async fn syncer_state_transaction() {
         confirmation_bound: 4,
     };
     let height_task = WatchHeight { id: 0, lifetime: 4 };
-    state.watch_transaction(transaction_task_one, ServiceId::Syncer(Coin::Bitcoin));
-    state.watch_transaction(transaction_task_two, ServiceId::Syncer(Coin::Bitcoin));
+
+    state.watch_transaction(
+        transaction_task_one.clone(),
+        ServiceId::Syncer(Coin::Bitcoin),
+    );
+    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    assert!(event_rx.try_recv().is_ok());
+
+    state.watch_transaction(
+        transaction_task_one.clone(),
+        ServiceId::Syncer(Coin::Bitcoin),
+    );
+    state.watch_transaction(
+        transaction_task_two.clone(),
+        ServiceId::Syncer(Coin::Bitcoin),
+    );
     state
         .watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin))
         .await;
@@ -513,6 +619,17 @@ async fn syncer_state_transaction() {
     assert_eq!(state.unseen_transactions.len(), 2);
     assert!(event_rx.try_recv().is_ok());
 
+    state.watch_transaction(
+        transaction_task_two.clone(),
+        ServiceId::Syncer(Coin::Monero),
+    );
+    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    assert_eq!(state.lifetimes.len(), 3);
+    assert_eq!(state.transactions.len(), 2);
+    assert_eq!(state.tasks_sources.len(), 3);
+    assert_eq!(state.unseen_transactions.len(), 2);
+    assert!(event_rx.try_recv().is_ok());
+
     state.change_height(5, vec![0]).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.transactions.len(), 0);
@@ -542,6 +659,22 @@ async fn syncer_state_addresses() {
         addendum: addendum.clone(),
         include_tx: Boolean::False,
     };
+    let address_task_two = WatchAddress {
+        id: 0,
+        lifetime: 1,
+        addendum: addendum.clone(),
+        include_tx: Boolean::False,
+    };
+
+    state
+        .watch_address(address_task_two.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .unwrap();
+    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    assert_eq!(state.lifetimes.len(), 0);
+    assert_eq!(state.tasks_sources.len(), 0);
+    assert_eq!(state.addresses.len(), 0);
+    assert!(event_rx.try_recv().is_ok());
+
     state
         .watch_address(address_task, ServiceId::Syncer(Coin::Bitcoin))
         .unwrap();
@@ -630,6 +763,15 @@ async fn syncer_state_addresses() {
     assert!(event_rx.try_recv().is_ok());
     assert!(event_rx.try_recv().is_ok());
 
+    state
+        .watch_address(address_task_two.clone(), ServiceId::Syncer(Coin::Monero))
+        .unwrap();
+    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.addresses.len(), 1);
+    assert!(event_rx.try_recv().is_ok());
+
     state.change_height(1, vec![0]).await;
     let height_task = WatchHeight { id: 0, lifetime: 3 };
     state
@@ -664,10 +806,22 @@ async fn syncer_state_height() {
     let another_height_task = WatchHeight { id: 0, lifetime: 3 };
 
     state
-        .watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin))
+        .watch_height(height_task.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .await;
+    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    assert_eq!(state.lifetimes.len(), 0);
+    assert_eq!(state.tasks_sources.len(), 0);
+    assert_eq!(state.watch_height.len(), 0);
+    assert!(event_rx.try_recv().is_ok());
+
+    state
+        .watch_height(height_task.clone(), ServiceId::Syncer(Coin::Bitcoin))
         .await;
     state
-        .watch_height(another_height_task, ServiceId::Syncer(Coin::Bitcoin))
+        .watch_height(
+            another_height_task.clone(),
+            ServiceId::Syncer(Coin::Bitcoin),
+        )
         .await;
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
@@ -691,6 +845,16 @@ async fn syncer_state_height() {
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);
     assert!(event_rx.try_recv().is_err());
+
+    state
+        .watch_height(another_height_task.clone(), ServiceId::Syncer(Coin::Monero))
+        .await;
+    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.watch_height.len(), 1);
+    assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_ok());
 
     state.change_height(4, vec![0]).await;
     assert_eq!(state.lifetimes.len(), 0);

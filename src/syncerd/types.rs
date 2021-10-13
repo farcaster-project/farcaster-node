@@ -96,7 +96,7 @@ pub enum Task {
 #[display(Debug)]
 pub struct TaskAborted {
     pub id: u32,
-    pub success_abort: i32,
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
