@@ -49,6 +49,7 @@ pub struct SyncerdTask {
     pub source: ServiceId,
 }
 
+#[derive(Debug, Clone, Hash)]
 pub struct SyncerServers {
     pub electrum_server: String,
     pub monero_daemon: String,

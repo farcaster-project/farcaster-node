@@ -85,11 +85,11 @@ shellexpand = { version = "2", optional = true }
 # IPC
 zmq = "0.9"
 # Async
-tokio = { version = "1.9.0", features = ["full"] }
+tokio = { version = "1.12.0", features = ["full"] }
 # Coin clients
 electrum-client = { git = "https://github.com/Lederstrumpf/rust-electrum-client", branch = "verboseTransactionGetRebased" }
 bitcoincore-rpc = "0.14.0"
-monero-rpc = { git = "https://github.com/Lederstrumpf/monero-rpc-rs", branch = "changes" }
+monero-rpc = { git = "https://github.com/TheCharlatan/monero-rpc-rs", branch = "changes" }
 # monero-rpc = { path = "../monero-rpc-rs/" }
 
 [build-dependencies]
