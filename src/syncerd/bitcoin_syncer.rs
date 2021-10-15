@@ -124,10 +124,6 @@ impl ElectrumRpc {
         &mut self,
         address_addendum: BtcAddressAddendum,
     ) -> Result<AddressNotif, Error> {
-        info!(
-            "subscribing to script_pubkey {}",
-            &address_addendum.script_pubkey
-        );
         let script_status = if self.polling {
             None
         } else {
