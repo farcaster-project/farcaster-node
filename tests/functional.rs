@@ -18,7 +18,6 @@ use lnpbp::chain::Chain;
 use monero::Address;
 use monero_rpc::GetBlockHeaderSelector;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
@@ -708,8 +707,8 @@ async fn monero_syncer_address_test() {
     let tx_id = send_monero(&wallet, address1, 1).await;
 
     let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
-        spend_key: address1.public_spend.as_bytes().try_into().unwrap(),
-        view_key: view_key.as_bytes().try_into().unwrap(),
+        spend_key: address1.public_spend,
+        view_key: view_key,
         from_height: 0,
     });
     let watch_address_task_1 = SyncerdTask {
@@ -735,8 +734,8 @@ async fn monero_syncer_address_test() {
     let tx_id2_2 = send_monero(&wallet, address2, 1).await;
 
     let addendum_2 = AddressAddendum::Monero(XmrAddressAddendum {
-        spend_key: address2.public_spend.as_bytes().try_into().unwrap(),
-        view_key: view_key.as_bytes().try_into().unwrap(),
+        spend_key: address2.public_spend,
+        view_key: view_key,
         from_height: 0,
     });
     let watch_address_task_2 = SyncerdTask {
@@ -763,8 +762,8 @@ async fn monero_syncer_address_test() {
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
     let addendum_3 = AddressAddendum::Monero(XmrAddressAddendum {
-        spend_key: address2.public_spend.as_bytes().try_into().unwrap(),
-        view_key: view_key.as_bytes().try_into().unwrap(),
+        spend_key: address2.public_spend,
+        view_key: view_key,
         from_height: 0,
     });
     let watch_address_task_3 = SyncerdTask {
@@ -793,8 +792,8 @@ async fn monero_syncer_address_test() {
     let tx_id4 = send_monero(&wallet, address4, 1).await;
 
     let addendum_4 = AddressAddendum::Monero(XmrAddressAddendum {
-        spend_key: address4.public_spend.as_bytes().try_into().unwrap(),
-        view_key: view_key.as_bytes().try_into().unwrap(),
+        spend_key: address4.public_spend,
+        view_key: view_key,
         from_height: 0,
     });
     for i in 0..5 {
