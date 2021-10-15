@@ -1182,16 +1182,14 @@ impl Runtime {
                 trace!("setting commit_remote and commit_local msg");
                 self.state = next_state;
             }
-            Request::FundingUpdated => {
-                if source != ServiceId::Wallet {
-                    error!("Only wallet permited");
-                    return Ok(());
-                }
+            Request::FundingUpdated
+                if source == ServiceId::Wallet && self.pending_requests.contains_key(&source) =>
+            {
                 trace!("funding updated received from wallet");
                 let mut pending_requests = self
                     .pending_requests
                     .remove(&source)
-                    .expect("should have pending Reveal{Proof} requests");
+                    .expect("checked above, should have pending Reveal{Proof} requests");
                 if pending_requests.len() == 2 {
                     let PendingRequest {
                         request: request_parameters,
@@ -1427,7 +1425,6 @@ impl Runtime {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
                             .handle_height_change(*height, Coin::Bitcoin);
-                        info!("bitcoin new height {}", height.bright_green_italic())
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1547,12 +1544,11 @@ impl Runtime {
                                             info!(
                                                 "Alice subscribes for monero address with syncer"
                                             );
-                                            let watch_addr_task =
-                                                self.syncer_state.watch_addr_xmr(
-                                                    spend,
-                                                    accordant_shared_keys,
-                                                    self.state.swap_role(),
-                                                );
+                                            let watch_addr_task = self.syncer_state.watch_addr_xmr(
+                                                spend,
+                                                accordant_shared_keys,
+                                                self.state.swap_role(),
+                                            );
                                             senders.send_to(
                                                 ServiceBus::Ctl,
                                                 self.identity(),
@@ -1620,12 +1616,11 @@ impl Runtime {
                                             info!(
                                                 "Alice subscribes for monero address with syncer"
                                             );
-                                            let watch_addr_task =
-                                                self.syncer_state.watch_addr_xmr(
-                                                    spend,
-                                                    accordant_shared_keys,
-                                                    self.state.swap_role(),
-                                                );
+                                            let watch_addr_task = self.syncer_state.watch_addr_xmr(
+                                                spend,
+                                                accordant_shared_keys,
+                                                self.state.swap_role(),
+                                            );
                                             senders.send_to(
                                                 ServiceBus::Ctl,
                                                 self.identity(),
