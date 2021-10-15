@@ -166,10 +166,7 @@ impl MoneroRpc {
             .await
         {
             Err(err) => {
-                error!(
-                    "error opening wallet: {:?}, falling back to generating a new wallet",
-                    err
-                );
+                warn!("wallet doesn't exist, generating a new wallet: {:?}", err);
                 wallet
                     .generate_from_keys(GenerateFromKeysArgs {
                         restore_height: Some(address_addendum.from_height),
