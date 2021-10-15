@@ -391,6 +391,7 @@ impl SyncerState {
             Coin::Monero => &mut self.monero_height,
         };
         if &new_height > &height {
+            info!("{:?} new height {}", coin, &new_height);
             *height = new_height;
         } else {
             warn!("block height did not increment, maybe syncer sends multiple events");
@@ -441,7 +442,7 @@ impl SyncerState {
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: spend.to_bytes(),
-            view_key: view_key.to_bytes(),
+            view_key: view.to_bytes(),
             from_height,
         });
 
@@ -1270,7 +1271,11 @@ impl Runtime {
                                 warn!("xmr_locked was already set to true")
                             }
                         }
-                        info!("subscribing for monero lock {}", hex::encode(&hash));
+                        info!(
+                            "Watching {} {}",
+                            TxLabel::AccLock.bright_green_bold(),
+                            hex::encode(&hash).addr()
+                        );
                         self.syncer_state.tx_tasks.insert(id, TxLabel::AccLock);
                         let watch_tx = Task::WatchTransaction(WatchTransaction {
                             id,
@@ -1293,7 +1298,7 @@ impl Runtime {
                         && self.state.swap_role() == SwapRole::Bob
                         && self.pending_requests.get(&source).is_some() =>
                     {
-                        error!("not checking tx rcvd is accordant lock");
+                        // error!("not checking tx rcvd is accordant lock");
                         // TODO: Check length of pending_requests == 1
                         let PendingRequest {
                             request,
