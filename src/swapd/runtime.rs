@@ -451,7 +451,7 @@ impl SyncerState {
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: spend,
-            view_key,
+            view_key: view,
             from_height,
         });
 
