@@ -108,9 +108,9 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: 1,
+        btc_finality_thr: 0,
         race_thr: 3,
-        xmr_finality_thr: 2,
+        xmr_finality_thr: 0,
     };
 
     temporal_safety.valid_params()?;
@@ -188,7 +188,7 @@ impl TemporalSafety {
             && btc_finality < race
             && punish > race
             && cancel > race
-            && btc_finality < xmr_finality
+        // && btc_finality < xmr_finality
         {
             Ok(())
         } else {
@@ -197,25 +197,31 @@ impl TemporalSafety {
             )))
         }
     }
-    fn final_tx(&self, confs: u32) -> bool {
-        confs >= self.btc_finality_thr
+    fn final_tx(&self, confs: u32, coin: Coin) -> bool {
+        let finality_thr = match coin {
+            Coin::Bitcoin => self.btc_finality_thr,
+            Coin::Monero => self.xmr_finality_thr,
+        };
+        confs >= finality_thr
     }
     /// lock must be final, valid after lock_minedblock + cancel_timelock
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
-        self.final_tx(lock_confirmations) && lock_confirmations >= self.cancel_timelock
+        self.final_tx(lock_confirmations, Coin::Bitcoin)
+            && lock_confirmations >= self.cancel_timelock
     }
     /// lock must be final, but buy shall not be raced with cancel
     fn safe_buy(&self, lock_confirmations: u32) -> bool {
-        self.final_tx(lock_confirmations)
+        self.final_tx(lock_confirmations, Coin::Bitcoin)
             && lock_confirmations < (self.cancel_timelock - self.race_thr)
     }
     /// cancel must be final, but refund shall not be raced with punish
     fn safe_refund(&self, cancel_confirmations: u32) -> bool {
-        self.final_tx(cancel_confirmations)
+        self.final_tx(cancel_confirmations, Coin::Bitcoin)
             && cancel_confirmations < (self.punish_timelock - self.race_thr)
     }
     fn valid_punish(&self, cancel_confirmations: u32) -> bool {
-        self.final_tx(cancel_confirmations) && cancel_confirmations >= self.punish_timelock
+        self.final_tx(cancel_confirmations, Coin::Bitcoin)
+            && cancel_confirmations >= self.punish_timelock
     }
 }
 
@@ -1283,7 +1289,7 @@ impl Runtime {
                         id,
                         block,
                         confirmations: Some(confirmations),
-                    }) if confirmations > &self.temporal_safety.xmr_finality_thr
+                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.swap_role() == SwapRole::Bob
                         && self.pending_requests.get(&source).is_some() =>
                     {
@@ -1478,7 +1484,7 @@ impl Runtime {
                         id,
                         block,
                         confirmations: Some(confirmations),
-                    }) if self.temporal_safety.final_tx(*confirmations) => {
+                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin) => {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
                         if let Some(txlabel) = self.syncer_state.tx_tasks.get(&id) {
                             info!(
