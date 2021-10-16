@@ -451,7 +451,8 @@ fn address_polling(
                 match rpc.ping() {
                     Err(err) => {
                         error!("error ping electrum client in address polling: {:?}", err);
-                        // break this loop and retry, since the electrum rpc client is probably broken
+                        // break this loop and retry, since the electrum rpc client is probably
+                        // broken
                         break;
                     }
                     _ => {}
@@ -538,7 +539,8 @@ fn height_polling(
                 match rpc.ping() {
                     Err(err) => {
                         error!("error ping electrum client in height polling: {:?}", err);
-                        // break this loop and retry, since the electrum rpc client is probably broken
+                        // break this loop and retry, since the electrum rpc client is probably
+                        // broken
                         break;
                     }
                     _ => {}
@@ -547,7 +549,8 @@ fn height_polling(
                     Ok(blks) => blks,
                     Err(err) => {
                         error!("error polling bitcoin block height: {:?}", err);
-                        // break this loop and retry, since the electrum rpc client is probably broken
+                        // break this loop and retry, since the electrum rpc client is probably
+                        // broken
                         break;
                     }
                 };
