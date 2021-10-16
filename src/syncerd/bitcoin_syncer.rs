@@ -422,6 +422,7 @@ async fn run_syncerd_task_receiver(
                     // do nothing
                 }
             }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     });
 }
@@ -615,7 +616,12 @@ impl Synclet for BitcoinSyncer {
         polling: bool,
     ) {
         std::thread::spawn(move || {
-            let rt = Runtime::new().unwrap();
+            use tokio::runtime::Builder;
+            let rt = Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .unwrap();
             rt.block_on(async {
                 let (event_tx, event_rx): (
                     TokioSender<SyncerdBridgeEvent>,
