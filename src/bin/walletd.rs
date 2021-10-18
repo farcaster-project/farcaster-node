@@ -35,7 +35,7 @@ use farcaster_node::{
     rpc::request::Token,
     walletd::{self, Opts},
 };
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::Config;
 
 fn main() {
     let mut opts = Opts::parse();
@@ -49,15 +49,8 @@ fn main() {
     debug!("CTL RPC socket {}", &config.ctl_endpoint);
 
     let wallet_token = Token(opts.token.wallet_token);
-    info!("received token: {}", wallet_token);
 
     let node_id = opts.key_opts.node_secrets().node_id();
-
-    info!(
-        "{}: {}",
-        "Local node id".bright_green_bold(),
-        node_id.bright_yellow_bold()
-    );
 
     debug!("Starting runtime ...");
     walletd::run(config, wallet_token, opts.key_opts.node_secrets(), node_id)

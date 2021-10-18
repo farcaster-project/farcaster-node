@@ -418,7 +418,7 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         let from_height = self.from_height(Coin::Bitcoin);
         self.tasks.watched_addrs.insert(id, tx_label);
-        info!("Watching BTC address {}", tx_label);
+        info!("Watching BTC {} address  with script_pubkey {}", tx_label, script_pubkey);
         let addendum = BtcAddressAddendum {
             address: None,
             from_height,
@@ -1103,10 +1103,10 @@ impl Runtime {
                     let reveal_proof = Msg::Reveal(reveal);
                     let swap_id = reveal_proof.swap_id();
                     self.send_peer(senders, reveal_proof)?;
-                    info!("forwarded reveal_proof");
+                    trace!("forwarded reveal_proof");
                     let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                     self.send_peer(senders, Msg::Reveal(reveal_params))?;
-                    info!("sent reveal_proof to peerd");
+                    trace!("sent reveal_proof to peerd");
                     let next_state = match self.state {
                         State::Alice(_) => State::Alice(AliceState::RevealA(None, remote_commit)),
                         State::Bob(_) => State::Bob(BobState::RevealB(None, remote_commit)),

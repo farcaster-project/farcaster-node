@@ -225,9 +225,6 @@ impl Runtime {
                             "Unexpected another farcasterd instance connection".err()
                         );
                     }
-                    ServiceId::Wallet => {
-                        info!("Walletd functional");
-                    }
                     ServiceId::Peer(connection_id) => {
                         if self.connections.insert(connection_id.clone()) {
                             info!(
@@ -590,20 +587,14 @@ impl Runtime {
                         hex_public_offer.bright_yellow_bold()
                     );
                     info!(
-                        "{} {}",
-                        "Pubic offer registered:".bright_blue_bold(),
+                        "Maker: {} {}",
+                        "Public offer registered".bright_blue_bold(),
                         offer_id.bright_yellow_bold()
                     );
                     report_to.push((
                         Some(source.clone()),
                         Request::Success(OptionDetails(Some(msg))),
                     ));
-                    // senders.send_to(
-                    //     ServiceBus::Ctl,
-                    //     ServiceId::Farcasterd, // source
-                    //     source,                // destination
-                    //     Request::PublicOfferHex(hex_public_offer),
-                    // )?;
                 } else {
                     let msg = "This Public offer was previously registered";
                     warn!("{}", msg.err());
@@ -654,7 +645,7 @@ impl Runtime {
                         match (self.connections.contains(&peer), peer_secret_key) {
                             (false, None) => return self.get_secret(senders, source, request),
                             (false, Some(sk)) => {
-                                info!(
+                                trace!(
                                     "{} to remote peer {}",
                                     "Connecting".bright_blue_bold(),
                                     peer.bright_blue_italic()
