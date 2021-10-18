@@ -384,13 +384,7 @@ impl Runtime {
                 self.send_walletd(senders, request)?
             }
             Request::Keys(Keys(sk, pk, id)) => {
-                info!(
-                    "received peerd keys \n \
-                     secret: {} \n \
-                     public: {}",
-                    sk.addr(),
-                    pk.addr()
-                );
+                trace!("received peerd keys");
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
                     self.node_ids.insert(pk);
@@ -587,17 +581,18 @@ impl Runtime {
                 };
 
                 let public_offer = offer.clone().to_public_v1(node_ids[0], remote_addr.into());
+                let offer_id = public_offer.id();
                 let hex_public_offer = public_offer.to_hex();
                 if self.public_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
-                        "Pubic offer registered, please share with taker: ".bright_blue_bold(),
+                        "Public offer registered, please share with taker: ".bright_blue_bold(),
                         hex_public_offer.bright_yellow_bold()
                     );
                     info!(
                         "{} {}",
                         "Pubic offer registered:".bright_blue_bold(),
-                        &hex_public_offer.bright_yellow_bold()
+                        offer_id.bright_yellow_bold()
                     );
                     report_to.push((
                         Some(source.clone()),
@@ -691,11 +686,11 @@ impl Runtime {
                         let offer_registered = format!(
                             "{} {}",
                             "Public offer registered:".bright_blue_bold(),
-                            &public_offer.id().bright_yellow_bold()
+                            &public_offer.id().bright_white_bold()
                         );
                         // not yet in the set
                         self.public_offers.insert(public_offer.clone());
-                        info!("{}", offer_registered.bright_yellow_bold());
+                        info!("{}", offer_registered);
 
                         report_to.push((
                             Some(source.clone()),
@@ -722,7 +717,7 @@ impl Runtime {
             if let Some(respond_to) = respond_to {
                 len += 1;
                 debug!("notifications to cli: {}", len);
-                info!(
+                trace!(
                     "Respond to {} -> Response {}",
                     respond_to.bright_yellow_bold(),
                     resp.bright_blue_bold(),
