@@ -48,7 +48,7 @@ use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use farcaster_core::swap::SwapId;
+use farcaster_core::{negotiation::PublicOfferId, swap::SwapId};
 
 use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
@@ -88,6 +88,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         wallet_token,
         pending_requests: none!(),
         syncers: none!(),
+        consumed_offers: none!(),
     };
 
     let broker = true;
@@ -105,6 +106,7 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
     public_offers: HashSet<PublicOffer<BtcXmr>>,
+    consumed_offers: HashSet<PublicOfferId>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
@@ -350,7 +352,7 @@ impl Runtime {
                         "launching swapd with swap_id:",
                         swap_id.bright_yellow_bold()
                     );
-
+                    self.consumed_offers.insert(public_offer.id());
                     launch_swapd(
                         self,
                         peer,
@@ -624,7 +626,9 @@ impl Runtime {
                 public_offer,
                 peer_secret_key,
             }) => {
-                if self.public_offers.contains(&public_offer) {
+                if self.public_offers.contains(&public_offer)
+                    || self.consumed_offers.contains(&public_offer.id())
+                {
                     let msg = format!(
                         "Offer {} already exists, ignoring request",
                         &public_offer.to_hex()
@@ -686,8 +690,8 @@ impl Runtime {
                     if peer_connected_is_ok {
                         let offer_registered = format!(
                             "{} {}",
-                            "Pubic offer registered:".bright_blue_bold(),
-                            &public_offer.bright_yellow_bold()
+                            "Public offer registered:".bright_blue_bold(),
+                            &public_offer.id().bright_yellow_bold()
                         );
                         // not yet in the set
                         self.public_offers.insert(public_offer.clone());
