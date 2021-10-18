@@ -988,7 +988,7 @@ impl Runtime {
             // let _ = self.report_progress_to(senders, &enquirer, msg);
             // let _ = self.report_success_to(senders, &enquirer, Some(msg));
             _ => {
-                error!("MSG RPC can be only used for forwarding FWP messages");
+                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }

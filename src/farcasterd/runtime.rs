@@ -204,7 +204,7 @@ impl Runtime {
             }
 
             _ => {
-                error!("MSG RPC can be only used for forwarding FWP messages");
+                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
