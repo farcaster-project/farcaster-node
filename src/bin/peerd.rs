@@ -251,7 +251,7 @@ fn main() {
             remote_id = Some(remote_node_addr.node_id);
             remote_socket = remote_node_addr.remote_addr.into();
 
-            info!("Connecting to {}", &remote_node_addr);
+            info!("Connecting to {}", &remote_node_addr.addr());
             PeerConnection::connect(remote_node_addr, &local_node)
                 .expect("Unable to connect to the remote peer")
         }

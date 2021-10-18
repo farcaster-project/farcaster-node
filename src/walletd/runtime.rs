@@ -1033,7 +1033,7 @@ impl Runtime {
                             funding_amount.bright_green_bold(),
                             funding_addr.addr(),
                         );
-                        info!("Creating {}", "Wallet::Bob".bright_yellow());
+                        info!("Loading {}", "Wallet::Bob".bright_yellow());
                         if self.wallets.get(&swap_id).is_none() {
                             let local_wallet = BobState::new(
                                 self.wallet_counter.increment(),
@@ -1078,7 +1078,7 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
                             // requests and store the state in there directly
-                            info!("Creating Alice Taker's Wallet");
+                            info!("Loading Alice Taker's Wallet");
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Alice(

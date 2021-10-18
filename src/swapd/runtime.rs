@@ -413,25 +413,6 @@ impl SyncerState {
             warn!("block height did not increment, maybe syncer sends multiple events");
         }
     }
-
-    fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
-        let id = self.tasks.new_taskid();
-        let from_height = self.from_height(Coin::Bitcoin);
-        self.tasks.watched_addrs.insert(id, tx_label);
-        info!("Watching BTC {} address  with script_pubkey {}", tx_label, script_pubkey);
-        let addendum = BtcAddressAddendum {
-            address: None,
-            from_height,
-            script_pubkey,
-        };
-        Task::WatchAddress(WatchAddress {
-            id,
-            lifetime: self.task_lifetime(Coin::Bitcoin),
-            addendum: AddressAddendum::Bitcoin(addendum),
-            include_tx: Boolean::True,
-        })
-    }
-
     fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
@@ -462,6 +443,28 @@ impl SyncerState {
             confirmation_bound: self.confirmation_bound,
         })
     }
+    fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
+        let id = self.tasks.new_taskid();
+        let from_height = self.from_height(Coin::Bitcoin);
+        self.tasks.watched_addrs.insert(id, tx_label);
+        info!(
+            "Watching {} address with {}",
+            tx_label.bright_green_bold(),
+            script_pubkey
+        );
+        let addendum = BtcAddressAddendum {
+            address: None,
+            from_height,
+            script_pubkey,
+        };
+        Task::WatchAddress(WatchAddress {
+            id,
+            lifetime: self.task_lifetime(Coin::Bitcoin),
+            addendum: AddressAddendum::Bitcoin(addendum),
+            include_tx: Boolean::True,
+        })
+    }
+
     fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
@@ -493,7 +496,7 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_addrs.insert(id, tx_label);
 
-        info!("Watching XMR address {}", tx_label);
+        info!("Watching address {}", tx_label.bright_green_bold());
         let watch_addr = WatchAddress {
             id,
             lifetime: self.task_lifetime(Coin::Monero),
