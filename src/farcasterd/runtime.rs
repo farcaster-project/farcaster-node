@@ -87,6 +87,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         node_ids: none!(),
         wallet_token,
         pending_requests: none!(),
+        syncers: none!(),
     };
 
     let broker = true;
@@ -107,6 +108,7 @@ pub struct Runtime {
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
+    syncers: HashMap<Coin, ServiceId>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -256,6 +258,9 @@ impl Runtime {
                             );
                         }
                     }
+                    ServiceId::Syncer(coin) => {
+                        self.syncers.insert(coin.clone(), source.clone());
+                    }
                     _ => {
                         // Ignoring the rest of daemon/client types
                     }
@@ -273,10 +278,13 @@ impl Runtime {
                         swap_params.report_to.clone(), // walletd
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
-
-                    launch("syncerd", &[Coin::Bitcoin.to_string()])?;
-                    launch("syncerd", &[Coin::Monero.to_string()])?;
-
+                    // when online, Syncers say Hello, then they get registered to self.syncers
+                    if !self.syncers.contains_key(&Coin::Bitcoin) {
+                        launch("syncerd", &[Coin::Bitcoin.to_string()])?;
+                    }
+                    if !self.syncers.contains_key(&Coin::Monero) {
+                        launch("syncerd", &[Coin::Monero.to_string()])?;
+                    }
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
