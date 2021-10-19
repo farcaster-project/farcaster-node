@@ -353,7 +353,7 @@ impl Runtime {
                     launch_swapd(
                         self,
                         peer,
-                        Some(source),
+                        Some(self.identity()),
                         local_trade_role,
                         public_offer,
                         local_params,
