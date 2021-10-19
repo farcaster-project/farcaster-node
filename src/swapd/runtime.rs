@@ -413,25 +413,6 @@ impl SyncerState {
             warn!("block height did not increment, maybe syncer sends multiple events");
         }
     }
-
-    fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
-        let id = self.tasks.new_taskid();
-        let from_height = self.from_height(Coin::Bitcoin);
-        self.tasks.watched_addrs.insert(id, tx_label);
-        info!("Watching BTC address {}", tx_label);
-        let addendum = BtcAddressAddendum {
-            address: None,
-            from_height,
-            script_pubkey,
-        };
-        Task::WatchAddress(WatchAddress {
-            id,
-            lifetime: self.task_lifetime(Coin::Bitcoin),
-            addendum: AddressAddendum::Bitcoin(addendum),
-            include_tx: Boolean::True,
-        })
-    }
-
     fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
@@ -462,6 +443,28 @@ impl SyncerState {
             confirmation_bound: self.confirmation_bound,
         })
     }
+    fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
+        let id = self.tasks.new_taskid();
+        let from_height = self.from_height(Coin::Bitcoin);
+        self.tasks.watched_addrs.insert(id, tx_label);
+        info!(
+            "Watching {} address with {}",
+            tx_label.bright_green_bold(),
+            script_pubkey
+        );
+        let addendum = BtcAddressAddendum {
+            address: None,
+            from_height,
+            script_pubkey,
+        };
+        Task::WatchAddress(WatchAddress {
+            id,
+            lifetime: self.task_lifetime(Coin::Bitcoin),
+            addendum: AddressAddendum::Bitcoin(addendum),
+            include_tx: Boolean::True,
+        })
+    }
+
     fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
@@ -493,7 +496,7 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_addrs.insert(id, tx_label);
 
-        info!("Watching XMR address {}", tx_label);
+        info!("Watching address {}", tx_label.bright_green_bold());
         let watch_addr = WatchAddress {
             id,
             lifetime: self.task_lifetime(Coin::Monero),
@@ -1103,10 +1106,10 @@ impl Runtime {
                     let reveal_proof = Msg::Reveal(reveal);
                     let swap_id = reveal_proof.swap_id();
                     self.send_peer(senders, reveal_proof)?;
-                    info!("forwarded reveal_proof");
+                    trace!("forwarded reveal_proof");
                     let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                     self.send_peer(senders, Msg::Reveal(reveal_params))?;
-                    info!("sent reveal_proof to peerd");
+                    trace!("sent reveal_proof to peerd");
                     let next_state = match self.state {
                         State::Alice(_) => State::Alice(AliceState::RevealA(None, remote_commit)),
                         State::Bob(_) => State::Bob(BobState::RevealB(None, remote_commit)),
@@ -1416,27 +1419,18 @@ impl Runtime {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
                         trace!(
                             "Received AddressTransaction, processing tx {}",
-                            tx.txid().addr()
+                            &tx.txid().addr()
                         );
                         if let Some(txlabel) = self.syncer_state.tasks.watched_addrs.get(id) {
                             match txlabel {
                                 TxLabel::Funding => {
-                                    info!(
-                                        "Funding tx in mempool or blockchain, \
-                                     sending it to wallet: {}",
-                                        &tx.txid().addr()
-                                    );
+                                    log_tx_seen(txlabel, &tx.txid());
                                     let req = Request::Tx(Tx::Funding(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?;
                                 }
                                 TxLabel::Buy => {
                                     if let State::Bob(BobState::BuySigB) = self.state {
-                                        info!(
-                                            "{} tx in mempool or blockchain, \
-                                           sending it to wallet: {}",
-                                            &TxLabel::Buy,
-                                            &tx.txid().addr(),
-                                        );
+                                        log_tx_seen(txlabel, &tx.txid());
                                         let req = Request::Tx(Tx::Buy(tx));
                                         self.send_wallet(ServiceBus::Ctl, senders, req)?
                                     } else {
@@ -1454,11 +1448,7 @@ impl Runtime {
                                         buy_published: false,
                                     })) = self.state
                                     {
-                                        info!(
-                                            "found refund tx in mempool or blockchain, \
-                                             sending it to wallet: {}",
-                                            &tx.txid().addr()
-                                        );
+                                        log_tx_seen(txlabel, &tx.txid());
                                         let req = Request::Tx(Tx::Refund(tx));
                                         self.send_wallet(ServiceBus::Ctl, senders, req)?
                                     } else {
@@ -1704,6 +1694,7 @@ impl Runtime {
 
             Request::Tx(Tx::Lock(btc_lock)) => {
                 if let State::Bob(BobState::CorearbB(..)) = self.state {
+                    info!("received {}", TxLabel::Lock);
                     self.broadcast(btc_lock, TxLabel::Lock, senders)?;
                     if let Some(Params::Alice(AliceParameters {
                         spend,
@@ -1734,19 +1725,19 @@ impl Runtime {
                 // update state
                 match transaction.clone() {
                     Tx::Cancel(tx) => {
-                        info!("received cancel");
+                        log_tx_received(TxLabel::Cancel);
                         self.txs.insert(TxLabel::Cancel, tx);
                     }
                     Tx::Refund(tx) => {
-                        info!("received refund");
+                        log_tx_received(TxLabel::Refund);
                         self.txs.insert(TxLabel::Refund, tx);
                     }
                     Tx::Punish(tx) => {
-                        info!("received punish");
+                        log_tx_received(TxLabel::Punish);
                         self.txs.insert(TxLabel::Punish, tx);
                     }
                     Tx::Buy(tx) => {
-                        info!("received buy");
+                        log_tx_received(TxLabel::Buy);
                         self.txs.insert(TxLabel::Buy, tx);
                     }
                     Tx::Funding(_) => unreachable!("not handled in swapd"),
@@ -1963,6 +1954,18 @@ pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
     } else {
         Err(Error::Farcaster("Not swapd".to_string()))
     }
+}
+
+fn log_tx_seen(txlabel: &TxLabel, txid: &Txid) {
+    info!(
+        "{} tx in mempool or blockchain, sending it to wallet: {}",
+        txlabel,
+        txid.addr(),
+    );
+}
+
+fn log_tx_received(txlabel: TxLabel) {
+    info!("received tx {} from {}", txlabel, ServiceId::Wallet);
 }
 
 #[derive(Debug)]

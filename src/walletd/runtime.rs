@@ -294,7 +294,7 @@ impl Runtime {
                                 "Bob, please send Btc to address: {}",
                                 &funding_addr.bright_yellow_bold()
                             );
-                            info!("Creating {}", "Wallet::Bob".bright_yellow());
+                            info!("Loading {}", "Wallet::Bob".bright_yellow());
                             if let request::Commit::AliceParameters(remote_commit) =
                                 remote_commit.clone()
                             {
@@ -341,7 +341,7 @@ impl Runtime {
                         let (params, proof) =
                             alice.generate_parameters(&mut key_manager, &pub_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            info!("Creating {}", "Wallet::Alice".bright_yellow());
+                            info!("Loading {}", "Wallet::Alice".bright_yellow());
                             if let request::Commit::BobParameters(bob_commit) =
                                 remote_commit.clone()
                             {
@@ -698,7 +698,6 @@ impl Runtime {
                     ..
                 })) = self.wallets.get_mut(&swap_id)
                 {
-                    error!("validate_adaptor_refund missing");
                     let core_arb_txs = &(core_arb_setup.clone()).into();
                     let signed_adaptor_refund = &SignedAdaptorRefund { refund_adaptor_sig };
 
@@ -886,7 +885,7 @@ impl Runtime {
                 buy,
                 buy_adaptor_sig: buy_encrypted_sig,
             })) => {
-                info!("wallet received buyproceduresignature");
+                trace!("wallet received buyproceduresignature");
                 let signed_adaptor_buy = SignedAdaptorBuy {
                     buy: buy.clone(),
                     buy_adaptor_sig: buy_encrypted_sig,
@@ -989,7 +988,7 @@ impl Runtime {
             },
             Request::Progress(progress) => {
                 // TODO update wallet state?
-                info!("{}", progress);
+                trace!("{}", progress);
             }
 
             Request::TakeOffer(request::PubOffer {
@@ -1034,7 +1033,7 @@ impl Runtime {
                             funding_amount.bright_green_bold(),
                             funding_addr.addr(),
                         );
-                        info!("Creating {}", "Wallet::Bob".bright_yellow());
+                        info!("Loading {}", "Wallet::Bob".bright_yellow());
                         if self.wallets.get(&swap_id).is_none() {
                             let local_wallet = BobState::new(
                                 self.wallet_counter.increment(),
@@ -1079,7 +1078,7 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
                             // requests and store the state in there directly
-                            info!("Creating Alice Taker's Wallet");
+                            info!("Loading Alice Taker's Wallet");
                             self.wallets.insert(
                                 swap_id,
                                 Wallet::Alice(
@@ -1217,7 +1216,7 @@ impl Runtime {
                 if wallet_token != self.wallet_token {
                     Err(Error::InvalidToken)?
                 }
-                info!("sent Secret request to farcasterd");
+                trace!("sent Secret request to farcasterd");
                 self.send_farcasterd(
                     senders,
                     Request::Keys(Keys(
