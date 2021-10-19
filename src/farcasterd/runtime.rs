@@ -112,7 +112,7 @@ pub struct Runtime {
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncers: HashMap<Coin, ServiceId>,
-    progress: HashMap<SwapId, VecDeque<String>>,
+    progress: HashMap<ServiceId, VecDeque<Request>>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -691,16 +691,19 @@ impl Runtime {
                     }
                 }
             }
-            Request::Progress(progress) => {
-                let swapid = &get_swap_id(source)?;
-                trace!("{}", progress);
-                if self.progress.contains_key(swapid) {
-                    let queue = self.progress.get_mut(swapid).expect("checked above");
-                    queue.push_back(progress);
-                } else {
-                    let mut queue = VecDeque::new();
-                    queue.push_back(progress);
-                    self.progress.insert(*swapid, queue);
+            Request::Progress(..) | Request::Success(..) | Request::Failure(..) => {
+                if !self.progress.contains_key(&source) {
+                    self.progress.insert(source.clone(), none!());
+                };
+                let queue = self.progress.get_mut(&source).expect("checked/added above");
+                queue.push_back(request);
+            }
+            Request::ReadProgress(swapid) => {
+                let id = &ServiceId::Swap(swapid);
+                if let Some(queue) = self.progress.get_mut(id) {
+                    for req in queue.iter() {
+                        report_to.push((Some(source.clone()), req.clone()))
+                    }
                 }
             }
 
