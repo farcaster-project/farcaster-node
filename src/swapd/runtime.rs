@@ -1608,10 +1608,6 @@ impl Runtime {
                                             ..
                                         })) = self.state
                                         {
-                                            info!(
-                                                "Broadcasting btc punish {}",
-                                                punish_tx.txid().addr()
-                                            );
                                             self.broadcast(punish_tx, tx_label, senders)?
                                         }
                                     }
