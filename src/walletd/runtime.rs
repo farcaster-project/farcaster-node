@@ -986,15 +986,10 @@ impl Runtime {
                     debug!("Received Hello from {}", source);
                 }
             },
-            Request::Progress(progress) => {
-                // TODO update wallet state?
-                trace!("{}", progress);
-            }
-
             Request::TakeOffer(request::PubOffer {
                 public_offer,
                 peer_secret_key: None,
-            }) => {
+            }) if source == ServiceId::Farcasterd => {
                 let PublicOffer {
                     version,
                     offer,
