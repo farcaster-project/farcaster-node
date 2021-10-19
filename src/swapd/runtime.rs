@@ -1570,32 +1570,6 @@ impl Runtime {
                                     )
                                     }
                                 }
-                                TxLabel::Lock if self.state.swap_role() == SwapRole::Alice => {
-                                    error!("make state strict");
-                                    if let State::Alice(..) = self.state {
-                                        error!("here alice watchs accordant lock address, and broadcast accordant lock");
-                                        if let Some(Params::Alice(AliceParameters {
-                                            spend,
-                                            accordant_shared_keys,
-                                            ..
-                                        })) = self.remote_params.clone()
-                                        {
-                                            let watch_addr_task = self.syncer_state.watch_addr_xmr(
-                                                spend,
-                                                accordant_shared_keys,
-                                                self.state.swap_role(),
-                                                TxLabel::AccLock,
-                                            );
-                                            senders.send_to(
-                                                ServiceBus::Ctl,
-                                                self.identity(),
-                                                ServiceId::Syncer(Coin::Monero),
-                                                Request::SyncerTask(watch_addr_task),
-                                            )?;
-                                            error!("xmr lock transaction not available, get it from wallet, commented out code");
-                                        }
-                                    }
-                                }
                                 TxLabel::Cancel
                                     if self.temporal_safety.valid_punish(*confirmations) =>
                                 {
