@@ -22,11 +22,11 @@ use crate::{
 };
 use amplify::Wrapper;
 use request::{Commit, Params};
-use std::hash::Hash;
 use std::io;
 use std::net::SocketAddr;
 use std::process;
 use std::time::{Duration, SystemTime};
+use std::{collections::VecDeque, hash::Hash};
 use std::{
     collections::{HashMap, HashSet},
     io::Read,
@@ -89,6 +89,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         pending_requests: none!(),
         syncers: none!(),
         consumed_offers: none!(),
+        progress: none!(),
     };
 
     let broker = true;
@@ -111,6 +112,7 @@ pub struct Runtime {
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncers: HashMap<Coin, ServiceId>,
+    progress: HashMap<SwapId, VecDeque<String>>,
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -603,7 +605,7 @@ impl Runtime {
                     || self.consumed_offers.contains(&public_offer.id())
                 {
                     let msg = format!(
-                        "Offer {} already exists, ignoring request",
+                        "Offer {} already exists or was already taken, ignoring request",
                         &public_offer.to_hex()
                     );
                     warn!("{}", msg.err());
@@ -680,13 +682,30 @@ impl Runtime {
                             public_offer,
                             peer_secret_key: None,
                         });
-                        senders.send_to(ServiceBus::Ctl, source, ServiceId::Wallet, request)?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Wallet,
+                            request,
+                        )?;
                     }
                 }
             }
+            Request::Progress(progress) => {
+                let swapid = &get_swap_id(source)?;
+                trace!("{}", progress);
+                if self.progress.contains_key(swapid) {
+                    let queue = self.progress.get_mut(swapid).expect("checked above");
+                    queue.push_back(progress);
+                } else {
+                    let mut queue = VecDeque::new();
+                    queue.push_back(progress);
+                    self.progress.insert(*swapid, queue);
+                }
+            }
+
             req => {
-                error!("Currently unsupported request: {}", req.err());
-                unimplemented!()
+                error!("Ignoring unsupported request: {}", req.err());
             }
         }
 
@@ -700,11 +719,10 @@ impl Runtime {
                     respond_to.bright_yellow_bold(),
                     resp.bright_blue_bold(),
                 );
-                senders.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, respond_to, resp)?;
+                senders.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
             }
-            debug!("processed all cli notifications");
         }
-
+        debug!("processed all cli notifications");
         Ok(())
     }
 
