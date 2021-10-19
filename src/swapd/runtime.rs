@@ -108,17 +108,21 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: 1,
+        btc_finality_thr: 0,
         race_thr: 3,
-        xmr_finality_thr: 2,
+        xmr_finality_thr: 0,
     };
 
     temporal_safety.valid_params()?;
+    let tasks = SyncerTasks {
+        counter: 0,
+        watched_addrs: none!(),
+        watched_txs: none!(),
+    };
     let syncer_state = SyncerState {
-        tx_tasks: none!(),
+        tasks,
         monero_height: 0,
         bitcoin_height: 0,
-        task_counter: 0,
         confirmation_bound: 50000,
         lock_tx_confs: None,
         cancel_tx_confs: None,
@@ -188,7 +192,7 @@ impl TemporalSafety {
             && btc_finality < race
             && punish > race
             && cancel > race
-            && btc_finality < xmr_finality
+        // && btc_finality < xmr_finality
         {
             Ok(())
         } else {
@@ -197,33 +201,51 @@ impl TemporalSafety {
             )))
         }
     }
-    fn final_tx(&self, confs: u32) -> bool {
-        confs >= self.btc_finality_thr
+    fn final_tx(&self, confs: u32, coin: Coin) -> bool {
+        let finality_thr = match coin {
+            Coin::Bitcoin => self.btc_finality_thr,
+            Coin::Monero => self.xmr_finality_thr,
+        };
+        confs >= finality_thr
     }
     /// lock must be final, valid after lock_minedblock + cancel_timelock
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
-        self.final_tx(lock_confirmations) && lock_confirmations >= self.cancel_timelock
+        self.final_tx(lock_confirmations, Coin::Bitcoin)
+            && lock_confirmations >= self.cancel_timelock
     }
     /// lock must be final, but buy shall not be raced with cancel
     fn safe_buy(&self, lock_confirmations: u32) -> bool {
-        self.final_tx(lock_confirmations)
+        self.final_tx(lock_confirmations, Coin::Bitcoin)
             && lock_confirmations < (self.cancel_timelock - self.race_thr)
     }
     /// cancel must be final, but refund shall not be raced with punish
     fn safe_refund(&self, cancel_confirmations: u32) -> bool {
-        self.final_tx(cancel_confirmations)
+        self.final_tx(cancel_confirmations, Coin::Bitcoin)
             && cancel_confirmations < (self.punish_timelock - self.race_thr)
     }
     fn valid_punish(&self, cancel_confirmations: u32) -> bool {
-        self.final_tx(cancel_confirmations) && cancel_confirmations >= self.punish_timelock
+        self.final_tx(cancel_confirmations, Coin::Bitcoin)
+            && cancel_confirmations >= self.punish_timelock
+    }
+}
+
+struct SyncerTasks {
+    counter: u32,
+    watched_txs: HashMap<u32, TxLabel>,
+    watched_addrs: HashMap<u32, TxLabel>,
+}
+
+impl SyncerTasks {
+    fn new_taskid(&mut self) -> u32 {
+        self.counter += 1;
+        self.counter
     }
 }
 
 struct SyncerState {
+    tasks: SyncerTasks,
     bitcoin_height: u64,
     monero_height: u64,
-    tx_tasks: HashMap<u32, TxLabel>,
-    task_counter: u32,
     confirmation_bound: u32,
     lock_tx_confs: Option<Request>,
     cancel_tx_confs: Option<Request>,
@@ -385,19 +407,18 @@ impl SyncerState {
             Coin::Monero => &mut self.monero_height,
         };
         if &new_height > &height {
+            info!("{:?} new height {}", coin, &new_height);
             *height = new_height;
         } else {
             warn!("block height did not increment, maybe syncer sends multiple events");
         }
     }
 
-    fn new_taskid(&mut self) -> u32 {
-        self.task_counter += 1;
-        self.task_counter
-    }
-
-    fn watch_addr_btc(&mut self, script_pubkey: Script, id: u32) -> Task {
+    fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
+        let id = self.tasks.new_taskid();
         let from_height = self.from_height(Coin::Bitcoin);
+        self.tasks.watched_addrs.insert(id, tx_label);
+        info!("Watching BTC address {}", tx_label);
         let addendum = BtcAddressAddendum {
             address: None,
             from_height,
@@ -410,23 +431,53 @@ impl SyncerState {
             include_tx: Boolean::True,
         })
     }
+
+    fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
+        let id = self.tasks.new_taskid();
+        self.tasks.watched_txs.insert(id, tx_label);
+        info!(
+            "Watching tx {} {}",
+            tx_label.bright_green_bold(),
+            txid.addr()
+        );
+        Task::WatchTransaction(WatchTransaction {
+            id,
+            lifetime: self.task_lifetime(Coin::Bitcoin),
+            hash: txid.to_vec(),
+            confirmation_bound: self.confirmation_bound,
+        })
+    }
+    fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
+        let id = self.tasks.new_taskid();
+        self.tasks.watched_txs.insert(id, tx_label);
+        info!(
+            "Watching tx {} {}",
+            tx_label.bright_green_bold(),
+            hex::encode(&hash).addr()
+        );
+        Task::WatchTransaction(WatchTransaction {
+            id,
+            lifetime: self.task_lifetime(Coin::Monero),
+            hash,
+            confirmation_bound: self.confirmation_bound,
+        })
+    }
     fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
         accordant_shared_keys: Vec<TaggedElement<SharedKeyId, monero::PrivateKey>>,
         swap_role: SwapRole,
-    ) -> Result<Task, Error> {
-        let view_key = *accordant_shared_keys
+        tx_label: TxLabel,
+    ) -> Task {
+        let view = accordant_shared_keys
             .into_iter()
             .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
             .unwrap()
-            .elem();
+            .elem()
+            .clone();
 
         if swap_role == SwapRole::Alice {
-            let keypair = monero::ViewPair {
-                spend,
-                view: view_key.clone(),
-            };
+            let keypair = monero::ViewPair { spend, view };
             let address = monero::Address::from_viewpair(monero::Network::Stagenet, &keypair);
             info!("Alice, please send xmr to {}", address.addr());
         }
@@ -435,27 +486,31 @@ impl SyncerState {
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: spend,
-            view_key,
+            view_key: view,
             from_height,
         });
 
-        let id = self.new_taskid();
+        let id = self.tasks.new_taskid();
+        self.tasks.watched_addrs.insert(id, tx_label);
+
+        info!("Watching XMR address {}", tx_label);
         let watch_addr = WatchAddress {
             id,
             lifetime: self.task_lifetime(Coin::Monero),
             addendum,
-            include_tx: Boolean::True,
+            include_tx: Boolean::False,
         };
-        Ok(Task::WatchAddress(watch_addr))
+        Task::WatchAddress(watch_addr)
     }
     fn acc_lock_watched(&self) -> bool {
-        self.tx_tasks
+        self.tasks
+            .watched_txs
             .values()
             .find(|&&x| x == TxLabel::AccLock)
             .is_some()
     }
     fn handle_tx_confs(&self, id: &u32, confirmations: &Option<u32>) {
-        if let Some(txlabel) = self.tx_tasks.get(id) {
+        if let Some(txlabel) = self.tasks.watched_txs.get(id) {
             match confirmations {
                 Some(0) => {
                     info!(
@@ -510,11 +565,15 @@ impl Runtime {
         senders: &mut Senders,
     ) -> Result<(), Error> {
         let req = Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
-            id: self.syncer_state.new_taskid(),
+            id: self.syncer_state.tasks.new_taskid(),
             tx: bitcoin::consensus::serialize(&tx),
         }));
 
-        info!("Broadcasting {} tx {}", tx_label, tx.txid().addr());
+        info!(
+            "Broadcasting {} tx {}",
+            tx_label.bright_green_bold(),
+            tx.txid().addr()
+        );
         Ok(senders.send_to(
             ServiceBus::Ctl,
             self.identity(),
@@ -568,28 +627,18 @@ impl Runtime {
                                 },
                                 addr,
                             )) => {
-                                let id = self.syncer_state.new_taskid();
-                                let task =
-                                    self.syncer_state.watch_addr_btc(addr.script_pubkey(), id);
-                                if self
+                                let task = self
                                     .syncer_state
-                                    .tx_tasks
-                                    .insert(id, TxLabel::Funding)
-                                    .is_none()
-                                {
-                                    info!("Bob subscribes for Funding address");
-                                    self.send_ctl(
-                                        senders,
-                                        ServiceId::Syncer(Coin::Bitcoin),
-                                        Request::SyncerTask(task),
-                                    )?;
-                                    Ok(State::Bob(BobState::RevealB(
-                                        Some(local_params),
-                                        remote_commit.clone(),
-                                    )))
-                                } else {
-                                    Err(Error::Farcaster(s!("tx already registered with that id")))
-                                }
+                                    .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
+                                self.send_ctl(
+                                    senders,
+                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    Request::SyncerTask(task),
+                                )?;
+                                Ok(State::Bob(BobState::RevealB(
+                                    Some(local_params),
+                                    remote_commit.clone(),
+                                )))
                             }
                             state => Err(Error::Farcaster(format!(
                                 "Must be on Commit state, found {}",
@@ -611,7 +660,7 @@ impl Runtime {
                         {
                             trace!("Watch height bitcoin");
                             let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
-                                id: self.syncer_state.new_taskid(),
+                                id: self.syncer_state.tasks.new_taskid(),
                                 lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                             });
                             senders.send_to(
@@ -623,7 +672,7 @@ impl Runtime {
 
                             trace!("Watch height monero");
                             let watch_height_monero = Task::WatchHeight(WatchHeight {
-                                id: self.syncer_state.new_taskid(),
+                                id: self.syncer_state.tasks.new_taskid(),
                                 lifetime: self.syncer_state.task_lifetime(Coin::Monero),
                             });
                             senders.send_to(
@@ -705,33 +754,21 @@ impl Runtime {
                                 },
                                 addr,
                             )) => {
-                                let id = self.syncer_state.new_taskid();
-                                let watch_addr_task =
-                                    self.syncer_state.watch_addr_btc(addr.script_pubkey(), id);
-                                if self
+                                let watch_addr_task = self
                                     .syncer_state
-                                    .tx_tasks
-                                    .insert(id, TxLabel::Funding)
-                                    .is_none()
-                                {
-                                    info!("Bob subscribes for Funding address");
-                                    self.send_ctl(
-                                        senders,
-                                        ServiceId::Syncer(Coin::Bitcoin),
-                                        Request::SyncerTask(watch_addr_task),
-                                    )?;
-                                    Ok((
-                                        State::Bob(BobState::RevealB(
-                                            Some(local_params),
-                                            remote_commit.clone(),
-                                        )),
-                                        remote_commit,
-                                    ))
-                                } else {
-                                    Err(Error::Farcaster(s!(
-                                        "there is already a tx registered with that id"
-                                    )))
-                                }
+                                    .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
+                                self.send_ctl(
+                                    senders,
+                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    Request::SyncerTask(watch_addr_task),
+                                )?;
+                                Ok((
+                                    State::Bob(BobState::RevealB(
+                                        Some(local_params),
+                                        remote_commit.clone(),
+                                    )),
+                                    remote_commit,
+                                ))
                             }
                             // we're already in reveal state, i.e. we're taker, so don't change
                             // state once counterparty reveals too.
@@ -843,7 +880,7 @@ impl Runtime {
                             )) => {
                                 trace!("Watch height bitcoin");
                                 let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
-                                    id: self.syncer_state.new_taskid(),
+                                    id: self.syncer_state.tasks.new_taskid(),
                                     lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
                                 });
                                 senders.send_to(
@@ -855,7 +892,7 @@ impl Runtime {
 
                                 trace!("Watch height monero");
                                 let watch_height_monero = Task::WatchHeight(WatchHeight {
-                                    id: self.syncer_state.new_taskid(),
+                                    id: self.syncer_state.tasks.new_taskid(),
                                     lifetime: self.syncer_state.task_lifetime(Coin::Monero),
                                 });
                                 senders.send_to(
@@ -892,19 +929,7 @@ impl Runtime {
                                 TxLabel::Refund,
                             ]) {
                                 let txid = tx.clone().extract_tx().txid();
-                                let id = self.syncer_state.new_taskid();
-                                self.syncer_state.tx_tasks.insert(id, tx_label.clone());
-                                info!(
-                                    "Alice watches tx {} {}",
-                                    tx_label.bright_green_bold(),
-                                    txid.addr()
-                                );
-                                let task = Task::WatchTransaction(WatchTransaction {
-                                    id,
-                                    lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                                    hash: txid.to_vec(),
-                                    confirmation_bound: self.syncer_state.confirmation_bound,
-                                });
+                                let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
@@ -938,18 +963,8 @@ impl Runtime {
                         // Alice verifies that she has sent refund procedure signatures before
                         // processing the buy signatures from Bob
                         if let State::Alice(AliceState::RefundSigA(..)) = self.state {
-                            let tx = buy.clone().extract_tx();
-
-                            let txid = tx.txid();
-                            let id = self.syncer_state.new_taskid();
-                            self.syncer_state.tx_tasks.insert(id, TxLabel::Buy);
-                            // notify the syncer to watch for the buy transaction
-                            let task = Task::WatchTransaction(WatchTransaction {
-                                id,
-                                lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                                hash: txid.to_vec(),
-                                confirmation_bound: self.syncer_state.confirmation_bound,
-                            });
+                            let txid = buy.clone().extract_tx().txid();
+                            let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
@@ -973,7 +988,7 @@ impl Runtime {
             // let _ = self.report_progress_to(senders, &enquirer, msg);
             // let _ = self.report_success_to(senders, &enquirer, Some(msg));
             _ => {
-                error!("MSG RPC can be only used for forwarding FWP messages");
+                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
@@ -1160,16 +1175,14 @@ impl Runtime {
                 trace!("setting commit_remote and commit_local msg");
                 self.state = next_state;
             }
-            Request::FundingUpdated => {
-                if source != ServiceId::Wallet {
-                    error!("Only wallet permited");
-                    return Ok(());
-                }
+            Request::FundingUpdated
+                if source == ServiceId::Wallet && self.pending_requests.contains_key(&source) =>
+            {
                 trace!("funding updated received from wallet");
                 let mut pending_requests = self
                     .pending_requests
                     .remove(&source)
-                    .expect("should have pending Reveal{Proof} requests");
+                    .expect("checked above, should have pending Reveal{Proof} requests");
                 if pending_requests.len() == 2 {
                     let PendingRequest {
                         request: request_parameters,
@@ -1244,7 +1257,6 @@ impl Runtime {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
                             .handle_height_change(*height, Coin::Monero);
-                        info!("monero new height {}", height.bright_green_italic())
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1253,7 +1265,6 @@ impl Runtime {
                         block,
                         tx,
                     }) => {
-                        let id = self.syncer_state.new_taskid();
                         if let State::Alice(AliceState::RefundSigA(RefundSigA {
                             xmr_locked, ..
                         })) = &mut self.state
@@ -1264,30 +1275,25 @@ impl Runtime {
                                 warn!("xmr_locked was already set to true")
                             }
                         }
-                        info!("subscribing for monero lock {}", hex::encode(&hash));
-                        self.syncer_state.tx_tasks.insert(id, TxLabel::AccLock);
-                        let watch_tx = Task::WatchTransaction(WatchTransaction {
-                            id,
-                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                            hash: hash.clone(),
-                            confirmation_bound: self.syncer_state.confirmation_bound,
-                        });
+                        let task = self
+                            .syncer_state
+                            .watch_tx_xmr(hash.clone(), TxLabel::AccLock);
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
                             ServiceId::Syncer(Coin::Monero),
-                            Request::SyncerTask(watch_tx),
+                            Request::SyncerTask(task),
                         )?;
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
                         block,
                         confirmations: Some(confirmations),
-                    }) if confirmations > &self.temporal_safety.xmr_finality_thr
+                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.swap_role() == SwapRole::Bob
                         && self.pending_requests.get(&source).is_some() =>
                     {
-                        error!("not checking tx rcvd is accordant lock");
+                        // error!("not checking tx rcvd is accordant lock");
                         // TODO: Check length of pending_requests == 1
                         let PendingRequest {
                             request,
@@ -1323,7 +1329,7 @@ impl Runtime {
                         id,
                         block,
                         confirmations,
-                    }) if self.syncer_state.tx_tasks.get(id).is_some() => {
+                    }) if self.syncer_state.tasks.watched_txs.get(id).is_some() => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
                     Event::AddressTransaction(AddressTransaction {
@@ -1333,7 +1339,7 @@ impl Runtime {
                         block,
                         tx,
                     }) => {
-                        let id = self.syncer_state.new_taskid();
+                        let id = self.syncer_state.tasks.new_taskid();
 
                         let watch_tx = Task::WatchTransaction(WatchTransaction {
                             id,
@@ -1399,7 +1405,6 @@ impl Runtime {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
                             .handle_height_change(*height, Coin::Bitcoin);
-                        info!("bitcoin new height {}", height.bright_green_italic())
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1413,7 +1418,7 @@ impl Runtime {
                             "Received AddressTransaction, processing tx {}",
                             tx.txid().addr()
                         );
-                        if let Some(txlabel) = self.syncer_state.tx_tasks.get(id) {
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_addrs.get(id) {
                             match txlabel {
                                 TxLabel::Funding => {
                                     info!(
@@ -1478,9 +1483,9 @@ impl Runtime {
                         id,
                         block,
                         confirmations: Some(confirmations),
-                    }) if self.temporal_safety.final_tx(*confirmations) => {
+                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin) => {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
-                        if let Some(txlabel) = self.syncer_state.tx_tasks.get(&id) {
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(&id) {
                             info!(
                                 "tx {} final: {} confirmations",
                                 txlabel.bright_green_bold(),
@@ -1515,16 +1520,12 @@ impl Runtime {
                                             ..
                                         })) = self.remote_params.clone()
                                         {
-                                            error!("here alice watches accordant lock address, broadcast manually");
-                                            info!(
-                                                "Alice subscribes for monero address with syncer"
+                                            let watch_addr_task = self.syncer_state.watch_addr_xmr(
+                                                spend,
+                                                accordant_shared_keys,
+                                                self.state.swap_role(),
+                                                TxLabel::AccLock,
                                             );
-                                            let watch_addr_task =
-                                                self.syncer_state.watch_addr_xmr(
-                                                    spend,
-                                                    accordant_shared_keys,
-                                                    self.state.swap_role(),
-                                                )?;
                                             senders.send_to(
                                                 ServiceBus::Ctl,
                                                 self.identity(),
@@ -1589,15 +1590,12 @@ impl Runtime {
                                             ..
                                         })) = self.remote_params.clone()
                                         {
-                                            info!(
-                                                "Alice subscribes for monero address with syncer"
+                                            let watch_addr_task = self.syncer_state.watch_addr_xmr(
+                                                spend,
+                                                accordant_shared_keys,
+                                                self.state.swap_role(),
+                                                TxLabel::AccLock,
                                             );
-                                            let watch_addr_task =
-                                                self.syncer_state.watch_addr_xmr(
-                                                    spend,
-                                                    accordant_shared_keys,
-                                                    self.state.swap_role(),
-                                                )?;
                                             senders.send_to(
                                                 ServiceBus::Ctl,
                                                 self.identity(),
@@ -1690,19 +1688,7 @@ impl Runtime {
                     TxLabel::Refund,
                 ]) {
                     let txid = tx.clone().extract_tx().txid();
-                    let id = self.syncer_state.new_taskid();
-                    self.syncer_state.tx_tasks.insert(id, tx_label);
-                    info!(
-                        "Bob registers tx {} with syncer {}",
-                        tx_label.addr(),
-                        txid.addr()
-                    );
-                    let task = Task::WatchTransaction(WatchTransaction {
-                        id,
-                        lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                        hash: txid.to_vec(),
-                        confirmation_bound: self.syncer_state.confirmation_bound,
-                    });
+                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -1725,12 +1711,12 @@ impl Runtime {
                         ..
                     })) = self.remote_params.clone()
                     {
-                        info!("Bob subscribes for monero address with syncer");
                         let task = self.syncer_state.watch_addr_xmr(
                             spend,
                             accordant_shared_keys,
                             self.state.swap_role(),
-                        )?;
+                            TxLabel::AccLock,
+                        );
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -1807,15 +1793,7 @@ impl Runtime {
                     let buy_tx = buy_proc_sig.buy.clone().extract_tx();
                     let txid = buy_tx.txid();
                     // register Buy tx task
-                    let id_tx = self.syncer_state.new_taskid();
-                    self.syncer_state.tx_tasks.insert(id_tx, TxLabel::Buy);
-                    info!("subscribing with syncer for receiving buy tx updates");
-                    let task = Task::WatchTransaction(WatchTransaction {
-                        id: id_tx,
-                        lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                        hash: txid.to_vec(),
-                        confirmation_bound: self.syncer_state.confirmation_bound,
-                    });
+                    let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -1829,10 +1807,10 @@ impl Runtime {
                         error!("more than one output");
                         return Ok(());
                     };
-                    let id_addr = self.syncer_state.new_taskid();
-                    self.syncer_state.tx_tasks.insert(id_addr, TxLabel::Buy);
                     debug!("subscribe Buy address task");
-                    let task = self.syncer_state.watch_addr_btc(script_pubkey, id_addr);
+                    let task = self
+                        .syncer_state
+                        .watch_addr_btc(script_pubkey, TxLabel::Buy);
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),

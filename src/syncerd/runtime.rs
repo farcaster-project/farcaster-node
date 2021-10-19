@@ -57,7 +57,11 @@ pub struct SyncerServers {
 }
 
 pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<(), Error> {
-    info!("creating a new syncer");
+    info!(
+        "Creating new {} {}",
+        &coin.bright_green_bold(),
+        "syncer".bright_green_bold()
+    );
     let syncer: Option<Box<dyn Synclet>>;
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
 
@@ -146,7 +150,7 @@ impl Runtime {
             }
 
             _ => {
-                error!("MSG RPC can be only used for forwarding FWP messages");
+                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }

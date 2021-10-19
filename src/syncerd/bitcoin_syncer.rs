@@ -124,10 +124,6 @@ impl ElectrumRpc {
         &mut self,
         address_addendum: BtcAddressAddendum,
     ) -> Result<AddressNotif, Error> {
-        info!(
-            "subscribing to script_pubkey {}",
-            &address_addendum.script_pubkey
-        );
         let script_status = if self.polling {
             None
         } else {
@@ -138,10 +134,6 @@ impl ElectrumRpc {
             .addresses
             .insert(address_addendum.clone(), script_status.clone())
         {
-            info!(
-                "updated address {:?} with script_status {:?}",
-                &address_addendum, &script_status
-            );
         } else {
             info!(
                 "registering address {:?} with script_status {:?}",
@@ -464,12 +456,7 @@ fn address_polling(
                     if let AddressAddendum::Bitcoin(address_addendum) = address.task.addendum {
                         let mut tx_set = HashSet::new();
                         match rpc.script_subscribe(address_addendum.clone()) {
-                            Ok(addr_notif) if addr_notif.txs.is_empty() => {
-                                let msg = "Address subscription successful, but no \
-                                         transactions on this BTC address yet, events \
-                                         will be emmited when transactions are observed";
-                                warn!("{}", &msg);
-                            }
+                            Ok(addr_notif) if addr_notif.txs.is_empty() => {}
                             Ok(addr_notif) => {
                                 logging(&addr_notif.txs, &address_addendum);
                                 tx_set = create_set(addr_notif.txs);

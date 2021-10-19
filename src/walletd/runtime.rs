@@ -959,7 +959,7 @@ impl Runtime {
                 }
             }
             _ => {
-                error!("MSG RPC can only be used for forwarding LNPBP messages")
+                error!("MSG RPC can only be used for forwarding farcaster protocol messages")
             }
         }
         Ok(())

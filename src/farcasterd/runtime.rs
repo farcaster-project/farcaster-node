@@ -167,10 +167,6 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
-            // Request::PeerMessage(Messages::OpenChannel(open_swap)) => {
-            //     info!("Creating swap by peer request from {}", source);
-            //     self.create_swap(source, None, open_swap, true)?;
-            // }
 
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
@@ -180,14 +176,9 @@ impl Runtime {
                 public_offer_hex,
                 swap_id,
             })) => {
-                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)
-                    .map_err(|_| {
-                        Error::Farcaster(
-                            "The offer received on peer conection is not parsable".to_string(),
-                        )
-                    })?;
+                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
                 if !self.offers.contains(&public_offer) {
-                    error!(
+                    warn!(
                         "Unknow offer {}, you are not the maker of that offer, ignoring it",
                         &public_offer
                     );
@@ -199,12 +190,8 @@ impl Runtime {
                     senders.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?
                 }
             }
-            Request::PeerMessage(_) => {
-                // Ignore the rest of LN peer messages
-            }
-
             _ => {
-                error!("MSG RPC can be only used for forwarding FWP messages");
+                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
             }
         }
