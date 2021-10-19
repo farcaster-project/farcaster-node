@@ -48,7 +48,7 @@ use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use farcaster_core::swap::SwapId;
+use farcaster_core::{negotiation::PublicOfferId, swap::SwapId};
 
 use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
@@ -83,11 +83,12 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         spawning_services: none!(),
         making_swaps: none!(),
         taking_swaps: none!(),
-        offers: none!(),
+        public_offers: none!(),
         node_ids: none!(),
         wallet_token,
         pending_requests: none!(),
         syncers: none!(),
+        consumed_offers: none!(),
     };
 
     let broker = true;
@@ -104,7 +105,8 @@ pub struct Runtime {
     spawning_services: HashMap<ServiceId, ServiceId>,
     making_swaps: HashMap<ServiceId, request::InitSwap>,
     taking_swaps: HashMap<ServiceId, request::InitSwap>,
-    offers: HashSet<PublicOffer<BtcXmr>>,
+    public_offers: HashSet<PublicOffer<BtcXmr>>,
+    consumed_offers: HashSet<PublicOfferId>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
@@ -179,7 +181,7 @@ impl Runtime {
                 swap_id,
             })) => {
                 let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
-                if !self.offers.contains(&public_offer) {
+                if !self.public_offers.contains(&public_offer) {
                     warn!(
                         "Unknow offer {}, you are not the maker of that offer, ignoring it",
                         &public_offer
@@ -344,13 +346,13 @@ impl Runtime {
                 remote_commit,
                 funding_address,
             }) => {
-                if self.offers.remove(&public_offer) {
+                if self.public_offers.remove(&public_offer) {
                     trace!(
                         "{}, {}",
                         "launching swapd with swap_id:",
                         swap_id.bright_yellow_bold()
                     );
-
+                    self.consumed_offers.insert(public_offer.id());
                     launch_swapd(
                         self,
                         peer,
@@ -382,13 +384,7 @@ impl Runtime {
                 self.send_walletd(senders, request)?
             }
             Request::Keys(Keys(sk, pk, id)) => {
-                info!(
-                    "received peerd keys \n \
-                     secret: {} \n \
-                     public: {}",
-                    sk.addr(),
-                    pk.addr()
-                );
+                trace!("received peerd keys");
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
                     self.node_ids.insert(pk);
@@ -429,7 +425,7 @@ impl Runtime {
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
                         swaps: self.running_swaps.iter().cloned().collect(),
-                        offers: self.offers.iter().cloned().collect(),
+                        offers: self.public_offers.iter().cloned().collect(),
                     }),
                 )?;
             }
@@ -585,17 +581,18 @@ impl Runtime {
                 };
 
                 let public_offer = offer.clone().to_public_v1(node_ids[0], remote_addr.into());
+                let offer_id = public_offer.id();
                 let hex_public_offer = public_offer.to_hex();
-                if self.offers.insert(public_offer) {
+                if self.public_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
-                        "Pubic offer registered, please share with taker: ".bright_blue_bold(),
+                        "Public offer registered, please share with taker: ".bright_blue_bold(),
                         hex_public_offer.bright_yellow_bold()
                     );
                     info!(
                         "{} {}",
                         "Pubic offer registered:".bright_blue_bold(),
-                        &hex_public_offer.bright_yellow_bold()
+                        offer_id.bright_yellow_bold()
                     );
                     report_to.push((
                         Some(source.clone()),
@@ -624,7 +621,9 @@ impl Runtime {
                 public_offer,
                 peer_secret_key,
             }) => {
-                if self.offers.contains(&public_offer) {
+                if self.public_offers.contains(&public_offer)
+                    || self.consumed_offers.contains(&public_offer.id())
+                {
                     let msg = format!(
                         "Offer {} already exists, ignoring request",
                         &public_offer.to_hex()
@@ -686,12 +685,12 @@ impl Runtime {
                     if peer_connected_is_ok {
                         let offer_registered = format!(
                             "{} {}",
-                            "Pubic offer registered:".bright_blue_bold(),
-                            &public_offer.bright_yellow_bold()
+                            "Public offer registered:".bright_blue_bold(),
+                            &public_offer.id().bright_white_bold()
                         );
                         // not yet in the set
-                        self.offers.insert(public_offer.clone());
-                        info!("{}", offer_registered.bright_yellow_bold());
+                        self.public_offers.insert(public_offer.clone());
+                        info!("{}", offer_registered);
 
                         report_to.push((
                             Some(source.clone()),
@@ -718,7 +717,7 @@ impl Runtime {
             if let Some(respond_to) = respond_to {
                 len += 1;
                 debug!("notifications to cli: {}", len);
-                info!(
+                trace!(
                     "Respond to {} -> Response {}",
                     respond_to.bright_yellow_bold(),
                     resp.bright_blue_bold(),
