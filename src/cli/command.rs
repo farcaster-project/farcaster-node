@@ -12,14 +12,15 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::{convert::TryFrom, time::Duration};
+use std::{convert::TryFrom, io::Read, time::Duration};
 use std::{str::FromStr, thread::sleep};
 
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
 use lnp::{message, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
-use farcaster_core::swap::SwapId;
+use farcaster_core::{negotiation::PublicOffer, swap::SwapId};
+use strict_encoding::ReadExt;
 
 use super::Command;
 use crate::rpc::{request, Client, Request};
@@ -143,20 +144,44 @@ impl Exec for Command {
             }
 
             Command::Take { public_offer } => {
-                let msg = "\nAccepting following offer without verification:\n";
-                info!("{}", msg.err());
-                info!("{:?}", &public_offer);
-
-                // pass offer to farcasterd to initiate the swap
-                runtime.request(
-                    ServiceId::Farcasterd,
-                    Request::TakeOffer(public_offer.into()),
-                )?;
+                // println!("{:#?}", &public_offer);
+                let PublicOffer {
+                    version,
+                    offer,
+                    node_id,
+                    peer_address,
+                } = public_offer.clone();
+                println!(
+                    "\nCarefully validate offer! You will be {:?}!\n",
+                    offer.maker_role.other()
+                );
+                println!("{:#?}", offer);
                 // report success of failure of the request to cli
-                runtime.report_progress()?;
+                if accept_offer() {
+                    // pass offer to farcasterd to initiate the swap
+                    runtime.request(
+                        ServiceId::Farcasterd,
+                        Request::TakeOffer(public_offer.into()),
+                    )?;
+                    runtime.report_progress()?;
+                }
             }
             _ => unimplemented!(),
         }
         Ok(())
+    }
+}
+
+fn accept_offer() -> bool {
+    println!("Take it? [y/n]");
+    let mut input = [0u8; 1];
+    std::io::stdin().read_exact(&mut input).unwrap_or(());
+    match std::str::from_utf8(&input[..]) {
+        Ok("y") | Ok("Y") => true,
+        Ok("n") | Ok("N") => {
+            println!("{}", "Rejecting offer");
+            false
+        }
+        _ => accept_offer(),
     }
 }
