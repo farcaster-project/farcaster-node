@@ -994,7 +994,7 @@ impl Runtime {
             Request::TakeOffer(request::PubOffer {
                 public_offer,
                 peer_secret_key: None,
-            }) => {
+            }) if source == ServiceId::Farcasterd => {
                 let PublicOffer {
                     version,
                     offer,
