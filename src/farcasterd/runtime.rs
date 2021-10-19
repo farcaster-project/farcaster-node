@@ -367,19 +367,6 @@ impl Runtime {
                     Error::Farcaster(msg);
                 }
             }
-            Request::Params(_) => {
-                get_swap_id(source)?;
-                self.send_walletd(senders, request)?
-            }
-
-            Request::Protocol(Msg::CoreArbitratingSetup(_)) => {
-                self.known_swap_id(source.clone())?;
-                self.send_walletd(senders, request)?
-            }
-            Request::Protocol(Msg::RefundProcedureSignatures(_)) => {
-                self.known_swap_id(source.clone())?;
-                self.send_walletd(senders, request)?
-            }
             Request::Keys(Keys(sk, pk, id)) => {
                 trace!("received peerd keys");
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
