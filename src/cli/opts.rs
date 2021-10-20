@@ -144,7 +144,11 @@ pub enum Command {
 
         /// IPv4 or IPv6 address to bind to
         #[clap(default_value = "0.0.0.0")]
-        ip_addr: IpAddr,
+        ip_addr_offer: IpAddr,
+
+        /// IPv4 or IPv6 address to bind to
+        #[clap(default_value = "0.0.0.0")]
+        ip_addr_bind: IpAddr,
 
         /// Port to use; defaults to the native LN port.
         #[clap(default_value = "9735")]

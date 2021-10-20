@@ -515,26 +515,27 @@ impl Runtime {
             // }
             Request::MakeOffer(request::ProtoPublicOffer {
                 offer,
-                remote_addr,
+                offer_addr,
+                bind_addr,
                 peer_secret_key,
             }) => {
-                let resp = match (self.listens.contains(&remote_addr), peer_secret_key) {
+                let resp = match (self.listens.contains(&bind_addr), peer_secret_key) {
                     (false, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
                         return self.get_secret(senders, source, request);
                     }
                     (false, Some(sk)) => {
-                        self.listens.insert(remote_addr);
+                        self.listens.insert(bind_addr);
                         info!(
                             "{} for incoming LN peer connections on {}",
                             "Starting listener".bright_blue_bold(),
-                            remote_addr.bright_blue_bold()
+                            bind_addr.bright_blue_bold()
                         );
-                        self.listen(&remote_addr, sk)
+                        self.listen(&bind_addr, sk)
                     }
                     (true, _) => {
-                        info!("Already listening on {}", &remote_addr);
-                        let msg = format!("Already listening on {}", &remote_addr);
+                        let msg = format!("Already listening on {}", &bind_addr);
+                        info!("{}", &msg);
                         Ok(msg)
                     }
                 };
@@ -542,7 +543,7 @@ impl Runtime {
                     Ok(_) => info!(
                         "Connection daemon {} for incoming LN peer connections on {}",
                         "listens".bright_green_bold(),
-                        remote_addr
+                        bind_addr
                     ),
                     Err(err) => {
                         error!("{}", err.err());
@@ -568,7 +569,7 @@ impl Runtime {
                     remote_addr: remote_addr.clone(),
                 };
 
-                let public_offer = offer.clone().to_public_v1(node_ids[0], remote_addr.into());
+                let public_offer = offer.clone().to_public_v1(node_ids[0], offer_addr.into());
                 let offer_id = public_offer.id();
                 let hex_public_offer = public_offer.to_hex();
                 if self.public_offers.insert(public_offer) {

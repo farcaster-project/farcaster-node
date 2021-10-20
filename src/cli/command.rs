@@ -113,7 +113,8 @@ impl Exec for Command {
                 punish_timelock,
                 fee_strategy,
                 maker_role,
-                ip_addr,
+                ip_addr_offer,
+                ip_addr_bind,
                 port,
                 overlay,
             } => {
@@ -128,10 +129,12 @@ impl Exec for Command {
                     fee_strategy,
                     maker_role,
                 };
-                let remote_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
+                let offer_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr_offer, port);
+                let bind_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr_bind, port);
                 let proto_offer = request::ProtoPublicOffer {
                     offer,
-                    remote_addr,
+                    offer_addr,
+                    bind_addr,
                     peer_secret_key: None,
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;

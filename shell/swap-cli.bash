@@ -525,7 +525,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__make)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <NETWORK> <ARBITRATING_BLOCKCHAIN> <ACCORDANT_BLOCKCHAIN> <ARBITRATING_AMOUNT> <ACCORDANT_AMOUNT> <CANCEL_TIMELOCK> <PUNISH_TIMELOCK> <FEE_STRATEGY> <MAKER_ROLE> <IP_ADDR> <PORT> <OVERLAY> "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <NETWORK> <ARBITRATING_BLOCKCHAIN> <ACCORDANT_BLOCKCHAIN> <ARBITRATING_AMOUNT> <ACCORDANT_AMOUNT> <CANCEL_TIMELOCK> <PUNISH_TIMELOCK> <FEE_STRATEGY> <MAKER_ROLE> <IP_ADDR_OFFER> <IP_ADDR_BIND> <PORT> <OVERLAY> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

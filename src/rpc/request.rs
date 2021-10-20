@@ -542,7 +542,8 @@ pub struct NodeInfo {
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
-    pub remote_addr: RemoteSocketAddr,
+    pub offer_addr: RemoteSocketAddr,
+    pub bind_addr: RemoteSocketAddr,
     pub peer_secret_key: Option<SecretKey>,
 }
 

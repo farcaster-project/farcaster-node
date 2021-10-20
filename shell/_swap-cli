@@ -236,7 +236,8 @@ _arguments "${_arguments_options[@]}" \
 '::punish-timelock -- The punish timelock parameter of the arbitrating blockchain:' \
 '::fee-strategy -- The chosen fee strategy for the arbitrating transactions:' \
 '::maker-role -- The future maker swap role:(Alice Bob)' \
-'::ip-addr -- IPv4 or IPv6 address to bind to:' \
+'::ip-addr-offer -- IPv4 or IPv6 address to bind to:' \
+'::ip-addr-bind -- IPv4 or IPv6 address to bind to:' \
 '::port -- Port to use; defaults to the native LN port:' \
 '::overlay -- Use overlay protocol (http, websocket etc):' \
 && ret=0
