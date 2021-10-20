@@ -1023,10 +1023,11 @@ impl Runtime {
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
                 | ServiceId::Syncer(Coin::Bitcoin)
-                | ServiceId::Syncer(Coin::Monero),
+                | ServiceId::Syncer(Coin::Monero)
             ) => {}
+            (Request::GetInfo, ServiceId::Client(_)) => {}
             _ => Err(Error::Farcaster(
-                "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd"
+                "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
             ))?,
         };
