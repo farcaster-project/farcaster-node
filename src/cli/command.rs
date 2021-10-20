@@ -156,7 +156,7 @@ impl Exec for Command {
                     offer.maker_role.other()
                 );
                 println!("{:#?}\n", offer);
-                if accept_offer() {
+                if take_offer() {
                     // wake up connection
                     runtime.request(
                         ServiceId::Farcasterd,
@@ -181,7 +181,7 @@ impl Exec for Command {
     }
 }
 
-fn accept_offer() -> bool {
+fn take_offer() -> bool {
     println!("Take it? [y/n]");
     let mut input = [0u8; 1];
     std::io::stdin().read_exact(&mut input).unwrap_or(());
@@ -191,6 +191,6 @@ fn accept_offer() -> bool {
             println!("{}", "Rejecting offer");
             false
         }
-        _ => accept_offer(),
+        _ => take_offer(),
     }
 }
