@@ -163,6 +163,15 @@ impl Runtime {
             Err(Error::Farcaster("Unknown swapd".to_string()))
         }
     }
+    fn syncers_up(&self) -> Result<(), Error> {
+        if !self.syncers.contains_key(&Coin::Bitcoin) {
+            launch("syncerd", &[Coin::Bitcoin.to_string()])?;
+        }
+        if !self.syncers.contains_key(&Coin::Monero) {
+            launch("syncerd", &[Coin::Monero.to_string()])?;
+        }
+        Ok(())
+    }
     fn handle_rpc_msg(
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
@@ -280,12 +289,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
                     // when online, Syncers say Hello, then they get registered to self.syncers
-                    if !self.syncers.contains_key(&Coin::Bitcoin) {
-                        launch("syncerd", &[Coin::Bitcoin.to_string()])?;
-                    }
-                    if !self.syncers.contains_key(&Coin::Monero) {
-                        launch("syncerd", &[Coin::Monero.to_string()])?;
-                    }
+                    self.syncers_up()?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -308,9 +312,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
 
-                    launch("syncerd", &[Coin::Bitcoin.to_string()])?;
-                    launch("syncerd", &[Coin::Monero.to_string()])?;
-
+                    self.syncers_up()?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
