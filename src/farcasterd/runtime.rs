@@ -671,11 +671,11 @@ impl Runtime {
                         // not yet in the set
                         self.public_offers.insert(public_offer.clone());
                         info!("{}", offer_registered);
-
-                        report_to.push((
+                        let progress = (
                             Some(source.clone()),
                             Request::Success(OptionDetails(Some(offer_registered))),
-                        ));
+                        );
+                        report_to.push(progress);
                         // reconstruct original request, by drop peer_secret_key
                         // from offer
                         let request = Request::TakeOffer(PubOffer {

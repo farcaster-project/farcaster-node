@@ -831,9 +831,9 @@ impl Runtime {
                             }
                         };
                         if remote_params_candidate.is_some() {
+                            info!("{:?} sets remote_params", self.state.swap_role());
                             self.remote_params = remote_params_candidate
                         }
-                        info!("{:?} sets remote_params", self.state.swap_role());
 
                         // pass request on to wallet daemon so that it can set remote params
                         match self.state {
@@ -858,7 +858,6 @@ impl Runtime {
                                     dest: ServiceId::Wallet,
                                     bus_id: ServiceBus::Msg,
                                 };
-                                // when receiving from wallet
 
                                 trace!(
                                     "This pending request will be called later: {:?}",
@@ -1868,7 +1867,7 @@ impl Runtime {
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(senders, &enquirer, msg)?;
+        let _ = self.report_progress_to(senders, &enquirer, msg);
 
         Ok(commitment)
     }
