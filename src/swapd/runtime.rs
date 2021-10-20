@@ -1916,9 +1916,9 @@ impl Runtime {
     }
 }
 
-pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
+pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
     if let ServiceId::Swap(swap_id) = source {
-        Ok(swap_id)
+        Ok(*swap_id)
     } else {
         Err(Error::Farcaster("Not swapd".to_string()))
     }

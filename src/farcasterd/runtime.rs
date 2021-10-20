@@ -156,7 +156,7 @@ impl Runtime {
     }
 
     fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
-        let swap_id = get_swap_id(source)?;
+        let swap_id = get_swap_id(&source)?;
         if self.running_swaps.contains(&swap_id) {
             Ok(swap_id)
         } else {
