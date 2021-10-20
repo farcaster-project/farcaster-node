@@ -156,12 +156,12 @@ impl Exec for Command {
                     offer.maker_role.other()
                 );
                 println!("{:#?}\n", offer);
+                // wake up connection
+                runtime.request(
+                    ServiceId::Farcasterd,
+                    Request::Hello,
+                )?;
                 if take_offer() {
-                    // wake up connection
-                    runtime.request(
-                        ServiceId::Farcasterd,
-                        Request::Hello,
-                    )?;
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
