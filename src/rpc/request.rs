@@ -215,7 +215,7 @@ pub struct GetKeys(pub Token, pub RequestId);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("launch_swap")]
 pub struct LaunchSwap {
-    pub peer: ServiceId,
+    pub maker_node_id: bitcoin::secp256k1::PublicKey,
     pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub local_params: Params,
@@ -542,7 +542,8 @@ pub struct NodeInfo {
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
-    pub remote_addr: RemoteSocketAddr,
+    pub public_addr: RemoteSocketAddr,
+    pub bind_addr: RemoteSocketAddr,
     pub peer_secret_key: Option<SecretKey>,
 }
 

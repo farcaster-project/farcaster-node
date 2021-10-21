@@ -280,17 +280,10 @@ impl Runtime {
                 let PublicOffer {
                     version,
                     offer,
-                    node_id,
                     peer_address,
+                    ..
                 } = pub_offer.clone();
-
-                let daemon_service = internet2::RemoteNodeAddr {
-                    node_id,
-                    remote_addr: internet2::RemoteSocketAddr::Ftcp(peer_address),
-                };
-                let peer = daemon_service
-                    .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                let node_id = self.node_id;
                 let external_address = address();
                 match offer.maker_role {
                     SwapRole::Bob => {
@@ -327,7 +320,7 @@ impl Runtime {
                                 return Ok(());
                             }
                             let launch_swap = LaunchSwap {
-                                peer: peer.into(),
+                                maker_node_id: node_id,
                                 local_trade_role: TradeRole::Maker,
                                 public_offer: pub_offer,
                                 local_params: Params::Bob(local_params.clone()),
@@ -376,7 +369,7 @@ impl Runtime {
                                 );
 
                                 let launch_swap = LaunchSwap {
-                                    peer: peer.into(),
+                                    maker_node_id: node_id,
                                     local_trade_role: TradeRole::Maker,
                                     public_offer: pub_offer,
                                     local_params: Params::Alice(params),
@@ -997,19 +990,10 @@ impl Runtime {
                 let PublicOffer {
                     version,
                     offer,
-                    node_id,
                     peer_address,
+                    remote_node_id,
+                    ..
                 } = public_offer.clone();
-                let daemon_service = internet2::RemoteNodeAddr {
-                    node_id,                                                      // checked above
-                    remote_addr: internet2::RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
-                };
-                let peer = daemon_service
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
-                let peer = daemon_service
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
 
                 let swap_id: SwapId = SwapId::random().into();
                 self.swaps.insert(swap_id, None);
@@ -1050,7 +1034,7 @@ impl Runtime {
                             return Ok(());
                         }
                         let launch_swap = LaunchSwap {
-                            peer: peer.into(),
+                            maker_node_id: remote_node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Bob(local_params),
@@ -1098,7 +1082,7 @@ impl Runtime {
                             error!("Wallet already exists");
                         }
                         let launch_swap = LaunchSwap {
-                            peer: peer.into(),
+                            maker_node_id: remote_node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Alice(local_params),

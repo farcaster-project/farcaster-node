@@ -113,7 +113,8 @@ impl Exec for Command {
                 punish_timelock,
                 fee_strategy,
                 maker_role,
-                ip_addr,
+                public_ip_addr,
+                bind_ip_addr,
                 port,
                 overlay,
             } => {
@@ -128,10 +129,12 @@ impl Exec for Command {
                     fee_strategy,
                     maker_role,
                 };
-                let remote_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
+                let public_addr = RemoteSocketAddr::with_ip_addr(overlay, public_ip_addr, port);
+                let bind_addr = RemoteSocketAddr::with_ip_addr(overlay, bind_ip_addr, port);
                 let proto_offer = request::ProtoPublicOffer {
                     offer,
-                    remote_addr,
+                    public_addr,
+                    bind_addr,
                     peer_secret_key: None,
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
@@ -147,29 +150,31 @@ impl Exec for Command {
                 // hex.bright_yellow_bold());
             }
 
-            Command::Take { public_offer } => {
+            Command::Take { public_offer, without_validation } => {
                 // println!("{:#?}", &public_offer);
                 let PublicOffer {
                     version,
                     offer,
-                    node_id,
+                    remote_node_id,
                     peer_address,
                 } = public_offer.clone();
-                let taker_role = offer.maker_role.other();
-                let arb_amount = offer.arbitrating_amount;
-                let acc_amount = offer.accordant_amount;
-                println!(
-                    "\nWant to buy {}?\n\nCarefully validate offer!\n",
-                    match taker_role {
-                        SwapRole::Alice => format!("{} for {}", arb_amount, acc_amount),
-                        SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
-                    }
-                );
-                println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
-                println!("{:#?}\n", offer);
+                if !without_validation {
+                    let taker_role = offer.maker_role.other();
+                    let arb_amount = offer.arbitrating_amount;
+                    let acc_amount = offer.accordant_amount;
+                    println!(
+                        "\nWant to buy {}?\n\nCarefully validate offer!\n",
+                        match taker_role {
+                            SwapRole::Alice => format!("{} for {}", arb_amount, acc_amount),
+                            SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
+                        }
+                    );
+                    println!("Trade counterparty: {}@{}\n", &remote_node_id, peer_address);
+                    println!("{:#?}\n", offer);
+                }
                 // wake up connection
                 runtime.request(ServiceId::Farcasterd, Request::Hello)?;
-                if take_offer() {
+                if without_validation || take_offer() {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,

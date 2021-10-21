@@ -339,7 +339,7 @@ impl Runtime {
                 }
             }
             Request::LaunchSwap(LaunchSwap {
-                peer,
+                maker_node_id,
                 local_trade_role,
                 public_offer,
                 local_params,
@@ -347,12 +347,41 @@ impl Runtime {
                 remote_commit,
                 funding_address,
             }) => {
+                let (node_id, peer_address) = match (local_trade_role, self.listens.len()) {
+                    // Maker has only one listener, MAYBE for more listeners self.listens may be a
+                    // HashMap<RemoteSocketAddr, Vec<OfferId>>
+                    (TradeRole::Maker, 1) => (
+                        maker_node_id,
+                        self.listens
+                            .clone()
+                            .into_iter()
+                            .find_map(|x| Some(x))
+                            .expect("exactly 1 listener checked on pattern match"),
+                    ),
+                    (TradeRole::Taker, _) if public_offer.remote_node_id == maker_node_id => (
+                        public_offer.remote_node_id,
+                        internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
+                    ),
+                    _ => {
+                        error!("Currently only one listener supported!");
+                        return Ok(());
+                    }
+                };
                 if self.public_offers.remove(&public_offer) {
                     trace!(
                         "{}, {}",
                         "launching swapd with swap_id:",
                         swap_id.bright_yellow_bold()
                     );
+                    let daemon_service = internet2::RemoteNodeAddr {
+                        node_id,
+                        remote_addr: peer_address,
+                    };
+                    let peer = daemon_service
+                        .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
+                        .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?
+                        .into();
+
                     self.consumed_offers.insert(public_offer.id());
                     launch_swapd(
                         self,
@@ -515,26 +544,27 @@ impl Runtime {
             // }
             Request::MakeOffer(request::ProtoPublicOffer {
                 offer,
-                remote_addr,
+                public_addr,
+                bind_addr,
                 peer_secret_key,
             }) => {
-                let resp = match (self.listens.contains(&remote_addr), peer_secret_key) {
+                let resp = match (self.listens.contains(&bind_addr), peer_secret_key) {
                     (false, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
                         return self.get_secret(senders, source, request);
                     }
                     (false, Some(sk)) => {
-                        self.listens.insert(remote_addr);
+                        self.listens.insert(bind_addr);
                         info!(
                             "{} for incoming LN peer connections on {}",
                             "Starting listener".bright_blue_bold(),
-                            remote_addr.bright_blue_bold()
+                            bind_addr.bright_blue_bold()
                         );
-                        self.listen(&remote_addr, sk)
+                        self.listen(&bind_addr, sk)
                     }
                     (true, _) => {
-                        info!("Already listening on {}", &remote_addr);
-                        let msg = format!("Already listening on {}", &remote_addr);
+                        let msg = format!("Already listening on {}", &bind_addr);
+                        info!("{}", &msg);
                         Ok(msg)
                     }
                 };
@@ -542,7 +572,7 @@ impl Runtime {
                     Ok(_) => info!(
                         "Connection daemon {} for incoming LN peer connections on {}",
                         "listens".bright_green_bold(),
-                        remote_addr
+                        bind_addr
                     ),
                     Err(err) => {
                         error!("{}", err.err());
@@ -565,10 +595,10 @@ impl Runtime {
                 }
                 let peer = internet2::RemoteNodeAddr {
                     node_id: node_ids[0], // checked above
-                    remote_addr: remote_addr.clone(),
+                    remote_addr: public_addr.clone(),
                 };
 
-                let public_offer = offer.clone().to_public_v1(node_ids[0], remote_addr.into());
+                let public_offer = offer.clone().to_public_v1(node_ids[0], public_addr.into());
                 let offer_id = public_offer.id();
                 let hex_public_offer = public_offer.to_hex();
                 if self.public_offers.insert(public_offer) {
@@ -619,12 +649,12 @@ impl Runtime {
                     let PublicOffer {
                         version,
                         offer,
-                        node_id,      // bitcoin::Pubkey
-                        peer_address, // InetSocketAddr
+                        remote_node_id, // bitcoin::Pubkey
+                        peer_address,   // InetSocketAddr
                     } = public_offer.clone();
 
                     let daemon_service = internet2::RemoteNodeAddr {
-                        node_id,                                           // checked above
+                        node_id: remote_node_id,                           // checked above
                         remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
                     };
                     let peer = daemon_service
