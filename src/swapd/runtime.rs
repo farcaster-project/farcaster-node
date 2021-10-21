@@ -1138,7 +1138,7 @@ impl Runtime {
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
-
+                self.enquirer = report_to.clone();
                 let local_commit = self
                     .maker_commit(senders, &peerd, swap_id, &local_params)
                     .map_err(|err| {
