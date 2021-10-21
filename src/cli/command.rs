@@ -19,7 +19,11 @@ use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
 use lnp::{message, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
-use farcaster_core::{negotiation::PublicOffer, swap::SwapId};
+use farcaster_core::{
+    negotiation::PublicOffer,
+    role::{SwapRole, TradeRole},
+    swap::SwapId,
+};
 use strict_encoding::ReadExt;
 
 use super::Command;
@@ -151,17 +155,21 @@ impl Exec for Command {
                     node_id,
                     peer_address,
                 } = public_offer.clone();
+                let taker_role = offer.maker_role.other();
+                let arb_amount = offer.arbitrating_amount;
+                let acc_amount = offer.accordant_amount;
                 println!(
-                    "\nCarefully validate offer! You will be {:?}!\n",
-                    offer.maker_role.other()
+                    "\nWant to buy {}?\n\nCarefully validate offer!\n",
+                    match taker_role {
+                        SwapRole::Alice => format!("{} for {}", arb_amount, acc_amount),
+                        SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
+                    }
                 );
+                println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
                 println!("{:#?}\n", offer);
-                if accept_offer() {
-                    // wake up connection
-                    runtime.request(
-                        ServiceId::Farcasterd,
-                        Request::Hello,
-                    )?;
+                // wake up connection
+                runtime.request(ServiceId::Farcasterd, Request::Hello)?;
+                if take_offer() {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
@@ -181,7 +189,7 @@ impl Exec for Command {
     }
 }
 
-fn accept_offer() -> bool {
+fn take_offer() -> bool {
     println!("Take it? [y/n]");
     let mut input = [0u8; 1];
     std::io::stdin().read_exact(&mut input).unwrap_or(());
@@ -191,6 +199,6 @@ fn accept_offer() -> bool {
             println!("{}", "Rejecting offer");
             false
         }
-        _ => accept_offer(),
+        _ => take_offer(),
     }
 }
