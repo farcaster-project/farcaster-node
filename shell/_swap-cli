@@ -259,6 +259,8 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
+'-w[Accept Offer without validation]' \
+'--without-validation[Accept Offer without validation]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \

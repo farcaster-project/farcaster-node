@@ -162,6 +162,9 @@ pub enum Command {
     Take {
         /// Hex encoded offer
         public_offer: PublicOffer<BtcXmr>,
+        /// Accept Offer without validation
+        #[clap(short, long)]
+        without_validation: bool,
     },
     /// Request Swap progress report
     Progress {

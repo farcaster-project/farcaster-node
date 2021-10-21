@@ -825,7 +825,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__take)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <PUBLIC_OFFER> "
+            opts=" -w -h -V -d -c -v -T -m -x -n  --without-validation --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <PUBLIC_OFFER> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

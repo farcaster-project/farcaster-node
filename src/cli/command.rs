@@ -150,7 +150,7 @@ impl Exec for Command {
                 // hex.bright_yellow_bold());
             }
 
-            Command::Take { public_offer } => {
+            Command::Take { public_offer, without_validation } => {
                 // println!("{:#?}", &public_offer);
                 let PublicOffer {
                     version,
@@ -158,21 +158,23 @@ impl Exec for Command {
                     remote_node_id,
                     peer_address,
                 } = public_offer.clone();
-                let taker_role = offer.maker_role.other();
-                let arb_amount = offer.arbitrating_amount;
-                let acc_amount = offer.accordant_amount;
-                println!(
-                    "\nWant to buy {}?\n\nCarefully validate offer!\n",
-                    match taker_role {
-                        SwapRole::Alice => format!("{} for {}", arb_amount, acc_amount),
-                        SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
-                    }
-                );
-                println!("Trade counterparty: {}@{}\n", &remote_node_id, peer_address);
-                println!("{:#?}\n", offer);
+                if !without_validation {
+                    let taker_role = offer.maker_role.other();
+                    let arb_amount = offer.arbitrating_amount;
+                    let acc_amount = offer.accordant_amount;
+                    println!(
+                        "\nWant to buy {}?\n\nCarefully validate offer!\n",
+                        match taker_role {
+                            SwapRole::Alice => format!("{} for {}", arb_amount, acc_amount),
+                            SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
+                        }
+                    );
+                    println!("Trade counterparty: {}@{}\n", &remote_node_id, peer_address);
+                    println!("{:#?}\n", offer);
+                }
                 // wake up connection
                 runtime.request(ServiceId::Farcasterd, Request::Hello)?;
-                if take_offer() {
+                if without_validation || take_offer() {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
