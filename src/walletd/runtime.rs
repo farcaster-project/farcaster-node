@@ -247,6 +247,19 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
+        let req_swap_id = get_swap_id(&source).ok();
+        match &request {
+            Request::Protocol(msg)
+                if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id =>
+            {
+                error!("Msg and source don't have same swap_id, ignoring...");
+                return Ok(());
+            }
+            // farcasterd is sending TakerCommit
+            Request::Protocol(Msg::TakerCommit(_)) => {}
+
+            _ => {}
+        }
         match request.clone() {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
@@ -386,12 +399,7 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::MakerCommit(commit)) => {
-                let swap_id = get_swap_id(source.clone())?;
-                if swap_id != Msg::MakerCommit(commit.clone()).swap_id() {
-                    error!("wrong swapid");
-                    return Ok(());
-                }
-
+                let req_swap_id = req_swap_id.expect("validated previously");
                 match commit {
                     Commit::BobParameters(CommitBobParameters { swap_id, .. }) => {
                         if let Some(Wallet::Alice(
@@ -437,7 +445,7 @@ impl Runtime {
                         }
                     }
                 }
-                let proof: &Proof<BtcXmr> = match self.wallets.get(&swap_id).unwrap() {
+                let proof: &Proof<BtcXmr> = match self.wallets.get(&req_swap_id).unwrap() {
                     Wallet::Alice(_, _, local_proof, ..) => local_proof,
                     Wallet::Bob(BobState {
                         wallet_ix: _,
@@ -452,11 +460,11 @@ impl Runtime {
                     ServiceId::Wallet,
                     // TODO: (maybe) what if the message responded to is not sent by swapd?
                     source,
-                    Request::Protocol(Msg::Reveal((swap_id, proof.clone()).into())),
+                    Request::Protocol(Msg::Reveal((req_swap_id, proof.clone()).into())),
                 )?;
             }
             Request::Protocol(Msg::Reveal(Reveal::Proof(proof))) => {
-                let wallet = self.wallets.get_mut(&get_swap_id(source)?);
+                let wallet = self.wallets.get_mut(&get_swap_id(&source)?);
                 match wallet {
                     Some(Wallet::Alice(.., bob_proof, _, _, _)) => {
                         *bob_proof = Some(Proof { proof: proof.proof })
@@ -478,7 +486,7 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::Reveal(reveal)) => {
-                let swap_id = get_swap_id(source.clone())?;
+                let swap_id = get_swap_id(&source)?;
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
                     Reveal::BobParameters(reveal) => {
@@ -685,7 +693,7 @@ impl Runtime {
                 cancel_sig: alice_cancel_sig,
                 refund_adaptor_sig,
             })) => {
-                let swap_id = get_swap_id(source.clone())?;
+                let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
                 if let Some(Wallet::Bob(BobState {
                     bob,
@@ -798,7 +806,7 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
-                let swap_id = get_swap_id(source.clone())?;
+                let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Alice(
                     alice,
                     alice_params,
@@ -889,10 +897,6 @@ impl Runtime {
                 let signed_adaptor_buy = SignedAdaptorBuy {
                     buy: buy.clone(),
                     buy_adaptor_sig: buy_encrypted_sig,
-                };
-                if get_swap_id(source.clone())? != swap_id {
-                    error!("wrong swapid");
-                    return Ok(());
                 };
                 let id = self.identity();
                 if let Some(Wallet::Alice(
@@ -1115,7 +1119,7 @@ impl Runtime {
                 if let Some(Wallet::Bob(BobState {
                     funding_tx: Some(funding),
                     ..
-                })) = self.wallets.get_mut(&get_swap_id(source.clone())?)
+                })) = self.wallets.get_mut(&get_swap_id(&source)?)
                 {
                     if funding.was_seen() {
                         warn!("funding was previously updated, ignoring");
@@ -1140,7 +1144,7 @@ impl Runtime {
                     core_arb_setup: Some(_),
                     adaptor_buy: Some(adaptor_buy),
                     ..
-                })) = self.wallets.get_mut(&get_swap_id(source.clone())?)
+                })) = self.wallets.get_mut(&get_swap_id(&source)?)
                 {
                     let sk_a_btc = bob.recover_accordant_assets(
                         key_manager,
@@ -1180,7 +1184,7 @@ impl Runtime {
                     _,
                     _,
                     Some(adaptor_refund),
-                )) = self.wallets.get_mut(&get_swap_id(source.clone())?)
+                )) = self.wallets.get_mut(&get_swap_id(&source)?)
                 {
                     let sk_b_btc = alice.recover_accordant_assets(
                         key_manager,

@@ -155,16 +155,25 @@ impl Exec for Command {
                     "\nCarefully validate offer! You will be {:?}!\n",
                     offer.maker_role.other()
                 );
-                println!("{:#?}", offer);
-                // report success of failure of the request to cli
+                println!("{:#?}\n", offer);
                 if accept_offer() {
+                    // wake up connection
+                    runtime.request(
+                        ServiceId::Farcasterd,
+                        Request::Hello,
+                    )?;
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
                         Request::TakeOffer(public_offer.into()),
                     )?;
+                    // report success of failure of the request to cli
                     runtime.report_progress()?;
                 }
+            }
+            Command::Progress { swapid } => {
+                runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
+                while let Ok(n) = runtime.report_progress() {}
             }
             _ => unimplemented!(),
         }

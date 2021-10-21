@@ -18,7 +18,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use internet2::{FramingProtocol, PartialNodeAddr};
-use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 
 use farcaster_core::{
     bitcoin::{fee::SatPerVByte, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin},
@@ -26,7 +25,7 @@ use farcaster_core::{
     monero::Monero,
     negotiation::PublicOffer,
     role::SwapRole,
-    swap::btcxmr::BtcXmr,
+    swap::{btcxmr::BtcXmr, SwapId},
 };
 
 /// Command-line tool for working with Farcaster node
@@ -159,6 +158,11 @@ pub enum Command {
     Take {
         /// Hex encoded offer
         public_offer: PublicOffer<BtcXmr>,
+    },
+    /// Request Swap progress report
+    Progress {
+        /// SwapId
+        swapid: SwapId,
     },
 }
 

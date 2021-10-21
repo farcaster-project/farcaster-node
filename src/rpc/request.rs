@@ -420,6 +420,10 @@ pub enum Request {
     #[display("progress({0})")]
     Progress(String),
 
+    #[api(type = 1003)]
+    #[display("read_progress({0})")]
+    ReadProgress(SwapId),
+
     #[api(type = 1001)]
     #[display("success({0})")]
     Success(OptionDetails),

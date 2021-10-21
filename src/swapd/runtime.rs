@@ -561,6 +561,16 @@ impl Runtime {
         }
     }
 
+    fn state_update(&mut self, senders: &mut Senders, next_state: State) -> Result<(), Error> {
+        let msg = format!(
+            "State transition: {} -> {}",
+            self.state.bright_white_bold(),
+            next_state.bright_white_bold()
+        );
+        self.state = next_state;
+        self.report_success_to(senders, self.enquirer.clone(), Some(msg))
+    }
+
     fn broadcast(
         &mut self,
         tx: bitcoin::Transaction,
@@ -685,10 +695,8 @@ impl Runtime {
                                 Request::SyncerTask(watch_height_monero),
                             )?;
                         }
-
                         self.send_wallet(msg_bus, senders, request)?;
-                        info!("State transition: {}", next_state.bright_white_bold());
-                        self.state = next_state;
+                        self.state_update(senders, next_state)?;
                     }
                     Msg::TakerCommit(_) => {
                         unreachable!(
@@ -823,9 +831,9 @@ impl Runtime {
                             }
                         };
                         if remote_params_candidate.is_some() {
+                            info!("{:?} sets remote_params", self.state.swap_role());
                             self.remote_params = remote_params_candidate
                         }
-                        info!("{:?} sets remote_params", self.state.swap_role());
 
                         // pass request on to wallet daemon so that it can set remote params
                         match self.state {
@@ -850,7 +858,6 @@ impl Runtime {
                                     dest: ServiceId::Wallet,
                                     bus_id: ServiceBus::Msg,
                                 };
-                                // when receiving from wallet
 
                                 trace!(
                                     "This pending request will be called later: {:?}",
@@ -904,9 +911,7 @@ impl Runtime {
                                     ServiceId::Syncer(Coin::Monero),
                                     Request::SyncerTask(watch_height_monero),
                                 )?;
-
-                                info!("State transition: {}", next_state.bright_white_bold());
-                                self.state = next_state;
+                                self.state_update(senders, next_state)?;
                             }
                             _ => debug!(
                                 "You are the Taker, which revealed already, nothing to reveal."
@@ -1017,10 +1022,11 @@ impl Runtime {
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
                 | ServiceId::Syncer(Coin::Bitcoin)
-                | ServiceId::Syncer(Coin::Monero),
+                | ServiceId::Syncer(Coin::Monero)
             ) => {}
+            (Request::GetInfo, ServiceId::Client(_)) => {}
             _ => Err(Error::Farcaster(
-                "Permission Error: only Farcasterd, Wallet and Syncer can can control swapd"
+                "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
             ))?,
         };
@@ -1097,8 +1103,7 @@ impl Runtime {
                     swap_id,
                 };
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
-                info!("State transition: {}", next_state.bright_white_bold());
-                self.state = next_state;
+                self.state_update(senders, next_state)?;
             }
             Request::Protocol(Msg::Reveal(reveal)) => match self.state.clone() {
                 State::Alice(AliceState::RevealA(Some(local_params), remote_commit))
@@ -1114,8 +1119,7 @@ impl Runtime {
                         State::Alice(_) => State::Alice(AliceState::RevealA(None, remote_commit)),
                         State::Bob(_) => State::Bob(BobState::RevealB(None, remote_commit)),
                     };
-                    info!("State transition: {}", next_state.bright_white_bold());
-                    self.state = next_state;
+                    self.state_update(senders, next_state)?;
                 }
                 _ => {
                     error!("Wrong state: Expects RevealA | RevealB");
@@ -1173,10 +1177,7 @@ impl Runtime {
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
-
-                info!("State transition: {}", next_state.bright_white_bold());
-                trace!("setting commit_remote and commit_local msg");
-                self.state = next_state;
+                self.state_update(senders, next_state)?;
             }
             Request::FundingUpdated
                 if source == ServiceId::Wallet && self.pending_requests.contains_key(&source) =>
@@ -1319,8 +1320,7 @@ impl Runtime {
                             }?;
                             info!("sending buyproceduresignature at state {}", &self.state);
                             senders.send_to(bus_id, self.identity(), dest, request)?;
-                            info!("State transition: {}", next_state.bright_white_bold());
-                            self.state = next_state;
+                            self.state_update(senders, next_state)?;
                         } else {
                             error!(
                                 "Not buyproceduresignatures {} or not Msg bus found {}",
@@ -1388,8 +1388,7 @@ impl Runtime {
                             }?;
                             info!("sending buyproceduresignature at state {}", &self.state);
                             senders.send_to(bus_id, self.identity(), dest, request)?;
-                            info!("State transition: {}", next_state.bright_white_bold());
-                            self.state = next_state;
+                            self.state_update(senders, next_state)?;
                         } else {
                             error!(
                                 "Not buyproceduresignatures {} or not Msg bus found {}",
@@ -1658,8 +1657,7 @@ impl Runtime {
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
-                info!("State transition: {}", next_state.bright_white_bold());
-                self.state = next_state;
+                self.state_update(senders, next_state)?;
             }
 
             Request::Tx(Tx::Lock(btc_lock)) => {
@@ -1743,8 +1741,7 @@ impl Runtime {
                 }?;
                 debug!("sending peer RefundProcedureSignatures msg");
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
-                info!("State transition: {}", next_state.bright_white_bold());
-                self.state = next_state;
+                self.state_update(senders, next_state)?;
             }
 
             Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig)) => {
@@ -1870,7 +1867,7 @@ impl Runtime {
         // Ignoring possible reporting errors here and after: do not want to
         // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(senders, &enquirer, msg)?;
+        let _ = self.report_progress_to(senders, &enquirer, msg);
 
         Ok(commitment)
     }
@@ -1918,9 +1915,9 @@ impl Runtime {
     }
 }
 
-pub fn get_swap_id(source: ServiceId) -> Result<SwapId, Error> {
+pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
     if let ServiceId::Swap(swap_id) = source {
-        Ok(swap_id)
+        Ok(*swap_id)
     } else {
         Err(Error::Farcaster("Not swapd".to_string()))
     }
