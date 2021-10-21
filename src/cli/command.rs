@@ -113,8 +113,8 @@ impl Exec for Command {
                 punish_timelock,
                 fee_strategy,
                 maker_role,
-                ip_addr_offer,
-                ip_addr_bind,
+                public_ip_addr,
+                bind_ip_addr,
                 port,
                 overlay,
             } => {
@@ -129,11 +129,11 @@ impl Exec for Command {
                     fee_strategy,
                     maker_role,
                 };
-                let offer_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr_offer, port);
-                let bind_addr = RemoteSocketAddr::with_ip_addr(overlay, ip_addr_bind, port);
+                let public_addr = RemoteSocketAddr::with_ip_addr(overlay, public_ip_addr, port);
+                let bind_addr = RemoteSocketAddr::with_ip_addr(overlay, bind_ip_addr, port);
                 let proto_offer = request::ProtoPublicOffer {
                     offer,
-                    offer_addr,
+                    public_addr,
                     bind_addr,
                     peer_secret_key: None,
                 };
@@ -155,7 +155,7 @@ impl Exec for Command {
                 let PublicOffer {
                     version,
                     offer,
-                    node_id,
+                    remote_node_id,
                     peer_address,
                 } = public_offer.clone();
                 let taker_role = offer.maker_role.other();
@@ -168,7 +168,7 @@ impl Exec for Command {
                         SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
                     }
                 );
-                println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
+                println!("Trade counterparty: {}@{}\n", &remote_node_id, peer_address);
                 println!("{:#?}\n", offer);
                 // wake up connection
                 runtime.request(ServiceId::Farcasterd, Request::Hello)?;

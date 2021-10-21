@@ -142,13 +142,13 @@ pub enum Command {
         #[clap(default_value = "Alice", possible_values = &["Alice", "Bob"])]
         maker_role: SwapRole,
 
-        /// IPv4 or IPv6 address to bind to
-        #[clap(default_value = "0.0.0.0")]
-        ip_addr_offer: IpAddr,
+        /// public IPv4 or IPv6 address for public offer
+        #[clap(default_value = "127.0.0.1")]
+        public_ip_addr: IpAddr,
 
         /// IPv4 or IPv6 address to bind to
         #[clap(default_value = "0.0.0.0")]
-        ip_addr_bind: IpAddr,
+        bind_ip_addr: IpAddr,
 
         /// Port to use; defaults to the native LN port.
         #[clap(default_value = "9735")]
