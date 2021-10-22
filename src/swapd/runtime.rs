@@ -89,9 +89,9 @@ pub fn run(
         cancel_timelock,
         punish_timelock,
         maker_role, // SwapRole of maker (Alice or Bob)
+        network,
         ..
     } = public_offer.offer.clone();
-
     // alice or bob
     let local_swap_role = match local_trade_role {
         TradeRole::Maker => maker_role,
@@ -119,6 +119,16 @@ pub fn run(
         watched_addrs: none!(),
         watched_txs: none!(),
     };
+
+    let net = match network {
+        blockchain::Network::Mainnet => monero::Network::Mainnet,
+        blockchain::Network::Testnet => monero::Network::Stagenet,
+        blockchain::Network::Local => monero::Network::Stagenet,
+    };
+    fn net_curry(net: monero::Network) -> impl Fn(&monero::ViewPair) -> monero::Address {
+        move |view_pair| monero::Address::from_viewpair(net, view_pair)
+    }
+
     let syncer_state = SyncerState {
         tasks,
         monero_height: 0,
@@ -126,6 +136,7 @@ pub fn run(
         confirmation_bound: 50000,
         lock_tx_confs: None,
         cancel_tx_confs: None,
+        monero_address: Box::new(net_curry(net)),
     };
 
     let runtime = Runtime {
@@ -249,6 +260,7 @@ struct SyncerState {
     confirmation_bound: u32,
     lock_tx_confs: Option<Request>,
     cancel_tx_confs: Option<Request>,
+    monero_address: Box<dyn Fn(&monero::ViewPair) -> monero::Address>,
 }
 
 #[derive(Display, Clone)]
@@ -478,10 +490,9 @@ impl SyncerState {
             .unwrap()
             .elem()
             .clone();
-
         if swap_role == SwapRole::Alice {
             let keypair = monero::ViewPair { spend, view };
-            let address = monero::Address::from_viewpair(monero::Network::Stagenet, &keypair);
+            let address = (self.monero_address)(&keypair);
             info!("Alice, please send xmr to {}", address.addr());
         }
 
