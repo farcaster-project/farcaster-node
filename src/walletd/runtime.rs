@@ -294,7 +294,7 @@ impl Runtime {
                         let (local_params, local_proof) =
                             bob.generate_parameters(&mut key_manager, &pub_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            let funding = create_funding(&mut key_manager)?;
+                            let funding = create_funding(&mut key_manager, offer.network)?;
                             let funding_addr = funding.get_address()?;
                             info!(
                                 "Bob, please send Btc to address: {}",
@@ -1007,7 +1007,7 @@ impl Runtime {
                         let bob: Bob<BtcXmr> = Bob::new(external_address.into(), FeePriority::Low);
                         let (local_params, local_proof) =
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
-                        let funding = create_funding(&mut key_manager)?;
+                        let funding = create_funding(&mut key_manager, offer.network)?;
                         let funding_addr = funding.get_address()?;
                         let funding_fee = 150;
                         let funding_amount = offer.arbitrating_amount.as_sat() + funding_fee;
@@ -1275,12 +1275,12 @@ where
     Ok(io::BufRead::lines(io::BufReader::new(file)))
 }
 
-pub fn create_funding(key_manager: &mut KeyManager) -> Result<FundingTx, Error> {
+pub fn create_funding(
+    key_manager: &mut KeyManager,
+    net: farcaster_core::blockchain::Network,
+) -> Result<FundingTx, Error> {
     let pk = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
-    Ok(FundingTx::initialize(
-        pk,
-        farcaster_core::blockchain::Network::Testnet,
-    )?)
+    Ok(FundingTx::initialize(pk, net)?)
 }
 
 pub fn funding_update(funding: &mut FundingTx, tx: bitcoin::Transaction) -> Result<(), Error> {
