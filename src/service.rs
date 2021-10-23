@@ -26,7 +26,7 @@ use microservices::{esb, rpc};
 use strict_encoding::{strict_deserialize, strict_serialize};
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use farcaster_core::swap::SwapId;
+use farcaster_core::{blockchain::Network, swap::SwapId};
 
 use crate::rpc::{Request, ServiceBus};
 use crate::Config;
@@ -102,7 +102,7 @@ pub enum ServiceId {
     Client(u64),
 
     #[display("syncer<{0:?}>")]
-    Syncer(Coin),
+    Syncer(Coin, Network),
 
     #[display("walletd")]
     Wallet,

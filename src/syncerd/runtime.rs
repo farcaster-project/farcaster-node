@@ -56,7 +56,12 @@ pub struct SyncerServers {
     pub monero_rpc_wallet: String,
 }
 
-pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<(), Error> {
+pub fn run(
+    config: Config,
+    coin: Coin,
+    network: farcaster_core::blockchain::Network,
+    syncer_servers: SyncerServers,
+) -> Result<(), Error> {
     info!(
         "Creating new {} {}",
         &coin.bright_green_bold(),
@@ -77,7 +82,7 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
     };
 
     let mut runtime = Runtime {
-        identity: ServiceId::Syncer(coin),
+        identity: ServiceId::Syncer(coin, network),
         started: SystemTime::now(),
         tasks: none!(),
         syncer: syncer.unwrap(),
