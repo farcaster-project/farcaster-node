@@ -67,7 +67,6 @@ pub fn run(
         &coin.bright_green_bold(),
         "syncer".bright_green_bold()
     );
-    let syncer: Option<Box<dyn Synclet>>;
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
 
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
@@ -75,17 +74,16 @@ pub fn run(
     tx_event.connect("inproc://syncerdbridge")?;
     rx_event.bind("inproc://syncerdbridge")?;
 
-    syncer = if coin == Coin::Monero {
-        Some(Box::new(MoneroSyncer::new()))
-    } else {
-        Some(Box::new(BitcoinSyncer::new()))
+    let syncer: Box<dyn Synclet> = match coin {
+        Coin::Monero => Box::new(MoneroSyncer::new()),
+        Coin::Bitcoin => Box::new(BitcoinSyncer::new()),
     };
 
     let mut runtime = Runtime {
         identity: ServiceId::Syncer(coin, network),
         started: SystemTime::now(),
         tasks: none!(),
-        syncer: syncer.unwrap(),
+        syncer,
         tx,
     };
     let polling = true;
