@@ -12,7 +12,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::{convert::TryFrom, io::Read, time::Duration};
+use std::{
+    convert::TryFrom,
+    io::{self, Read, Write},
+    time::Duration,
+};
 use std::{str::FromStr, thread::sleep};
 
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
@@ -20,6 +24,7 @@ use lnp::{message, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
 use farcaster_core::{
+    blockchain::Network,
     negotiation::PublicOffer,
     role::{SwapRole, TradeRole},
     swap::SwapId,
@@ -119,6 +124,13 @@ impl Exec for Command {
                 port,
                 overlay,
             } => {
+                if network != Network::Testnet {
+                    eprintln!(
+                        "Error: {} not yet supported. Only Testnet currently enabled, for your funds safety",
+                        network
+                    );
+                    return Ok(());
+                }
                 let offer = farcaster_core::negotiation::Offer {
                     network,
                     arbitrating_blockchain,
@@ -152,7 +164,11 @@ impl Exec for Command {
                 // hex.bright_yellow_bold());
             }
 
-            Command::Take { public_offer, bitcoin_address, without_validation } => {
+            Command::Take {
+                public_offer,
+                bitcoin_address,
+                without_validation,
+            } => {
                 // println!("{:#?}", &public_offer);
                 let PublicOffer {
                     version,
@@ -209,3 +225,4 @@ fn take_offer() -> bool {
         _ => take_offer(),
     }
 }
+
