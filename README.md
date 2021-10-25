@@ -80,6 +80,9 @@ ARGS:
     <ACCORDANT_AMOUNT>
             Amount of accordant assets to exchanged [default: "100 XMR"]
 
+    <MAKER_ROLE>
+            The future maker swap role [default: Alice] [possible values: Alice, Bob]
+
     <CANCEL_TIMELOCK>
             The cancel timelock parameter of the arbitrating blockchain [default: 10]
 
@@ -88,9 +91,6 @@ ARGS:
 
     <FEE_STRATEGY>
             The chosen fee strategy for the arbitrating transactions [default: "2 satoshi/vByte"]
-
-    <MAKER_ROLE>
-            The future maker swap role [default: Alice] [possible values: Alice, Bob]
 
     <PUBLIC_IP_ADDR>
             public IPv4 or IPv6 address for public offer [default: 127.0.0.1]
@@ -108,7 +108,7 @@ ARGS:
 The `ECDSA` below is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms:
 
 ```
-swap0-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero "0.00001350 BTC" "0.00000001 XMR" 10 30 "1 satoshi/vByte" Alice "127.0.0.1" "0.0.0.0" 9745
+swap0-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745
 ```
 
 This will produce the following hex encoded offer: 

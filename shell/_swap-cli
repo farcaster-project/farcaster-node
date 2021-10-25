@@ -227,16 +227,16 @@ _arguments "${_arguments_options[@]}" \
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':arbitrating-addr -- bitcoin address used as destination or refund address:' \
-'::network -- Type of offer and network to use:' \
-'::arbitrating-blockchain -- The chosen arbitrating blockchain:' \
-'::accordant-blockchain -- The chosen accordant blockchain:' \
+':arbitrating-addr -- Bitcoin address used as destination or refund address:' \
+'::network -- Network to use:(Testnet Mainnet Local)' \
+'::arbitrating-blockchain -- The chosen arbitrating blockchain:(ECDSA)' \
+'::accordant-blockchain -- The chosen accordant blockchain:(Monero)' \
 '::arbitrating-amount -- Amount of arbitrating assets to exchanged:' \
 '::accordant-amount -- Amount of accordant assets to exchanged:' \
+'::maker-role -- The future maker swap role:(Alice Bob)' \
 '::cancel-timelock -- The cancel timelock parameter of the arbitrating blockchain:' \
 '::punish-timelock -- The punish timelock parameter of the arbitrating blockchain:' \
 '::fee-strategy -- The chosen fee strategy for the arbitrating transactions:' \
-'::maker-role -- The future maker swap role:(Alice Bob)' \
 '::public-ip-addr -- public IPv4 or IPv6 address for public offer:' \
 '::bind-ip-addr -- IPv4 or IPv6 address to bind to:' \
 '::port -- Port to use; defaults to the native LN port:' \
