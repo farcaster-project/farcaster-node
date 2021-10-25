@@ -111,7 +111,7 @@ pub struct AliceState {
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
     alice_cancel_signature: Option<Signature>,
     adaptor_refund: Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
-    external_address: Option<Address>,
+}
 }
 
 impl AliceState {
@@ -123,7 +123,6 @@ impl AliceState {
         key_manager: KeyManager,
         pub_offer: PublicOffer<BtcXmr>,
         remote_commit: Option<CommitBobParameters<BtcXmr>>,
-        external_address: Option<Address>,
     ) -> Self {
         Self {
             wallet_ix,
@@ -138,7 +137,6 @@ impl AliceState {
             core_arb_setup: None,
             alice_cancel_signature: None,
             adaptor_refund: None,
-            external_address,
         }
     }
 }
@@ -156,7 +154,6 @@ pub struct BobState {
     remote_proof: Option<Proof<BtcXmr>>,
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
     adaptor_buy: Option<SignedAdaptorBuy<Bitcoin<SegwitV0>>>,
-    external_address: Option<Address>,
 }
 
 impl BobState {
@@ -169,7 +166,6 @@ impl BobState {
         pub_offer: PublicOffer<BtcXmr>,
         funding_tx: Option<FundingTx>,
         remote_commit_params: Option<CommitAliceParameters<BtcXmr>>,
-        external_address: Option<Address>,
     ) -> Self {
         Self {
             wallet_ix,
@@ -184,7 +180,6 @@ impl BobState {
             remote_proof: None,
             core_arb_setup: None,
             adaptor_buy: None,
-            external_address,
         }
     }
 }
@@ -310,7 +305,6 @@ impl Runtime {
                                     pub_offer.clone(),
                                     Some(funding),
                                     Some(remote_commit),
-                                    Some(external_address),
                                 );
                                 self.wallets.insert(swap_id, Wallet::Bob(bob_wallet));
                             } else {
@@ -357,7 +351,6 @@ impl Runtime {
                                     key_manager,
                                     pub_offer.clone(),
                                     Some(bob_commit),
-                                    Some(external_address),
                                 );
 
                                 self.wallets.insert(swap_id, Wallet::Alice(alice_state));
@@ -993,7 +986,6 @@ impl Runtime {
                                 public_offer.clone(),
                                 Some(funding),
                                 None,
-                                Some(external_address),
                             );
                             self.wallets.insert(swap_id, Wallet::Bob(local_wallet));
                         } else {
@@ -1037,7 +1029,6 @@ impl Runtime {
                                 key_manager,
                                 public_offer.clone(),
                                 None,
-                                Some(external_address),
                             );
                             self.wallets.insert(swap_id, Wallet::Alice(wallet));
                         } else {
