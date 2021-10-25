@@ -14,7 +14,7 @@ participant m_swap
 participant m_wallet
 participant m_syncer
 
-==Bob and Alice can be on both sides==
+==Setup and Commit-Reveal: Bob and Alice can be on both sides==
 m_farcasterd -> m_farcasterd : launch farcasterd\nmanually
 m_farcasterd -> m_farcasterd : launch walletd
 m_farcasterd <- m_wallet : Ctl Hello
@@ -39,6 +39,7 @@ t_farcasterd -> t_farcasterd:launch syncer
 t_swap <- t_farcasterd : Ctl TakeSwap
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
+m_farcasterd -> m_wallet : Ctl BitcoinAddress
 m_farcasterd -> m_wallet : Msg TakerCommit
 m_wallet -> m_wallet : create maker wallet
 m_wallet -> m_farcasterd : Ctl LaunchSwap
