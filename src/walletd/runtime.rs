@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
     io::{self, Write},
@@ -7,7 +8,7 @@ use std::{
 };
 
 use crate::rpc::{
-    request::{self, Commit, Keys, Msg, Params, Reveal, Token, Tx},
+    request::{self, BitcoinAddress, Commit, Keys, Msg, Params, Reveal, Token, Tx},
     Request, ServiceBus,
 };
 use crate::swapd::get_swap_id;
@@ -70,6 +71,7 @@ pub fn run(
         wallets: none!(),
         swaps: none!(),
         wallet_counter: Counter(0),
+        btc_addrs: none!(),
     };
 
     Service::run(config, runtime, false)
@@ -82,6 +84,7 @@ pub struct Runtime {
     node_id: bitcoin::secp256k1::PublicKey,
     wallets: HashMap<SwapId, Wallet>,
     swaps: HashMap<SwapId, Option<Request>>,
+    btc_addrs: HashMap<SwapId, bitcoin::Address>,
     wallet_counter: Counter,
 }
 
@@ -112,6 +115,9 @@ pub struct AliceState {
     alice_cancel_signature: Option<Signature>,
     adaptor_refund: Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
 }
+
+fn curry_address(ext_addr: Address) -> impl FnOnce() -> Address {
+    || ext_addr
 }
 
 impl AliceState {
@@ -239,16 +245,16 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         let req_swap_id = get_swap_id(&source).ok();
+        let is_swap = req_swap_id.is_some();
         match &request {
+            Request::Protocol(Msg::TakerCommit(msg)) if source == ServiceId::Farcasterd => {}
             Request::Protocol(msg)
                 if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id =>
             {
                 error!("Msg and source don't have same swap_id, ignoring...");
                 return Ok(());
             }
-            // farcasterd is sending TakerCommit
-            Request::Protocol(Msg::TakerCommit(_)) => {}
-
+            // TODO enter farcasterd messages allowed
             _ => {}
         }
         match request.clone() {
@@ -262,7 +268,7 @@ impl Runtime {
                 commit: remote_commit,
                 public_offer_hex,
                 swap_id,
-            })) => {
+            })) if self.btc_addrs.contains_key(&swap_id) => {
                 let pub_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
                 trace!(
                     "Offer {} is known, you created it previously, initiating swap with taker",
@@ -275,7 +281,7 @@ impl Runtime {
                     ..
                 } = pub_offer.clone();
                 let node_id = self.node_id;
-                let external_address = address();
+                let external_address = self.btc_addrs.remove(&swap_id).expect("checked above");
                 match offer.maker_role {
                     SwapRole::Bob => {
                         let bob =
@@ -912,8 +918,11 @@ impl Runtime {
                     error!("could not get alice's wallet")
                 }
             }
-            _ => {
-                error!("MSG RPC can only be used for forwarding farcaster protocol messages")
+            req => {
+                error!(
+                    "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}",
+                    req.get_type()
+                )
             }
         }
         Ok(())
@@ -1142,6 +1151,9 @@ impl Runtime {
                         .elem();
                     info!("Full secret monero view key: {}", view_key);
                 }
+            }
+            Request::BitcoinAddress(BitcoinAddress(swapid, btc_addr)) => {
+                self.btc_addrs.insert(swapid, btc_addr);
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
                 if wallet_token != self.wallet_token {

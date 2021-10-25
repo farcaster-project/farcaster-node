@@ -227,6 +227,7 @@ _arguments "${_arguments_options[@]}" \
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
+':arbitrating-addr -- bitcoin address used as destination or refund address:' \
 '::network -- Type of offer and network to use:' \
 '::arbitrating-blockchain -- The chosen arbitrating blockchain:' \
 '::accordant-blockchain -- The chosen accordant blockchain:' \
@@ -259,16 +260,16 @@ _arguments "${_arguments_options[@]}" \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
-'-w[]' \
-'--without-validation[]' \
+'-w[Accept Offer without validation]' \
+'--without-validation[Accept Offer without validation]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
+':bitcoin-address -- bitcoin address used as destination or refund address:' \
 ':public-offer -- Hex encoded offer:' \
-':bitcoin-address -- Accept Offer without validation external bitcoin address:' \
 && ret=0
 ;;
 (progress)

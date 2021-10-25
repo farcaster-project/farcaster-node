@@ -109,6 +109,7 @@ impl Exec for Command {
                 accordant_blockchain,
                 arbitrating_amount,
                 accordant_amount,
+                arbitrating_addr,
                 cancel_timelock,
                 punish_timelock,
                 fee_strategy,
@@ -136,6 +137,7 @@ impl Exec for Command {
                     public_addr,
                     bind_addr,
                     peer_secret_key: None,
+                    arbitrating_addr,
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success of failure of the request to cli

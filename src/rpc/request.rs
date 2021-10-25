@@ -410,8 +410,12 @@ pub enum Request {
     Params(Params),
 
     #[api(type = 196)]
-    #[display("transaction: ({0})")]
+    #[display("transaction({0})")]
     Tx(Tx),
+
+    #[api(type = 195)]
+    #[display("bitcoin address()")]
+    BitcoinAddress(BitcoinAddress),
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]
@@ -542,11 +546,16 @@ pub struct NodeInfo {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("bitcoin_address")]
+pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
     pub public_addr: RemoteSocketAddr,
     pub bind_addr: RemoteSocketAddr,
+    pub arbitrating_addr: bitcoin::Address,
     pub peer_secret_key: Option<SecretKey>,
 }
 

@@ -107,6 +107,8 @@ pub enum Command {
     /// this offer. Example usage:
     /// `make Testnet Bitcoin Monero "100000 BTC" "200 XMR" 10 10 20 Alice`
     Make {
+        /// bitcoin address used as destination or refund address
+        arbitrating_addr: Address,
         /// Type of offer and network to use
         #[clap(default_value = "Testnet")]
         network: Network,
@@ -161,12 +163,12 @@ pub enum Command {
     },
     /// Taker accepts offer and connects to Maker's daemon.
     Take {
+        /// bitcoin address used as destination or refund address
+        bitcoin_address: Address,
+
         /// Hex encoded offer
         public_offer: PublicOffer<BtcXmr>,
         /// Accept Offer without validation
-
-        /// external bitcoin address
-        bitcoin_address: Address,
 
         #[clap(short, long)]
         without_validation: bool,
