@@ -86,19 +86,7 @@ pub struct Runtime {
 }
 
 pub enum Wallet {
-    Alice(
-        Alice<BtcXmr>,
-        AliceParameters<BtcXmr>,
-        Proof<BtcXmr>,
-        KeyManager,
-        PublicOffer<BtcXmr>,
-        Option<CommitBobParameters<BtcXmr>>,
-        Option<BobParameters<BtcXmr>>,
-        Option<Proof<BtcXmr>>,
-        Option<CoreArbitratingSetup<BtcXmr>>,
-        Option<Signature>,
-        Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
-    ),
+    Alice(AliceWallet),
     Bob(BobState),
 }
 
@@ -110,7 +98,7 @@ impl Counter {
     }
 }
 
-struct AliceWallet {
+pub struct AliceWallet {
     wallet_ix: u32,
     alice: Alice<BtcXmr>,
     local_params: AliceParameters<BtcXmr>,
@@ -121,7 +109,8 @@ struct AliceWallet {
     remote_params: Option<BobParameters<BtcXmr>>,
     remote_proof: Option<Proof<BtcXmr>>,
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
-    signature: Option<Signature>,
+    alice_cancel_signature: Option<Signature>,
+    adaptor_refund: Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
     external_address: Option<Address>,
 }
 
@@ -147,11 +136,25 @@ impl AliceWallet {
             remote_params: None,
             remote_proof: None,
             core_arb_setup: None,
-            signature: None,
+            alice_cancel_signature: None,
+            adaptor_refund: None,
             external_address,
         }
     }
 }
+// Alice(
+//     Alice<BtcXmr>,
+//     AliceParameters<BtcXmr>,
+//     Proof<BtcXmr>,
+//     KeyManager,
+//     PublicOffer<BtcXmr>,
+//     Option<CommitBobParameters<BtcXmr>>,
+//     Option<BobParameters<BtcXmr>>,
+//     Option<Proof<BtcXmr>>,
+//     Option<CoreArbitratingSetup<BtcXmr>>,
+//     Option<Signature>,
+//     Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
+// ),
 
 pub struct BobState {
     wallet_ix: u32,
@@ -348,39 +351,35 @@ impl Runtime {
                     }
                     SwapRole::Alice => {
                         let alice: Alice<BtcXmr> =
-                            Alice::new(external_address.into(), FeePriority::Low);
+                            Alice::new(external_address.clone().into(), FeePriority::Low);
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let wallet_index = self.wallet_counter.increment();
-                        let mut key_manager = KeyManager::new(wallet_seed, wallet_index)?;
-                        let (params, proof) =
+                        let wallet_ix = self.wallet_counter.increment();
+                        let mut key_manager = KeyManager::new(wallet_seed, wallet_ix)?;
+                        let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &pub_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             info!("Loading {}", "Wallet::Alice".bright_yellow());
                             if let request::Commit::BobParameters(bob_commit) =
                                 remote_commit.clone()
                             {
-                                self.wallets.insert(
-                                    swap_id,
-                                    Wallet::Alice(
-                                        alice,
-                                        params.clone(),
-                                        proof.clone(),
-                                        key_manager,
-                                        pub_offer.clone(),
-                                        Some(bob_commit),
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                    ),
+                                let alice_state = AliceWallet::new(
+                                    wallet_ix,
+                                    alice,
+                                    local_params.clone(),
+                                    local_proof,
+                                    key_manager,
+                                    pub_offer.clone(),
+                                    Some(bob_commit),
+                                    Some(external_address),
                                 );
+
+                                self.wallets.insert(swap_id, Wallet::Alice(alice_state));
 
                                 let launch_swap = LaunchSwap {
                                     maker_node_id: node_id,
                                     local_trade_role: TradeRole::Maker,
                                     public_offer: pub_offer,
-                                    local_params: Params::Alice(params),
+                                    local_params: Params::Alice(local_params),
                                     swap_id,
                                     remote_commit: Some(remote_commit),
                                     funding_address: None,
@@ -403,25 +402,17 @@ impl Runtime {
                 let req_swap_id = req_swap_id.expect("validated previously");
                 match commit {
                     Commit::BobParameters(CommitBobParameters { swap_id, .. }) => {
-                        if let Some(Wallet::Alice(
-                            _alice,
-                            _alice_params,
-                            _alice_proof,
-                            _key_manager,
-                            _public_offer,
-                            bob_commit_params, // None
-                            _bob_params,       // None
-                            _bob_proof,
-                            _core_arb_txs,
-                            alice_cancel_sig, // None
-                            _,
-                        )) = self.wallets.get_mut(&swap_id)
+                        if let Some(Wallet::Alice(AliceWallet {
+                            remote_commit,          // None
+                            alice_cancel_signature, // None
+                            ..
+                        })) = self.wallets.get_mut(&swap_id)
                         {
-                            if let Some(_) = bob_commit_params {
+                            if let Some(_) = remote_commit {
                                 error!("Bob commit (remote) already set");
                             } else if let Commit::BobParameters(commit) = commit {
                                 trace!("Setting bob commit");
-                                *bob_commit_params = Some(commit);
+                                *remote_commit = Some(commit);
                             }
                         } else {
                             error!("Wallet not found or not on correct state");
@@ -447,14 +438,8 @@ impl Runtime {
                     }
                 }
                 let proof: &Proof<BtcXmr> = match self.wallets.get(&req_swap_id).unwrap() {
-                    Wallet::Alice(_, _, local_proof, ..) => local_proof,
-                    Wallet::Bob(BobState {
-                        wallet_ix: _,
-                        bob: _,
-                        local_params: _,
-                        local_proof,
-                        ..
-                    }) => local_proof,
+                    Wallet::Alice(AliceWallet { local_proof, .. }) => local_proof,
+                    Wallet::Bob(BobState { local_proof, .. }) => local_proof,
                 };
                 senders.send_to(
                     ServiceBus::Ctl,
@@ -467,8 +452,8 @@ impl Runtime {
             Request::Protocol(Msg::Reveal(Reveal::Proof(proof))) => {
                 let wallet = self.wallets.get_mut(&get_swap_id(&source)?);
                 match wallet {
-                    Some(Wallet::Alice(.., bob_proof, _, _, _)) => {
-                        *bob_proof = Some(Proof { proof: proof.proof })
+                    Some(Wallet::Alice(AliceWallet { remote_proof, .. })) => {
+                        *remote_proof = Some(Proof { proof: proof.proof })
                     }
                     Some(Wallet::Bob(BobState {
                         wallet_ix: _,
@@ -491,21 +476,18 @@ impl Runtime {
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
                     Reveal::BobParameters(reveal) => {
-                        if let Some(Wallet::Alice(
-                            _alice,
-                            _alice_params,
-                            alice_proof,
+                        if let Some(Wallet::Alice(AliceWallet {
+                            local_proof,
                             key_manager,
                             pub_offer,
-                            Some(bob_commit),
-                            bob_params,      // None
-                            Some(bob_proof), // Should be Some() at this stage
-                            _core_arb_txs,
-                            alice_cancel_sig,
-                            _,
-                        )) = self.wallets.get_mut(&swap_id)
+                            remote_commit: Some(bob_commit),
+                            remote_params,                 // None
+                            remote_proof: Some(bob_proof), // Should be Some() at this stage
+                            alice_cancel_signature,
+                            ..
+                        })) = self.wallets.get_mut(&swap_id)
                         {
-                            if let Some(remote_params) = bob_params {
+                            if let Some(remote_params) = remote_params {
                                 error!("bob_params were previously set to: {}", remote_params);
                                 return Ok(());
                             } else {
@@ -523,7 +505,7 @@ impl Runtime {
                                     error!("DLEQ proof invalid");
                                     return Ok(());
                                 }
-                                *bob_params = Some(remote_params_candidate);
+                                *remote_params = Some(remote_params_candidate);
                                 // if we're maker, send Ctl RevealProof to counterparty
                                 if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Alice {
                                     senders.send_to(
@@ -533,7 +515,7 @@ impl Runtime {
                                         // sent by swapd?
                                         source,
                                         Request::Protocol(Msg::Reveal(
-                                            (swap_id, alice_proof.clone()).into(),
+                                            (swap_id, local_proof.clone()).into(),
                                         )),
                                     )?;
                                 }
@@ -628,14 +610,11 @@ impl Runtime {
                     }
                     Reveal::Proof(reveal) => {
                         match self.wallets.get_mut(&swap_id) {
-                            Some(Wallet::Alice(
-                                ..,
-                                bob_proof, // Should be Some() at this stage
-                                _,
-                                _,
-                                _,
-                            )) => {
-                                *bob_proof = Some(Proof {
+                            Some(Wallet::Alice(AliceWallet {
+                                remote_proof, // Should be Some() at this stage
+                                ..
+                            })) => {
+                                *remote_proof = Some(Proof {
                                     proof: reveal.proof,
                                 });
                                 todo!()
@@ -800,25 +779,25 @@ impl Runtime {
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
-                if let Some(Wallet::Alice(
+                if let Some(Wallet::Alice(AliceWallet {
                     alice,
-                    alice_params,
-                    alice_proof,
+                    local_params,
+                    local_proof,
                     key_manager,
-                    public_offer,
-                    _bob_commit_params,
-                    Some(bob_parameters),
-                    Some(bob_proof),
-                    core_arb_setup,   // None
-                    alice_cancel_sig, // None
-                    adaptor_refund,   // None
-                )) = self.wallets.get_mut(&swap_id)
+                    pub_offer,
+                    remote_params: Some(bob_parameters),
+                    remote_proof: Some(bob_proof),
+                    core_arb_setup,         // None
+                    alice_cancel_signature, // None
+                    adaptor_refund,         // None
+                    ..
+                })) = self.wallets.get_mut(&swap_id)
                 {
                     if core_arb_setup.is_some() {
                         error!("core_arb_txs already set for alice");
                         return Ok(());
                     }
-                    if alice_cancel_sig.is_some() {
+                    if alice_cancel_signature.is_some() {
                         error!("alice_cancel_sig already set for alice");
                         return Ok(());
                     }
@@ -827,37 +806,37 @@ impl Runtime {
                         core_arbitrating_setup.into();
                     let signed_adaptor_refund = alice.sign_adaptor_refund(
                         key_manager,
-                        alice_params,
+                        local_params,
                         bob_parameters,
                         &core_arb_txs,
-                        public_offer,
+                        pub_offer,
                     )?;
                     *adaptor_refund = Some(signed_adaptor_refund.clone());
                     let cosigned_arb_cancel = alice.cosign_arbitrating_cancel(
                         key_manager,
-                        alice_params,
+                        local_params,
                         bob_parameters,
                         &core_arb_txs,
-                        public_offer,
+                        pub_offer,
                     )?;
                     let refund_proc_signatures = RefundProcedureSignatures::from((
                         swap_id,
                         cosigned_arb_cancel,
                         signed_adaptor_refund,
                     ));
-                    *alice_cancel_sig = Some(refund_proc_signatures.cancel_sig);
+                    *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
 
                     {
                         let FullySignedPunish { punish, punish_sig } = alice.fully_sign_punish(
                             key_manager,
-                            alice_params,
+                            local_params,
                             bob_parameters,
                             &core_arb_txs,
-                            public_offer,
+                            pub_offer,
                         )?;
 
                         let mut punish_tx = PunishTx::from_partial(punish);
-                        punish_tx.add_witness(alice_params.punish, punish_sig)?;
+                        punish_tx.add_witness(local_params.punish, punish_sig)?;
                         let tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut punish_tx)?;
                         senders.send_to(
@@ -892,19 +871,18 @@ impl Runtime {
                     buy_adaptor_sig: buy_encrypted_sig,
                 };
                 let id = self.identity();
-                if let Some(Wallet::Alice(
+                if let Some(Wallet::Alice(AliceWallet {
                     alice,
-                    alice_params,
-                    alice_proof,
+                    local_params: alice_params,
+                    local_proof: alice_proof,
                     key_manager,
-                    public_offer,
-                    _bob_commit_params,
-                    Some(bob_parameters),
-                    Some(bob_proof),
-                    Some(core_arb_setup),
-                    Some(alice_cancel_sig),
-                    _,
-                )) = self.wallets.get_mut(&swap_id)
+                    pub_offer,
+                    remote_params: Some(bob_parameters),
+                    remote_proof: Some(bob_proof),
+                    core_arb_setup: Some(core_arb_setup),
+                    alice_cancel_signature: Some(alice_cancel_sig),
+                    ..
+                })) = self.wallets.get_mut(&swap_id)
                 {
                     let core_arb_txs = &(core_arb_setup.clone()).into();
 
@@ -929,7 +907,7 @@ impl Runtime {
                         alice_params,
                         bob_parameters,
                         core_arb_txs,
-                        public_offer,
+                        pub_offer,
                         &signed_adaptor_buy,
                     )?;
                     let FullySignedBuy {
@@ -940,7 +918,7 @@ impl Runtime {
                         alice_params,
                         bob_parameters,
                         core_arb_txs,
-                        public_offer,
+                        pub_offer,
                         &signed_adaptor_buy,
                     )?;
                     buy_tx.add_witness(key_manager.get_pubkey(ArbitratingKeyId::Buy)?, buy_sig)?;
@@ -1053,33 +1031,28 @@ impl Runtime {
                     }
                     SwapRole::Alice => {
                         let alice: Alice<BtcXmr> =
-                            Alice::new(external_address.into(), FeePriority::Low);
+                            Alice::new(external_address.clone().into(), FeePriority::Low);
                         let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let wallet_index = self.wallet_counter.increment();
+                        let wallet_ix = self.wallet_counter.increment();
                         let key_manager = KeyManager::new(wallet_seed, wallet_index)?;
 
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
                             // requests and store the state in there directly
                             info!("Loading Alice Taker's Wallet");
-                            self.wallets.insert(
-                                swap_id,
-                                Wallet::Alice(
-                                    alice,
-                                    local_params.clone(),
-                                    local_proof.clone(),
-                                    key_manager,
-                                    public_offer.clone(),
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                ),
+                            let wallet = AliceWallet::new(
+                                wallet_ix,
+                                alice,
+                                local_params.clone(),
+                                local_proof.clone(),
+                                key_manager,
+                                public_offer.clone(),
+                                None,
+                                Some(external_address),
                             );
+                            self.wallets.insert(swap_id, Wallet::Alice(wallet));
                         } else {
                             error!("Wallet already exists");
                         }
@@ -1158,19 +1131,14 @@ impl Runtime {
                 }
             }
             Request::Tx(Tx::Refund(refund_tx)) => {
-                if let Some(Wallet::Alice(
+                if let Some(Wallet::Alice(AliceWallet {
                     alice,
-                    _,
-                    _,
                     key_manager,
-                    _,
-                    _,
-                    Some(bob_params), //remote
-                    Some(_),
-                    _,
-                    _,
-                    Some(adaptor_refund),
-                )) = self.wallets.get_mut(&get_swap_id(&source)?)
+                    remote_params: Some(bob_params), //remote
+                    remote_proof: Some(_),
+                    adaptor_refund: Some(adaptor_refund),
+                    ..
+                })) = self.wallets.get_mut(&get_swap_id(&source)?)
                 {
                     let sk_b_btc = alice.recover_accordant_assets(
                         key_manager,
