@@ -640,6 +640,7 @@ impl Runtime {
 
             Request::TakeOffer(request::PubOffer {
                 public_offer,
+                external_address,
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
@@ -721,6 +722,7 @@ impl Runtime {
                         // from offer
                         let request = Request::TakeOffer(PubOffer {
                             public_offer,
+                            external_address,
                             peer_secret_key: None,
                         });
                         senders.send_to(

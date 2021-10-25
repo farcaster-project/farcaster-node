@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use bitcoin::Address;
 use clap::{AppSettings, Clap};
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -163,6 +164,10 @@ pub enum Command {
         /// Hex encoded offer
         public_offer: PublicOffer<BtcXmr>,
         /// Accept Offer without validation
+
+        /// external bitcoin address
+        bitcoin_address: Address,
+
         #[clap(short, long)]
         without_validation: bool,
     },

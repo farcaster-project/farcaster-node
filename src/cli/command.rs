@@ -150,7 +150,7 @@ impl Exec for Command {
                 // hex.bright_yellow_bold());
             }
 
-            Command::Take { public_offer, without_validation } => {
+            Command::Take { public_offer, bitcoin_address, without_validation } => {
                 // println!("{:#?}", &public_offer);
                 let PublicOffer {
                     version,
@@ -178,7 +178,7 @@ impl Exec for Command {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
-                        Request::TakeOffer(public_offer.into()),
+                        Request::TakeOffer((public_offer, bitcoin_address).into()),
                     )?;
                     // report success of failure of the request to cli
                     runtime.report_progress()?;

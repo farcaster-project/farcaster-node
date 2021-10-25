@@ -22,7 +22,7 @@ use bitcoin::{
         bip32::{DerivationPath, ExtendedPrivKey},
         psbt::serialize::Deserialize,
     },
-    PrivateKey, PublicKey,
+    Address, PrivateKey, PublicKey,
 };
 use colored::Colorize;
 use farcaster_core::{
@@ -122,6 +122,7 @@ struct AliceWallet {
     remote_proof: Option<Proof<BtcXmr>>,
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
     signature: Option<Signature>,
+    external_address: Option<Address>,
 }
 
 impl AliceWallet {
@@ -133,6 +134,7 @@ impl AliceWallet {
         key_manager: KeyManager,
         pub_offer: PublicOffer<BtcXmr>,
         remote_commit: Option<CommitBobParameters<BtcXmr>>,
+        external_address: Option<Address>,
     ) -> Self {
         Self {
             wallet_ix,
@@ -146,6 +148,7 @@ impl AliceWallet {
             remote_proof: None,
             core_arb_setup: None,
             signature: None,
+            external_address,
         }
     }
 }
@@ -163,6 +166,7 @@ pub struct BobState {
     remote_proof: Option<Proof<BtcXmr>>,
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
     adaptor_buy: Option<SignedAdaptorBuy<Bitcoin<SegwitV0>>>,
+    external_address: Option<Address>,
 }
 
 impl BobState {
@@ -175,6 +179,7 @@ impl BobState {
         pub_offer: PublicOffer<BtcXmr>,
         funding_tx: Option<FundingTx>,
         remote_commit_params: Option<CommitAliceParameters<BtcXmr>>,
+        external_address: Option<Address>,
     ) -> Self {
         Self {
             wallet_ix,
@@ -189,6 +194,7 @@ impl BobState {
             remote_proof: None,
             core_arb_setup: None,
             adaptor_buy: None,
+            external_address,
         }
     }
 }
@@ -287,7 +293,8 @@ impl Runtime {
                 let external_address = address();
                 match offer.maker_role {
                     SwapRole::Bob => {
-                        let bob = Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
+                        let bob =
+                            Bob::<BtcXmr>::new(external_address.clone().into(), FeePriority::Low);
                         let wallet_index = self.wallet_counter.increment();
                         let mut key_manager =
                             KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
@@ -313,6 +320,7 @@ impl Runtime {
                                     pub_offer.clone(),
                                     Some(funding),
                                     Some(remote_commit),
+                                    Some(external_address),
                                 );
                                 self.wallets.insert(swap_id, Wallet::Bob(bob_wallet));
                             } else {
@@ -633,18 +641,10 @@ impl Runtime {
                                 todo!()
                             }
                             Some(Wallet::Bob(BobState {
-                                wallet_ix: _,
-                                bob: _,
-                                local_params: _,
-                                local_proof: _,
                                 key_manager,
-                                pub_offer: _,
-                                funding_tx: _,
-                                remote_commit_params: _,
                                 remote_params,
                                 remote_proof,
-                                core_arb_setup: _,
-                                adaptor_buy: _,
+                                ..
                             })) => {
                                 match (remote_params, remote_proof.clone()) {
                                     (None, None) => {
@@ -985,6 +985,7 @@ impl Runtime {
             },
             Request::TakeOffer(request::PubOffer {
                 public_offer,
+                external_address,
                 peer_secret_key: None,
             }) if source == ServiceId::Farcasterd => {
                 let PublicOffer {
@@ -1001,10 +1002,10 @@ impl Runtime {
                 let taker_role = offer.maker_role.other();
                 let wallet_index = self.wallet_counter.increment();
                 let mut key_manager = KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
-                let external_address = address();
                 match taker_role {
                     SwapRole::Bob => {
-                        let bob: Bob<BtcXmr> = Bob::new(external_address.into(), FeePriority::Low);
+                        let bob: Bob<BtcXmr> =
+                            Bob::new(external_address.clone().into(), FeePriority::Low);
                         let (local_params, local_proof) =
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
                         let funding = create_funding(&mut key_manager, offer.network)?;
@@ -1027,6 +1028,7 @@ impl Runtime {
                                 public_offer.clone(),
                                 Some(funding),
                                 None,
+                                Some(external_address),
                             );
                             self.wallets.insert(swap_id, Wallet::Bob(local_wallet));
                         } else {
