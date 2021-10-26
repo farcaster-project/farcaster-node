@@ -90,6 +90,7 @@ pub fn run(
         punish_timelock,
         maker_role, // SwapRole of maker (Alice or Bob)
         network,
+        accordant_amount: monero_amount,
         ..
     } = public_offer.offer.clone();
     // alice or bob
@@ -108,9 +109,9 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: 1,
+        btc_finality_thr: 0,
         race_thr: 3,
-        xmr_finality_thr: 1,
+        xmr_finality_thr: 0,
     };
 
     temporal_safety.valid_params()?;
@@ -125,10 +126,6 @@ pub fn run(
         blockchain::Network::Testnet => monero::Network::Stagenet,
         blockchain::Network::Local => monero::Network::Stagenet,
     };
-    fn net_curry(net: monero::Network) -> impl Fn(&monero::ViewPair) -> monero::Address {
-        move |view_pair| monero::Address::from_viewpair(net, view_pair)
-    }
-
     let syncer_state = SyncerState {
         tasks,
         monero_height: 0,
@@ -136,9 +133,10 @@ pub fn run(
         confirmation_bound: 50000,
         lock_tx_confs: None,
         cancel_tx_confs: None,
-        monero_address: Box::new(net_curry(net)),
+        monero_address: Box::new(move |view_pair| monero::Address::from_viewpair(net, view_pair)),
         bitcoin_syncer: ServiceId::Syncer(Coin::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Coin::Monero, network),
+        monero_amount,
     };
 
     let runtime = Runtime {
@@ -265,6 +263,7 @@ struct SyncerState {
     monero_address: Box<dyn Fn(&monero::ViewPair) -> monero::Address>,
     bitcoin_syncer: ServiceId,
     monero_syncer: ServiceId,
+    monero_amount: monero::Amount,
 }
 
 #[derive(Display, Clone)]
@@ -500,9 +499,13 @@ impl SyncerState {
             .elem()
             .clone();
         if swap_role == SwapRole::Alice {
-            let keypair = monero::ViewPair { spend, view };
-            let address = (self.monero_address)(&keypair);
-            info!("Alice, please send xmr to {}", address.addr());
+            let viewpair = monero::ViewPair { spend, view };
+            let address = (self.monero_address)(&viewpair);
+            info!(
+                "Alice, please send {} to {}",
+                self.monero_amount.to_string().bright_green_bold(),
+                address.addr(),
+            );
         }
 
         let from_height = self.from_height(Coin::Monero);
@@ -1285,7 +1288,7 @@ impl Runtime {
                         amount,
                         block,
                         tx,
-                    }) => {
+                    }) if self.state.swap_role() == SwapRole::Alice => {
                         if let State::Alice(AliceState::RefundSigA(RefundSigA {
                             xmr_locked, ..
                         })) = &mut self.state
@@ -1304,6 +1307,34 @@ impl Runtime {
                             self.identity(),
                             self.syncer_state.monero_syncer(),
                             Request::SyncerTask(task),
+                        )?;
+                    }
+                    Event::AddressTransaction(AddressTransaction {
+                        id,
+                        hash,
+                        amount,
+                        block,
+                        tx,
+                    }) if self.state.swap_role() == SwapRole::Bob => {
+                        if amount < &self.syncer_state.monero_amount.as_pico() {
+                            error!(
+                                "Not enough monero locked: expected {}, found {}",
+                                self.syncer_state.monero_amount, amount
+                            );
+                            return Ok(());
+                        }
+                        let id = self.syncer_state.tasks.new_taskid();
+                        let watch_tx = Task::WatchTransaction(WatchTransaction {
+                            id,
+                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
+                            hash: hash.clone(),
+                            confirmation_bound: self.syncer_state.confirmation_bound,
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(watch_tx),
                         )?;
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
@@ -1351,28 +1382,6 @@ impl Runtime {
                         confirmations,
                     }) if self.syncer_state.tasks.watched_txs.get(id).is_some() => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
-                    }
-                    Event::AddressTransaction(AddressTransaction {
-                        id,
-                        hash,
-                        amount,
-                        block,
-                        tx,
-                    }) => {
-                        let id = self.syncer_state.tasks.new_taskid();
-
-                        let watch_tx = Task::WatchTransaction(WatchTransaction {
-                            id,
-                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                            hash: hash.clone(),
-                            confirmation_bound: self.syncer_state.confirmation_bound,
-                        });
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.monero_syncer(),
-                            Request::SyncerTask(watch_tx),
-                        )?;
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
