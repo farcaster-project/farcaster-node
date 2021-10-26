@@ -1323,19 +1323,15 @@ impl Runtime {
                             );
                             return Ok(());
                         }
-                        let id = self.syncer_state.tasks.new_taskid();
-                        let watch_tx = Task::WatchTransaction(WatchTransaction {
-                            id,
-                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                            hash: hash.clone(),
-                            confirmation_bound: self.syncer_state.confirmation_bound,
-                        });
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.monero_syncer(),
-                            Request::SyncerTask(watch_tx),
-                        )?;
+                        if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(id) {
+                            let watch_tx = self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.monero_syncer(),
+                                Request::SyncerTask(watch_tx),
+                            )?;
+                        }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
