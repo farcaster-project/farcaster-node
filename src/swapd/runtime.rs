@@ -1339,7 +1339,7 @@ impl Runtime {
                         confirmations: Some(confirmations),
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.swap_role() == SwapRole::Bob
-                        && self.pending_requests.get(&source).is_some() =>
+                        && self.pending_requests.contains_key(&source) =>
                     {
                         // error!("not checking tx rcvd is accordant lock");
                         // TODO: Check length of pending_requests == 1
@@ -1376,7 +1376,7 @@ impl Runtime {
                         id,
                         block,
                         confirmations,
-                    }) if self.syncer_state.tasks.watched_txs.get(id).is_some() => {
+                    }) if self.syncer_state.tasks.watched_txs.contains_key(id) => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
                     Event::TaskAborted(_) => {}
@@ -1416,9 +1416,10 @@ impl Runtime {
                                         let req = Request::Tx(Tx::Buy(tx));
                                         self.send_wallet(ServiceBus::Ctl, senders, req)?
                                     } else {
-                                        error!(
-                                            "expected BuySigB, found {}, maybe you reused the \
-                                         external address? txid {}",
+                                        warn!(
+                                            "expected BobState(BuySigB), found {}. Any chance you reused the \
+                                         destination/refund address in the cli command? For your own privacy, \
+                                         do not reuse bitcoin addresses. Txid {}",
                                             self.state,
                                             tx.txid().addr(),
                                         )
