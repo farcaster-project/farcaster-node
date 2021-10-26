@@ -1383,45 +1383,6 @@ impl Runtime {
                     }) if self.syncer_state.tasks.watched_txs.get(id).is_some() => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
-                    Event::TransactionConfirmations(TransactionConfirmations {
-                        id,
-                        block,
-                        confirmations: Some(confirmations),
-                    }) if confirmations > &self.temporal_safety.xmr_finality_thr
-                        && self.state.swap_role() == SwapRole::Bob
-                        && self.pending_requests.get(&source).is_some() =>
-                    {
-                        error!("not checking tx rcvd is accordant lock");
-                        // TODO: Check length of pending_requests == 1
-                        let PendingRequest {
-                            request,
-                            dest,
-                            bus_id,
-                        } = self
-                            .pending_requests
-                            .remove(&source)
-                            .expect("Checked above")
-                            .pop()
-                            .unwrap();
-                        if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
-                            (&request, &bus_id)
-                        {
-                            let next_state = match self.state {
-                                State::Bob(BobState::CorearbB(..)) => {
-                                    Ok(State::Bob(BobState::BuySigB))
-                                }
-                                _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
-                            }?;
-                            info!("sending buyproceduresignature at state {}", &self.state);
-                            senders.send_to(bus_id, self.identity(), dest, request)?;
-                            self.state_update(senders, next_state)?;
-                        } else {
-                            error!(
-                                "Not buyproceduresignatures {} or not Msg bus found {}",
-                                request, bus_id
-                            );
-                        }
-                    }
                     Event::TaskAborted(_) => {}
                     event => {
                         error!("event not handled {}", event)
