@@ -77,9 +77,9 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, address_transaction)| {
                 if address_transaction.task.id == task_id {
-                    return Some(id.clone());
+                    Some(id.clone())
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
@@ -109,9 +109,9 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, watched_transaction)| {
                 if watched_transaction.task.id == task_id {
-                    return Some(id.clone());
+                    Some(id.clone())
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
@@ -141,9 +141,9 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, watch_height)| {
                 if watch_height.id == task_id {
-                    return Some(id.clone());
+                    Some(id.clone())
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
@@ -173,9 +173,9 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, sweep_address)| {
                 if sweep_address.id == task_id {
-                    return Some(id.clone());
+                    Some(id.clone())
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
@@ -435,7 +435,7 @@ impl SyncerState {
                 .filter_map(|(id, watched_tx)| {
                     // return unchanged transactions
                     if tx_id != watched_tx.task.hash {
-                        return Some((id.clone(), watched_tx.clone()));
+                        Some((id.clone(), watched_tx.clone()));
                     }
                     if confirmations.is_some() {
                         unseen_transactions.remove(&id);
