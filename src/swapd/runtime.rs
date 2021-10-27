@@ -89,9 +89,9 @@ pub fn run(
         cancel_timelock,
         punish_timelock,
         maker_role, // SwapRole of maker (Alice or Bob)
+        network,
         ..
     } = public_offer.offer.clone();
-
     // alice or bob
     let local_swap_role = match local_trade_role {
         TradeRole::Maker => maker_role,
@@ -119,6 +119,16 @@ pub fn run(
         watched_addrs: none!(),
         watched_txs: none!(),
     };
+
+    let net = match network {
+        blockchain::Network::Mainnet => monero::Network::Mainnet,
+        blockchain::Network::Testnet => monero::Network::Stagenet,
+        blockchain::Network::Local => monero::Network::Stagenet,
+    };
+    fn net_curry(net: monero::Network) -> impl Fn(&monero::ViewPair) -> monero::Address {
+        move |view_pair| monero::Address::from_viewpair(net, view_pair)
+    }
+
     let syncer_state = SyncerState {
         tasks,
         monero_height: 0,
@@ -126,6 +136,9 @@ pub fn run(
         confirmation_bound: 50000,
         lock_tx_confs: None,
         cancel_tx_confs: None,
+        monero_address: Box::new(net_curry(net)),
+        bitcoin_syncer: ServiceId::Syncer(Coin::Bitcoin, network),
+        monero_syncer: ServiceId::Syncer(Coin::Monero, network),
     };
 
     let runtime = Runtime {
@@ -249,6 +262,9 @@ struct SyncerState {
     confirmation_bound: u32,
     lock_tx_confs: Option<Request>,
     cancel_tx_confs: Option<Request>,
+    monero_address: Box<dyn Fn(&monero::ViewPair) -> monero::Address>,
+    bitcoin_syncer: ServiceId,
+    monero_syncer: ServiceId,
 }
 
 #[derive(Display, Clone)]
@@ -394,7 +410,12 @@ impl SyncerState {
             height
         }
     }
-
+    fn bitcoin_syncer(&self) -> ServiceId {
+        self.bitcoin_syncer.clone()
+    }
+    fn monero_syncer(&self) -> ServiceId {
+        self.monero_syncer.clone()
+    }
     fn height(&self, coin: Coin) -> u64 {
         match coin {
             Coin::Bitcoin => self.bitcoin_height,
@@ -478,10 +499,9 @@ impl SyncerState {
             .unwrap()
             .elem()
             .clone();
-
         if swap_role == SwapRole::Alice {
             let keypair = monero::ViewPair { spend, view };
-            let address = monero::Address::from_viewpair(monero::Network::Stagenet, &keypair);
+            let address = (self.monero_address)(&keypair);
             info!("Alice, please send xmr to {}", address.addr());
         }
 
@@ -590,7 +610,7 @@ impl Runtime {
         Ok(senders.send_to(
             ServiceBus::Ctl,
             self.identity(),
-            ServiceId::Syncer(Coin::Bitcoin),
+            self.syncer_state.bitcoin_syncer(),
             req,
         )?)
     }
@@ -645,7 +665,7 @@ impl Runtime {
                                     .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
                                 self.send_ctl(
                                     senders,
-                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(task),
                                 )?;
                                 Ok(State::Bob(BobState::RevealB(
@@ -679,7 +699,7 @@ impl Runtime {
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
-                                ServiceId::Syncer(Coin::Bitcoin),
+                                self.syncer_state.bitcoin_syncer(),
                                 Request::SyncerTask(watch_height_bitcoin),
                             )?;
 
@@ -691,7 +711,7 @@ impl Runtime {
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
-                                ServiceId::Syncer(Coin::Monero),
+                                self.syncer_state.monero_syncer(),
                                 Request::SyncerTask(watch_height_monero),
                             )?;
                         }
@@ -770,7 +790,7 @@ impl Runtime {
                                     .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
                                 self.send_ctl(
                                     senders,
-                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(watch_addr_task),
                                 )?;
                                 Ok((
@@ -896,7 +916,7 @@ impl Runtime {
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
-                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(watch_height_bitcoin),
                                 )?;
 
@@ -908,7 +928,7 @@ impl Runtime {
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
-                                    ServiceId::Syncer(Coin::Monero),
+                                    self.syncer_state.monero_syncer(),
                                     Request::SyncerTask(watch_height_monero),
                                 )?;
                                 self.state_update(senders, next_state)?;
@@ -941,12 +961,12 @@ impl Runtime {
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
-                                    ServiceId::Syncer(Coin::Bitcoin),
+                                    self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(task),
                                 )?;
                             }
                             // senders.send_to(ServiceBus::Ctl, self.identity(),
-                            // ServiceId::Syncer(Coin::Bitcoin), req)?;
+                            // self.syncer_state.bitcoin_syncer(), req)?;
                             self.send_wallet(msg_bus, senders, request)?;
                         } else {
                             error!(
@@ -976,7 +996,7 @@ impl Runtime {
                             senders.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
-                                ServiceId::Syncer(Coin::Bitcoin),
+                                self.syncer_state.bitcoin_syncer(),
                                 Request::SyncerTask(task),
                             )?;
                             self.send_wallet(msg_bus, senders, request)?
@@ -1010,19 +1030,16 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, ServiceId::Syncer(_)) => {
-                info!("Source: {} is connected", source);
-            }
 
             (Request::Hello, _) => {
                 info!("Source: {} is connected", source);
+            }
+            (_, ServiceId::Syncer(..)) if source == self.syncer_state.bitcoin_syncer || source == self.syncer_state.monero_syncer => {
             }
             (
                 _,
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
-                | ServiceId::Syncer(Coin::Bitcoin)
-                | ServiceId::Syncer(Coin::Monero)
             ) => {}
             (Request::GetInfo, ServiceId::Client(_)) => {}
             _ => Err(Error::Farcaster(
@@ -1256,7 +1273,7 @@ impl Runtime {
             // Request::SyncerEvent(ref event) => match (&event, source) {
             // handle monero events here
             // }
-            Request::SyncerEvent(ref event) if &source == &ServiceId::Syncer(Coin::Monero) => {
+            Request::SyncerEvent(ref event) if &source == &self.syncer_state.monero_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -1285,7 +1302,7 @@ impl Runtime {
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
-                            ServiceId::Syncer(Coin::Monero),
+                            self.syncer_state.monero_syncer(),
                             Request::SyncerTask(task),
                         )?;
                     }
@@ -1353,7 +1370,7 @@ impl Runtime {
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
-                            ServiceId::Syncer(Coin::Monero),
+                            self.syncer_state.monero_syncer(),
                             Request::SyncerTask(watch_tx),
                         )?;
                     }
@@ -1402,7 +1419,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::SyncerEvent(ref event) if &source == &ServiceId::Syncer(Coin::Bitcoin) => {
+            Request::SyncerEvent(ref event) if &source == &self.syncer_state.bitcoin_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -1518,7 +1535,7 @@ impl Runtime {
                                             senders.send_to(
                                                 ServiceBus::Ctl,
                                                 self.identity(),
-                                                ServiceId::Syncer(Coin::Monero),
+                                                self.syncer_state.monero_syncer(),
                                                 Request::SyncerTask(watch_addr_task),
                                             )?;
                                         } else {
@@ -1651,7 +1668,7 @@ impl Runtime {
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
-                        ServiceId::Syncer(Coin::Bitcoin),
+                        self.syncer_state.bitcoin_syncer(),
                         Request::SyncerTask(task),
                     )?;
                 }
@@ -1679,7 +1696,7 @@ impl Runtime {
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
-                            ServiceId::Syncer(Coin::Monero),
+                            self.syncer_state.monero_syncer(),
                             Request::SyncerTask(task),
                         )?
                     } else {
@@ -1712,7 +1729,7 @@ impl Runtime {
                     Tx::Lock(_) => unreachable!("handled above"),
                 }
                 // replay last tx confirmation event received from syncer, recursing
-                let source = ServiceId::Syncer(Coin::Bitcoin);
+                let source = self.syncer_state.bitcoin_syncer();
                 match transaction {
                     Tx::Cancel(_) | Tx::Buy(_) => {
                         if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
@@ -1755,7 +1772,7 @@ impl Runtime {
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
-                        ServiceId::Syncer(Coin::Bitcoin),
+                        self.syncer_state.bitcoin_syncer(),
                         Request::SyncerTask(task),
                     )?;
 
@@ -1772,7 +1789,7 @@ impl Runtime {
                     senders.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
-                        ServiceId::Syncer(Coin::Bitcoin),
+                        self.syncer_state.bitcoin_syncer(),
                         Request::SyncerTask(task),
                     )?;
 
@@ -1783,7 +1800,7 @@ impl Runtime {
                     };
                     if self
                         .pending_requests
-                        .insert(ServiceId::Syncer(Coin::Monero), vec![pending_request])
+                        .insert(self.syncer_state.monero_syncer(), vec![pending_request])
                         .is_none()
                     {
                         debug!("deferring BuyProcedureSignature msg");

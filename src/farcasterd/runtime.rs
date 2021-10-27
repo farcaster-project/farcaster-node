@@ -14,6 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
+    error::SyncerError,
     rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Reveal, Token},
     swapd::get_swap_id,
     syncerd::opts::Coin,
@@ -48,7 +49,7 @@ use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use farcaster_core::{negotiation::PublicOfferId, swap::SwapId};
+use farcaster_core::{blockchain::Network, negotiation::PublicOfferId, swap::SwapId};
 
 use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
@@ -104,14 +105,14 @@ pub struct Runtime {
     connections: HashSet<NodeAddr>,
     running_swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
-    making_swaps: HashMap<ServiceId, request::InitSwap>,
-    taking_swaps: HashMap<ServiceId, request::InitSwap>,
+    making_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
+    taking_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     consumed_offers: HashSet<PublicOfferId>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
-    syncers: HashMap<Coin, ServiceId>,
+    syncers: HashMap<(Coin, Network), ServiceId>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
 }
 
@@ -163,12 +164,15 @@ impl Runtime {
             Err(Error::Farcaster("Unknown swapd".to_string()))
         }
     }
-    fn syncers_up(&self) -> Result<(), Error> {
-        if !self.syncers.contains_key(&Coin::Bitcoin) {
-            launch("syncerd", &[Coin::Bitcoin.to_string()])?;
+    fn syncers_up(&self, coin_arb: Coin, coin_acc: Coin, network: Network) -> Result<(), Error> {
+        if coin_arb == coin_acc {
+            Err(Error::Syncer(SyncerError::InvalidConfig))?
         }
-        if !self.syncers.contains_key(&Coin::Monero) {
-            launch("syncerd", &[Coin::Monero.to_string()])?;
+        if !self.syncers.contains_key(&(coin_arb.clone(), network)) {
+            launch("syncerd", &[coin_arb.to_string(), network.to_string()])?;
+        }
+        if !self.syncers.contains_key(&(coin_acc.clone(), network)) {
+            launch("syncerd", &[coin_acc.to_string(), network.to_string()])?;
         }
         Ok(())
     }
@@ -268,15 +272,17 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Syncer(coin) => {
-                        self.syncers.insert(coin.clone(), source.clone());
+                    ServiceId::Syncer(coin, network) => {
+                        // TODO: check if correct network
+                        self.syncers
+                            .insert((coin.clone(), network.clone()), source.clone());
                     }
                     _ => {
                         // Ignoring the rest of daemon/client types
                     }
                 };
 
-                if let Some(swap_params) = self.making_swaps.get(&source) {
+                if let Some((swap_params, network)) = self.making_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
@@ -289,7 +295,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
                     // when online, Syncers say Hello, then they get registered to self.syncers
-                    self.syncers_up()?;
+                    self.syncers_up(Coin::Bitcoin, Coin::Monero, network.clone())?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -299,7 +305,7 @@ impl Runtime {
                     )?;
                     self.running_swaps.insert(swap_params.swap_id);
                     self.making_swaps.remove(&source);
-                } else if let Some(swap_params) = self.taking_swaps.get(&source) {
+                } else if let Some((swap_params, network)) = self.taking_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
@@ -311,8 +317,11 @@ impl Runtime {
                         swap_params.report_to.clone(), // walletd
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
-
-                    self.syncers_up()?;
+                    match swap_params.local_params {
+                        Params::Alice(_) => {}
+                        Params::Bob(_) => {}
+                    }
+                    self.syncers_up(Coin::Bitcoin, Coin::Monero, network.clone())?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -891,14 +900,17 @@ fn launch_swapd(
     };
     list.insert(
         ServiceId::Swap(swap_id),
-        request::InitSwap {
-            peerd,
-            report_to,
-            local_params,
-            swap_id,
-            remote_commit,
-            funding_address,
-        },
+        (
+            request::InitSwap {
+                peerd,
+                report_to,
+                local_params,
+                swap_id,
+                remote_commit,
+                funding_address,
+            },
+            public_offer.offer.network,
+        ),
     );
 
     debug!("Awaiting for swapd to connect...");

@@ -37,6 +37,10 @@ pub struct Opts {
     /// Which coin this syncer should target
     #[clap(parse(try_from_str = Coin::from_str))]
     pub coin: Coin,
+
+    /// Which network this syncer should target
+    #[clap(parse(try_from_str = farcaster_core::blockchain::Network::from_str))]
+    pub network: farcaster_core::blockchain::Network,
 }
 
 #[derive(Clap, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
