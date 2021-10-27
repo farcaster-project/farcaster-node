@@ -173,7 +173,7 @@ impl Exec for Command {
                 let PublicOffer {
                     version,
                     offer,
-                    remote_node_id,
+                    node_id,
                     peer_address,
                 } = public_offer.clone();
                 if !without_validation {
@@ -187,7 +187,7 @@ impl Exec for Command {
                             SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
                         }
                     );
-                    println!("Trade counterparty: {}@{}\n", &remote_node_id, peer_address);
+                    println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
                     println!("{:#?}\n", offer);
                 }
                 // wake up connection

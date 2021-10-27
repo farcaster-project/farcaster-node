@@ -968,7 +968,7 @@ impl Runtime {
                     version,
                     offer,
                     peer_address,
-                    remote_node_id,
+                    node_id,
                     ..
                 } = public_offer.clone();
 
@@ -1011,7 +1011,7 @@ impl Runtime {
                             return Ok(());
                         }
                         let launch_swap = LaunchSwap {
-                            maker_node_id: remote_node_id,
+                            maker_node_id: node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Bob(local_params),
@@ -1053,7 +1053,7 @@ impl Runtime {
                             error!("Wallet already exists");
                         }
                         let launch_swap = LaunchSwap {
-                            maker_node_id: remote_node_id,
+                            maker_node_id: node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Alice(local_params),

@@ -386,8 +386,8 @@ impl Runtime {
                             .find_map(|x| Some(x))
                             .expect("exactly 1 listener checked on pattern match"),
                     ),
-                    (TradeRole::Taker, _) if public_offer.remote_node_id == maker_node_id => (
-                        public_offer.remote_node_id,
+                    (TradeRole::Taker, _) if public_offer.node_id == maker_node_id => (
+                        public_offer.node_id,
                         internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
                     ),
                     _ => {
@@ -680,12 +680,12 @@ impl Runtime {
                     let PublicOffer {
                         version,
                         offer,
-                        remote_node_id, // bitcoin::Pubkey
+                        node_id, // bitcoin::Pubkey
                         peer_address,   // InetSocketAddr
                     } = public_offer.clone();
 
                     let daemon_service = internet2::RemoteNodeAddr {
-                        node_id: remote_node_id,                           // checked above
+                        node_id,                           // checked above
                         remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
                     };
                     let peer = daemon_service
