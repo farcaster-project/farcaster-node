@@ -488,26 +488,10 @@ impl SyncerState {
     fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
-        accordant_shared_keys: Vec<TaggedElement<SharedKeyId, monero::PrivateKey>>,
+        view: monero::PrivateKey,
         swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
-        let view = accordant_shared_keys
-            .into_iter()
-            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-            .unwrap()
-            .elem()
-            .clone();
-        if swap_role == SwapRole::Alice {
-            let viewpair = monero::ViewPair { spend, view };
-            let address = (self.monero_address)(&viewpair);
-            info!(
-                "Alice, please send {} to {}",
-                self.monero_amount.to_string().bright_green_bold(),
-                address.addr(),
-            );
-        }
-
         let from_height = self.from_height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
@@ -591,7 +575,9 @@ impl Runtime {
             next_state.bright_white_bold()
         );
         self.state = next_state;
-        self.report_success_to(senders, self.enquirer.clone(), Some(msg))
+        // FIXME
+        // self.report_success_to(senders, self.enquirer.clone(), Some(msg))
+        Ok(())
     }
 
     fn broadcast(
@@ -1493,9 +1479,34 @@ impl Runtime {
                                             ..
                                         })) = self.remote_params.clone()
                                         {
+                                            let view = accordant_shared_keys
+                                                .into_iter()
+                                                .find(|vk| {
+                                                    vk.tag()
+                                                        == &SharedKeyId::new(SHARED_VIEW_KEY_ID)
+                                                })
+                                                .unwrap()
+                                                .elem()
+                                                .clone();
+                                            let viewpair = monero::ViewPair { spend, view };
+                                            let address =
+                                                (self.syncer_state.monero_address)(&viewpair);
+                                            info!(
+                                                "Alice, please send {} to {}",
+                                                self.syncer_state
+                                                    .monero_amount
+                                                    .to_string()
+                                                    .bright_green_bold(),
+                                                address.addr(),
+                                            );
+                                            self.report_success_to(
+                                                senders,
+                                                self.enquirer.clone(),
+                                                Some(address.to_string()),
+                                            )?;
                                             let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                                 spend,
-                                                accordant_shared_keys,
+                                                view,
                                                 self.state.swap_role(),
                                                 TxLabel::AccLock,
                                             );
@@ -1654,9 +1665,15 @@ impl Runtime {
                         ..
                     })) = self.remote_params.clone()
                     {
+                        let view = accordant_shared_keys
+                            .into_iter()
+                            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                            .unwrap()
+                            .elem()
+                            .clone();
                         let task = self.syncer_state.watch_addr_xmr(
                             spend,
-                            accordant_shared_keys,
+                            view,
                             self.state.swap_role(),
                             TxLabel::AccLock,
                         );
