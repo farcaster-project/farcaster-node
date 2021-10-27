@@ -15,7 +15,7 @@
 
 use crate::{
     error::SyncerError,
-    rpc::request::{Keys, LaunchSwap, PubOffer, RequestId, Reveal, Token},
+    rpc::request::{BitcoinAddress, Keys, LaunchSwap, PubOffer, RequestId, Reveal, Token},
     swapd::get_swap_id,
     syncerd::opts::Coin,
     walletd::NodeSecrets,
@@ -35,13 +35,16 @@ use std::{
 use std::{convert::TryFrom, thread::sleep};
 use std::{convert::TryInto, ffi::OsStr};
 
-use bitcoin::secp256k1::{
-    self,
-    rand::{thread_rng, RngCore},
-};
 use bitcoin::{
     hashes::hex::ToHex,
     secp256k1::{PublicKey, SecretKey},
+};
+use bitcoin::{
+    secp256k1::{
+        self,
+        rand::{thread_rng, RngCore},
+    },
+    Address,
 };
 use internet2::{addr::InetSocketAddr, NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
@@ -84,6 +87,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         spawning_services: none!(),
         making_swaps: none!(),
         taking_swaps: none!(),
+        arb_addrs: none!(),
         public_offers: none!(),
         node_ids: none!(),
         wallet_token,
@@ -108,6 +112,7 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     taking_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     public_offers: HashSet<PublicOffer<BtcXmr>>,
+    arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     consumed_offers: HashSet<PublicOfferId>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
@@ -196,6 +201,7 @@ impl Runtime {
                 swap_id,
             })) => {
                 let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
+                // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(
                         "Unknow offer {}, you are not the maker of that offer, ignoring it",
@@ -206,8 +212,21 @@ impl Runtime {
                         "Offer {} is known, you created it previously, engaging walletd to initiate swap with taker",
                         &public_offer
                     );
-                    senders.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?
+                    if let Some(arb_addr) = self.arb_addrs.remove(&public_offer.id()) {
+                        let btc_addr_req = Request::BitcoinAddress(BitcoinAddress(*swap_id, arb_addr));
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Wallet,
+                            btc_addr_req,
+                        )?;
+
+                        senders.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?;
+                    } else {
+                        error!("missing arb_addr")
+                    }
                 }
+                return Ok(());
             }
             _ => {
                 error!("MSG RPC can be only used for forwarding farcaster protocol messages");
@@ -556,6 +575,7 @@ impl Runtime {
                 public_addr,
                 bind_addr,
                 peer_secret_key,
+                arbitrating_addr,
             }) => {
                 let resp = match (self.listens.contains(&bind_addr), peer_secret_key) {
                     (false, None) => {
@@ -608,7 +628,7 @@ impl Runtime {
                 };
 
                 let public_offer = offer.clone().to_public_v1(node_ids[0], public_addr.into());
-                let offer_id = public_offer.id();
+                let pub_offer_id = public_offer.id();
                 let hex_public_offer = public_offer.to_hex();
                 if self.public_offers.insert(public_offer) {
                     let msg = format!(
@@ -619,12 +639,13 @@ impl Runtime {
                     info!(
                         "Maker: {} {}",
                         "Public offer registered".bright_blue_bold(),
-                        offer_id.bright_yellow_bold()
+                        pub_offer_id.bright_yellow_bold()
                     );
                     report_to.push((
                         Some(source.clone()),
                         Request::Success(OptionDetails(Some(msg))),
                     ));
+                    self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
                 } else {
                     let msg = "This Public offer was previously registered";
                     warn!("{}", msg.err());
@@ -640,6 +661,7 @@ impl Runtime {
 
             Request::TakeOffer(request::PubOffer {
                 public_offer,
+                external_address,
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
@@ -721,6 +743,7 @@ impl Runtime {
                         // from offer
                         let request = Request::TakeOffer(PubOffer {
                             public_offer,
+                            external_address,
                             peer_secret_key: None,
                         });
                         senders.send_to(

@@ -12,7 +12,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::{convert::TryFrom, io::Read, time::Duration};
+use std::{
+    convert::TryFrom,
+    io::{self, Read, Write},
+    time::Duration,
+};
 use std::{str::FromStr, thread::sleep};
 
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
@@ -20,6 +24,7 @@ use lnp::{message, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
 use farcaster_core::{
+    blockchain::Network,
     negotiation::PublicOffer,
     role::{SwapRole, TradeRole},
     swap::SwapId,
@@ -109,6 +114,7 @@ impl Exec for Command {
                 accordant_blockchain,
                 arbitrating_amount,
                 accordant_amount,
+                arbitrating_addr,
                 cancel_timelock,
                 punish_timelock,
                 fee_strategy,
@@ -118,6 +124,13 @@ impl Exec for Command {
                 port,
                 overlay,
             } => {
+                if network != Network::Testnet {
+                    eprintln!(
+                        "Error: {} not yet supported. Only Testnet currently enabled, for your funds safety",
+                        network
+                    );
+                    return Ok(());
+                }
                 let offer = farcaster_core::negotiation::Offer {
                     network,
                     arbitrating_blockchain,
@@ -136,6 +149,7 @@ impl Exec for Command {
                     public_addr,
                     bind_addr,
                     peer_secret_key: None,
+                    arbitrating_addr,
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success of failure of the request to cli
@@ -150,7 +164,11 @@ impl Exec for Command {
                 // hex.bright_yellow_bold());
             }
 
-            Command::Take { public_offer, without_validation } => {
+            Command::Take {
+                public_offer,
+                bitcoin_address,
+                without_validation,
+            } => {
                 // println!("{:#?}", &public_offer);
                 let PublicOffer {
                     version,
@@ -178,7 +196,7 @@ impl Exec for Command {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
-                        Request::TakeOffer(public_offer.into()),
+                        Request::TakeOffer((public_offer, bitcoin_address).into()),
                     )?;
                     // report success of failure of the request to cli
                     runtime.report_progress()?;
@@ -207,3 +225,4 @@ fn take_offer() -> bool {
         _ => take_offer(),
     }
 }
+

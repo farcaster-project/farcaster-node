@@ -38,7 +38,7 @@ use bitcoin::{
         rand::{thread_rng, RngCore},
         SecretKey,
     },
-    OutPoint, PublicKey, Transaction,
+    Address, OutPoint, PublicKey, Transaction,
 };
 use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
@@ -193,12 +193,15 @@ pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 pub struct PubOffer {
     pub public_offer: PublicOffer<BtcXmr>,
     pub peer_secret_key: Option<SecretKey>,
+    pub external_address: Address,
 }
 
-impl From<PublicOffer<BtcXmr>> for PubOffer {
-    fn from(public_offer: PublicOffer<BtcXmr>) -> Self {
+impl From<(PublicOffer<BtcXmr>, Address)> for PubOffer {
+    fn from(x: (PublicOffer<BtcXmr>, Address)) -> Self {
+        let (public_offer, external_address) = x;
         PubOffer {
             public_offer,
+            external_address,
             peer_secret_key: None,
         }
     }
@@ -407,8 +410,12 @@ pub enum Request {
     Params(Params),
 
     #[api(type = 196)]
-    #[display("transaction: ({0})")]
+    #[display("transaction({0})")]
     Tx(Tx),
+
+    #[api(type = 195)]
+    #[display("bitcoin address()")]
+    BitcoinAddress(BitcoinAddress),
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]
@@ -539,11 +546,16 @@ pub struct NodeInfo {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("bitcoin_address")]
+pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
     pub public_addr: RemoteSocketAddr,
     pub bind_addr: RemoteSocketAddr,
+    pub arbitrating_addr: bitcoin::Address,
     pub peer_secret_key: Option<SecretKey>,
 }
 

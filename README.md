@@ -62,41 +62,58 @@ swap0-cli make --help
 ```
 ```
 ARGS:
-    <network>
+    <ARBITRATING_ADDR>
+            bitcoin address used as destination or refund address
+
+    <NETWORK>
             Type of offer and network to use [default: Testnet]
-    <arbitrating-blockchain>
+
+    <ARBITRATING_BLOCKCHAIN>
             The chosen arbitrating blockchain [default: ECDSA]
-    <accordant-blockchain>
+
+    <ACCORDANT_BLOCKCHAIN>
             The chosen accordant blockchain [default: Monero]
-    <arbitrating-amount>
-            Amount of arbitrating assets to exchanged [default: 0.15 BTC]
-    <accordant-amount>
-            Amount of accordant assets to exchanged [default: 1 XMR]
-    <cancel-timelock>
-            The cancel timelock parameter of the arbitrating blockchain [default: 10]
-    <punish-timelock>
-            The punish timelock parameter of the arbitrating blockchain [default: 30]
-    <fee-strategy>
-            The chosen fee strategy for the arbitrating transactions [default: 2 satoshi/vByte]
-    <maker-role>
+
+    <ARBITRATING_AMOUNT>
+            Amount of arbitrating assets to exchanged [default: "0.15 BTC"]
+
+    <ACCORDANT_AMOUNT>
+            Amount of accordant assets to exchanged [default: "100 XMR"]
+
+    <MAKER_ROLE>
             The future maker swap role [default: Alice] [possible values: Alice, Bob]
-    <ip-addr>
+
+    <CANCEL_TIMELOCK>
+            The cancel timelock parameter of the arbitrating blockchain [default: 10]
+
+    <PUNISH_TIMELOCK>
+            The punish timelock parameter of the arbitrating blockchain [default: 30]
+
+    <FEE_STRATEGY>
+            The chosen fee strategy for the arbitrating transactions [default: "2 satoshi/vByte"]
+
+    <PUBLIC_IP_ADDR>
+            public IPv4 or IPv6 address for public offer [default: 127.0.0.1]
+
+    <BIND_IP_ADDR>
             IPv4 or IPv6 address to bind to [default: 0.0.0.0]
-    <port>
+
+    <PORT>
             Port to use; defaults to the native LN port [default: 9735]
-    <overlay>
+
+    <OVERLAY>
             Use overlay protocol (http, websocket etc) [default: tcp]
 ```
 
-The ECDSA below is a temporary hack, but it represents Bitcoin<ECDSA>, as Bitcoin can take many forms:
+The `ECDSA` below is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms:
 
 ```
-swap0-cli make Testnet ECDSA Monero "0.00001350 BTC" "0.1 XMR" 10 30 "1 satoshi/vByte" Alice
+swap0-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745
 ```
 
 This will produce the following hex encoded offer: 
 
-`464353574150010002000000808000008008004605000000000000080000e876481700000004000a00000004001e000000010800010000000000000001210003d7855d33e4cd573502e1d5e25c2b61b6dc363c0e06af895b84d5167d7433266700000000000000000000000000000000000000000000000000000000000000000000260700`
+`4643535741500100020000008080000080080046050000000000000800102700000000000004000a00000004001e000000010800010000000000000001210002904c04c85a9d027fc44f5474438a1a98fd69bf64cef96608cb7d97a3b33b25670000000000000000000000000000000000000000000000000000000000007f000001261200`
 
 This public offer should be shared by maker with taker. It also contains information on how to connect to maker.
 
@@ -107,12 +124,19 @@ Taker accepts offer and connects to Maker's daemon
 
 arguments of `take`
 ```
-<public-offer> Hex encoded offer
+    <BITCOIN_ADDRESS>
+            bitcoin address used as destination or refund address
+
+    <PUBLIC_OFFER>
+            Hex encoded offer
 ```
+
+flag of interest: `--without-validation` or `-w`, for externally validated automated setups
+
 
 Example of taking the offer above produced by maker. 
 ```
-swap1-cli take 464353574150010002000000808000008008004605000000000000080000e876481700000004000a00000004001e000000010800010000000000000001210003d7855d33e4cd573502e1d5e25c2b61b6dc363c0e06af895b84d5167d7433266700000000000000000000000000000000000000000000000000000000000000000000260700
+swap1-cli take tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j 4643535741500100020000008080000080080046050000000000000800102700000000000004000a00000004001e000000010800010000000000000001210002414dbe27712feb696a5f9f7d86eb37cb1317acc49a8a78e051dfe0c88efdff500000000000000000000000000000000000000000000000000000000000007f000001261200
 ```
 
 ## Remote client use

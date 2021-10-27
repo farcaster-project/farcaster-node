@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use bitcoin::Address;
 use clap::{AppSettings, Clap};
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -106,41 +107,44 @@ pub enum Command {
     /// this offer. Example usage:
     /// `make Testnet Bitcoin Monero "100000 BTC" "200 XMR" 10 10 20 Alice`
     Make {
-        /// Type of offer and network to use
-        #[clap(default_value = "Testnet")]
+        /// Bitcoin address used as destination or refund address
+        arbitrating_addr: Address,
+
+        /// Network to use
+        #[clap(default_value = "Testnet", possible_values = &["Testnet", "Mainnet", "Local"])]
         network: Network,
 
         /// The chosen arbitrating blockchain
-        #[clap(default_value = "ECDSA")]
+        #[clap(default_value = "ECDSA", possible_values = &["ECDSA"])]
         arbitrating_blockchain: Bitcoin<SegwitV0>,
 
         /// The chosen accordant blockchain
-        #[clap(default_value = "Monero")]
+        #[clap(default_value = "Monero", possible_values = &["Monero"])]
         accordant_blockchain: Monero,
 
         /// Amount of arbitrating assets to exchanged
-        #[clap(default_value = "0.15 BTC")]
+        #[clap(default_value = "0.00001350 BTC")]
         arbitrating_amount: bitcoin::Amount,
 
         /// Amount of accordant assets to exchanged
-        #[clap(default_value = "100 XMR")]
+        #[clap(default_value = "0.00000001 XMR")]
         accordant_amount: monero::Amount,
 
+        /// The future maker swap role
+        #[clap(default_value = "Bob", possible_values = &["Alice", "Bob"])]
+        maker_role: SwapRole,
+
         /// The cancel timelock parameter of the arbitrating blockchain
-        #[clap(default_value = "10")]
+        #[clap(default_value = "16")]
         cancel_timelock: CSVTimelock,
 
         /// The punish timelock parameter of the arbitrating blockchain
-        #[clap(default_value = "30")]
+        #[clap(default_value = "64")]
         punish_timelock: CSVTimelock,
 
         /// The chosen fee strategy for the arbitrating transactions
         #[clap(default_value = "2 satoshi/vByte")]
         fee_strategy: FeeStrategy<SatPerVByte>,
-
-        /// The future maker swap role
-        #[clap(default_value = "Alice", possible_values = &["Alice", "Bob"])]
-        maker_role: SwapRole,
 
         /// public IPv4 or IPv6 address for public offer
         #[clap(default_value = "127.0.0.1")]
@@ -160,9 +164,13 @@ pub enum Command {
     },
     /// Taker accepts offer and connects to Maker's daemon.
     Take {
+        /// bitcoin address used as destination or refund address
+        bitcoin_address: Address,
+
         /// Hex encoded offer
         public_offer: PublicOffer<BtcXmr>,
         /// Accept Offer without validation
+
         #[clap(short, long)]
         without_validation: bool,
     },
