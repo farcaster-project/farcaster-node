@@ -215,7 +215,7 @@ impl Runtime {
                     if let Some(arb_addr) = self.arb_addrs.remove(&public_offer.id()) {
                         let btc_addr_req = Request::BitcoinAddress(BitcoinAddress(*swap_id, arb_addr));
                         senders.send_to(
-                            ServiceBus::Ctl,
+                            ServiceBus::Msg,
                             self.identity(),
                             ServiceId::Wallet,
                             btc_addr_req,

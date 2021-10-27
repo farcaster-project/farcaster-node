@@ -261,6 +261,15 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
+
+            // Handled in Msg to avoid race condition between Msg and Ctl bus (2 msgs sent
+            // sequencially on the diferent buses arriving in random order), now both msgs go
+            // through the msg bus, and always arrive in the correct order. BitcoinAddress arriving
+            // after TakerCommit, blocks TakerCommit, as `self.btc_addrs.contains_key(&swap_id) ==
+            // false`
+            Request::BitcoinAddress(BitcoinAddress(swapid, btc_addr)) => {
+                self.btc_addrs.insert(swapid, btc_addr);
+            }
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
@@ -920,8 +929,8 @@ impl Runtime {
             }
             req => {
                 error!(
-                    "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}",
-                    req.get_type()
+                    "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}, {:#?}",
+                    req.get_type(), req
                 )
             }
         }
@@ -1151,9 +1160,6 @@ impl Runtime {
                         .elem();
                     info!("Full secret monero view key: {}", view_key);
                 }
-            }
-            Request::BitcoinAddress(BitcoinAddress(swapid, btc_addr)) => {
-                self.btc_addrs.insert(swapid, btc_addr);
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
                 if wallet_token != self.wallet_token {
