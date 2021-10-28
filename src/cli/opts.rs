@@ -174,6 +174,7 @@ pub enum Command {
         #[clap(short, long)]
         without_validation: bool,
     },
+
     /// Request Swap progress report
     Progress {
         /// SwapId
