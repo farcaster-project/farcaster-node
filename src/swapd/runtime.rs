@@ -575,8 +575,7 @@ impl Runtime {
             next_state.bright_white_bold()
         );
         self.state = next_state;
-        // FIXME
-        // self.report_success_to(senders, self.enquirer.clone(), Some(msg))
+        self.report_success_to(senders, self.enquirer.clone(), Some(msg))?;
         Ok(())
     }
 
