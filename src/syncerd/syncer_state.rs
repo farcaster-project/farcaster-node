@@ -1,4 +1,4 @@
-use crate::farcaster_core::consensus::Decodable;
+use crate::farcaster_core::{blockchain::Network, consensus::Decodable};
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::syncerd::opts::Coin;
 use crate::syncerd::runtime::SyncerdTask;
@@ -635,25 +635,15 @@ async fn syncer_state_transaction() {
         confirmation_bound: 4,
     };
     let height_task = WatchHeight { id: 0, lifetime: 4 };
+    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
-    state.watch_transaction(
-        transaction_task_one.clone(),
-        ServiceId::Syncer(Coin::Bitcoin),
-    );
-    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    state.watch_transaction(transaction_task_one.clone(), source1.clone());
+    state.abort(0, source1.clone()).await;
     assert!(event_rx.try_recv().is_ok());
 
-    state.watch_transaction(
-        transaction_task_one.clone(),
-        ServiceId::Syncer(Coin::Bitcoin),
-    );
-    state.watch_transaction(
-        transaction_task_two.clone(),
-        ServiceId::Syncer(Coin::Bitcoin),
-    );
-    state
-        .watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin))
-        .await;
+    state.watch_transaction(transaction_task_one.clone(), source1.clone());
+    state.watch_transaction(transaction_task_two.clone(), source1.clone());
+    state.watch_height(height_task, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -706,11 +696,9 @@ async fn syncer_state_transaction() {
     assert_eq!(state.unseen_transactions.len(), 2);
     assert!(event_rx.try_recv().is_ok());
 
-    state.watch_transaction(
-        transaction_task_two.clone(),
-        ServiceId::Syncer(Coin::Monero),
-    );
-    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
+    state.watch_transaction(transaction_task_two.clone(), source2.clone());
+    state.abort(0, source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -752,19 +740,18 @@ async fn syncer_state_addresses() {
         addendum: addendum.clone(),
         include_tx: Boolean::False,
     };
+    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
     state
-        .watch_address(address_task_two.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .watch_address(address_task_two.clone(), source1.clone())
         .unwrap();
-    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    state.abort(0, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.addresses.len(), 0);
     assert!(event_rx.try_recv().is_ok());
 
-    state
-        .watch_address(address_task, ServiceId::Syncer(Coin::Bitcoin))
-        .unwrap();
+    state.watch_address(address_task, source1.clone()).unwrap();
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -850,10 +837,11 @@ async fn syncer_state_addresses() {
     assert!(event_rx.try_recv().is_ok());
     assert!(event_rx.try_recv().is_ok());
 
+    let source2 = ServiceId::Syncer(Coin::Monero, Network::Testnet);
     state
-        .watch_address(address_task_two.clone(), ServiceId::Syncer(Coin::Monero))
+        .watch_address(address_task_two.clone(), source2.clone())
         .unwrap();
-    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    state.abort(0, source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -861,9 +849,7 @@ async fn syncer_state_addresses() {
 
     state.change_height(1, vec![0]).await;
     let height_task = WatchHeight { id: 0, lifetime: 3 };
-    state
-        .watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin))
-        .await;
+    state.watch_height(height_task, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
     assert!(event_rx.try_recv().is_ok());
@@ -905,18 +891,19 @@ async fn syncer_state_sweep_addresses() {
             address: "address".to_string(),
         }),
     };
+    let source1 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
 
-    state.sweep_address(sweep_task.clone(), ServiceId::Syncer(Coin::Monero));
+    state.sweep_address(sweep_task.clone(), source1.clone());
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
-    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    state.abort(0, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);
     assert!(event_rx.try_recv().is_ok());
 
-    state.sweep_address(sweep_task, ServiceId::Syncer(Coin::Monero));
+    state.sweep_address(sweep_task, source1.clone());
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
@@ -937,24 +924,22 @@ async fn syncer_state_height() {
     let mut state = SyncerState::new(event_tx.clone());
     let height_task = WatchHeight { id: 0, lifetime: 0 };
     let another_height_task = WatchHeight { id: 0, lifetime: 3 };
+    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
     state
-        .watch_height(height_task.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .watch_height(height_task.clone(), source1.clone())
         .await;
-    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    state.abort(0, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .watch_height(height_task.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .watch_height(height_task.clone(), source1.clone())
         .await;
     state
-        .watch_height(
-            another_height_task.clone(),
-            ServiceId::Syncer(Coin::Bitcoin),
-        )
+        .watch_height(another_height_task.clone(), source1.clone())
         .await;
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
@@ -979,10 +964,11 @@ async fn syncer_state_height() {
     assert_eq!(state.watch_height.len(), 1);
     assert!(event_rx.try_recv().is_err());
 
+    let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
     state
-        .watch_height(another_height_task.clone(), ServiceId::Syncer(Coin::Monero))
+        .watch_height(another_height_task.clone(), source2.clone())
         .await;
-    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    state.abort(0, source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);

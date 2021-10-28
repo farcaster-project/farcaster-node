@@ -28,10 +28,14 @@ use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
 use std::str::FromStr;
 
+use farcaster_core::blockchain::Network;
 use farcaster_node::syncerd::types::{
     Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, Task,
     WatchAddress, WatchHeight, WatchTransaction,
 };
+
+const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
+const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 
 /*
 These tests need to run serialy, otherwise we cannot verify events based on the
@@ -89,7 +93,7 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
             id: 0,
             lifetime: blocks + 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
 
@@ -115,7 +119,7 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
             id: 1,
             lifetime: blocks + 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
     let message = rx_event.recv_multipart(0).unwrap();
@@ -196,7 +200,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
             addendum: addendum_1,
             include_tx: Boolean::True,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_1).unwrap();
     let watch_address_task_2 = SyncerdTask {
@@ -206,7 +210,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
             addendum: addendum_2.clone(),
             include_tx: Boolean::True,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_2).unwrap();
 
@@ -270,7 +274,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
             addendum: addendum_2,
             include_tx: Boolean::True,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_3).unwrap();
     println!("waiting for watch transaction message");
@@ -306,7 +310,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
                 addendum: addendum_4.clone(),
                 include_tx: Boolean::True,
             }),
-            source: ServiceId::Syncer(Coin::Bitcoin),
+            source: SOURCE1.clone(),
         })
         .unwrap();
     }
@@ -363,7 +367,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
             hash: txid_1.to_vec(),
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
 
@@ -397,7 +401,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
             hash: address_txid.to_vec(),
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
     println!("awaiting confirmations");
@@ -427,7 +431,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
             hash: txid_2.to_vec(),
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
     tx.send(SyncerdTask {
@@ -437,7 +441,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
             hash: txid_3.to_vec(),
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
 
@@ -465,13 +469,13 @@ fn bitcoin_syncer_abort_test() {
             hash: vec![0; 32],
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
 
     let task = SyncerdTask {
         task: Task::Abort(Abort { id: 0 }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
     println!("waiting for task aborted message");
@@ -482,7 +486,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort { id: 0 }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
     println!("waiting for task aborted message");
@@ -530,7 +534,7 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
             id: 0,
             tx: transaction.hex,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
 
@@ -575,7 +579,7 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
             id: 0,
             tx: signed_tx.hex,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
 
@@ -602,7 +606,7 @@ fn create_bitcoin_syncer(polling: bool) -> (std::sync::mpsc::Sender<SyncerdTask>
     syncer.run(
         rx,
         tx_event,
-        ServiceId::Syncer(Coin::Bitcoin).into(),
+        SOURCE1.clone().into(),
         syncer_servers,
         Chain::Regtest(dummy),
         polling,
@@ -675,7 +679,7 @@ async fn monero_syncer_block_height_test() {
             id: 0,
             lifetime: blocks + 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
 
@@ -700,7 +704,7 @@ async fn monero_syncer_block_height_test() {
             id: 1,
             lifetime: u64::from(blocks) + 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
     println!("waiting for height changed");
@@ -759,7 +763,7 @@ async fn monero_syncer_sweep_test() {
                 address: dest_address.to_string(),
             }),
         }),
-        source: ServiceId::Syncer(Coin::Monero),
+        source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
 
@@ -816,7 +820,7 @@ async fn monero_syncer_address_test() {
             addendum: addendum_1,
             include_tx: Boolean::True,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_1).unwrap();
 
@@ -843,7 +847,7 @@ async fn monero_syncer_address_test() {
             addendum: addendum_2,
             include_tx: Boolean::True,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_2).unwrap();
 
@@ -871,7 +875,7 @@ async fn monero_syncer_address_test() {
             addendum: addendum_3,
             include_tx: Boolean::True,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_3).unwrap();
     println!("waiting for address transaction message");
@@ -902,7 +906,7 @@ async fn monero_syncer_address_test() {
                 addendum: addendum_4.clone(),
                 include_tx: Boolean::True,
             }),
-            source: ServiceId::Syncer(Coin::Monero),
+            source: SOURCE2.clone(),
         })
         .unwrap();
     }
@@ -947,7 +951,7 @@ async fn monero_syncer_transaction_test() {
             hash: txid_1.to_vec(),
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
 
@@ -982,7 +986,7 @@ async fn monero_syncer_transaction_test() {
             hash: tx_id2,
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
     println!("awaiting confirmations");
@@ -1008,7 +1012,7 @@ async fn monero_syncer_transaction_test() {
             hash: txid_2.to_vec(),
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
     tx.send(SyncerdTask {
@@ -1018,7 +1022,7 @@ async fn monero_syncer_transaction_test() {
             hash: txid_3.to_vec(),
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Bitcoin),
+        source: SOURCE1.clone(),
     })
     .unwrap();
 
@@ -1047,7 +1051,7 @@ async fn monero_syncer_abort_test() {
             hash: vec![0; 32],
             confirmation_bound: 2,
         }),
-        source: ServiceId::Syncer(Coin::Monero),
+        source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
     let message = rx_event.recv_multipart(0).unwrap();
@@ -1056,7 +1060,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort { id: 0 }),
-        source: ServiceId::Syncer(Coin::Monero),
+        source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
     println!("waiting for task aborted message");
@@ -1068,7 +1072,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort { id: 0 }),
-        source: ServiceId::Syncer(Coin::Monero),
+        source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
     println!("waiting for task aborted message");
@@ -1094,7 +1098,7 @@ async fn monero_syncer_broadcast_tx_test() {
 
     let task = SyncerdTask {
         task: Task::BroadcastTransaction(BroadcastTransaction { id: 0, tx: vec![0] }),
-        source: ServiceId::Syncer(Coin::Monero),
+        source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
 
@@ -1142,7 +1146,7 @@ fn create_monero_syncer() -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket)
     syncer.run(
         rx,
         tx_event,
-        ServiceId::Syncer(Coin::Monero).into(),
+        SOURCE2.clone().into(),
         syncer_servers,
         Chain::Regtest(dummy),
         true,
