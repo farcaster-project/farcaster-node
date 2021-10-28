@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::types::{Event, Task};
+use crate::syncerd::{SweepXmrAddress, types::{Event, Task}};
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
 use farcaster_core::syncer::BroadcastTransaction;
@@ -488,19 +488,24 @@ pub enum Request {
     // #[from]
     // CreateTask(u64), // FIXME
     #[api(type = 1300)]
-    #[display("task({0})", alt = "{0:#}")]
+    #[display("syncer_task({0})", alt = "{0:#}")]
     #[from]
     SyncerTask(Task),
 
     #[api(type = 1301)]
-    #[display("task({0})", alt = "{0:#}")]
+    #[display("syncer_event({0})", alt = "{0:#}")]
     #[from]
     SyncerEvent(Event),
 
     #[api(type = 1302)]
-    #[display("task({0})", alt = "{0:#}")]
+    #[display("syncer_bridge_ev({0})", alt = "{0:#}")]
     #[from]
     SyncerdBridgeEvent(SyncerdBridgeEvent),
+
+    #[api(type = 1303)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SweepXmrAddress(SweepXmrAddress),
 }
 
 impl rpc_connection::Request for Request {}

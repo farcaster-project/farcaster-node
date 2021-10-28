@@ -13,7 +13,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::{opts::Coin, Abort, HeightChanged, WatchHeight, XmrAddressAddendum};
+use crate::{
+    syncerd::{
+        opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepXmrAddress,
+        WatchHeight, XmrAddressAddendum,
+    },
+};
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -75,7 +80,7 @@ use internet2::{
 };
 use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
-use monero::cryptonote::hash::keccak_256;
+use monero::{cryptonote::hash::keccak_256, ViewPair};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 
 pub fn run(
@@ -120,12 +125,6 @@ pub fn run(
         watched_addrs: none!(),
         watched_txs: none!(),
     };
-
-    let net = match network {
-        blockchain::Network::Mainnet => monero::Network::Mainnet,
-        blockchain::Network::Testnet => monero::Network::Stagenet,
-        blockchain::Network::Local => monero::Network::Mainnet,
-    };
     let syncer_state = SyncerState {
         tasks,
         monero_height: 0,
@@ -133,7 +132,7 @@ pub fn run(
         confirmation_bound: 50000,
         lock_tx_confs: None,
         cancel_tx_confs: None,
-        monero_address: Box::new(move |view_pair| monero::Address::from_viewpair(net, view_pair)),
+        network,
         bitcoin_syncer: ServiceId::Syncer(Coin::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Coin::Monero, network),
         monero_amount,
@@ -260,7 +259,7 @@ struct SyncerState {
     confirmation_bound: u32,
     lock_tx_confs: Option<Request>,
     cancel_tx_confs: Option<Request>,
-    monero_address: Box<dyn Fn(&monero::ViewPair) -> monero::Address>,
+    network: farcaster_core::blockchain::Network,
     bitcoin_syncer: ServiceId,
     monero_syncer: ServiceId,
     monero_amount: monero::Amount,
@@ -397,6 +396,7 @@ impl SyncerState {
             u64::MAX
         }
     }
+
     fn from_height(&self, coin: Coin) -> u64 {
         let lookback = match coin {
             Coin::Monero => 300,
@@ -512,6 +512,27 @@ impl SyncerState {
         };
         Task::WatchAddress(watch_addr)
     }
+    fn sweep_xmr(
+        &mut self,
+        view_key: monero::PrivateKey,
+        spend_key: monero::PrivateKey,
+        address: String,
+    ) -> Task {
+        let id = self.tasks.new_taskid();
+        let lifetime = self.task_lifetime(Coin::Monero);
+        let addendum = SweepAddressAddendum::Monero(SweepXmrAddress {
+            view_key,
+            spend_key,
+            address,
+        });
+        let sweep_task = SweepAddress {
+            id,
+            lifetime,
+            addendum,
+        };
+        Task::SweepAddress(sweep_task)
+    }
+
     fn acc_lock_watched(&self) -> bool {
         self.tasks
             .watched_txs
@@ -1038,6 +1059,20 @@ impl Runtime {
 
         let ctl_bus = ServiceBus::Ctl;
         match request {
+            Request::SweepXmrAddress(SweepXmrAddress {
+                view_key,
+                spend_key,
+                address,
+            }) if source == ServiceId::Wallet => {
+                let task = self.syncer_state.sweep_xmr(view_key, spend_key, address);
+
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.monero_syncer(),
+                    Request::SyncerTask(task),
+                )?
+            }
             Request::TakeSwap(InitSwap {
                 peerd,
                 report_to,
@@ -1488,8 +1523,10 @@ impl Runtime {
                                                 .elem()
                                                 .clone();
                                             let viewpair = monero::ViewPair { spend, view };
-                                            let address =
-                                                (self.syncer_state.monero_address)(&viewpair);
+                                            let address = monero::Address::from_viewpair(
+                                                self.syncer_state.network.into(),
+                                                &viewpair,
+                                            );
                                             info!(
                                                 "Alice, please send {} to {}",
                                                 self.syncer_state
