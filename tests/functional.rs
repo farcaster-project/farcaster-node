@@ -465,7 +465,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
             id: 0,
-            lifetime: blocks + 2,
+            lifetime: blocks + 10,
             hash: vec![0; 32],
             confirmation_bound: 2,
         }),
@@ -773,7 +773,7 @@ async fn monero_syncer_sweep_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received sweep success message");
     let request = get_request_from_message(message);
-    println!("request: {:?}", request);
+    assert_sweep_success(request, 0);
 }
 
 /*
@@ -1067,7 +1067,6 @@ async fn monero_syncer_abort_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     println!("task aborted");
     let request = get_request_from_message(message);
-    println!("message: {:?}", request);
     assert_task_aborted(request, None, 0);
 
     let task = SyncerdTask {
@@ -1231,6 +1230,18 @@ fn assert_address_transaction(request: Request, expected_amount: u64, expected_t
             Event::AddressTransaction(address_transaction) => {
                 assert_eq!(address_transaction.amount, expected_amount);
                 assert!(expected_txid.contains(&address_transaction.hash));
+            }
+            _ => panic!("expected address transaction event"),
+        },
+        _ => panic!("expected syncerd bridge event"),
+    }
+}
+
+fn assert_sweep_success(request: Request, id: u32) {
+    match request {
+        Request::SyncerdBridgeEvent(event) => match event.event {
+            Event::SweepSuccess(sweep_success) => {
+                assert_eq!(sweep_success.id, id);
             }
             _ => panic!("expected address transaction event"),
         },
