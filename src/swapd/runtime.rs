@@ -124,7 +124,7 @@ pub fn run(
     let net = match network {
         blockchain::Network::Mainnet => monero::Network::Mainnet,
         blockchain::Network::Testnet => monero::Network::Stagenet,
-        blockchain::Network::Local => monero::Network::Stagenet,
+        blockchain::Network::Local => monero::Network::Mainnet,
     };
     let syncer_state = SyncerState {
         tasks,
