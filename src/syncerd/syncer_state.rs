@@ -435,14 +435,12 @@ impl SyncerState {
                 .filter_map(|(id, watched_tx)| {
                     // return unchanged transactions
                     if tx_id != watched_tx.task.hash {
-                        Some((id.clone(), watched_tx.clone()));
+                        return Some((id.clone(), watched_tx.clone()));
                     }
                     if confirmations.is_some() {
                         unseen_transactions.remove(&id);
                     } else {
-                        if !unseen_transactions.contains(&id) {
-                            unseen_transactions.insert(id.clone());
-                        }
+                        unseen_transactions.insert(id.clone());
                     }
                     let transaction_confirmations = if confirmations
                         != watched_tx.transaction_confirmations.confirmations
