@@ -47,8 +47,8 @@ jobs:
         with:
           command: build
           args: --bin syncerd --features server
-      - name: Build CLI
+      - name: Build swap CLI
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --bin lnp-cli --features cli
+          args: --bin swap-cli --features cli
