@@ -157,10 +157,16 @@ And the following client can instruct the above `farcasterd` to make a offer as 
 
 ## Docker usage
 
-Build the node container with `docker build -t farcaster:latest .` inside the project folder and then run the node with
+You can use the docker container produced in the CI with:
 
 ```
-docker run --rm -t -p 9735:9735 -p 9981:9981 --name farcaster_node farcaster
+docker run --rm -t -p 9735:9735 -p 9981:9981 --name farcaster_node ghcr.io/farcaster-project/farcaster-node/farcasterd:latest
+```
+
+or build the node container with `docker build -t farcasterd:latest .` inside the project folder and then run:
+
+```
+docker run --rm -t -p 9735:9735 -p 9981:9981 --name farcaster_node farcasterd:latest
 ```
 
 The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed ports `9735` and `9981` on the host.
