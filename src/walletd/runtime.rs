@@ -1097,6 +1097,7 @@ impl Runtime {
             Request::Tx(Tx::Buy(buy_tx)) => {
                 if let Some(Wallet::Bob(BobState {
                     bob,
+                    local_params,
                     key_manager,
                     remote_params: Some(alice_params),
                     core_arb_setup: Some(_),
@@ -1117,22 +1118,42 @@ impl Runtime {
                         .expect("Valid Monero Private Key");
                     info!("Extracted alice's monero key from Buy tx: {}", sk_a);
                     let sk_b = key_manager.get_or_derive_monero_spend_key()?;
-                    let spend_key = sk_a + sk_b;
-                    info!("Full secret monero spending key: {}", spend_key);
+                    let spend_private = sk_a + sk_b;
+                    let spend = monero::PublicKey::from_private_key(&spend_private);
+                    info!("Full secret monero spending key: {}", spend_private);
 
-                    let view_key = *alice_params
+                    let view_key_alice = *alice_params
                         .accordant_shared_keys
                         .clone()
                         .into_iter()
                         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
                         .unwrap()
                         .elem();
-                    info!("Full secret monero viewkey: {}", view_key);
+
+                    let view_key_bob = *local_params
+                        .accordant_shared_keys
+                        .clone()
+                        .into_iter()
+                        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                        .unwrap()
+                        .elem();
+                    let view = view_key_alice + view_key_bob;
+                    // let view_key_bob = params.
+                    info!("Full aggregated secret monero view key: {}", view);
+
+                    let viewpair = monero::ViewPair { spend, view };
+                    // let address = (swapd.monero_address)(&viewpair);
+                    let address = monero::Address::from_viewpair(monero::Network::Stagenet, &viewpair);
+
+                    info!(
+                        "Corresponding address: {}",
+                        address.addr()
+                    );
 
                     let address = s!("76KwxdgtWyJQK5a27PpqT973R6s7bZ4cKWTtUG6JEyrbLQy5F4ZwdUqgKpssGQzRxnd99LKWqFjYo92b8ngS7GqD1VZBEEL");
                     let sweep_keys = SweepXmrAddress {
-                        view_key,
-                        spend_key,
+                        view_key: view,
+                        spend_key: spend_private,
                         address,
                     };
                     senders.send_to(

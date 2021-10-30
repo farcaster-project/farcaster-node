@@ -80,7 +80,7 @@ use internet2::{
 };
 use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
-use monero::{cryptonote::hash::keccak_256, ViewPair};
+use monero::{cryptonote::hash::keccak_256, PrivateKey, ViewPair};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 
 pub fn run(
@@ -155,6 +155,7 @@ pub fn run(
         )?),
         pending_requests: none!(),
         txs: none!(),
+        local_params: None,
         remote_params: None,
     };
     let broker = false;
@@ -176,6 +177,7 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
+    local_params: Option<Params>,
     remote_params: Option<Params>,
 }
 
@@ -300,6 +302,8 @@ pub struct RefundSigA {
     xmr_locked: bool,
     #[display("buy_published({0})")]
     buy_published: bool,
+    /* #[display("local_view_share({0})")]
+     * local_params: Params */
 }
 
 #[derive(Display, Clone)]
@@ -487,11 +491,62 @@ impl SyncerState {
 
     fn watch_addr_xmr(
         &mut self,
-        spend: monero::PublicKey,
+        spend_remote: monero::PublicKey,
         view: monero::PrivateKey,
+        local_params: Option<Params>,
         swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
+        let spend = match local_params {
+            Some(Params::Alice(AliceParameters {
+                accordant_shared_keys,
+                spend,
+                ..
+            })) => {
+                let view_alice = accordant_shared_keys
+                    .into_iter()
+                    .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                    .unwrap()
+                    .elem()
+                    .clone();
+                info!("Matched Alice");
+                let view = view + view_alice;
+                spend_remote + spend
+            }
+            Some(Params::Bob(BobParameters {
+                accordant_shared_keys,
+                spend,
+                ..
+            })) => {
+                let view_bob = accordant_shared_keys
+                    .into_iter()
+                    .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                    .unwrap()
+                    .elem()
+                    .clone();
+                info!("Matched Bob");
+                let view = view + view_bob;
+                spend_remote + spend
+            },
+            None => {spend_remote}
+        };
+
+        info!("XMR view key: {}", view);
+        info!("XMR spend key: {}", spend);
+        let viewpair = monero::ViewPair { spend, view };
+        let address = monero::Address::from_viewpair(
+            self.network.into(),
+            &viewpair,
+        );
+
+        if swap_role == SwapRole::Alice {
+            info!(
+                "Alice, please send {} to {}",
+                self.monero_amount.to_string().bright_green_bold(),
+                address.addr(),
+            );
+        }
+
         let from_height = self.from_height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
@@ -503,7 +558,12 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_addrs.insert(id, tx_label);
 
-        info!("Watching address {}", tx_label.bright_green_bold());
+        info!(
+            "Watching address {} {}",
+            tx_label.bright_green_bold(),
+            address.addr()
+        );
+
         let watch_addr = WatchAddress {
             id,
             lifetime: self.task_lifetime(Coin::Monero),
@@ -1090,6 +1150,7 @@ impl Runtime {
                 };
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
+                self.local_params = Some(local_params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
@@ -1179,6 +1240,7 @@ impl Runtime {
                     self.maker_peer = Some(addr.clone());
                 }
                 self.enquirer = report_to.clone();
+                self.local_params = Some(local_params.clone());
                 let local_commit = self
                     .maker_commit(senders, &peerd, swap_id, &local_params)
                     .map_err(|err| {
@@ -1449,7 +1511,8 @@ impl Runtime {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         xmr_locked: true,
                                         buy_published: false,
-                                    })) = self.state
+                                        // local_params,
+                                    })) = self.state.clone()
                                     {
                                         log_tx_seen(txlabel, &tx.txid());
                                         let req = Request::Tx(Tx::Refund(tx));
@@ -1505,7 +1568,7 @@ impl Runtime {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: false,
                                         xmr_locked: false,
-                                    })) = self.state
+                                    })) = self.state.clone()
                                     {
                                         if let Some(Params::Bob(BobParameters {
                                             spend,
@@ -1543,6 +1606,7 @@ impl Runtime {
                                             let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                                 spend,
                                                 view,
+                                                self.local_params.clone(),
                                                 self.state.swap_role(),
                                                 TxLabel::AccLock,
                                             );
@@ -1577,7 +1641,8 @@ impl Runtime {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: false,
                                         xmr_locked,
-                                    })) = self.state
+                                        // local_params,
+                                    })) = self.state.clone()
                                     {
                                         if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
                                             self.broadcast(buy_tx, TxLabel::Buy, senders)?;
@@ -1585,6 +1650,7 @@ impl Runtime {
                                                 State::Alice(AliceState::RefundSigA(RefundSigA {
                                                     buy_published: true,
                                                     xmr_locked,
+                                                    // local_params,
                                                 }));
                                         } else {
                                             warn!(
@@ -1713,6 +1779,7 @@ impl Runtime {
                         let task = self.syncer_state.watch_addr_xmr(
                             spend,
                             view,
+                            self.local_params.clone(),
                             self.state.swap_role(),
                             TxLabel::AccLock,
                         );
@@ -1770,7 +1837,7 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let next_state = match self.state {
+                let next_state = match self.state.clone() {
                     State::Alice(AliceState::RevealA(_, _)) => {
                         Ok(State::Alice(AliceState::RefundSigA(RefundSigA {
                             xmr_locked: false,
