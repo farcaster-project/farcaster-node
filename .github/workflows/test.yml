@@ -11,6 +11,7 @@ env:
 
 jobs:
   static_analysis:
+    name: Static Analysis
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -22,6 +23,7 @@ jobs:
           args: --all -- --check
 
   test:
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -56,6 +58,7 @@ jobs:
           directory: ./coverage/reports/
 
   functional-test:
+    name: Functional tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
