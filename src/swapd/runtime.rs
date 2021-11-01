@@ -492,12 +492,12 @@ impl SyncerState {
     fn watch_addr_xmr(
         &mut self,
         spend_remote: monero::PublicKey,
-        view: monero::PrivateKey,
+        view_remote: monero::PrivateKey,
         local_params: Option<Params>,
         swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
-        let spend = match local_params {
+        let (spend, view) = match local_params {
             Some(Params::Alice(AliceParameters {
                 accordant_shared_keys,
                 spend,
@@ -510,8 +510,8 @@ impl SyncerState {
                     .elem()
                     .clone();
                 info!("Matched Alice");
-                let view = view + view_alice;
-                spend_remote + spend
+                let view = view_remote + view_alice;
+                (spend_remote + spend, view)
             }
             Some(Params::Bob(BobParameters {
                 accordant_shared_keys,
@@ -525,10 +525,10 @@ impl SyncerState {
                     .elem()
                     .clone();
                 info!("Matched Bob");
-                let view = view + view_bob;
-                spend_remote + spend
+                let view = view_remote + view_bob;
+                (spend_remote + spend, view)
             },
-            None => {spend_remote}
+            None => {(spend_remote, view_remote)}
         };
 
         info!("XMR view key: {}", view);
