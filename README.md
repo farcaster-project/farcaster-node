@@ -14,7 +14,7 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 
 :information_source: This work is based on LNP/BP work, this project is a fork from [LNP-BP/lnp-node](https://github.com/LNP-BP/lnp-node) since [acbb4c](https://github.com/farcaster-project/farcaster-node/commit/acbb4c467695dc3d1c02b88be97e9a6e2d434435).
 
-## Build and running
+## Build and run
 
 ### Local
 
@@ -50,35 +50,9 @@ farcasterd -vv\
     --monero-rpc-wallet http://{ip:port}
 ```
 
-### In docker
+### With docker
 
-You can use the docker image produced directly by the GitHub CI with:
-
-```
-docker run --rm -t -p 9735:9735 -p 9981:9981\
-    --name farcaster_node\
-    ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
-    -vv\
-    --electrum-server {ip:port}\
-    --monero-daemon http://{ip:port}\
-    --monero-rpc-wallet http://{ip:port}
-```
-
-or build the node image and start a container by running inside the project folder:
-
-```
-docker build -t farcasterd:latest .
-docker run --rm -t -p 9735:9735 -p 9981:9981\
-    --name farcaster_node\
-    farcasterd:latest\
-    ...
-```
-
-The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed ports `9735` and `9981` on the host.
-
-Stop the container with `docker stop farcaster_node` (ctrl+c does not work yet).
-
-:warning: this exposes the control bus on the host, only intended for debugging or on a trusted network.
+You can follow the documentation on [how to use `farcasterd` with Docker](./doc/docker-stack.md).
 
 ### Connect a client
 
@@ -89,14 +63,6 @@ If you launched `farcasterd` with the default paramters (the `--data-dir` argume
 ```
 swap-cli info
 ```
-
-It is also possible to command `farcasterd` running inside a Docker container with:
-
-```
-swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info
-```
-
-This configure the cli to connects to the exposed port `9981` of `farcasterd`.
 
 Run `help` command for more details about available commands.
 
