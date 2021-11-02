@@ -170,6 +170,10 @@ The cli will ask you to validate the offer informations (amounts, assets, etc.),
 
 Then follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when it asks so, at the end you should receive the counterparty assets.
 
+### Run a swap locally
+
+If you want to test a swap with yourself locally you can follow the instructions [here](./doc/local-swap.md).
+
 ## Releases and Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) and [RELEASING.md](RELEASING.md).
