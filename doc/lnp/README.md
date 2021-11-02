@@ -1,8 +1,8 @@
-## LNP-node original readme
 This node was forked from `lnp-node` on 2021-03-12.
 
 Below the original for `lnp-node` README.
 
+# LNP-node original readme
 
 `lnp-node` is a new Lightning Network node written from scratch in Rust. 
 Actually, it's a suite of daemons/microservices able to run both Lightning 
@@ -91,7 +91,7 @@ The node must maintain simple/modular upgradability for:
 * Pay-to-elliptic curve point lock contracts (PTLC) - replacement for HTLCs
 * eltoo
 
-See [here](/doc/demo-alpha.4) for a demo of the node capabilities as for version `v0.1.0-alpha.4`.
+See [here](./demo-alpha.4) for a demo of the node capabilities as for version `v0.1.0-alpha.4`.
 
 ## Design
 
@@ -101,7 +101,7 @@ The node (as other nodes maitained by LNP/BP Standards Association and Pandora
 Core company subsidiaries) consists of multiple microservices, communicating
 with each other via LNP ZMQ RPC interface.
 
-![Node architacture](doc/node_arch.jpeg)
+![Node architacture](./node_arch.jpeg)
 
 The set of microservices representing node can run as either:
 1) single daemon process on desktop or a server;
@@ -131,11 +131,11 @@ Other third parties provide their own nodes:
 
 The overall architecture of LNP Node is the following:
 
-![Node architacture](doc/lnp_node_arch.jpeg)
+![Node architacture](./lnp_node_arch.jpeg)
 
 More information on the service buses used in the node:
 
-![Node architacture](doc/node_esb.jpeg)
+![Node architacture](./node_esb.jpeg)
 
 
 ## Project organization & architecture
