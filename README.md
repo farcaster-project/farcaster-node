@@ -1,191 +1,43 @@
-# Farcaster-node: Atomic swap node
+# Farcaster: cross-chain atomic swaps
 
-:warning: THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET :warning:
+:warning: **THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET** :warning:
 
-## Running the node
+This project is called the **Farcaster Node**, it is _a collection of microservices for running cross-chain atomic swaps_. Currently the node is focused on Bitcoin-Monero atomic swaps, but is designed to be flexible and integrate new crypto-pairs in the future.
 
-### Clone and build the project
+Farcaster Node is build on atomic swap primitives described in the [RFCs](https://github.com/farcaster-project/RFCs) and implemented in [Farcaster Core](https://github.com/farcaster-project/farcaster-core).
 
-```
-git clone https://github.com/farcaster-project/farcaster-node.git
-cd farcaster-node
-cargo build --all-features
-```
+:information_source: This work is based on LNP/BP work, this project is a fork from [LNP-BP/lnp-node](https://github.com/LNP-BP/lnp-node) since [acbb4c](https://github.com/farcaster-project/farcaster-node/commit/acbb4c467695dc3d1c02b88be97e9a6e2d434435).
 
-### Launch full nodes, electrum, monero-wallet-rpc
-
-#### Launch bitcoind
-
-```sh
-bitcoind -server -testnet
-```
-
-#### Launch electrs (electrum server in rust)
-
-```sh
-electrs -vvvv --network testnet
-```
-
-#### Launch monerod
-
-```sh
-monerod --stagenet
-```
-
-#### Launch wallet-rpc
-
-```sh
-monero-wallet-rpc --stagenet --rpc-bind-port 18083 --disable-rpc-login --trusted-daemon --password "pw" --wallet-dir ~/.monero_wallets
-```
-
-### Launch two farcaster nodes for trading
-
-On one terminal launch the farcasterd node `node0` with `data_dir_0`
-
-```
-./target/debug/farcasterd -vv -d .data_dir_0 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
-```
-
-On a second terminal launch a second farcasterd node `node1` with `data_dir_1`
-
-```
-./target/debug/farcasterd -vv -d .data_dir_1 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
-```
-
-### Client
-
-On a third terminal
-
-Create aliases for nodes client. You will use them to make and take offers.
-
-```
-# client for node0
-alias swap0-cli="./target/debug/swap-cli -d .data_dir_0" 
-# client for node1
-alias swap1-cli="./target/debug/swap-cli -d .data_dir_1"
-```
-
-### Make and take offer
-
-### Make
-
-Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. params of make:
-
-```
-swap0-cli make --help
-```
-
-```
-ARGS:
-    <ARBITRATING_ADDR>
-            bitcoin address used as destination or refund address
-
-    <NETWORK>
-            Type of offer and network to use [default: Testnet]
-
-    <ARBITRATING_BLOCKCHAIN>
-            The chosen arbitrating blockchain [default: ECDSA]
-
-    <ACCORDANT_BLOCKCHAIN>
-            The chosen accordant blockchain [default: Monero]
-
-    <ARBITRATING_AMOUNT>
-            Amount of arbitrating assets to exchanged [default: "0.15 BTC"]
-
-    <ACCORDANT_AMOUNT>
-            Amount of accordant assets to exchanged [default: "100 XMR"]
-
-    <MAKER_ROLE>
-            The future maker swap role [default: Alice] [possible values: Alice, Bob]
-
-    <CANCEL_TIMELOCK>
-            The cancel timelock parameter of the arbitrating blockchain [default: 10]
-
-    <PUNISH_TIMELOCK>
-            The punish timelock parameter of the arbitrating blockchain [default: 30]
-
-    <FEE_STRATEGY>
-            The chosen fee strategy for the arbitrating transactions [default: "2 satoshi/vByte"]
-
-    <PUBLIC_IP_ADDR>
-            public IPv4 or IPv6 address for public offer [default: 127.0.0.1]
-
-    <BIND_IP_ADDR>
-            IPv4 or IPv6 address to bind to [default: 0.0.0.0]
-
-    <PORT>
-            Port to use; defaults to the native LN port [default: 9735]
-
-    <OVERLAY>
-            Use overlay protocol (http, websocket etc) [default: tcp]
-```
-
-The `ECDSA` below is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms:
-
-```
-swap0-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745
-```
-
-This will produce the following hex encoded offer:
-
-`4643535741500100020000008080000080080046050000000000000800102700000000000004000a00000004001e000000010800010000000000000001210002904c04c85a9d027fc44f5474438a1a98fd69bf64cef96608cb7d97a3b33b25670000000000000000000000000000000000000000000000000000000000007f000001261200`
-
-This public offer should be shared by maker with taker. It also contains information on how to connect to maker.
-
-Additionally, it adds the public offers to the set of public offers in farcasterd that will be later used to initiate the swap upon takers message
-
-### Take
-
-Taker accepts offer and connects to Maker's daemon
-
-arguments of `take`
-
-```
-    <BITCOIN_ADDRESS>
-            bitcoin address used as destination or refund address
-
-    <PUBLIC_OFFER>
-            Hex encoded offer
-```
-
-flag of interest: `--without-validation` or `-w`, for externally validated automated setups
-
-Example of taking the offer above produced by maker.
-
-```
-swap1-cli take tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j 4643535741500100020000008080000080080046050000000000000800102700000000000004000a00000004001e000000010800010000000000000001210002414dbe27712feb696a5f9f7d86eb37cb1317acc49a8a78e051dfe0c88efdff500000000000000000000000000000000000000000000000000000000000007f000001261200
-```
-
-## Remote client use
-
-Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication.
-
-### Farcasterd (Server)
-
-Here the node public key of farcasterd is derived from its secretkey included in `key.dat` file. You can launch the node first WITHOUT `-x` and `-m` to retrieve the printed pubkey, and later again on the same `-d data_dir` passing Ctl bus `-x` and Msg bus `-m` arguments:
-
-```sh
-./target/debug/farcasterd -vvvv -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" -d .data_dir_1
-```
-
-### Client
-
-And the following client can instruct the above `farcasterd` to make a offer as follows:
-
-```sh
-./target/debug/swap-cli -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" make
-```
-
-## Build and usage
+## Build and running
 
 ### Local
 
-To compile the node, please install [cargo](https://doc.rust-lang.org/cargo/),
-then run the following commands:
+To compile the node, please install [cargo](https://doc.rust-lang.org/cargo/), then run the following commands:
 
 ```bash
-sudo apt install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config
+sudo apt install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config build-essential cmake
+git clone https://github.com/farcaster-project/farcaster-node.git && cd farcaster-node
 cargo install --path . --bins --all-features --locked
+```
+
+Farcaster needs to connect to tree services to do actions on-chain and track on-chain events. Needed services are: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
+
+You can install and launch all the needed services locally by running the following commands:
+
+```sh
+bitcoind -server -testnet
+electrs --network testnet
+monerod --stagenet
+monero-wallet-rpc --stagenet --rpc-bind-port 18083\
+    --disable-rpc-login\
+    --trusted-daemon\
+    --password "pw"\
+    --wallet-dir ~/.fc_monero_wallets
+```
+
+Then start the node with the following command:
+
+```
 farcasterd -vv\
     --electrum-server {ip:port}\
     --monero-daemon http://{ip:port}\
@@ -194,25 +46,141 @@ farcasterd -vv\
 
 ### In docker
 
-You can use the docker container produced in the CI with:
+You can use the docker image produced directly by the GitHub CI with:
 
 ```
-docker run --rm -t -p 9735:9735 -p 9981:9981 --name farcaster_node ghcr.io/farcaster-project/farcaster-node/farcasterd:latest
+docker run --rm -t -p 9735:9735 -p 9981:9981\
+    --name farcaster_node\
+    ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
+    -vv\
+    --electrum-server {ip:port}\
+    --monero-daemon http://{ip:port}\
+    --monero-rpc-wallet http://{ip:port}
 ```
 
-or build the node container with `docker build -t farcasterd:latest .` inside the project folder and then run:
+or build the node image and start a container by running inside the project folder:
 
 ```
-docker run --rm -t -p 9735:9735 -p 9981:9981 --name farcaster_node farcasterd:latest
+docker build -t farcasterd:latest .
+docker run --rm -t -p 9735:9735 -p 9981:9981\
+    --name farcaster_node\
+    farcasterd:latest\
+    ...
 ```
 
 The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed ports `9735` and `9981` on the host.
 
-It is then possible to command `farcasterd` with `swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info` from the host.
-
 Stop the container with `docker stop farcaster_node` (ctrl+c does not work yet).
 
-:warning: this exposes the control bus on the host, only intended for debug or on a trusted network.
+:warning: this exposes the control bus on the host, only intended for debugging or on a trusted network.
+
+### Connect a client
+
+Once `farcasterd` is up & running you can issue commands to control its actions with a client. For the time being, only one client is provided within this repo: `swap-cli`.
+
+If you launched `farcasterd` with the default paramters (the `--data-dir` argument), `swap-cli` will be able to connect to `farcasterd` without further configuration. You can get informations about the node with (this require `swap-cli` to be installed on your host):
+
+```
+swap-cli info
+```
+
+It is also possible to command `farcasterd` running inside a Docker container with:
+
+```
+swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info
+```
+
+This configure the cli to connects to the exposed port `9981` of `farcasterd`.
+
+Run `help` command for more details about available commands.
+
+### Remote client usage
+
+Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication (also used by the Docker image to expose the control bus).
+
+The daemon is controlled though ZMQ _ctl_ socket, an internal interface for control PRC protocol communications. Another ZMQ socket is used to forward all incoming protocol messages, the _msg_ socket. Both are node internal communication channels. Message from counterparty come through `peerd` services.
+
+**Farcasterd**
+
+Here the node public key of farcasterd is derived from its secretkey included in `key.dat` file. You can launch the node first WITHOUT `-x` and `-m` to retrieve the printed pubkey, and later again on the same `-d data_dir` passing Ctl bus `-x` and Msg bus `-m` arguments:
+
+To launch `farcasterd` with network binded _control_ (`-x`) bus and _message_ bus (`-m`) instead of `ctl.rpc` and `msg.rpc` files:
+
+```
+farcasterd -vv -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb"
+```
+
+**Client**
+
+The following client can instruct the above `farcasterd` to return general informations as follows:
+
+```
+swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb" info
+```
+
+## Usage
+
+:rotating_light: **The following section focus on how to use the Farcaster Node to propose and run atomic swaps. Keep in mind that this software remains experimental and should not be used on mainnet or with any valuable assets.**
+
+When `farcasterd` is up & running and `swap-cli` is configured to connect and control it, you can make offers and/or take offers. An offer encapsulate informations about a trade of Bitcoin and Monero. One will make :hammer: an offer, e.g. a market maker, and one will try to take :moneybag: the offer. Below are the commands to use to either `make` an offer or `take` one.
+
+### :hammer: Make an offer
+
+When listening for other peers to connect, e.g. for executing a swap, a `peerd` instance is spawned and binds to the specified `address:port` in arguments, counterparty `farcasterd` can then launch its own `peerd` that connects to the listening `peerd`, the communication is then established between two nodes.
+
+:mag_right: This requires for the time being some notions about the network topology the maker node is running in, this requirement will be lifted off later when integrating Tor by default.
+
+To create an offer and spawn a listening `peerd` accepting incoming connections, run the following command:
+
+```
+swap-cli make tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
+    Testnet ECDSA Monero\
+    "0.00001350 BTC" "0.00000001 XMR"\
+    Alice 4 5 "1 satoshi/vByte"\
+    1.2.3.4\
+    0.0.0.0\
+    9735
+```
+
+The first argument is the Bitcoin address used to get the bitcoins (as a refund or when the swap completes depending on the role).
+
+Then the network and assets are specified with the amounts. The `ECDSA` below is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms.
+
+The role for the maker is specified in the offer: `Alice`, sells moneros for bitcoins, or `Bob`, sells bitcoins for moneros, with the timelock parameters for cancel and punish and the transaction fee that must be applied. Here the maker will send moneros and will receive bitcoin in his `tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf` address if the swap is successful, 4 and 5 blocks are used for the timelocks and 1 satoshi per virtual byte must be used for the Bitcoin transaction fee.
+
+Then the last three arguments in this example are: `public_ip_addr`, `bind_id_address` (default to `0.0.0.0`), and `port` (default to `9735`).
+
+:mag_right: To be able for a taker to connect and take the offer the `public_ip_addr:port` must be accessible and answered by the `peerd` binded to `bind_id_address:port`.
+
+**The public offer result**
+
+The command will ouput a hex encoded **public offer** that must be shared to anyone susceptible to take it and your `farcasterd` will register this public offer in its list, waiting for someone to connect and take it.
+
+Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when it asks so, at the end you should receive the counterparty assets.
+
+### :moneybag: Take the offer
+
+Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an hex encoded public offer, and a bitcoin address to receive bitcoins (again, as a refund or if the swap completes depending on your swap role).
+
+```
+swap-cli take tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx {hex encoded offer}
+```
+
+The cli will ask you to validate the offer informations (amounts, assets, etc.), you can use the flag of interest `--without-validation` or `-w` for externally validated automated setups.
+
+Then follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when it asks so, at the end you should receive the counterparty assets.
+
+## Releases and Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) and [RELEASING.md](RELEASING.md).
+
+## About
+
+This work is part of the Farcaster cross-chain atomic swap project, see [Farcaster Project](https://github.com/farcaster-project).
+
+## Licensing
+
+The code in this project is licensed under the [MIT License](LICENSE)
 
 ## Ways of communication
 
