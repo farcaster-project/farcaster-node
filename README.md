@@ -1,8 +1,11 @@
 # Farcaster-node: Atomic swap node
+
 :warning: THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET :warning:
 
 ## Running the node
+
 ### Clone and build the project
+
 ```
 git clone https://github.com/farcaster-project/farcaster-node.git
 cd farcaster-node
@@ -10,36 +13,43 @@ cargo build --all-features
 ```
 
 ### Launch full nodes, electrum, monero-wallet-rpc
+
 #### Launch bitcoind
-``` sh
+
+```sh
 bitcoind -server -testnet
 ```
 
 #### Launch electrs (electrum server in rust)
-``` sh
+
+```sh
 electrs -vvvv --network testnet
 ```
 
 #### Launch monerod
-``` sh
+
+```sh
 monerod --stagenet
 ```
 
 #### Launch wallet-rpc
-``` sh
+
+```sh
 monero-wallet-rpc --stagenet --rpc-bind-port 18083 --disable-rpc-login --trusted-daemon --password "pw" --wallet-dir ~/.monero_wallets
 ```
 
 ### Launch two farcaster nodes for trading
 
 On one terminal launch the farcasterd node `node0` with `data_dir_0`
+
 ```
- ./target/debug/farcasterd -vv -d .data_dir_0 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
- 
+./target/debug/farcasterd -vv -d .data_dir_0 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
 ```
+
 On a second terminal launch a second farcasterd node `node1` with `data_dir_1`
+
 ```
- ./target/debug/farcasterd -vv -d .data_dir_1 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
+./target/debug/farcasterd -vv -d .data_dir_1 --electrum-server localhost:60001 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://localhost:18083
 ```
 
 ### Client
@@ -47,6 +57,7 @@ On a second terminal launch a second farcasterd node `node1` with `data_dir_1`
 On a third terminal
 
 Create aliases for nodes client. You will use them to make and take offers.
+
 ```
 # client for node0
 alias swap0-cli="./target/debug/swap-cli -d .data_dir_0" 
@@ -55,11 +66,15 @@ alias swap1-cli="./target/debug/swap-cli -d .data_dir_1"
 ```
 
 ### Make and take offer
+
 ### Make
+
 Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. params of make:
+
 ```
 swap0-cli make --help
 ```
+
 ```
 ARGS:
     <ARBITRATING_ADDR>
@@ -111,18 +126,20 @@ The `ECDSA` below is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bi
 swap0-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745
 ```
 
-This will produce the following hex encoded offer: 
+This will produce the following hex encoded offer:
 
 `4643535741500100020000008080000080080046050000000000000800102700000000000004000a00000004001e000000010800010000000000000001210002904c04c85a9d027fc44f5474438a1a98fd69bf64cef96608cb7d97a3b33b25670000000000000000000000000000000000000000000000000000000000007f000001261200`
 
 This public offer should be shared by maker with taker. It also contains information on how to connect to maker.
 
 Additionally, it adds the public offers to the set of public offers in farcasterd that will be later used to initiate the swap upon takers message
- 
+
 ### Take
+
 Taker accepts offer and connects to Maker's daemon
 
 arguments of `take`
+
 ```
     <BITCOIN_ADDRESS>
             bitcoin address used as destination or refund address
@@ -133,25 +150,29 @@ arguments of `take`
 
 flag of interest: `--without-validation` or `-w`, for externally validated automated setups
 
+Example of taking the offer above produced by maker.
 
-Example of taking the offer above produced by maker. 
 ```
 swap1-cli take tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j 4643535741500100020000008080000080080046050000000000000800102700000000000004000a00000004001e000000010800010000000000000001210002414dbe27712feb696a5f9f7d86eb37cb1317acc49a8a78e051dfe0c88efdff500000000000000000000000000000000000000000000000000000000000007f000001261200
 ```
 
 ## Remote client use
-Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication. 
+
+Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication.
 
 ### Farcasterd (Server)
+
 Here the node public key of farcasterd is derived from its secretkey included in `key.dat` file. You can launch the node first WITHOUT `-x` and `-m` to retrieve the printed pubkey, and later again on the same `-d data_dir` passing Ctl bus `-x` and Msg bus `-m` arguments:
-``` sh
+
+```sh
 ./target/debug/farcasterd -vvvv -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" -d .data_dir_1
 ```
 
-
 ### Client
+
 And the following client can instruct the above `farcasterd` to make a offer as follows:
-``` sh
+
+```sh
 ./target/debug/swap-cli -x "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9981/?api=esb" -m "lnpz://02c21ee2baf368b389059d4d2b75b734526aec8cc629481d981d4f628844f2f114@127.0.0.1:9982/?api=esb" make
 ```
 
