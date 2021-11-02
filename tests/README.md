@@ -4,7 +4,7 @@ By default the functional tests are not run when executing `cargo test`. To run
 them, run `cargo test -- --ignored`.
 
 Before running the functional tests, start the docker containers first with
-`docker-compose up`. 
+`docker-compose up`.
 
 Docker creates and mounts a volume in the `data_dir` directory. The owner of
 this directory is the root user, so ownership has to be changed before running
@@ -18,4 +18,3 @@ expecting the following endpoints:
 - Electrs at `tcp://localhost:50001`
 - Monerod at `http://localhost:18081` run with arguments `--regtest --offline --fixed-difficulty 1`
 - Two instances of Monero-wallet-rpc at `http://localhost:18083` and `htp://localhost:18084` run with arguments `--disable-rpc-login --wallet-dir wallets`
-
