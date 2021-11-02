@@ -23,6 +23,8 @@ use monero_rpc::GetBlockHeaderSelector;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+use amplify::map;
+
 
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
@@ -45,26 +47,26 @@ state of electrum and bitcoin
 #[test]
 #[ignore] // it's too expensive
 fn bitcoin_syncer_test() {
-    bitcoin_syncer_block_height_test(true);
-    bitcoin_syncer_address_test(true);
+    // bitcoin_syncer_block_height_test(true);
+    // bitcoin_syncer_address_test(true);
     bitcoin_syncer_transaction_test(true);
-    bitcoin_syncer_broadcast_tx_test(true);
-    bitcoin_syncer_block_height_test(false);
-    bitcoin_syncer_address_test(false);
-    bitcoin_syncer_transaction_test(false);
-    bitcoin_syncer_broadcast_tx_test(false);
-    bitcoin_syncer_abort_test();
+    // bitcoin_syncer_broadcast_tx_test(true);
+    // bitcoin_syncer_block_height_test(false);
+    // bitcoin_syncer_address_test(false);
+    // bitcoin_syncer_transaction_test(false);
+    // bitcoin_syncer_broadcast_tx_test(false);
+    // bitcoin_syncer_abort_test();
 }
 
 #[tokio::test]
 #[ignore] // it's too expensive
 async fn monero_syncer_test() {
-    monero_syncer_sweep_test().await;
-    monero_syncer_block_height_test().await;
-    monero_syncer_address_test().await;
-    monero_syncer_transaction_test().await;
-    monero_syncer_broadcast_tx_test().await;
-    monero_syncer_abort_test().await;
+    // monero_syncer_sweep_test().await;
+    // monero_syncer_block_height_test().await;
+    // monero_syncer_address_test().await;
+    // monero_syncer_transaction_test().await;
+    // monero_syncer_broadcast_tx_test().await;
+    // monero_syncer_abort_test().await;
 }
 
 /*
@@ -458,6 +460,64 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
+
+    let utxos = bitcoin_rpc
+        .list_unspent(Some(100), None, None, Some(false), None)
+        .unwrap();
+    let bitcoincore_rpc::bitcoincore_rpc_json::ListUnspentResultEntry {
+        txid,
+        vout,
+        amount: in_amount,
+        ..
+    } = &utxos[0];
+    let out_amount = *in_amount - amount - amount;
+    let transaction = bitcoin_rpc
+        .create_raw_transaction_hex(
+            &[
+                bitcoincore_rpc::bitcoincore_rpc_json::CreateRawTransactionInput {
+                    txid: *txid,
+                    vout: *vout,
+                    sequence: None,
+                },
+            ],
+            &map! {address.to_string() => out_amount},
+            None,
+            None,
+        )
+        .unwrap();
+    let signed_tx = bitcoin_rpc
+        .sign_raw_transaction_with_wallet(transaction, None, None)
+        .unwrap();
+
+    let txid = signed_tx.transaction().unwrap().txid();
+    println!("txid to watch: {:?}", txid.to_string());
+
+    tx.send(SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: blocks + 5,
+            hash: txid.to_vec(),
+            confirmation_bound: 2,
+        }),
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, None, vec![0]);
+
+    println!("sending raw transaction");
+    let res = bitcoin_rpc.send_raw_transaction(&signed_tx.transaction().unwrap()).unwrap();
+    println!("res: {:?}", res);
+
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, Some(0), vec![0]);
 }
 
 fn bitcoin_syncer_abort_test() {
@@ -546,8 +606,6 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     println!("transaction broadcasted");
     let request = get_request_from_message(message);
     assert_transaction_broadcasted(request, true, None);
-
-    use amplify::map;
 
     let utxos = bitcoin_rpc
         .list_unspent(Some(100), None, None, Some(false), None)
@@ -935,6 +993,9 @@ the threshold confs are reached
 - Submit a WatchTransaction task for a mined transaction, receive confirmation events
 
 - Submit two WatchTransaction tasks in parallel, receive confirmation events for both
+
+- Create a transaction, but don't relay it, then watch it and receive a tx not
+found confirmation event. Then relay and receive further events.
 */
 async fn monero_syncer_transaction_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1042,6 +1103,56 @@ async fn monero_syncer_transaction_test() {
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
+
+    let mut destination: HashMap<Address, u64> = HashMap::new();
+    destination.insert(address, 1000);
+    let options = monero_rpc::TransferOptions {
+        account_index: None,
+        subaddr_indices: None,
+        mixin: None,
+        ring_size: None,
+        unlock_time: None,
+        payment_id: None,
+        do_not_relay: Some(true),
+    };
+    let transaction = wallet
+        .transfer(
+            destination.clone(),
+            monero_rpc::TransferPriority::Default,
+            options.clone(),
+        )
+        .await
+        .unwrap();
+    tx.send(SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: blocks + 5,
+            hash: hex::decode(transaction.tx_hash.to_string()).unwrap().into(),
+            confirmation_bound: 2,
+        }),
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, None, vec![0]);
+
+    let id = wallet.relay_tx(hex::encode(transaction.tx_metadata.0)).await;
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, Some(0), vec![0]);
+    let block_height = regtest.generate_blocks(1, address).await.unwrap();
+    let block_hash = get_block_hash_from_height(&regtest, block_height).await;
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, Some(1), block_hash);
 }
 
 async fn monero_syncer_abort_test() {
