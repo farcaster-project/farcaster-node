@@ -108,8 +108,6 @@ The daemon is controlled though ZMQ _ctl_ socket, an internal interface for cont
 
 **Farcasterd**
 
-Here the node public key of farcasterd is derived from its secretkey included in `key.dat` file. You can launch the node first WITHOUT `-x` and `-m` to retrieve the printed pubkey, and later again on the same `-d data_dir` passing Ctl bus `-x` and Msg bus `-m` arguments:
-
 To launch `farcasterd` with network binded _control_ (`-x`) bus and _message_ bus (`-m`) instead of `ctl.rpc` and `msg.rpc` files:
 
 ```
