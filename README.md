@@ -1,3 +1,11 @@
+[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/farcaster-project/farcaster-node/Build%20binaries)](https://github.com/farcaster-project/farcaster-node/actions/workflows/binaries.yml)
+[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance)
+[![Crates.io](https://img.shields.io/crates/v/farcaster_node.svg)](https://crates.io/crates/farcaster_node)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MSRV](https://img.shields.io/badge/MSRV-1.54.0-blue)](https://blog.rust-lang.org/2021/07/29/Rust-1.54.0.html)
+
+
+
 # Farcaster: cross-chain atomic swaps
 
 :warning: **THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET** :warning:
@@ -184,7 +192,7 @@ This work is part of the Farcaster cross-chain atomic swap project, see [Farcast
 
 ## Licensing
 
-The code in this project is licensed under the [MIT License](LICENSE)
+The code in this project is licensed under the [MIT License](LICENSE).
 
 ## Ways of communication
 
