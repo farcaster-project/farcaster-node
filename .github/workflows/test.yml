@@ -49,7 +49,7 @@ jobs:
 
       - id: coverage
         name: Generate coverage
-        uses: actions-rs/grcov@v0.1.5
+        uses: actions-rs/grcov@v0.1.6
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
