@@ -1,4 +1,4 @@
-name: Rust
+name: Build binaries
 
 on:
   push:
@@ -15,38 +15,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
       - name: Install dependencies
         run: sudo apt-get install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config build-essential cmake
+
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
+
       - name: Build farcaster daemon
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --bin farcasterd --features server
+
       - name: Build peer daemon
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --bin peerd --features server
+
       - name: Build swap daemon
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --bin swapd --features server
+
       - name: Build wallet daemon
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --bin walletd --features server
+
       - name: Build syncer daemon
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --bin syncerd --features server
+
       - name: Build swap CLI
         uses: actions-rs/cargo@v1
         with:
