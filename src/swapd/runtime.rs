@@ -1371,6 +1371,7 @@ impl Runtime {
                         block,
                         tx,
                     }) if self.state.swap_role() == SwapRole::Alice => {
+                        info!("Event details: {} {:?} {} {:?} {:?}", id, hash, amount, block, tx);
                         if let State::Alice(AliceState::RefundSigA(RefundSigA {
                             xmr_locked, ..
                         })) = &mut self.state
