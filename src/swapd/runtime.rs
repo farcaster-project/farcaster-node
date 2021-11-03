@@ -1127,7 +1127,7 @@ impl Runtime {
                             (State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: local_trade_role,
-                                    local_params: local_params.clone(),
+                                    local_params: local_params,
                                     local_commit: local_commit.clone(),
                                     remote_commit: None,
                                 },
@@ -1140,7 +1140,7 @@ impl Runtime {
                         Ok((
                             (State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: local_trade_role,
-                                local_params: local_params.clone(),
+                                local_params: local_params,
                                 local_commit: local_commit.clone(),
                                 remote_commit: None,
                             }))),
@@ -1167,7 +1167,7 @@ impl Runtime {
                     let swap_id = reveal_proof.swap_id();
                     self.send_peer(senders, reveal_proof)?;
                     trace!("forwarded reveal_proof");
-                    let reveal_params: Reveal = (swap_id, local_params.clone()).into();
+                    let reveal_params: Reveal = (swap_id, local_params).into();
                     self.send_peer(senders, Msg::Reveal(reveal_params))?;
                     trace!("sent reveal_proof to peerd");
                     let next_state = match self.state {
@@ -1470,8 +1470,7 @@ impl Runtime {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         xmr_locked: true,
                                         buy_published: false,
-                                        // local_params,
-                                    })) = self.state.clone()
+                                    })) = self.state
                                     {
                                         log_tx_seen(txlabel, &tx.txid());
                                         let req = Request::Tx(Tx::Refund(tx));
@@ -1527,7 +1526,7 @@ impl Runtime {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: false,
                                         xmr_locked: false,
-                                    })) = self.state.clone()
+                                    })) = self.state
                                     {
                                         if let (
                                             Some(Params::Alice(alice_params)),
