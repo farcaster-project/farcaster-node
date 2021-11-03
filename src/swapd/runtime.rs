@@ -1601,6 +1601,7 @@ impl Runtime {
                                                     .bright_green_bold(),
                                                 address.addr(),
                                             );
+                                            info!("reporting success of {} to {}", address.to_string(), self.enquirer.clone().unwrap());
                                             self.report_success_to(
                                                 senders,
                                                 self.enquirer.clone(),
