@@ -18,7 +18,12 @@ farcasterd -vv\
     --monero-rpc-wallet http://{ip:port}
 ```
 
-:bulb: You can use a public Monero stagenet daemon with `--monero-daemon http://stagenet.melo.tools:38081`.
+:bulb: You can use a public daemons with
+
+| daemon            | value                              |
+| ----------------- | ---------------------------------- |
+| `electrum-server` | `blockstream.info:143`             |
+| `monero-daemon`   | `http://stagenet.melo.tools:38081` |
 
 ## Configure `swap-cli` clients
 
