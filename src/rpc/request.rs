@@ -12,7 +12,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::{SweepXmrAddress, types::{Event, Task}};
+use crate::syncerd::{
+    types::{Event, Task},
+    SweepXmrAddress,
+};
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
 use farcaster_core::syncer::BroadcastTransaction;

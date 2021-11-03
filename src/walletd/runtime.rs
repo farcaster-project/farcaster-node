@@ -1143,12 +1143,10 @@ impl Runtime {
 
                     let viewpair = monero::ViewPair { spend, view };
                     // let address = (swapd.monero_address)(&viewpair);
-                    let address = monero::Address::from_viewpair(monero::Network::Stagenet, &viewpair);
+                    let address =
+                        monero::Address::from_viewpair(monero::Network::Stagenet, &viewpair);
 
-                    info!(
-                        "Corresponding address: {}",
-                        address.addr()
-                    );
+                    info!("Corresponding address: {}", address.addr());
 
                     let address = s!("76KwxdgtWyJQK5a27PpqT973R6s7bZ4cKWTtUG6JEyrbLQy5F4ZwdUqgKpssGQzRxnd99LKWqFjYo92b8ngS7GqD1VZBEEL");
                     let sweep_keys = SweepXmrAddress {
