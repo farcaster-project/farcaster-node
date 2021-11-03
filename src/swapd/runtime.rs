@@ -452,6 +452,7 @@ impl SyncerState {
             confirmation_bound: self.confirmation_bound,
         })
     }
+
     fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
@@ -492,45 +493,11 @@ impl SyncerState {
 
     fn watch_addr_xmr(
         &mut self,
-        spend_remote: monero::PublicKey,
-        view_remote: monero::PrivateKey,
-        local_params: Option<Params>,
+        spend: monero::PublicKey,
+        view: monero::PrivateKey,
         swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
-        let (spend, view) = match local_params {
-            Some(Params::Alice(AliceParameters {
-                accordant_shared_keys,
-                spend,
-                ..
-            })) => {
-                let view_alice = accordant_shared_keys
-                    .into_iter()
-                    .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                    .unwrap()
-                    .elem()
-                    .clone();
-                info!("Matched Alice");
-                let view = view_remote + view_alice;
-                (spend_remote + spend, view)
-            }
-            Some(Params::Bob(BobParameters {
-                accordant_shared_keys,
-                spend,
-                ..
-            })) => {
-                let view_bob = accordant_shared_keys
-                    .into_iter()
-                    .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                    .unwrap()
-                    .elem()
-                    .clone();
-                info!("Matched Bob");
-                let view = view_remote + view_bob;
-                (spend_remote + spend, view)
-            },
-            None => {(spend_remote, view_remote)}
-        };
 
         info!("XMR view key: {}", view);
         info!("XMR spend key: {}", spend);
@@ -1573,21 +1540,15 @@ impl Runtime {
                                         xmr_locked: false,
                                     })) = self.state.clone()
                                     {
-                                        if let Some(Params::Bob(BobParameters {
-                                            spend,
-                                            accordant_shared_keys,
-                                            ..
-                                        })) = self.remote_params.clone()
+                                        if let (
+                                            Some(Params::Alice(alice_params)),
+                                            Some(Params::Bob(bob_params)),
+                                        ) = (&self.local_params, &self.remote_params)
                                         {
-                                            let view = accordant_shared_keys
-                                                .into_iter()
-                                                .find(|vk| {
-                                                    vk.tag()
-                                                        == &SharedKeyId::new(SHARED_VIEW_KEY_ID)
-                                                })
-                                                .unwrap()
-                                                .elem()
-                                                .clone();
+                                            let (spend, view) = aggregate_xmr_spend_view(
+                                                &alice_params,
+                                                &bob_params,
+                                            );
                                             let viewpair = monero::ViewPair { spend, view };
                                             let address = monero::Address::from_viewpair(
                                                 self.syncer_state.network.into(),
@@ -1601,7 +1562,11 @@ impl Runtime {
                                                     .bright_green_bold(),
                                                 address.addr(),
                                             );
-                                            info!("reporting success of {} to {}", address.to_string(), self.enquirer.clone().unwrap());
+                                            info!(
+                                                "reporting success of {} to {}",
+                                                address.to_string(),
+                                                self.enquirer.clone().unwrap()
+                                            );
                                             self.report_success_to(
                                                 senders,
                                                 self.enquirer.clone(),
@@ -1610,7 +1575,6 @@ impl Runtime {
                                             let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                                 spend,
                                                 view,
-                                                self.local_params.clone(),
                                                 self.state.swap_role(),
                                                 TxLabel::AccLock,
                                             );
@@ -1768,22 +1732,13 @@ impl Runtime {
                 if let State::Bob(BobState::CorearbB(..)) = self.state {
                     info!("received {}", TxLabel::Lock);
                     self.broadcast(btc_lock, TxLabel::Lock, senders)?;
-                    if let Some(Params::Alice(AliceParameters {
-                        spend,
-                        accordant_shared_keys,
-                        ..
-                    })) = self.remote_params.clone()
+                    if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
+                        (&self.local_params, &self.remote_params)
                     {
-                        let view = accordant_shared_keys
-                            .into_iter()
-                            .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-                            .unwrap()
-                            .elem()
-                            .clone();
+                        let (spend, view) = aggregate_xmr_spend_view(&alice_params, &bob_params);
                         let task = self.syncer_state.watch_addr_xmr(
                             spend,
                             view,
-                            self.local_params.clone(),
                             self.state.swap_role(),
                             TxLabel::AccLock,
                         );
@@ -2044,6 +1999,29 @@ fn log_tx_seen(txlabel: &TxLabel, txid: &Txid) {
 
 fn log_tx_received(txlabel: TxLabel) {
     info!("received tx {} from {}", txlabel, ServiceId::Wallet);
+}
+
+fn aggregate_xmr_spend_view(
+    alice_params: &AliceParameters<BtcXmr>,
+    bob_params: &BobParameters<BtcXmr>,
+) -> (monero::PublicKey, monero::PrivateKey) {
+    let alice_view = alice_params
+        .accordant_shared_keys
+        .clone()
+        .into_iter()
+        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+        .unwrap()
+        .elem()
+        .clone();
+    let bob_view = bob_params
+        .accordant_shared_keys
+        .clone()
+        .into_iter()
+        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+        .unwrap()
+        .elem()
+        .clone();
+    (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 
 #[derive(Debug)]
