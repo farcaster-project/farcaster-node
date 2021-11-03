@@ -501,14 +501,6 @@ impl SyncerState {
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
 
-        if swap_role == SwapRole::Alice {
-            info!(
-                "Alice, please send {} to {}",
-                self.monero_amount.to_string().bright_green_bold(),
-                address.addr(),
-            );
-        }
-
         let from_height = self.from_height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
