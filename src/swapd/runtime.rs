@@ -13,11 +13,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::{
-    syncerd::{
-        opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepXmrAddress,
-        WatchHeight, XmrAddressAddendum,
-    },
+use crate::syncerd::{
+    opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepXmrAddress,
+    WatchHeight, XmrAddressAddendum,
 };
 use std::{
     any::Any,
@@ -498,14 +496,10 @@ impl SyncerState {
         swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
-
         info!("XMR view key: {}", view);
         info!("XMR spend key: {}", spend);
         let viewpair = monero::ViewPair { spend, view };
-        let address = monero::Address::from_viewpair(
-            self.network.into(),
-            &viewpair,
-        );
+        let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
 
         if swap_role == SwapRole::Alice {
             info!(
@@ -1339,7 +1333,10 @@ impl Runtime {
                         block,
                         tx,
                     }) if self.state.swap_role() == SwapRole::Alice => {
-                        info!("Event details: {} {:?} {} {:?} {:?}", id, hash, amount, block, tx);
+                        info!(
+                            "Event details: {} {:?} {} {:?} {:?}",
+                            id, hash, amount, block, tx
+                        );
                         if let State::Alice(AliceState::RefundSigA(RefundSigA {
                             xmr_locked, ..
                         })) = &mut self.state
