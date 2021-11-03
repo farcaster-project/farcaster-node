@@ -596,7 +596,7 @@ impl SyncerState {
 
     fn acc_lock_watched(&self) -> bool {
         self.tasks
-            .watched_txs
+            .watched_addrs
             .values()
             .find(|&&x| x == TxLabel::AccLock)
             .is_some()
