@@ -456,9 +456,10 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
-            "Watching tx {} {}",
+            "Watching tx {} {} with id {}",
             tx_label.bright_green_bold(),
-            hex::encode(&hash).addr()
+            hex::encode(&hash).addr(),
+            id
         );
         Task::WatchTransaction(WatchTransaction {
             id,
