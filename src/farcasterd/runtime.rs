@@ -213,7 +213,8 @@ impl Runtime {
                         &public_offer
                     );
                     if let Some(arb_addr) = self.arb_addrs.remove(&public_offer.id()) {
-                        let btc_addr_req = Request::BitcoinAddress(BitcoinAddress(*swap_id, arb_addr));
+                        let btc_addr_req =
+                            Request::BitcoinAddress(BitcoinAddress(*swap_id, arb_addr));
                         senders.send_to(
                             ServiceBus::Msg,
                             self.identity(),
@@ -680,12 +681,12 @@ impl Runtime {
                     let PublicOffer {
                         version,
                         offer,
-                        node_id, // bitcoin::Pubkey
-                        peer_address,   // InetSocketAddr
+                        node_id,      // bitcoin::Pubkey
+                        peer_address, // InetSocketAddr
                     } = public_offer.clone();
 
                     let daemon_service = internet2::RemoteNodeAddr {
-                        node_id,                           // checked above
+                        node_id,                                           // checked above
                         remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
                     };
                     let peer = daemon_service
@@ -759,14 +760,31 @@ impl Runtime {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
                 };
+                let identity = self.identity();
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 queue.push_back(request);
             }
             Request::ReadProgress(swapid) => {
                 let id = &ServiceId::Swap(swapid);
+                let identify = self.identity();
                 if let Some(queue) = self.progress.get_mut(id) {
-                    for req in queue.iter() {
-                        report_to.push((Some(source.clone()), req.clone()))
+                    let n = queue.len();
+
+                    for (i, req) in queue.iter().enumerate() {
+                        let x = match req {
+                            Request::Progress(x)
+                            | Request::Success(OptionDetails(Some(x)))
+                            | Request::Failure(Failure { code: _, info: x }) => x,
+                            _ => unreachable!("not handled here"),
+                        };
+                        let req = if i < n - 1 {
+                            Request::Progress(x.clone())
+                        } else {
+                            Request::Success(OptionDetails(Some(x.clone())))
+                        };
+                        report_to.push((Some(source.clone()), req));
+                        // senders.send_to(ServiceBus::Ctl, identify.clone(),
+                        // source.clone(), req)?;
                     }
                 }
             }

@@ -338,6 +338,9 @@ async fn run_syncerd_task_receiver(
             match syncerd_task {
                 Ok(syncerd_task) => {
                     match syncerd_task.task {
+                        Task::SweepAddress(_) => {
+                            error!("sweep address not implemented for bitcoin syncer");
+                        }
                         Task::Abort(task) => {
                             let mut state_guard = state.lock().await;
                             state_guard.abort(task.id, syncerd_task.source).await;

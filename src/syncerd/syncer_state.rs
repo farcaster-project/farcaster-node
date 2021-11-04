@@ -1,4 +1,4 @@
-use crate::farcaster_core::consensus::Decodable;
+use crate::farcaster_core::{blockchain::Network, consensus::Decodable};
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::syncerd::opts::Coin;
 use crate::syncerd::runtime::SyncerdTask;
@@ -25,6 +25,7 @@ pub struct SyncerState {
     pub addresses: HashMap<u32, AddressTransactions>,
     pub transactions: HashMap<u32, WatchedTransaction>,
     pub unseen_transactions: HashSet<u32>,
+    pub sweep_addresses: HashMap<u32, SweepAddress>,
     tx_event: TokioSender<SyncerdBridgeEvent>,
     task_count: u32,
 }
@@ -63,6 +64,7 @@ impl SyncerState {
             addresses: HashMap::new(),
             transactions: HashMap::new(),
             unseen_transactions: HashSet::new(),
+            sweep_addresses: HashMap::new(),
             tx_event,
             task_count: 0,
         }
@@ -75,9 +77,9 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, address_transaction)| {
                 if address_transaction.task.id == task_id {
-                    return Some(id.clone());
+                    Some(id.clone())
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
@@ -107,9 +109,9 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, watched_transaction)| {
                 if watched_transaction.task.id == task_id {
-                    return Some(id.clone());
+                    Some(id.clone())
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
@@ -139,9 +141,9 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, watch_height)| {
                 if watch_height.id == task_id {
-                    return Some(id.clone());
+                    Some(id.clone())
                 } else {
-                    return None;
+                    None
                 }
             })
             .collect();
@@ -149,6 +151,38 @@ impl SyncerState {
             if let Some(source_id) = self.tasks_sources.get(&id) {
                 if *source_id == source {
                     self.remove_height(id);
+                    send_event(
+                        &self.tx_event,
+                        &mut vec![(
+                            Event::TaskAborted(TaskAborted {
+                                id: task_id.clone(),
+                                error: None,
+                            }),
+                            source.clone(),
+                        )],
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
+
+        // check sweep address tasks
+        let ids: Vec<u32> = self
+            .sweep_addresses
+            .iter()
+            .filter_map(|(id, sweep_address)| {
+                if sweep_address.id == task_id {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for id in ids.iter() {
+            if let Some(source_id) = self.tasks_sources.get(&id) {
+                if *source_id == source {
+                    self.remove_sweep_address(id);
                     send_event(
                         &self.tx_event,
                         &mut vec![(
@@ -243,6 +277,18 @@ impl SyncerState {
             },
         );
         self.unseen_transactions.insert(self.task_count);
+    }
+
+    pub fn sweep_address(&mut self, task: SweepAddress, source: ServiceId) {
+        self.task_count += 1;
+        // This is technically valid behavior; immediately prune the task for being past
+        // its lifetime by never inserting it
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+            error!("{}", e);
+            return;
+        }
+        self.sweep_addresses.insert(self.task_count, task.clone());
+        self.tasks_sources.insert(self.task_count, source.clone());
     }
 
     pub async fn change_height(&mut self, height: u64, block: Vec<u8>) {
@@ -394,9 +440,7 @@ impl SyncerState {
                     if confirmations.is_some() {
                         unseen_transactions.remove(&id);
                     } else {
-                        if !unseen_transactions.contains(&id) {
-                            unseen_transactions.insert(id.clone());
-                        }
+                        unseen_transactions.insert(id.clone());
                     }
                     let transaction_confirmations = if confirmations
                         != watched_tx.transaction_confirmations.confirmations
@@ -434,6 +478,33 @@ impl SyncerState {
         send_event(&self.tx_event, &mut events).await;
     }
 
+    pub async fn success_sweep(&mut self, id: &u32, txids: Vec<Vec<u8>>) {
+        if let Some(sweep_address) = self.sweep_addresses.get(id) {
+            send_event(
+                &self.tx_event,
+                &mut vec![(
+                    Event::SweepSuccess(SweepSuccess {
+                        id: sweep_address.id,
+                        txids,
+                    }),
+                    self.tasks_sources
+                        .get(&id)
+                        .cloned()
+                        .expect("task source missing"),
+                )],
+            )
+            .await;
+            if let Some(ids) = self.lifetimes.get_mut(&sweep_address.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&sweep_address.lifetime);
+                }
+            }
+            self.sweep_addresses.remove(id);
+            self.tasks_sources.remove(id);
+        }
+    }
+
     fn drop_lifetimes(&mut self) {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
@@ -466,6 +537,7 @@ impl SyncerState {
                 self.transactions.remove(task);
                 self.unseen_transactions.remove(task);
                 self.watch_height.remove(task);
+                self.sweep_addresses.remove(task);
                 self.tasks_sources.remove(task);
             }
         } else {
@@ -512,6 +584,19 @@ impl SyncerState {
         self.watch_height.remove(id);
         self.tasks_sources.remove(id);
     }
+
+    fn remove_sweep_address(&mut self, id: &u32) {
+        if let Some(sweep_address) = self.sweep_addresses.get(id) {
+            if let Some(ids) = self.lifetimes.get_mut(&sweep_address.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&sweep_address.lifetime);
+                }
+            }
+        }
+        self.sweep_addresses.remove(id);
+        self.tasks_sources.remove(id);
+    }
 }
 
 async fn send_event(
@@ -548,25 +633,15 @@ async fn syncer_state_transaction() {
         confirmation_bound: 4,
     };
     let height_task = WatchHeight { id: 0, lifetime: 4 };
+    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
-    state.watch_transaction(
-        transaction_task_one.clone(),
-        ServiceId::Syncer(Coin::Bitcoin),
-    );
-    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    state.watch_transaction(transaction_task_one.clone(), source1.clone());
+    state.abort(0, source1.clone()).await;
     assert!(event_rx.try_recv().is_ok());
 
-    state.watch_transaction(
-        transaction_task_one.clone(),
-        ServiceId::Syncer(Coin::Bitcoin),
-    );
-    state.watch_transaction(
-        transaction_task_two.clone(),
-        ServiceId::Syncer(Coin::Bitcoin),
-    );
-    state
-        .watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin))
-        .await;
+    state.watch_transaction(transaction_task_one.clone(), source1.clone());
+    state.watch_transaction(transaction_task_two.clone(), source1.clone());
+    state.watch_height(height_task, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -619,11 +694,9 @@ async fn syncer_state_transaction() {
     assert_eq!(state.unseen_transactions.len(), 2);
     assert!(event_rx.try_recv().is_ok());
 
-    state.watch_transaction(
-        transaction_task_two.clone(),
-        ServiceId::Syncer(Coin::Monero),
-    );
-    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
+    state.watch_transaction(transaction_task_two.clone(), source2.clone());
+    state.abort(0, source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -665,19 +738,18 @@ async fn syncer_state_addresses() {
         addendum: addendum.clone(),
         include_tx: Boolean::False,
     };
+    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
     state
-        .watch_address(address_task_two.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .watch_address(address_task_two.clone(), source1.clone())
         .unwrap();
-    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    state.abort(0, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.addresses.len(), 0);
     assert!(event_rx.try_recv().is_ok());
 
-    state
-        .watch_address(address_task, ServiceId::Syncer(Coin::Bitcoin))
-        .unwrap();
+    state.watch_address(address_task, source1.clone()).unwrap();
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -763,10 +835,11 @@ async fn syncer_state_addresses() {
     assert!(event_rx.try_recv().is_ok());
     assert!(event_rx.try_recv().is_ok());
 
+    let source2 = ServiceId::Syncer(Coin::Monero, Network::Testnet);
     state
-        .watch_address(address_task_two.clone(), ServiceId::Syncer(Coin::Monero))
+        .watch_address(address_task_two.clone(), source2.clone())
         .unwrap();
-    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    state.abort(0, source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -774,9 +847,7 @@ async fn syncer_state_addresses() {
 
     state.change_height(1, vec![0]).await;
     let height_task = WatchHeight { id: 0, lifetime: 3 };
-    state
-        .watch_height(height_task, ServiceId::Syncer(Coin::Bitcoin))
-        .await;
+    state.watch_height(height_task, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
     assert!(event_rx.try_recv().is_ok());
@@ -795,6 +866,53 @@ async fn syncer_state_addresses() {
 }
 
 #[tokio::test]
+async fn syncer_state_sweep_addresses() {
+    use std::str::FromStr;
+    use tokio::sync::mpsc::Receiver as TokioReceiver;
+    let (event_tx, mut event_rx): (
+        TokioSender<SyncerdBridgeEvent>,
+        TokioReceiver<SyncerdBridgeEvent>,
+    ) = tokio::sync::mpsc::channel(120);
+    let mut state = SyncerState::new(event_tx.clone());
+    let sweep_task = SweepAddress {
+        id: 0,
+        lifetime: 11,
+        addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
+            view_key: monero::PrivateKey::from_str(
+                "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
+            )
+            .unwrap(),
+            spend_key: monero::PrivateKey::from_str(
+                "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
+            )
+            .unwrap(),
+            address: "address".to_string(),
+        }),
+    };
+    let source1 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
+
+    state.sweep_address(sweep_task.clone(), source1.clone());
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.sweep_addresses.len(), 1);
+    state.abort(0, source1.clone()).await;
+    assert_eq!(state.lifetimes.len(), 0);
+    assert_eq!(state.tasks_sources.len(), 0);
+    assert_eq!(state.sweep_addresses.len(), 0);
+    assert!(event_rx.try_recv().is_ok());
+
+    state.sweep_address(sweep_task, source1.clone());
+    assert_eq!(state.lifetimes.len(), 1);
+    assert_eq!(state.tasks_sources.len(), 1);
+    assert_eq!(state.sweep_addresses.len(), 1);
+    state.success_sweep(&2, vec![vec![0]]).await;
+    assert_eq!(state.lifetimes.len(), 0);
+    assert_eq!(state.tasks_sources.len(), 0);
+    assert_eq!(state.sweep_addresses.len(), 0);
+    assert!(event_rx.try_recv().is_ok());
+}
+
+#[tokio::test]
 async fn syncer_state_height() {
     use tokio::sync::mpsc::Receiver as TokioReceiver;
     let (event_tx, mut event_rx): (
@@ -804,24 +922,22 @@ async fn syncer_state_height() {
     let mut state = SyncerState::new(event_tx.clone());
     let height_task = WatchHeight { id: 0, lifetime: 0 };
     let another_height_task = WatchHeight { id: 0, lifetime: 3 };
+    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
     state
-        .watch_height(height_task.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .watch_height(height_task.clone(), source1.clone())
         .await;
-    state.abort(0, ServiceId::Syncer(Coin::Bitcoin)).await;
+    state.abort(0, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .watch_height(height_task.clone(), ServiceId::Syncer(Coin::Bitcoin))
+        .watch_height(height_task.clone(), source1.clone())
         .await;
     state
-        .watch_height(
-            another_height_task.clone(),
-            ServiceId::Syncer(Coin::Bitcoin),
-        )
+        .watch_height(another_height_task.clone(), source1.clone())
         .await;
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
@@ -846,10 +962,11 @@ async fn syncer_state_height() {
     assert_eq!(state.watch_height.len(), 1);
     assert!(event_rx.try_recv().is_err());
 
+    let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
     state
-        .watch_height(another_height_task.clone(), ServiceId::Syncer(Coin::Monero))
+        .watch_height(another_height_task.clone(), source2.clone())
         .await;
-    state.abort(0, ServiceId::Syncer(Coin::Monero)).await;
+    state.abort(0, source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);

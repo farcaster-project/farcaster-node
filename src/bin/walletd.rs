@@ -31,11 +31,11 @@ extern crate log;
 
 use clap::Clap;
 
+use farcaster_node::Config;
 use farcaster_node::{
     rpc::request::Token,
     walletd::{self, Opts},
 };
-use farcaster_node::Config;
 
 fn main() {
     let mut opts = Opts::parse();

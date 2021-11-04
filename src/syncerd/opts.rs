@@ -13,6 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, Clap};
+use farcaster_core::blockchain;
 use std::str::FromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -82,3 +83,11 @@ impl Opts {
         self.shared.process();
     }
 }
+
+// fn into(network: &farcaster_core::blockchain::Network) -> monero::Network {
+//     match network {
+//         blockchain::Network::Mainnet => monero::Network::Mainnet,
+//         blockchain::Network::Testnet => monero::Network::Stagenet,
+//         blockchain::Network::Local => monero::Network::Mainnet,
+//     }
+// }

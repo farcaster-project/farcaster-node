@@ -28,6 +28,36 @@ pub struct XmrAddressAddendum {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
+pub struct SweepAddress {
+    pub id: u32,
+    pub lifetime: u64,
+    pub addendum: SweepAddressAddendum,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub enum SweepAddressAddendum {
+    Monero(SweepXmrAddress),
+    Bitcoin(SweepBitcoinAddress),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct SweepXmrAddress {
+    pub spend_key: monero::PrivateKey,
+    pub view_key: monero::PrivateKey,
+    pub address: String,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct SweepBitcoinAddress {
+    pub private_key: [u8; 32],
+    pub address: bitcoin::Address,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
 pub struct Abort {
     pub id: u32,
 }
@@ -90,6 +120,7 @@ pub enum Task {
     WatchAddress(WatchAddress),
     WatchTransaction(WatchTransaction),
     BroadcastTransaction(BroadcastTransaction),
+    SweepAddress(SweepAddress),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -133,6 +164,13 @@ pub struct TransactionBroadcasted {
     pub error: Option<String>,
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct SweepSuccess {
+    pub id: u32,
+    pub txids: Vec<Vec<u8>>,
+}
+
 /// Events returned by syncers to the daemon to update the blockchain states.
 /// Events are identified with a unique 32-bits integer that match the [`Task`]
 /// id.
@@ -144,6 +182,7 @@ pub enum Event {
     AddressTransaction(AddressTransaction),
     TransactionConfirmations(TransactionConfirmations),
     TransactionBroadcasted(TransactionBroadcasted),
+    SweepSuccess(SweepSuccess),
     /// Notify the daemon the task has been aborted with success or failure.
     /// Carries the status for the task abortion.
     TaskAborted(TaskAborted),

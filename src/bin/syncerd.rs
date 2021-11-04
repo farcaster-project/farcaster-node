@@ -53,7 +53,8 @@ fn main() {
         monero_daemon: opts.shared.monero_daemon,
         monero_rpc_wallet: opts.shared.monero_rpc_wallet,
     };
-    syncerd::run(config, opts.coin, opts.network, syncer_servers).expect("Error running syncerd runtime");
+    syncerd::run(config, opts.coin, opts.network, syncer_servers)
+        .expect("Error running syncerd runtime");
 
     unreachable!()
 }

@@ -9,7 +9,7 @@ use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::syncer_state::create_set;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
-use crate::syncerd::types::{AddressAddendum, Task};
+use crate::syncerd::types::{AddressAddendum, SweepAddressAddendum, Task};
 use crate::syncerd::Event;
 use crate::syncerd::SyncerServers;
 use crate::syncerd::TransactionBroadcasted;
@@ -18,15 +18,14 @@ use internet2::zmqsocket::{Connection, ZmqType};
 use internet2::PlainTranscoder;
 use lnpbp::chain::Chain;
 use monero::Hash;
-use monero_rpc::GenerateFromKeysArgs;
-use monero_rpc::GetBlockHeaderSelector;
-use monero_rpc::GetTransfersCategory;
-use monero_rpc::GetTransfersSelector;
-use monero_rpc::TransferType;
+use monero_rpc::{
+    GenerateFromKeysArgs, GetBlockHeaderSelector, GetTransfersCategory, GetTransfersSelector,
+    TransferType,
+};
 use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::TryRecvError;
+use std::str::FromStr;
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::Receiver as TokioReceiver;
@@ -43,6 +42,7 @@ pub struct MoneroRpc {
     block_hash: Vec<u8>,
 }
 
+#[derive(Debug)]
 pub struct Block {
     height: u64,
     block_hash: Vec<u8>,
@@ -152,14 +152,16 @@ impl MoneroRpc {
         &mut self,
         address_addendum: XmrAddressAddendum,
         network: monero::Network,
+        wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
     ) -> Result<AddressNotif, Error> {
         let keypair = monero::ViewPair {
             spend: address_addendum.spend_key,
             view: address_addendum.view_key,
         };
         let address = monero::Address::from_viewpair(network, &keypair);
-        let wallet = monero_rpc::RpcClient::new(self.wallet_rpc_url.clone()).wallet();
         let password = s!(" ");
+
+        let wallet = wallet_mutex.lock().await;
 
         match wallet
             .open_wallet(address.to_string(), Some(password.clone()))
@@ -203,6 +205,7 @@ impl MoneroRpc {
         };
 
         let mut transfers = wallet.get_transfers(selector).await?;
+        drop(wallet);
 
         let mut address_txs: Vec<AddressTx> = vec![];
         for (_category, mut txs) in transfers.drain() {
@@ -218,6 +221,77 @@ impl MoneroRpc {
 
         Ok(AddressNotif { txs: address_txs })
     }
+}
+
+async fn sweep_address(
+    dest_address: monero::Address,
+    view: monero::PrivateKey,
+    spend: monero::PrivateKey,
+    network: &monero::Network,
+    wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
+) -> Result<Option<Vec<Vec<u8>>>, Error> {
+    let keypair = monero::KeyPair { view, spend };
+    let password = s!(" ");
+    let address = monero::Address::from_keypair(*network, &keypair);
+
+    let wallet = wallet_mutex.lock().await;
+
+    match wallet
+        .open_wallet(address.to_string(), Some(password.clone()))
+        .await
+    {
+        Ok(_) => {}
+        Err(err) => {
+            debug!(
+                "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
+                err,
+            );
+            wallet
+                .generate_from_keys(GenerateFromKeysArgs {
+                    restore_height: Some(1),
+                    filename: address.to_string(),
+                    address,
+                    spendkey: Some(keypair.spend),
+                    viewkey: keypair.view,
+                    password: password.clone(),
+                    autosave_current: Some(true),
+                })
+                .await?;
+            wallet
+                .open_wallet(address.to_string(), Some(password))
+                .await?;
+        }
+    }
+
+    wallet.refresh(Some(1)).await?;
+
+    let balance = wallet.get_balance(0, None).await?;
+    // only sweep once all the balance is unlocked
+    if balance.balance >= balance.unlocked_balance {
+        let sweep_args = monero_rpc::SweepAllArgs {
+            address: dest_address,
+            account_index: 0,
+            subaddr_indices: None,
+            priority: monero_rpc::TransferPriority::Default,
+            mixin: 10,
+            ring_size: 11,
+            unlock_time: 0,
+            get_tx_keys: None,
+            below_amount: None,
+            do_not_relay: None,
+            get_tx_hex: None,
+            get_tx_metadata: None,
+        };
+        let res = wallet.sweep_all(sweep_args).await?;
+        let tx_ids: Vec<Vec<u8>> = res
+            .tx_hash_list
+            .iter()
+            .map(|hash| hex::decode(hash.to_string()).unwrap())
+            .collect();
+
+        return Ok(Some(tx_ids));
+    }
+    Ok(None)
 }
 
 pub struct MoneroSyncer {}
@@ -243,6 +317,18 @@ async fn run_syncerd_task_receiver(
             match syncerd_task {
                 Ok(syncerd_task) => {
                     match syncerd_task.task {
+                        Task::SweepAddress(task) => match task.addendum.clone() {
+                            SweepAddressAddendum::Monero(_) => {
+                                info!("sweeping to address: {}", task);
+                                let mut state_guard = state.lock().await;
+                                state_guard.sweep_address(task, syncerd_task.source);
+                            }
+                            _ => {
+                                error!("Aborting sweep address task - unable to decode sweep address addendum");
+                                let mut state_guard = state.lock().await;
+                                state_guard.abort(task.id, syncerd_task.source).await;
+                            }
+                        },
                         Task::Abort(task) => {
                             let mut state_guard = state.lock().await;
                             state_guard.abort(task.id, syncerd_task.source).await;
@@ -295,6 +381,7 @@ fn address_polling(
     state: Arc<Mutex<SyncerState>>,
     syncer_servers: SyncerServers,
     network: monero::Network,
+    wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         let mut rpc = MoneroRpc::new(
@@ -314,7 +401,11 @@ fn address_polling(
                 // wallet
                 let mut address_transactions = None;
                 match rpc
-                    .check_address(address_addendum.clone(), network.clone())
+                    .check_address(
+                        address_addendum.clone(),
+                        network.clone(),
+                        Arc::clone(&wallet_mutex),
+                    )
                     .await
                 {
                     Ok(addr_txs) => {
@@ -387,6 +478,48 @@ fn height_polling(
                 }
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    })
+}
+
+fn sweep_polling(
+    state: Arc<Mutex<SyncerState>>,
+    wallet: Arc<Mutex<monero_rpc::WalletClient>>,
+    network: monero::Network,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        loop {
+            let state_guard = state.lock().await;
+            let sweep_addresses = state_guard.sweep_addresses.clone();
+            drop(state_guard);
+            for (id, sweep_address_task) in sweep_addresses.iter() {
+                if let SweepAddressAddendum::Monero(addendum) = sweep_address_task.addendum.clone()
+                {
+                    let mut sweep_address_txs = None;
+                    match sweep_address(
+                        monero::Address::from_str(&addendum.address).unwrap(),
+                        addendum.view_key,
+                        addendum.spend_key,
+                        &network,
+                        Arc::clone(&wallet),
+                    )
+                    .await
+                    {
+                        Ok(val) => {
+                            sweep_address_txs = val;
+                        }
+                        Err(err) => {
+                            trace!("error polling sweep address {:?}, retrying", err);
+                        }
+                    }
+                    if let Some(txids) = sweep_address_txs {
+                        let mut state_guard = state.lock().await;
+                        state_guard.success_sweep(id, txids).await;
+                        drop(state_guard);
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     })
 }
@@ -473,6 +606,18 @@ impl Synclet for MoneroSyncer {
         if !polling {
             error!("monero syncer only supports polling for now - switching to polling=true");
         }
+        let network = match chain.clone() {
+            Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
+            Chain::Testnet3 => monero::Network::Stagenet,
+            Chain::Signet => monero::Network::Testnet,
+            _ => {
+                error!(
+                    "invalid chain type for monero: {}- switching to mainnet",
+                    chain
+                );
+                monero::Network::Mainnet
+            }
+        };
         let _handle = std::thread::spawn(move || {
             use tokio::runtime::Builder;
             let rt = Builder::new_multi_thread()
@@ -481,6 +626,9 @@ impl Synclet for MoneroSyncer {
                 .build()
                 .unwrap();
             rt.block_on(async {
+                let wallet_mutex = Arc::new(Mutex::new(
+                    monero_rpc::RpcClient::new(syncer_servers.monero_rpc_wallet.clone()).wallet(),
+                ));
                 let (event_tx, event_rx): (
                     TokioSender<SyncerdBridgeEvent>,
                     TokioReceiver<SyncerdBridgeEvent>,
@@ -495,21 +643,12 @@ impl Synclet for MoneroSyncer {
                 .await;
                 run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
 
-                let network = match chain.clone() {
-                    Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
-                    Chain::Testnet3 => monero::Network::Stagenet,
-                    Chain::Signet => monero::Network::Testnet,
-                    _ => {
-                        error!(
-                            "invalid chain type for monero: {}- switching to mainnet",
-                            chain
-                        );
-                        monero::Network::Mainnet
-                    }
-                };
-
-                let address_handle =
-                    address_polling(Arc::clone(&state), syncer_servers.clone(), network);
+                let address_handle = address_polling(
+                    Arc::clone(&state),
+                    syncer_servers.clone(),
+                    network.clone(),
+                    Arc::clone(&wallet_mutex),
+                );
 
                 // transaction polling is done in the same loop
                 let height_handle = height_polling(Arc::clone(&state), syncer_servers.clone());
@@ -517,8 +656,15 @@ impl Synclet for MoneroSyncer {
                 let unseen_transaction_handle =
                     unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone());
 
-                let res =
-                    tokio::try_join!(address_handle, height_handle, unseen_transaction_handle);
+                let sweep_handle =
+                    sweep_polling(Arc::clone(&state), Arc::clone(&wallet_mutex), network);
+
+                let res = tokio::try_join!(
+                    address_handle,
+                    height_handle,
+                    unseen_transaction_handle,
+                    sweep_handle
+                );
                 debug!("exiting monero synclet run routine with: {:?}", res);
             });
         });
