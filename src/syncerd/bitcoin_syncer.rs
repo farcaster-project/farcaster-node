@@ -429,6 +429,7 @@ fn address_polling(
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
+            info!("connecting to electrum server for address polling: {:?}", syncer_servers.electrum_server);
             let mut rpc = match ElectrumRpc::new(&syncer_servers.electrum_server, polling) {
                 Ok(client) => client,
                 Err(err) => {

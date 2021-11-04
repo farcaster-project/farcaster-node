@@ -1148,7 +1148,8 @@ impl Runtime {
 
                     info!("Corresponding address: {}", address.addr());
 
-                    let address = s!("76KwxdgtWyJQK5a27PpqT973R6s7bZ4cKWTtUG6JEyrbLQy5F4ZwdUqgKpssGQzRxnd99LKWqFjYo92b8ngS7GqD1VZBEEL");
+                    // let address = s!("76KwxdgtWyJQK5a27PpqT973R6s7bZ4cKWTtUG6JEyrbLQy5F4ZwdUqgKpssGQzRxnd99LKWqFjYo92b8ngS7GqD1VZBEEL");
+                    let address = s!("59fEswCxk6aF4KdxP1iw1XRN9pnMuFoHSUuFLgvkNMvEb1ct3sroVw91VMGWsBVRv3C6wdHeBQFdjJ4tthjcoYTo75oVc7d");
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend_private,
@@ -1196,7 +1197,8 @@ impl Runtime {
                         .unwrap()
                         .elem();
                     info!("Full secret monero view key: {}", view_key);
-                    let address = s!("73oh6eWaf9MStZuxXqeE4nVx9jP5Y8XBZeLQ9AbAqFMWfGLSxjPdkbigWsb2PYvzyTWN3p2wa1jJn28V3vb4zqA4UoCXJp9");
+                    let address = s!("59fEswCxk6aF4KdxP1iw1XRN9pnMuFoHSUuFLgvkNMvEb1ct3sroVw91VMGWsBVRv3C6wdHeBQFdjJ4tthjcoYTo75oVc7d");
+
                     let sweep_keys = SweepXmrAddress {
                         view_key,
                         spend_key,

@@ -31,6 +31,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
+use amplify;
+
 
 use hex;
 
@@ -202,6 +204,7 @@ impl MoneroRpc {
             category_selector,
             subaddr_indices: None,
             account_index: None,
+            block_height_filter: None,
         };
 
         let mut transfers = wallet.get_transfers(selector).await?;
@@ -235,30 +238,32 @@ async fn sweep_address(
     let address = monero::Address::from_keypair(*network, &keypair);
 
     let wallet = wallet_mutex.lock().await;
-
+    
+    let wallet_name = format!("sweep:{}", address);
     match wallet
-        .open_wallet(address.to_string(), Some(password.clone()))
+        .open_wallet(wallet_name.clone(), Some(password.clone()))
         .await
     {
         Ok(_) => {}
         Err(err) => {
-            debug!(
+            warn!(
                 "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
                 err,
             );
             wallet
                 .generate_from_keys(GenerateFromKeysArgs {
                     restore_height: Some(1),
-                    filename: address.to_string(),
+                    filename: wallet_name.clone(),
                     address,
-                    spendkey: Some(keypair.spend),
-                    viewkey: keypair.view,
+                    spendkey: Some(spend),
+                    viewkey: view,
                     password: password.clone(),
                     autosave_current: Some(true),
                 })
                 .await?;
+
             wallet
-                .open_wallet(address.to_string(), Some(password))
+                .open_wallet(wallet_name, Some(password))
                 .await?;
         }
     }
@@ -283,6 +288,7 @@ async fn sweep_address(
             get_tx_metadata: None,
         };
         let res = wallet.sweep_all(sweep_args).await?;
+
         let tx_ids: Vec<Vec<u8>> = res
             .tx_hash_list
             .iter()
@@ -509,7 +515,7 @@ fn sweep_polling(
                             sweep_address_txs = val;
                         }
                         Err(err) => {
-                            trace!("error polling sweep address {:?}, retrying", err);
+                            warn!("error polling sweep address {:?}, retrying", err);
                         }
                     }
                     if let Some(txids) = sweep_address_txs {
