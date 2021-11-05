@@ -181,9 +181,7 @@ impl MoneroRpc {
                         autosave_current: Some(true),
                     })
                     .await?;
-                wallet
-                    .open_wallet(wallet_filename, Some(password))
-                    .await?;
+                wallet.open_wallet(wallet_filename, Some(password)).await?;
                 debug!("Watch wallet opened successfully")
             }
             Ok(_) => {
@@ -263,9 +261,7 @@ async fn sweep_address(
                     autosave_current: Some(true),
                 })
                 .await?;
-            wallet
-                .open_wallet(wallet_filename, Some(password))
-                .await?;
+            wallet.open_wallet(wallet_filename, Some(password)).await?;
         }
     }
 
@@ -273,7 +269,8 @@ async fn sweep_address(
 
     let balance = wallet.get_balance(0, None).await?;
     // only sweep once all the balance is unlocked
-    if balance.balance >= balance.unlocked_balance {
+    if balance.unlocked_balance != 0 {
+        info!("sweeping address with balance: {:?}", balance);
         let sweep_args = monero_rpc::SweepAllArgs {
             address: dest_address,
             account_index: 0,
@@ -292,10 +289,18 @@ async fn sweep_address(
         let tx_ids: Vec<Vec<u8>> = res
             .tx_hash_list
             .iter()
-            .map(|hash| hex::decode(hash.to_string()).unwrap())
+            .map(|hash| {
+                info!("sweep transaction hash {}", hash.to_string());
+                hex::decode(hash.to_string()).unwrap()
+            })
             .collect();
 
         return Ok(Some(tx_ids));
+    } else {
+        info!(
+            "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}",
+            balance.unlocked_balance, balance.balance
+        );
     }
     Ok(None)
 }

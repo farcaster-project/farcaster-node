@@ -1,3 +1,4 @@
+use amplify::map;
 use bitcoin::BlockHash;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
 use farcaster_node::rpc::Request;
@@ -23,8 +24,6 @@ use monero_rpc::GetBlockHeaderSelector;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
-use amplify::map;
-
 
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
@@ -426,7 +425,6 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-
     std::thread::sleep(duration);
 
     tx.send(SyncerdTask {
@@ -510,7 +508,9 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     assert_transaction_confirmations(request, None, vec![0]);
 
     println!("sending raw transaction");
-    let res = bitcoin_rpc.send_raw_transaction(&signed_tx.transaction().unwrap()).unwrap();
+    let res = bitcoin_rpc
+        .send_raw_transaction(&signed_tx.transaction().unwrap())
+        .unwrap();
     println!("res: {:?}", res);
 
     println!("awaiting confirmations");
@@ -1140,7 +1140,9 @@ async fn monero_syncer_transaction_test() {
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, None, vec![0]);
 
-    let id = wallet.relay_tx(hex::encode(transaction.tx_metadata.0)).await;
+    let id = wallet
+        .relay_tx(hex::encode(transaction.tx_metadata.0))
+        .await;
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received confirmation");
