@@ -424,6 +424,9 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+
+    std::thread::sleep(duration);
+
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
             id: 1,
