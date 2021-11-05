@@ -185,8 +185,8 @@ impl MoneroRpc {
                     .await?;
                 debug!("Wallet successfully open {:?}", res)
             }
-            Ok(res) => {
-                debug!("Wallet successfully open {:?}", res)
+            Ok(_) => {
+                debug!("Wallet successfully open")
             }
         }
 
@@ -202,6 +202,12 @@ impl MoneroRpc {
             category_selector,
             subaddr_indices: None,
             account_index: None,
+            block_height_filter: Some(
+                monero_rpc::BlockHeightFilter {
+                    min_height: Some(address_addendum.from_height),
+                    max_height: None,
+                }
+            ),
         };
 
         let mut transfers = wallet.get_transfers(selector).await?;
