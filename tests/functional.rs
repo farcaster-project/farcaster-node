@@ -804,7 +804,10 @@ async fn monero_syncer_address_test() {
     let (tx, rx_event) = create_monero_syncer();
 
     // Generate two addresses and watch them
-    let view_key = wallet.query_key(monero_rpc::PrivateKeyType::View).await.unwrap();
+    let view_key = wallet
+        .query_key(monero_rpc::PrivateKeyType::View)
+        .await
+        .unwrap();
     let address1 = wallet.create_address(0, None).await.unwrap().0;
     let tx_id = send_monero(&wallet, address1, 1).await;
 
