@@ -46,26 +46,26 @@ state of electrum and bitcoin
 #[test]
 #[ignore] // it's too expensive
 fn bitcoin_syncer_test() {
-    // bitcoin_syncer_block_height_test(true);
-    // bitcoin_syncer_address_test(true);
+    bitcoin_syncer_block_height_test(true);
+    bitcoin_syncer_address_test(true);
     bitcoin_syncer_transaction_test(true);
-    // bitcoin_syncer_broadcast_tx_test(true);
-    // bitcoin_syncer_block_height_test(false);
-    // bitcoin_syncer_address_test(false);
-    // bitcoin_syncer_transaction_test(false);
-    // bitcoin_syncer_broadcast_tx_test(false);
-    // bitcoin_syncer_abort_test();
+    bitcoin_syncer_broadcast_tx_test(true);
+    bitcoin_syncer_block_height_test(false);
+    bitcoin_syncer_address_test(false);
+    bitcoin_syncer_transaction_test(false);
+    bitcoin_syncer_broadcast_tx_test(false);
+    bitcoin_syncer_abort_test();
 }
 
 #[tokio::test]
 #[ignore] // it's too expensive
 async fn monero_syncer_test() {
-    // monero_syncer_sweep_test().await;
-    // monero_syncer_block_height_test().await;
-    // monero_syncer_address_test().await;
-    // monero_syncer_transaction_test().await;
-    // monero_syncer_broadcast_tx_test().await;
-    // monero_syncer_abort_test().await;
+    monero_syncer_sweep_test().await;
+    monero_syncer_block_height_test().await;
+    monero_syncer_address_test().await;
+    monero_syncer_transaction_test().await;
+    monero_syncer_broadcast_tx_test().await;
+    monero_syncer_abort_test().await;
 }
 
 /*
@@ -219,17 +219,17 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let txid = bitcoin_rpc
         .send_to_address(&address1, amount, None, None, None, None, None, None)
         .unwrap();
-    println!("waiting for watch transaction message");
+    println!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received transaction message");
+    println!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
 
     // now generate a block for address1, then wait for the response and test it
     let block_hash = bitcoin_rpc.generate_to_address(1, &address1).unwrap();
-    println!("waiting for watch transaction message");
+    println!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received transaction message");
+    println!("received address transaction message");
     let request = get_request_from_message(message);
     let block = bitcoin_rpc.get_block(&block_hash[0]).unwrap();
     let address_transaction_amount = find_coinbase_transaction_amount(block.txdata.clone());
@@ -247,9 +247,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let txid_2 = bitcoin_rpc
         .send_to_address(&address2, amount, None, None, None, None, None, None)
         .unwrap();
-    println!("waiting for watch transaction message");
+    println!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received transaction message");
+    println!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -257,9 +257,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
         vec![txid_1.to_vec(), txid_2.to_vec()],
     );
 
-    println!("waiting for watch transaction message");
+    println!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received transaction message");
+    println!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -278,18 +278,18 @@ fn bitcoin_syncer_address_test(polling: bool) {
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_3).unwrap();
-    println!("waiting for watch transaction message");
+    println!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received transaction message");
+    println!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
         amount.as_sat(),
         vec![txid_1.to_vec(), txid_2.to_vec()],
     );
-    println!("waiting for watch transaction message");
+    println!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received transaction message");
+    println!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -320,9 +320,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
         .unwrap();
 
     for _ in 0..5 {
-        println!("waiting for repeated watch transaction message");
+        println!("waiting for repeated address transaction message");
         let message = rx_event.recv_multipart(0).unwrap();
-        println!("received repeated transaction message");
+        println!("received repeated address transaction message");
         let request = get_request_from_message(message);
         assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
     }
@@ -488,7 +488,6 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         .unwrap();
 
     let txid = signed_tx.transaction().unwrap().txid();
-    println!("txid to watch: {:?}", txid.to_string());
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
@@ -508,10 +507,9 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     assert_transaction_confirmations(request, None, vec![0]);
 
     println!("sending raw transaction");
-    let res = bitcoin_rpc
+    bitcoin_rpc
         .send_raw_transaction(&signed_tx.transaction().unwrap())
         .unwrap();
-    println!("res: {:?}", res);
 
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
@@ -888,9 +886,9 @@ async fn monero_syncer_address_test() {
     };
     tx.send(watch_address_task_1).unwrap();
 
-    println!("waiting for watch transaction message");
+    println!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received transaction message");
+    println!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id]);
 
