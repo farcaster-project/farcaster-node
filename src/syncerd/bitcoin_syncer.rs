@@ -140,7 +140,7 @@ impl ElectrumRpc {
                 &address_addendum, &script_status
             );
         }
-        let txs = query_addr_history(&mut self.client, address_addendum.script_pubkey.clone())?;
+        let txs = query_addr_history(&mut self.client, address_addendum.script_pubkey.clone(), address_addendum.from_height)?;
         logging(&txs, &address_addendum);
         let notif = AddressNotif {
             address: address_addendum,
@@ -182,7 +182,7 @@ impl ElectrumRpc {
         if self.polling {
             let scripts = Vec::<Script>::from(&*self);
             for (script, (address, _)) in scripts.into_iter().zip(self.addresses.clone()) {
-                if let Ok(txs) = query_addr_history(&mut self.client, script) {
+                if let Ok(txs) = query_addr_history(&mut self.client, script, address.from_height) {
                     logging(&txs, &address);
                     let new_notif = AddressNotif {
                         address: address.clone(),
@@ -212,7 +212,7 @@ impl ElectrumRpc {
                                 &address, &script_status
                             );
                         }
-                        if let Ok(txs) = query_addr_history(&mut self.client, script_pubkey.clone())
+                        if let Ok(txs) = query_addr_history(&mut self.client, script_pubkey.clone(), address.from_height)
                         {
                             info!("creating AddressNotif");
                             logging(&txs, &address);
@@ -265,7 +265,7 @@ impl ElectrumRpc {
     }
 }
 
-fn query_addr_history(client: &mut Client, script: Script) -> Result<Vec<AddressTx>, Error> {
+fn query_addr_history(client: &mut Client, script: Script, min_block_height: u64) -> Result<Vec<AddressTx>, Error> {
     // now that we have established _something_ has changed get the full transaction
     // history of the address
     let tx_hist = client.script_get_history(&script)?;
@@ -273,6 +273,10 @@ fn query_addr_history(client: &mut Client, script: Script) -> Result<Vec<Address
 
     let mut addr_txs = vec![];
     for hist in tx_hist {
+        // skip the transasction if it is either in the mempool (0 and -1) or below a certain block height
+        if hist.height <= min_block_height.try_into().unwrap() && hist.height > 0{
+            continue;
+        }
         let mut our_amount: u64 = 0;
         let txid = hist.tx_hash;
         // get the full transaction to calculate our_amount
