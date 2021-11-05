@@ -159,12 +159,13 @@ impl MoneroRpc {
             view: address_addendum.view_key,
         };
         let address = monero::Address::from_viewpair(network, &keypair);
+        let wallet_filename = format!("watch:{}", address);
         let password = s!(" ");
 
         let wallet = wallet_mutex.lock().await;
 
         match wallet
-            .open_wallet(address.to_string(), Some(password.clone()))
+            .open_wallet(wallet_filename.clone(), Some(password.clone()))
             .await
         {
             Err(err) => {
@@ -172,7 +173,7 @@ impl MoneroRpc {
                 wallet
                     .generate_from_keys(GenerateFromKeysArgs {
                         restore_height: Some(address_addendum.from_height),
-                        filename: address.to_string(),
+                        filename: wallet_filename.clone(),
                         address,
                         spendkey: None,
                         viewkey: keypair.view,
@@ -180,13 +181,13 @@ impl MoneroRpc {
                         autosave_current: Some(true),
                     })
                     .await?;
-                let res = wallet
-                    .open_wallet(address.to_string(), Some(password))
+                wallet
+                    .open_wallet(wallet_filename, Some(password))
                     .await?;
-                debug!("Wallet successfully open {:?}", res)
+                debug!("Watch wallet opened successfully")
             }
             Ok(_) => {
-                debug!("Wallet successfully open")
+                debug!("Watch wallet opened successfully")
             }
         }
 
@@ -237,23 +238,24 @@ async fn sweep_address(
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
     let address = monero::Address::from_keypair(*network, &keypair);
+    let wallet_filename = format!("sweep:{}", address);
 
     let wallet = wallet_mutex.lock().await;
 
     match wallet
-        .open_wallet(address.to_string(), Some(password.clone()))
+        .open_wallet(wallet_filename.clone(), Some(password.clone()))
         .await
     {
         Ok(_) => {}
         Err(err) => {
-            debug!(
+            warn!(
                 "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
                 err,
             );
             wallet
                 .generate_from_keys(GenerateFromKeysArgs {
                     restore_height: Some(1),
-                    filename: address.to_string(),
+                    filename: wallet_filename.clone(),
                     address,
                     spendkey: Some(keypair.spend),
                     viewkey: keypair.view,
@@ -262,7 +264,7 @@ async fn sweep_address(
                 })
                 .await?;
             wallet
-                .open_wallet(address.to_string(), Some(password))
+                .open_wallet(wallet_filename, Some(password))
                 .await?;
         }
     }
@@ -513,7 +515,7 @@ fn sweep_polling(
                             sweep_address_txs = val;
                         }
                         Err(err) => {
-                            trace!("error polling sweep address {:?}, retrying", err);
+                            warn!("error polling sweep address {:?}, retrying", err);
                         }
                     }
                     if let Some(txids) = sweep_address_txs {
