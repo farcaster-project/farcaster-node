@@ -159,6 +159,11 @@ the complete existing transaction history
 
 - Submit a WatchAddress task many times with the same address, ensure we receive
 many times the same event
+
+- Submit a WatchAddress task with a minimum height to an address with a
+transaction below said height, ensure we receive only a later transaction above
+the minimum height
+
 */
 fn bitcoin_syncer_address_test(polling: bool) {
     let bitcoin_rpc = bitcoin_setup();
@@ -326,6 +331,38 @@ fn bitcoin_syncer_address_test(polling: bool) {
         let request = get_request_from_message(message);
         assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
     }
+
+    let address5 = bitcoin_rpc.get_new_address(None, None).unwrap();
+    bitcoin_rpc
+        .send_to_address(&address5, amount, None, None, None, None, None, None)
+        .unwrap();
+    bitcoin_rpc.generate_to_address(1, &address).unwrap();
+    let blocks = bitcoin_rpc.get_block_count().unwrap();
+
+    let addendum_5 = AddressAddendum::Bitcoin(BtcAddressAddendum {
+        address: Some(address5.clone()),
+        from_height: blocks,
+        script_pubkey: address5.script_pubkey(),
+    });
+    tx.send(SyncerdTask {
+        task: Task::WatchAddress(WatchAddress {
+            id: 5,
+            lifetime: blocks + 5,
+            addendum: addendum_5.clone(),
+            include_tx: Boolean::False,
+        }),
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let txid = bitcoin_rpc
+        .send_to_address(&address5, amount, None, None, None, None, None, None)
+        .unwrap();
+    bitcoin_rpc.generate_to_address(1, &address).unwrap();
+    println!("waiting for address transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received address transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
 }
 
 /*
@@ -849,6 +886,11 @@ the complete existing transaction history
 
 - Submit a WatchAddress task many times with the same address, ensure we receive
 many times the same event
+
+- Submit a WatchAddress task with a from height to an address with existing
+transactions, ensure we receive only events for transactions after the from
+height
+
 */
 async fn monero_syncer_address_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -974,12 +1016,48 @@ async fn monero_syncer_address_test() {
     }
 
     for _ in 0..5 {
-        println!("waiting for repeated watch transaction message");
+        println!("waiting for repeated address transaction message");
         let message = rx_event.recv_multipart(0).unwrap();
-        println!("received repeated transaction message");
+        println!("received repeated address transaction message");
         let request = get_request_from_message(message);
         assert_address_transaction(request, 1, vec![tx_id4.clone()]);
     }
+
+    let address5 = wallet.create_address(0, None).await.unwrap().0;
+    send_monero(&wallet, address5, 1).await;
+    let blocks = regtest.generate_blocks(5, address.address).await.unwrap();
+
+    let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
+        spend_key: address5.public_spend,
+        view_key: view_key,
+        from_height: blocks,
+    });
+
+    tx.send(SyncerdTask {
+        task: Task::WatchAddress(WatchAddress {
+            id: 5,
+            lifetime: blocks + 5,
+            addendum: addendum_5.clone(),
+            include_tx: Boolean::True,
+        }),
+        source: SOURCE2.clone(),
+    })
+    .unwrap();
+
+    let tx_id5_2 = send_monero(&wallet, address5, 2).await;
+    println!("waiting for address transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received address transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, 2, vec![tx_id5_2.clone()]);
+
+    let tx_id5_2_3 = send_monero(&wallet, address5, 2).await;
+    regtest.generate_blocks(1, address.address).await.unwrap();
+    println!("waiting for address transaction message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received address transaction message");
+    let request = get_request_from_message(message);
+    assert_address_transaction(request, 2, vec![tx_id5_2_3.clone()]);
 }
 
 /*
