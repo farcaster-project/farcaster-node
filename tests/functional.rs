@@ -570,6 +570,11 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
+    println!("waiting for confirmation");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, None, vec![0]);
 
     let task = SyncerdTask {
         task: Task::Abort(Abort { id: 0 }),
