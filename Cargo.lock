@@ -948,6 +948,7 @@ dependencies = [
  "monero",
  "monero-rpc",
  "nix",
+ "paste",
  "regex",
  "serde 1.0.127",
  "serde_json",
