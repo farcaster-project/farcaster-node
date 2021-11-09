@@ -78,28 +78,61 @@ use bitcoin::secp256k1::{
 use strict_encoding;
 use strict_encoding::{StrictDecode, StrictEncode};
 
+#[derive(StrictEncode, StrictDecode, Clone, PartialEq, Eq, Debug)]
+pub struct Counter(pub u32);
+impl Counter {
+    fn increment(&mut self) -> u32 {
+        self.0 += 1;
+        self.0
+    }
+}
+
 /// Hold secret keys and seeds
 #[derive(StrictEncode, StrictDecode, Clone, PartialEq, Eq, Debug)]
 pub struct NodeSecrets {
+    /// local key file
+    pub key_file: String,
     /// local node private information
     pub peerd_secret_key: SecretKey,
     /// seed used for deriving addresses
     pub wallet_seed: [u8; 32],
+    /// wallet last derivation index
+    pub wallet_counter: Counter,
 }
 
 impl NodeSecrets {
+    pub fn new(key_file: String) -> Self {
+        if PathBuf::from(key_file.clone()).exists() {
+            NodeSecrets::strict_decode(fs::File::open(key_file.clone()).expect(&format!(
+                "Unable to open key file {}; please check that the user \
+                    running the deamon has necessary permissions",
+                key_file.clone()
+            )))
+            .expect("Unable to read node code file format")
+        } else {
+            let mut rng = thread_rng();
+            let peer_private_key = SecretKey::new(&mut rng);
+            let wallet_seed = Self::create_seed(&mut rng);
+            let node_secrets = Self {
+                key_file: key_file.clone(),
+                peerd_secret_key: peer_private_key,
+                wallet_seed,
+                wallet_counter: Counter(0),
+            };
+
+            let key_file_handle = fs::File::create(&key_file).expect(&format!(
+                "Unable to create key file '{}'; please check that path exists",
+                key_file
+            ));
+            node_secrets
+                .strict_encode(key_file_handle)
+                .expect("Unable to save generated node secrets");
+            node_secrets
+        }
+    }
+
     pub fn node_id(&self) -> PublicKey {
         PublicKey::from_secret_key(&Secp256k1::new(), &self.peerd_secret_key)
-    }
-}
-
-impl KeyOpts {
-    pub fn process(&mut self, shared: &crate::opts::Opts) {
-        shared.process_dir(&mut self.key_file);
-    }
-
-    pub fn wallet_seed(&self) -> [u8; 32] {
-        self.node_secrets().wallet_seed
     }
 
     fn create_seed(rng: &mut ThreadRng) -> [u8; 32] {
@@ -120,31 +153,24 @@ impl KeyOpts {
         seed_buf
     }
 
-    pub fn node_secrets(&self) -> NodeSecrets {
-        if PathBuf::from(self.key_file.clone()).exists() {
-            NodeSecrets::strict_decode(fs::File::open(&self.key_file).expect(&format!(
-                "Unable to open key file {}; please check that the user \
-                    running the deamon has necessary permissions",
-                self.key_file
-            )))
-            .expect("Unable to read node code file format")
-        } else {
-            let mut rng = thread_rng();
-            let peer_private_key = SecretKey::new(&mut rng);
-            let wallet_seed = Self::create_seed(&mut rng);
-            let node_secrets = NodeSecrets {
-                peerd_secret_key: peer_private_key,
-                wallet_seed,
-            };
+    pub fn increment_wallet_counter(&mut self) -> u32 {
+        self.wallet_counter.increment();
+        let key_file_handle = fs::File::create(&self.key_file).expect(&format!(
+            "Unable to create key file '{}'; please check that path exists",
+            self.key_file
+        ));
+        self.strict_encode(key_file_handle)
+            .expect("Unable to save incremented wallet counter");
+        self.wallet_counter.0
+    }
 
-            let key_file = fs::File::create(&self.key_file).expect(&format!(
-                "Unable to create key file '{}'; please check that path exists",
-                self.key_file
-            ));
-            node_secrets
-                .strict_encode(key_file)
-                .expect("Unable to save generated node secrets");
-            node_secrets
-        }
+    pub fn wallet_seed(&self) -> [u8; 32] {
+        self.wallet_seed
+    }
+}
+
+impl KeyOpts {
+    pub fn process(&mut self, shared: &crate::opts::Opts) {
+        shared.process_dir(&mut self.key_file);
     }
 }
