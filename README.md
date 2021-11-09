@@ -6,7 +6,7 @@
 
 # Farcaster: cross-chain atomic swaps
 
-:warning: **THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET** :warning:
+:warning: **THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET**
 
 This project is called the **Farcaster Node**, it is _a collection of microservices for running cross-chain atomic swaps_. Currently the node is focused on Bitcoin-Monero atomic swaps, but is designed to be flexible and integrate new crypto-pairs in the future.
 
@@ -16,9 +16,11 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 
 ## Build and run
 
-### Local
+The following section explain how to build and run Farcaster node locally or within containers through Docker and Docker compopse.
 
-To compile the node, please install [cargo](https://doc.rust-lang.org/cargo/), then run the following commands:
+### Locally
+
+To compile the node, please install [cargo](https://doc.rust-lang.org/cargo/) (the Rust _package manager_), then run the following commands:
 
 ```bash
 sudo apt install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config build-essential cmake
@@ -41,7 +43,7 @@ monero-wallet-rpc --stagenet --rpc-bind-port 18083\
     --wallet-dir ~/.fc_monero_wallets
 ```
 
-Then start the node with the following command:
+Then start the node with:
 
 ```
 farcasterd -vv\
@@ -50,11 +52,7 @@ farcasterd -vv\
     --monero-rpc-wallet http://{ip:port}
 ```
 
-### With docker
-
-You can follow the documentation on [how to use `farcasterd` with Docker](./doc/docker-stack.md).
-
-### Connect a client
+#### Connect a client
 
 Once `farcasterd` is up & running you can issue commands to control its actions with a client. For the time being, only one client is provided within this repo: `swap-cli`.
 
@@ -66,27 +64,9 @@ swap-cli info
 
 Run `help` command for more details about available commands.
 
-### Remote client usage
+### With docker
 
-Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication (also used by the Docker image to expose the control bus).
-
-The daemon is controlled though ZMQ _ctl_ socket, an internal interface for control PRC protocol communications. Another ZMQ socket is used to forward all incoming protocol messages, the _msg_ socket. Both are node internal communication channels. Message from counterparty come through `peerd` services.
-
-**Farcasterd**
-
-To launch `farcasterd` with network binded _control_ (`-x`) bus and _message_ bus (`-m`) instead of `ctl.rpc` and `msg.rpc` files:
-
-```
-farcasterd -vv -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb"
-```
-
-**Client**
-
-The following client can instruct the above `farcasterd` to return general informations as follows:
-
-```
-swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb" info
-```
+You can follow the documentation on [how to use `farcasterd` with Docker](./doc/docker-stack.md) and [how to connect a remote client to `farcasterd`](./doc/docker-stack.md#connect-a-client).
 
 ## Usage
 
