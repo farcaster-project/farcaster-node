@@ -105,7 +105,9 @@ pub enum Command {
     /// representation of the offer that shall be shared with Taker.
     /// Additionally it spins up the listener awaiting for connection related to
     /// this offer. Example usage:
-    /// `make Testnet Bitcoin Monero "100000 BTC" "200 XMR" 10 10 20 Alice`
+    /// `make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero
+    /// "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1 satoshi/vByte"
+    /// "127.0.0.1" "0.0.0.0" 9745`
     Make {
         /// Bitcoin address used as destination or refund address
         arbitrating_addr: Address,

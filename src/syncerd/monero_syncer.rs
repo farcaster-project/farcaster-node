@@ -159,12 +159,13 @@ impl MoneroRpc {
             view: address_addendum.view_key,
         };
         let address = monero::Address::from_viewpair(network, &keypair);
+        let wallet_filename = format!("watch:{}", address);
         let password = s!(" ");
 
         let wallet = wallet_mutex.lock().await;
 
         match wallet
-            .open_wallet(address.to_string(), Some(password.clone()))
+            .open_wallet(wallet_filename.clone(), Some(password.clone()))
             .await
         {
             Err(err) => {
@@ -172,7 +173,7 @@ impl MoneroRpc {
                 wallet
                     .generate_from_keys(GenerateFromKeysArgs {
                         restore_height: Some(address_addendum.from_height),
-                        filename: address.to_string(),
+                        filename: wallet_filename.clone(),
                         address,
                         spendkey: None,
                         viewkey: keypair.view,
@@ -180,13 +181,11 @@ impl MoneroRpc {
                         autosave_current: Some(true),
                     })
                     .await?;
-                let res = wallet
-                    .open_wallet(address.to_string(), Some(password))
-                    .await?;
-                debug!("Wallet successfully open {:?}", res)
+                wallet.open_wallet(wallet_filename, Some(password)).await?;
+                debug!("Watch wallet opened successfully")
             }
-            Ok(res) => {
-                debug!("Wallet successfully open {:?}", res)
+            Ok(_) => {
+                debug!("Watch wallet opened successfully")
             }
         }
 
@@ -202,6 +201,10 @@ impl MoneroRpc {
             category_selector,
             subaddr_indices: None,
             account_index: None,
+            block_height_filter: Some(monero_rpc::BlockHeightFilter {
+                min_height: Some(address_addendum.from_height),
+                max_height: None,
+            }),
         };
 
         let mut transfers = wallet.get_transfers(selector).await?;
@@ -233,23 +236,24 @@ async fn sweep_address(
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
     let address = monero::Address::from_keypair(*network, &keypair);
+    let wallet_filename = format!("sweep:{}", address);
 
     let wallet = wallet_mutex.lock().await;
 
     match wallet
-        .open_wallet(address.to_string(), Some(password.clone()))
+        .open_wallet(wallet_filename.clone(), Some(password.clone()))
         .await
     {
         Ok(_) => {}
         Err(err) => {
-            debug!(
+            warn!(
                 "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
                 err,
             );
             wallet
                 .generate_from_keys(GenerateFromKeysArgs {
                     restore_height: Some(1),
-                    filename: address.to_string(),
+                    filename: wallet_filename.clone(),
                     address,
                     spendkey: Some(keypair.spend),
                     viewkey: keypair.view,
@@ -257,9 +261,7 @@ async fn sweep_address(
                     autosave_current: Some(true),
                 })
                 .await?;
-            wallet
-                .open_wallet(address.to_string(), Some(password))
-                .await?;
+            wallet.open_wallet(wallet_filename, Some(password)).await?;
         }
     }
 
@@ -267,7 +269,8 @@ async fn sweep_address(
 
     let balance = wallet.get_balance(0, None).await?;
     // only sweep once all the balance is unlocked
-    if balance.balance >= balance.unlocked_balance {
+    if balance.unlocked_balance != 0 {
+        info!("sweeping address with balance: {:?}", balance);
         let sweep_args = monero_rpc::SweepAllArgs {
             address: dest_address,
             account_index: 0,
@@ -286,10 +289,18 @@ async fn sweep_address(
         let tx_ids: Vec<Vec<u8>> = res
             .tx_hash_list
             .iter()
-            .map(|hash| hex::decode(hash.to_string()).unwrap())
+            .map(|hash| {
+                info!("sweep transaction hash {}", hash.to_string());
+                hex::decode(hash.to_string()).unwrap()
+            })
             .collect();
 
         return Ok(Some(tx_ids));
+    } else {
+        info!(
+            "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}",
+            balance.unlocked_balance, balance.balance
+        );
     }
     Ok(None)
 }
@@ -509,7 +520,7 @@ fn sweep_polling(
                             sweep_address_txs = val;
                         }
                         Err(err) => {
-                            trace!("error polling sweep address {:?}, retrying", err);
+                            warn!("error polling sweep address {:?}, retrying", err);
                         }
                     }
                     if let Some(txids) = sweep_address_txs {

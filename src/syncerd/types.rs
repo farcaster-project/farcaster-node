@@ -12,7 +12,7 @@ pub enum AddressAddendum {
 pub struct BtcAddressAddendum {
     /// The address the syncer will watch and query.
     pub address: Option<bitcoin::Address>,
-    /// The blockchain height where to start the query.
+    /// The blockchain height where to start the query (not inclusive).
     pub from_height: u64,
     /// The associated script pubkey used by server like Electrum.
     pub script_pubkey: bitcoin::Script,
@@ -23,6 +23,7 @@ pub struct BtcAddressAddendum {
 pub struct XmrAddressAddendum {
     pub spend_key: monero::PublicKey,
     pub view_key: monero::PrivateKey,
+    /// The blockchain height where to start the query (not inclusive).
     pub from_height: u64,
 }
 
