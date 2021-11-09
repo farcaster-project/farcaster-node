@@ -1106,7 +1106,7 @@ impl Runtime {
                     ..
                 })) = self.wallets.get_mut(&get_swap_id(&source)?)
                 {
-                    let sk_a_btc = bob.recover_accordant_assets(
+                    let sk_a_btc = bob.recover_accordant_key(
                         key_manager,
                         alice_params,
                         adaptor_buy.clone(),
@@ -1172,7 +1172,7 @@ impl Runtime {
                     ..
                 })) = self.wallets.get_mut(&get_swap_id(&source)?)
                 {
-                    let sk_b_btc = alice.recover_accordant_assets(
+                    let sk_b_btc = alice.recover_accordant_key(
                         key_manager,
                         bob_params,
                         adaptor_refund.clone(),
