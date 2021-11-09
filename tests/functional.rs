@@ -84,7 +84,7 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer(polling);
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "block_height");
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -181,7 +181,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     std::thread::sleep(duration);
 
     // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer(polling);
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "address");
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -383,7 +383,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     bitcoin_rpc.generate_to_address(110, &address).unwrap();
 
     // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer(polling);
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
@@ -556,7 +556,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
 }
 
 fn bitcoin_syncer_abort_test() {
-    let (tx, rx_event) = create_bitcoin_syncer(true);
+    let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
     let bitcoin_rpc = bitcoin_setup();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -614,7 +614,7 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    let (tx, rx_event) = create_bitcoin_syncer(polling);
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "broadcast");
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
@@ -691,12 +691,17 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     assert_transaction_broadcasted(request, false, None);
 }
 
-fn create_bitcoin_syncer(polling: bool) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+fn create_bitcoin_syncer(
+    polling: bool,
+    socket_name: &str,
+) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+    let addr = format!("inproc://testmonerobridge-{}", socket_name);
+
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testbitcoinbridge").unwrap();
-    rx_event.bind("inproc://testbitcoinbridge").unwrap();
+    tx_event.connect(&addr).unwrap();
+    rx_event.bind(&addr).unwrap();
     let mut syncer = BitcoinSyncer::new();
     let syncer_servers = SyncerServers {
         electrum_server: "tcp://localhost:50001".to_string(),
@@ -772,7 +777,7 @@ async fn monero_syncer_block_height_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer();
+    let (tx, rx_event) = create_monero_syncer("block_height");
 
     // Send a WatchHeight task
     let task = SyncerdTask {
@@ -836,7 +841,7 @@ async fn monero_syncer_sweep_test() {
     let duration = std::time::Duration::from_secs(20);
     std::thread::sleep(duration);
 
-    let (tx, rx_event) = create_monero_syncer();
+    let (tx, rx_event) = create_monero_syncer("sweep");
 
     let spend_key = monero::PrivateKey::from_str(
         "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -907,7 +912,7 @@ async fn monero_syncer_address_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer();
+    let (tx, rx_event) = create_monero_syncer("address");
 
     // Generate two addresses and watch them
     let view_key = wallet
@@ -1088,7 +1093,7 @@ async fn monero_syncer_transaction_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer();
+    let (tx, rx_event) = create_monero_syncer("transaction");
 
     let txid_1 = send_monero(&wallet, address, 1).await;
 
@@ -1221,9 +1226,10 @@ async fn monero_syncer_transaction_test() {
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, None, vec![0]);
 
-    let id = wallet
+    wallet
         .relay_tx(hex::encode(transaction.tx_metadata.0))
-        .await;
+        .await
+        .unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received confirmation");
@@ -1239,7 +1245,7 @@ async fn monero_syncer_transaction_test() {
 }
 
 async fn monero_syncer_abort_test() {
-    let (tx, rx_event) = create_monero_syncer();
+    let (tx, rx_event) = create_monero_syncer("abort");
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
@@ -1293,7 +1299,7 @@ async fn monero_syncer_broadcast_tx_test() {
     let address = wallet.get_address(0, None).await.unwrap();
     regtest.generate_blocks(1, address.address).await.unwrap();
 
-    let (tx, rx_event) = create_monero_syncer();
+    let (tx, rx_event) = create_monero_syncer("broadcast");
 
     let task = SyncerdTask {
         task: Task::BroadcastTransaction(BroadcastTransaction { id: 0, tx: vec![0] }),
@@ -1329,12 +1335,13 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
     (regtest, wallet)
 }
 
-fn create_monero_syncer() -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+    let addr = format!("inproc://testmonerobridge-{}", socket_name);
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
-    tx_event.connect("inproc://testmonerobridge").unwrap();
-    rx_event.bind("inproc://testmonerobridge").unwrap();
+    tx_event.connect(&addr).unwrap();
+    rx_event.bind(&addr).unwrap();
     let mut syncer = MoneroSyncer::new();
     let syncer_servers = SyncerServers {
         electrum_server: "".to_string(),
