@@ -2,7 +2,7 @@
 
 This document describe how to test a swap running both participant locally.
 
-You'll need to build and install the node locally as described [here](../README.md#local).
+You'll need to build and install the node locally as described [here](../README.md#locally).
 
 We'll create two node instances and will make them running a swap, for that make sure to have access to the three services: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
 

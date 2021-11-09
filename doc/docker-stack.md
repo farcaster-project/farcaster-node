@@ -13,7 +13,7 @@ docker-compose logs farcasterd -f --no-log-prefix
 
 These commands launch a local Monero Wallet RPC and the Farcaster node, then follow the logs produced by `farcasterd`. Daemons used by the services are public testnet servers.
 
-Install `swap-cli` on your machine and run:
+Install `swap-cli` on your machine (follow the documentation on [build and run locally](../README.md#locally)) and run:
 
 ```
 swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info
@@ -68,7 +68,7 @@ Stop the container with `docker stop farcaster_node` (ctrl+c does not work yet).
 
 :warning: this exposes the control bus on the host, only intended for debugging or on a trusted network.
 
-### Connect a client
+## Connect a client
 
 To connect a client and command `farcasterd` running inside a Docker container simply run:
 
@@ -76,4 +76,28 @@ To connect a client and command `farcasterd` running inside a Docker container s
 swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info
 ```
 
-This configure the cli to connects to the exposed port `9981` of `farcasterd`.
+This configure the cli to connects to the exposed port `9981` of the running container `farcasterd`.
+
+### Remote client usage
+
+Example from using other URLs supported by crate `internet2` `node_addr.rs`, besides the default inter process communication (also used by the Docker image to expose the control bus).
+
+The daemon is controlled though ZMQ _ctl_ socket, an internal interface for control PRC protocol communications. Another ZMQ socket is used to forward all incoming protocol messages, the _msg_ socket. Both are node internal communication channels. Message from counterparty come through `peerd` services.
+
+**Farcasterd**
+
+To launch `farcasterd` with network binded _control_ (`-x`) bus and _message_ bus (`-m`) instead of `ctl.rpc` and `msg.rpc` files:
+
+```
+farcasterd -vv -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb"
+```
+
+**Client**
+
+The following client can instruct the above `farcasterd` to return general informations as follows:
+
+```
+swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb" info
+```
+
+:mega: It is worth noting that _ctl_ and _msg_ sockets can use different type of communication. E.g. the docker stack only binds the _ctl_ socket over the network and keeps the _msg_ to its default `msg.rpc` file inside the data directory.
