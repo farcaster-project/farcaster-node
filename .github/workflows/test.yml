@@ -16,6 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          components: rustfmt
+
       - name: Run Rustfmt
         uses: actions-rs/cargo@v1
         with:
@@ -35,7 +42,6 @@ jobs:
         with:
           toolchain: nightly
           override: true
-          components: rustfmt
 
       - name: Build & test
         uses: actions-rs/cargo@v1
@@ -73,7 +79,6 @@ jobs:
         with:
           toolchain: nightly
           override: true
-          components: rustfmt
 
       - name: Correct permissions
         run: sudo chown -R $USER tests

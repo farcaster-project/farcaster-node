@@ -11,3 +11,8 @@
 
 # Shell utilities
 /shell
+
+# Functional tests: generated folders
+/tests/data_dir
+/tests/.farcaster_node_0
+/tests/.farcaster_node_1
