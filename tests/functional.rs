@@ -21,10 +21,10 @@ use internet2::ZMQ_CONTEXT;
 use lnpbp::chain::Chain;
 use monero::Address;
 use monero_rpc::GetBlockHeaderSelector;
+use paste::paste;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
-use paste::paste;
 
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
