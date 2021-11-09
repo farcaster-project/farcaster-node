@@ -13,7 +13,9 @@ use crate::LogStyle;
 use crate::Senders;
 use crate::{
     rpc::{
-        request::{self, BitcoinAddress, Commit, Keys, Msg, Params, Reveal, Token, Tx},
+        request::{
+            self, BitcoinAddress, Commit, Keys, MoneroAddress, Msg, Params, Reveal, Token, Tx,
+        },
         Request, ServiceBus,
     },
     syncerd::SweepXmrAddress,
@@ -74,6 +76,7 @@ pub fn run(
         wallets: none!(),
         swaps: none!(),
         btc_addrs: none!(),
+        xmr_addrs: none!(),
     };
 
     Service::run(config, runtime, false)
@@ -87,6 +90,7 @@ pub struct Runtime {
     wallets: HashMap<SwapId, Wallet>,
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
+    xmr_addrs: HashMap<SwapId, String>,
 }
 
 pub enum Wallet {
@@ -271,6 +275,15 @@ impl Runtime {
             Request::BitcoinAddress(BitcoinAddress(swapid, btc_addr)) => {
                 self.btc_addrs.insert(swapid, btc_addr);
             }
+
+            // Handled in Msg to avoid race condition between Msg and Ctl bus (2 msgs sent
+            // sequencially on the diferent buses arriving in random order), now both msgs go
+            // through the msg bus, and always arrive in the correct order. MoneroAddress arriving
+            // after TakerCommit, blocks TakerCommit, as `self.xmr_addrs.contains_key(&swap_id) ==
+            // false`
+            Request::MoneroAddress(MoneroAddress(swapid, xmr_addr)) => {
+                self.xmr_addrs.insert(swapid, xmr_addr);
+            }
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
@@ -278,7 +291,9 @@ impl Runtime {
                 commit: remote_commit,
                 public_offer_hex,
                 swap_id,
-            })) if self.btc_addrs.contains_key(&swap_id) => {
+            })) if self.btc_addrs.contains_key(&swap_id)
+                && self.xmr_addrs.contains_key(&swap_id) =>
+            {
                 let pub_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
                 trace!(
                     "Offer {} is known, you created it previously, initiating swap with taker",
@@ -963,6 +978,7 @@ impl Runtime {
             Request::TakeOffer(request::PubOffer {
                 public_offer,
                 external_address,
+                internal_address,
                 peer_secret_key: None,
             }) if source == ServiceId::Farcasterd => {
                 let PublicOffer {
@@ -975,6 +991,8 @@ impl Runtime {
 
                 let swap_id: SwapId = SwapId::random().into();
                 self.swaps.insert(swap_id, None);
+                self.xmr_addrs.insert(swap_id, internal_address);
+
                 // since we're takers, we are on the other side of the trade
                 let taker_role = offer.maker_role.other();
                 let wallet_index = self.node_secrets.increment_wallet_counter();
@@ -1145,7 +1163,10 @@ impl Runtime {
 
                     info!("Corresponding address: {}", address.addr());
 
-                    let address = s!("76KwxdgtWyJQK5a27PpqT973R6s7bZ4cKWTtUG6JEyrbLQy5F4ZwdUqgKpssGQzRxnd99LKWqFjYo92b8ngS7GqD1VZBEEL");
+                    let address = self
+                        .xmr_addrs
+                        .remove(&get_swap_id(&source)?)
+                        .expect("checked at the start of a swap");
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend_private,
@@ -1193,7 +1214,10 @@ impl Runtime {
                         .unwrap()
                         .elem();
                     info!("Full secret monero view key: {}", view_key);
-                    let address = s!("73oh6eWaf9MStZuxXqeE4nVx9jP5Y8XBZeLQ9AbAqFMWfGLSxjPdkbigWsb2PYvzyTWN3p2wa1jJn28V3vb4zqA4UoCXJp9");
+                    let address = self
+                        .xmr_addrs
+                        .remove(&get_swap_id(&source)?)
+                        .expect("checked at the start of a swap");
                     let sweep_keys = SweepXmrAddress {
                         view_key,
                         spend_key,

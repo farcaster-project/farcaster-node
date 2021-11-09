@@ -116,6 +116,7 @@ impl Exec for Command {
                 arbitrating_amount,
                 accordant_amount,
                 arbitrating_addr,
+                accordant_addr,
                 cancel_timelock,
                 punish_timelock,
                 fee_strategy,
@@ -151,6 +152,7 @@ impl Exec for Command {
                     bind_addr,
                     peer_secret_key: None,
                     arbitrating_addr,
+                    accordant_addr: accordant_addr.to_string(),
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success of failure of the request to cli
@@ -168,6 +170,7 @@ impl Exec for Command {
             Command::Take {
                 public_offer,
                 bitcoin_address,
+                monero_address,
                 without_validation,
             } => {
                 // println!("{:#?}", &public_offer);
@@ -197,7 +200,9 @@ impl Exec for Command {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
-                        Request::TakeOffer((public_offer, bitcoin_address).into()),
+                        Request::TakeOffer(
+                            (public_offer, bitcoin_address, monero_address.to_string()).into(),
+                        ),
                     )?;
                     // report success of failure of the request to cli
                     runtime.report_progress()?;

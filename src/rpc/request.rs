@@ -197,14 +197,16 @@ pub struct PubOffer {
     pub public_offer: PublicOffer<BtcXmr>,
     pub peer_secret_key: Option<SecretKey>,
     pub external_address: Address,
+    pub internal_address: String,
 }
 
-impl From<(PublicOffer<BtcXmr>, Address)> for PubOffer {
-    fn from(x: (PublicOffer<BtcXmr>, Address)) -> Self {
-        let (public_offer, external_address) = x;
+impl From<(PublicOffer<BtcXmr>, Address, String)> for PubOffer {
+    fn from(x: (PublicOffer<BtcXmr>, Address, String)) -> Self {
+        let (public_offer, external_address, internal_address) = x;
         PubOffer {
             public_offer,
             external_address,
+            internal_address,
             peer_secret_key: None,
         }
     }
@@ -420,6 +422,10 @@ pub enum Request {
     #[display("bitcoin address()")]
     BitcoinAddress(BitcoinAddress),
 
+    #[api(type = 194)]
+    #[display("monero address()")]
+    MoneroAddress(MoneroAddress),
+
     #[api(type = 205)]
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
@@ -558,12 +564,17 @@ pub struct NodeInfo {
 pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("monero_address")]
+pub struct MoneroAddress(pub SwapId, pub String);
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
     pub public_addr: RemoteSocketAddr,
     pub bind_addr: RemoteSocketAddr,
     pub arbitrating_addr: bitcoin::Address,
+    pub accordant_addr: String,
     pub peer_secret_key: Option<SecretKey>,
 }
 

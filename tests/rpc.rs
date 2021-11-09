@@ -19,7 +19,7 @@ fn spawn_swap() {
         vec!["swap-cli"]
             .into_iter()
             .chain(data_dir_maker.clone())
-            .chain(vec!["make", "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq"]),
+            .chain(vec!["make", "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq", "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt"]),
     );
     opts.process();
     info!("opts: {:?}", opts);
@@ -44,7 +44,7 @@ fn spawn_swap() {
 
     // set up maker
 
-    // make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero
+    // make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt Testnet ECDSA Monero
     // "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1"
     // "0.0.0.0" 9745
 
@@ -55,6 +55,7 @@ fn spawn_swap() {
             .chain(vec![
                 "make",
                 "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq",
+                "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
                 "Testnet",
                 "ECDSA",
                 "Monero",
@@ -80,7 +81,7 @@ fn spawn_swap() {
             .into_iter()
             .chain(data_dir_taker.clone())
             .chain(vec![
-                "take", "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq", "4643535741500100020000008080000080080000c5015a02000000080000407a10f35a000004000a00000004001e000000010800010000000000000001210002c73234cf6408536ddc7f1ad0536b0d1bb002b47c05f992767674676b3a2c68d70000000000000000000000000000000000000000000000000000000000000000000024a000",
+                "take", "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq", "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt", "4643535741500100020000008080000080080000c5015a02000000080000407a10f35a000004000a00000004001e000000010800010000000000000001210002c73234cf6408536ddc7f1ad0536b0d1bb002b47c05f992767674676b3a2c68d70000000000000000000000000000000000000000000000000000000000000000000024a000",
             ]),
     );
     opts.command
