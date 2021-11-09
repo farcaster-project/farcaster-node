@@ -24,6 +24,7 @@ use monero_rpc::GetBlockHeaderSelector;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+use paste::paste;
 
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
@@ -40,33 +41,32 @@ const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 
 /*
 These tests need to run serialy, otherwise we cannot verify events based on the
-state of electrum and bitcoin
+state of electrum and bitcoin, for that we use `--test-threads=1` when running
+`cargo test`
 */
 
-#[test]
-#[ignore] // it's too expensive
-fn bitcoin_syncer_test() {
-    bitcoin_syncer_block_height_test(true);
-    bitcoin_syncer_address_test(true);
-    bitcoin_syncer_transaction_test(true);
-    bitcoin_syncer_broadcast_tx_test(true);
-    bitcoin_syncer_block_height_test(false);
-    bitcoin_syncer_address_test(false);
-    bitcoin_syncer_transaction_test(false);
-    bitcoin_syncer_broadcast_tx_test(false);
-    bitcoin_syncer_abort_test();
+macro_rules! make_polling_test {
+    ($name:ident) => {
+        paste! {
+            #[test]
+            #[ignore]
+            fn [< $name _polling >] () {
+                $name(true);
+            }
+
+            #[test]
+            #[ignore]
+            fn [< $name _no_polling >] () {
+                $name(false);
+            }
+        }
+    };
 }
 
-#[tokio::test]
-#[ignore] // it's too expensive
-async fn monero_syncer_test() {
-    monero_syncer_sweep_test().await;
-    monero_syncer_block_height_test().await;
-    monero_syncer_address_test().await;
-    monero_syncer_transaction_test().await;
-    monero_syncer_broadcast_tx_test().await;
-    monero_syncer_abort_test().await;
-}
+make_polling_test!(bitcoin_syncer_block_height_test);
+make_polling_test!(bitcoin_syncer_address_test);
+make_polling_test!(bitcoin_syncer_transaction_test);
+make_polling_test!(bitcoin_syncer_broadcast_tx_test);
 
 /*
 We test for the following scenarios in the block height tests:
@@ -555,6 +555,8 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     assert_transaction_confirmations(request, Some(0), vec![0]);
 }
 
+#[test]
+#[ignore]
 fn bitcoin_syncer_abort_test() {
     let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
     let bitcoin_rpc = bitcoin_setup();
@@ -767,6 +769,8 @@ We test for the following scenarios in the block height tests:
 
 - Mine another block and receive two HeightChanged events
 */
+#[tokio::test]
+#[ignore]
 async fn monero_syncer_block_height_test() {
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
@@ -833,6 +837,8 @@ async fn monero_syncer_block_height_test() {
     assert_received_height_changed(request, blocks);
 }
 
+#[tokio::test]
+#[ignore]
 async fn monero_syncer_sweep_test() {
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
@@ -902,6 +908,8 @@ transactions, ensure we receive only events for transactions after the from
 height
 
 */
+#[tokio::test]
+#[ignore]
 async fn monero_syncer_address_test() {
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
@@ -1083,6 +1091,8 @@ the threshold confs are reached
 - Create a transaction, but don't relay it, then watch it and receive a tx not
 found confirmation event. Then relay and receive further events.
 */
+#[tokio::test]
+#[ignore]
 async fn monero_syncer_transaction_test() {
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap().address;
@@ -1244,6 +1254,8 @@ async fn monero_syncer_transaction_test() {
     assert_transaction_confirmations(request, Some(1), block_hash);
 }
 
+#[tokio::test]
+#[ignore]
 async fn monero_syncer_abort_test() {
     let (tx, rx_event) = create_monero_syncer("abort");
     let (regtest, wallet) = setup_monero().await;
@@ -1294,6 +1306,8 @@ async fn monero_syncer_abort_test() {
 /*
 Check that a monero BroadcastTransaction task generates an error
 */
+#[tokio::test]
+#[ignore]
 async fn monero_syncer_broadcast_tx_test() {
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
