@@ -284,7 +284,8 @@ fn query_addr_history(
 
     let mut addr_txs = vec![];
     for hist in tx_hist {
-        // skip the transasction if it is either in the mempool (0 and -1) or below a certain block height
+        // skip the transasction if it is either in the mempool (0 and -1) or below a
+        // certain block height
         if hist.height <= min_block_height.try_into().unwrap() && hist.height > 0 {
             continue;
         }
