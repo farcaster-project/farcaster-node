@@ -683,6 +683,14 @@ impl Runtime {
                                 },
                                 addr,
                             )) => {
+                                let msg = format!(
+                                    "{} {}",
+                                    "Funding address:".bright_white_bold(),
+                                    addr.bright_yellow_bold()
+                                );
+                                let enquirer = self.enquirer.clone();
+                                let _ = self.report_progress_to(senders, &enquirer, msg);
+
                                 let task = self
                                     .syncer_state
                                     .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
@@ -808,6 +816,14 @@ impl Runtime {
                                 },
                                 addr,
                             )) => {
+                                let msg = format!(
+                                    "{} {}",
+                                    "Funding address:".bright_white_bold(),
+                                    addr.bright_yellow_bold()
+                                );
+                                let enquirer = self.enquirer.clone();
+                                let _ = self.report_progress_to(senders, &enquirer, msg);
+
                                 let watch_addr_task = self
                                     .syncer_state
                                     .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
