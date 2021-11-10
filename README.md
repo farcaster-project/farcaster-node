@@ -84,6 +84,7 @@ To create an offer and spawn a listening `peerd` accepting incoming connections,
 
 ```
 swap-cli make tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
+    54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
     Testnet ECDSA Monero\
     "0.00001350 BTC" "0.00000001 XMR"\
     Alice 4 5 "1 satoshi/vByte"\
@@ -113,7 +114,9 @@ Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the sw
 Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an hex encoded public offer, and a bitcoin address to receive bitcoins (again, as a refund or if the swap completes depending on your swap role).
 
 ```
-swap-cli take tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx {hex encoded offer}
+swap-cli take tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
+    54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
+    {hex encoded offer}
 ```
 
 The cli will ask you to validate the offer informations (amounts, assets, etc.), you can use the flag of interest `--without-validation` or `-w` for externally validated automated setups.
