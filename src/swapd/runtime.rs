@@ -109,12 +109,13 @@ pub fn run(
 
     info!("Initial state: {}", init_state.bright_white_bold());
 
+    // FIXME: threshold and race should be parameters
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: 0,
+        btc_finality_thr: 2,
         race_thr: 3,
-        xmr_finality_thr: 0,
+        xmr_finality_thr: 6,
     };
 
     temporal_safety.valid_params()?;
