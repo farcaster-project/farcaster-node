@@ -34,7 +34,7 @@ use clap::Clap;
 use farcaster_node::Config;
 use farcaster_node::{
     rpc::request::Token,
-    walletd::{self, Opts},
+    walletd::{self, NodeSecrets, Opts},
 };
 
 fn main() {
@@ -50,10 +50,11 @@ fn main() {
 
     let wallet_token = Token(opts.token.wallet_token);
 
-    let node_id = opts.key_opts.node_secrets().node_id();
+    let node_secrets = NodeSecrets::new(opts.key_opts.key_file.clone());
+    let node_id = node_secrets.node_id();
 
     debug!("Starting runtime ...");
-    walletd::run(config, wallet_token, opts.key_opts.node_secrets(), node_id)
+    walletd::run(config, wallet_token, node_secrets, node_id)
         .expect("Error running walletd runtime");
 
     unreachable!()

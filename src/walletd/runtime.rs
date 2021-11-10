@@ -73,7 +73,6 @@ pub fn run(
         node_id,
         wallets: none!(),
         swaps: none!(),
-        wallet_counter: Counter(0),
         btc_addrs: none!(),
     };
 
@@ -88,7 +87,6 @@ pub struct Runtime {
     wallets: HashMap<SwapId, Wallet>,
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
-    wallet_counter: Counter,
 }
 
 pub enum Wallet {
@@ -105,7 +103,7 @@ impl Counter {
 }
 
 pub struct AliceState {
-    wallet_ix: u32,
+    wallet_index: u32,
     alice: Alice<BtcXmr>,
     local_params: AliceParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
@@ -125,7 +123,7 @@ fn curry_address(ext_addr: Address) -> impl FnOnce() -> Address {
 
 impl AliceState {
     fn new(
-        wallet_ix: u32,
+        wallet_index: u32,
         alice: Alice<BtcXmr>,
         local_params: AliceParameters<BtcXmr>,
         local_proof: Proof<BtcXmr>,
@@ -134,7 +132,7 @@ impl AliceState {
         remote_commit: Option<CommitBobParameters<BtcXmr>>,
     ) -> Self {
         Self {
-            wallet_ix,
+            wallet_index,
             alice,
             local_params,
             local_proof,
@@ -151,7 +149,7 @@ impl AliceState {
 }
 
 pub struct BobState {
-    wallet_ix: u32,
+    wallet_index: u32,
     bob: Bob<BtcXmr>,
     local_params: BobParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
@@ -167,7 +165,7 @@ pub struct BobState {
 
 impl BobState {
     fn new(
-        wallet_ix: u32,
+        wallet_index: u32,
         bob: Bob<BtcXmr>,
         local_params: BobParameters<BtcXmr>,
         local_proof: Proof<BtcXmr>,
@@ -177,7 +175,7 @@ impl BobState {
         remote_commit_params: Option<CommitAliceParameters<BtcXmr>>,
     ) -> Self {
         Self {
-            wallet_ix,
+            wallet_index,
             bob,
             local_params,
             local_proof,
@@ -298,7 +296,7 @@ impl Runtime {
                     SwapRole::Bob => {
                         let bob =
                             Bob::<BtcXmr>::new(external_address.clone().into(), FeePriority::Low);
-                        let wallet_index = self.wallet_counter.increment();
+                        let wallet_index = self.node_secrets.increment_wallet_counter();
                         let mut key_manager =
                             KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
                         let (local_params, local_proof) =
@@ -352,8 +350,8 @@ impl Runtime {
                         let alice: Alice<BtcXmr> =
                             Alice::new(external_address.clone().into(), FeePriority::Low);
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let wallet_ix = self.wallet_counter.increment();
-                        let mut key_manager = KeyManager::new(wallet_seed, wallet_ix)?;
+                        let wallet_index = self.node_secrets.increment_wallet_counter();
+                        let mut key_manager = KeyManager::new(wallet_seed, wallet_index)?;
                         let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &pub_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
@@ -362,7 +360,7 @@ impl Runtime {
                                 remote_commit.clone()
                             {
                                 let alice_state = AliceState::new(
-                                    wallet_ix,
+                                    wallet_index,
                                     alice,
                                     local_params.clone(),
                                     local_proof,
@@ -454,7 +452,7 @@ impl Runtime {
                         *remote_proof = Some(Proof { proof: proof.proof })
                     }
                     Some(Wallet::Bob(BobState {
-                        wallet_ix: _,
+                        wallet_index: _,
                         bob: _,
                         local_params: _,
                         local_proof: _,
@@ -979,7 +977,7 @@ impl Runtime {
                 self.swaps.insert(swap_id, None);
                 // since we're takers, we are on the other side of the trade
                 let taker_role = offer.maker_role.other();
-                let wallet_index = self.wallet_counter.increment();
+                let wallet_index = self.node_secrets.increment_wallet_counter();
                 let mut key_manager = KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
                 match taker_role {
                     SwapRole::Bob => {
@@ -999,7 +997,7 @@ impl Runtime {
                         info!("Loading {}", "Wallet::Bob".bright_yellow());
                         if self.wallets.get(&swap_id).is_none() {
                             let local_wallet = BobState::new(
-                                self.wallet_counter.increment(),
+                                wallet_index,
                                 bob,
                                 local_params.clone(),
                                 local_proof.clone(),
@@ -1035,7 +1033,6 @@ impl Runtime {
                         let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
-                        let wallet_ix = self.wallet_counter.increment();
                         let key_manager = KeyManager::new(wallet_seed, wallet_index)?;
 
                         if self.wallets.get(&swap_id).is_none() {
@@ -1043,7 +1040,7 @@ impl Runtime {
                             // requests and store the state in there directly
                             info!("Loading Alice Taker's Wallet");
                             let wallet = AliceState::new(
-                                wallet_ix,
+                                wallet_index,
                                 alice,
                                 local_params.clone(),
                                 local_proof.clone(),
