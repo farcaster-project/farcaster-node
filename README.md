@@ -86,7 +86,7 @@ To create an offer and spawn a listening `peerd` accepting incoming connections,
 swap-cli make tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
     Testnet ECDSA Monero\
     "0.00001350 BTC" "0.00000001 XMR"\
-    Alice 4 5 "1 satoshi/vByte"\
+    Alice 4 6 "1 satoshi/vByte"\
     1.2.3.4\
     0.0.0.0\
     9735

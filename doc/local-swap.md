@@ -46,7 +46,7 @@ Maker creates offer and start listening. Command used to print a hex representat
 swap1-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
     Testnet ECDSA Monero\
     "0.00001350 BTC" "0.00000001 XMR"\
-    Alice 4 5 "1 satoshi/vByte"\
+    Alice 4 6 "1 satoshi/vByte"\
     "127.0.0.1" "0.0.0.0" 9735
 ```
 
