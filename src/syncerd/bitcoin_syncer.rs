@@ -299,7 +299,7 @@ impl ElectrumRpc {
                             // SAFETY: safe cast u64 from usize, confirmations should not overflow
                             // 32-bits
                             (
-                                (current_block_height - confirm_height as u64) as u32,
+                                (current_block_height - confirm_height as u64) as u32 + 1,
                                 blockhash,
                             )
                         }
