@@ -70,6 +70,10 @@ impl SyncerState {
         }
     }
 
+    pub fn block_height(&self) -> u64 {
+        self.block_height
+    }
+
     pub async fn abort(&mut self, task_id: u32, source: ServiceId) {
         // check addresses tasks
         let ids: Vec<u32> = self

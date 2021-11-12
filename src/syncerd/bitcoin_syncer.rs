@@ -242,20 +242,72 @@ impl ElectrumRpc {
     async fn query_transactions(&self, state: Arc<Mutex<SyncerState>>) {
         let state_guard = state.lock().await;
         let transactions = state_guard.transactions.clone();
+        let current_block_height = state_guard.block_height();
         drop(state_guard);
         for (_, watched_tx) in transactions.iter() {
             let tx_id = bitcoin::Txid::from_slice(&watched_tx.task.hash).unwrap();
-            match self.client.transaction_get_verbose(&tx_id) {
+            // Get the full transaction
+            match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
                     debug!("Updated tx: {}", &tx_id);
-                    let blockhash = tx.blockhash.map(|x| x.to_vec());
-                    let confs = match tx.confirmations {
-                        Some(confs) => confs,
-                        None => 0,
+                    // Look for history of the first output (maybe last is generally less likelly
+                    // to be used multiple times, so more efficient?!)
+                    let history = match self.client.script_get_history(&tx.output[0].script_pubkey)
+                    {
+                        Ok(history) => history,
+                        Err(err) => {
+                            debug!(
+                                "error getting script history, treating as not found: {}",
+                                err
+                            );
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .change_transaction(tx_id.to_vec(), None, None)
+                                .await;
+                            drop(state_guard);
+                            continue;
+                        }
                     };
+
+                    let entry = history.iter().find(|history_res| {
+                        history_res.tx_hash == tx_id
+                    }).expect("Should be found in the history if we successfully queried `transaction_get`");
+
+                    let (confs, blockhash) = match entry.height {
+                        // Transaction unconfirmed (0 or -1)
+                        i32::MIN..=0 => (0, None),
+                        // Transaction confirmed at this height
+                        1.. => {
+                            // SAFETY: safe cast as it strictly greater than 0
+                            let confirm_height = entry.height as usize;
+                            let block = match self.client.block_header(confirm_height) {
+                                Ok(block) => block,
+                                Err(err) => {
+                                    debug!(
+                                        "error getting block header, treating as not found: {}",
+                                        err
+                                    );
+                                    let mut state_guard = state.lock().await;
+                                    state_guard
+                                        .change_transaction(tx_id.to_vec(), None, None)
+                                        .await;
+                                    drop(state_guard);
+                                    continue;
+                                }
+                            };
+                            let blockhash = Some(block.block_hash().to_vec());
+                            // SAFETY: safe cast u64 from usize, confirmations should not overflow
+                            // 32-bits
+                            (
+                                (current_block_height - confirm_height as u64) as u32,
+                                blockhash,
+                            )
+                        }
+                    };
+
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(tx.txid.to_vec(), blockhash, Some(confs))
+                        .change_transaction(tx.txid().to_vec(), blockhash, Some(confs))
                         .await;
                     drop(state_guard);
                 }
