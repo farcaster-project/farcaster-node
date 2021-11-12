@@ -20,7 +20,7 @@ use lnpbp::chain::Chain;
 use monero::Hash;
 use monero_rpc::{
     GenerateFromKeysArgs, GetBlockHeaderSelector, GetTransfersCategory, GetTransfersSelector,
-    TransferType,
+    PrivateKeyType, TransferType,
 };
 use std::collections::HashMap;
 use std::ops::Range;
@@ -163,6 +163,7 @@ impl MoneroRpc {
         let password = s!(" ");
 
         let wallet = wallet_mutex.lock().await;
+        trace!("taking check address lock");
 
         match wallet
             .open_wallet(wallet_filename.clone(), Some(password.clone()))
@@ -208,6 +209,7 @@ impl MoneroRpc {
         };
 
         let mut transfers = wallet.get_transfers(selector).await?;
+        trace!("releasing check address lock");
         drop(wallet);
 
         let mut address_txs: Vec<AddressTx> = vec![];
@@ -239,12 +241,18 @@ async fn sweep_address(
     let wallet_filename = format!("sweep:{}", address);
 
     let wallet = wallet_mutex.lock().await;
+    trace!("taking sweep wallet lock");
 
     match wallet
         .open_wallet(wallet_filename.clone(), Some(password.clone()))
         .await
     {
-        Ok(_) => {}
+        Ok(_) => {
+            wallet
+                .open_wallet(wallet_filename.clone(), Some(password.clone()))
+                .await?;
+            debug!("opened sweep wallet");
+        }
         Err(err) => {
             warn!(
                 "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
@@ -266,6 +274,8 @@ async fn sweep_address(
     }
 
     wallet.refresh(Some(1)).await?;
+    // failsafe to check if the wallet really supports spending
+    wallet.query_key(PrivateKeyType::Spend).await?;
 
     let balance = wallet.get_balance(0, None).await?;
     // only sweep once all the balance is unlocked
@@ -302,6 +312,7 @@ async fn sweep_address(
             balance.unlocked_balance, balance.balance
         );
     }
+    trace!("releasing sweep wallet lock");
     Ok(None)
 }
 

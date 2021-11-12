@@ -15,7 +15,9 @@
 
 use crate::{
     error::SyncerError,
-    rpc::request::{BitcoinAddress, Keys, LaunchSwap, PubOffer, RequestId, Reveal, Token},
+    rpc::request::{
+        BitcoinAddress, Keys, LaunchSwap, MoneroAddress, PubOffer, RequestId, Reveal, Token,
+    },
     swapd::get_swap_id,
     syncerd::opts::Coin,
     walletd::NodeSecrets,
@@ -88,6 +90,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         making_swaps: none!(),
         taking_swaps: none!(),
         arb_addrs: none!(),
+        acc_addrs: none!(),
         public_offers: none!(),
         node_ids: none!(),
         wallet_token,
@@ -113,6 +116,7 @@ pub struct Runtime {
     taking_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
+    acc_addrs: HashMap<PublicOfferId, String>,
     consumed_offers: HashSet<PublicOfferId>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
@@ -221,11 +225,23 @@ impl Runtime {
                             ServiceId::Wallet,
                             btc_addr_req,
                         )?;
-
-                        senders.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?;
                     } else {
                         error!("missing arb_addr")
                     }
+                    if let Some(acc_addr) = self.acc_addrs.remove(&public_offer.id()) {
+                        let xmr_addr_req =
+                            Request::MoneroAddress(MoneroAddress(*swap_id, acc_addr));
+                        senders.send_to(
+                            ServiceBus::Msg,
+                            self.identity(),
+                            ServiceId::Wallet,
+                            xmr_addr_req,
+                        )?;
+                    } else {
+                        error!("missing acc_addr")
+                    }
+
+                    senders.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?;
                 }
                 return Ok(());
             }
@@ -577,6 +593,7 @@ impl Runtime {
                 bind_addr,
                 peer_secret_key,
                 arbitrating_addr,
+                accordant_addr,
             }) => {
                 let resp = match (self.listens.contains(&bind_addr), peer_secret_key) {
                     (false, None) => {
@@ -647,6 +664,7 @@ impl Runtime {
                         Request::Success(OptionDetails(Some(msg))),
                     ));
                     self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
+                    self.acc_addrs.insert(pub_offer_id, accordant_addr);
                 } else {
                     let msg = "This Public offer was previously registered";
                     warn!("{}", msg.err());
@@ -663,6 +681,7 @@ impl Runtime {
             Request::TakeOffer(request::PubOffer {
                 public_offer,
                 external_address,
+                internal_address,
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
@@ -745,6 +764,7 @@ impl Runtime {
                         let request = Request::TakeOffer(PubOffer {
                             public_offer,
                             external_address,
+                            internal_address,
                             peer_secret_key: None,
                         });
                         senders.send_to(

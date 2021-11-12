@@ -14,6 +14,7 @@
 
 use bitcoin::Address;
 use clap::{AppSettings, Clap};
+use monero::Address as XmrAddress;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -105,12 +106,17 @@ pub enum Command {
     /// representation of the offer that shall be shared with Taker.
     /// Additionally it spins up the listener awaiting for connection related to
     /// this offer. Example usage:
-    /// `make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq Testnet ECDSA Monero
+    /// `make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq
+    /// 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt
+    /// Testnet ECDSA Monero
     /// "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1 satoshi/vByte"
     /// "127.0.0.1" "0.0.0.0" 9745`
     Make {
         /// Bitcoin address used as destination or refund address
         arbitrating_addr: Address,
+
+        /// Monero address used as destination or refund address
+        accordant_addr: XmrAddress,
 
         /// Network to use
         #[clap(default_value = "Testnet", possible_values = &["Testnet", "Mainnet", "Local"])]
@@ -168,6 +174,9 @@ pub enum Command {
     Take {
         /// bitcoin address used as destination or refund address
         bitcoin_address: Address,
+
+        /// monero address used as destination or refund address
+        monero_address: XmrAddress,
 
         /// Hex encoded offer
         public_offer: PublicOffer<BtcXmr>,
