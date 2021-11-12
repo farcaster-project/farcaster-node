@@ -657,7 +657,7 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
         vout,
         amount: in_amount,
         ..
-    } = &utxos[0];
+    } = utxos.iter().max_by_key(|utxo| utxo.amount).unwrap();
 
     let out_amount = *in_amount - amount - amount;
     let transaction = bitcoin_rpc
