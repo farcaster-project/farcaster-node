@@ -647,7 +647,7 @@ impl Runtime {
         if self.peer_service != source {
             return Err(Error::Farcaster(format!(
                 "{}: expected {}, found {}",
-                "Incorrect peer connection".to_string(),
+                "Incorrect peer connection",
                 self.peer_service,
                 source
             )));
@@ -656,12 +656,12 @@ impl Runtime {
         match &request {
             Request::Protocol(msg) => {
                 if msg.swap_id() != self.swap_id() {
-                    Err(Error::Farcaster(format!(
+                    return Err(Error::Farcaster(format!(
                         "{}: expected {}, found {}",
-                        "Incorrect swap_id ".to_string(),
+                        "Incorrect swap_id ",
                         self.swap_id(),
                         msg.swap_id(),
-                    )))?
+                    )));
                 }
                 match &msg {
                     // we are taker and the maker committed, now we reveal after checking

@@ -876,7 +876,7 @@ impl Runtime {
                 "--peer-secret-key",
                 &format!("{:x}", sk),
                 "--wallet-token",
-                &format!("{}", self.wallet_token.clone().to_string()),
+                &format!("{}", self.wallet_token.clone()),
             ],
         );
 
