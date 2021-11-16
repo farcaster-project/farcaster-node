@@ -229,7 +229,7 @@ impl FromStr for AmountOfAsset {
                 .next()
                 .ok_or(AmountOfAssetParseError::NeedsValuePair)?;
             if split.count() > 0 {
-                Err(AmountOfAssetParseError::NeedsValuePair)?
+                return Err(AmountOfAssetParseError::NeedsValuePair);
             }
         } else if s.contains(' ') {
             let mut split = s.split(' ');
@@ -240,7 +240,7 @@ impl FromStr for AmountOfAsset {
                 .next()
                 .ok_or(AmountOfAssetParseError::NeedsValuePair)?;
             if split.count() > 0 {
-                Err(AmountOfAssetParseError::NeedsValuePair)?
+                return Err(AmountOfAssetParseError::NeedsValuePair);
             }
         } else {
             return Err(AmountOfAssetParseError::NeedsValuePair);
