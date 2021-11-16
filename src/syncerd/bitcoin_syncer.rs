@@ -78,7 +78,7 @@ impl From<&ElectrumRpc> for Vec<Script> {
     fn from(x: &ElectrumRpc) -> Self {
         x.addresses
             .keys()
-            .filter_map(|addr| Some(addr.script_pubkey.clone()))
+            .map(|addr| addr.script_pubkey.clone())
             .collect()
     }
 }
