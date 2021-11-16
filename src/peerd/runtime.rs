@@ -466,10 +466,7 @@ impl Runtime {
         }
         let mut rng = rand::thread_rng();
         let len: u16 = rng.gen_range(4, 32);
-        let mut noise = vec![0u8; len as usize];
-        for i in 0..noise.len() {
-            noise[i] = rng.gen();
-        }
+        let noise = vec![0u8; len as usize].iter().map(|_| rng.gen()).collect();
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
         self.sender.send_message(Msg::Ping(message::Ping {
@@ -482,11 +479,11 @@ impl Runtime {
 
     fn pong(&mut self, pong_size: u16) -> Result<(), Error> {
         trace!("Replying with pong to the remote peer");
-        let mut noise = vec![0u8; pong_size as usize];
         let mut rng = rand::thread_rng();
-        for i in 0..noise.len() {
-            noise[i] = rng.gen();
-        }
+        let noise = vec![0u8; pong_size as usize]
+            .iter()
+            .map(|_| rng.gen())
+            .collect();
         self.messages_sent += 1;
         self.sender.send_message(Msg::Pong(noise))?;
         Ok(())
