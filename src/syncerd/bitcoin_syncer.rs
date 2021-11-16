@@ -130,9 +130,10 @@ impl ElectrumRpc {
             self.client
                 .script_subscribe(&address_addendum.script_pubkey)?
         };
-        if let Some(_) = self
+        if self
             .addresses
             .insert(address_addendum.clone(), script_status)
+            .is_some()
         {
         } else {
             info!(
@@ -202,7 +203,10 @@ impl ElectrumRpc {
 
                 while let Ok(Some(script_status)) = self.client.script_pop(script_pubkey) {
                     if Some(script_status) != previous_status {
-                        if let Some(_) = self.addresses.insert(address.clone(), Some(script_status))
+                        if self
+                            .addresses
+                            .insert(address.clone(), Some(script_status))
+                            .is_some()
                         {
                             info!(
                                 "updated address {:?} with script_status {:?}",

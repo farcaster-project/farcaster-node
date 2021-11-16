@@ -345,14 +345,14 @@ impl SyncerState {
             let changes_detected: bool = addresses
                 .iter()
                 .find_map(|(_, addr)| {
-                    let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
-                    if !new_txs.is_empty() {
+                    // let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
+                    if txs.difference(&addr.known_txs).next().is_some() {
                         Some(true)
                     } else {
                         None
                     }
                 })
-                .unwrap_or_else(|| false);
+                .unwrap_or(false);
 
             if !changes_detected {
                 trace!("no changes to process, skipping...");

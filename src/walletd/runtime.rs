@@ -391,7 +391,7 @@ impl Runtime {
                             ..
                         })) = self.wallets.get_mut(&swap_id)
                         {
-                            if let Some(_) = remote_commit {
+                            if remote_commit.is_some() {
                                 error!("Bob commit (remote) already set");
                             } else if let Commit::BobParameters(commit) = commit {
                                 trace!("Setting bob commit");
@@ -408,7 +408,7 @@ impl Runtime {
                             ..
                         })) = self.wallets.get_mut(&swap_id)
                         {
-                            if let Some(_) = remote_commit_params {
+                            if remote_commit_params.is_some() {
                                 error!("Alice commit (remote) already set");
                             } else if let Commit::AliceParameters(commit) = commit {
                                 trace!("Setting alice commit");

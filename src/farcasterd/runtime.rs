@@ -422,7 +422,7 @@ impl Runtime {
                     };
                     let peer = daemon_service
                         .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?
+                        .ok_or(internet2::presentation::Error::InvalidEndpoint)?
                         .into();
 
                     self.consumed_offers.insert(public_offer.id());
@@ -886,7 +886,7 @@ impl Runtime {
         // status is Some if peerd returns because it crashed
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 
-        if let Some(_) = status {
+        if status.is_some() {
             return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
         }
 

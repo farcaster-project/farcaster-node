@@ -551,8 +551,7 @@ impl SyncerState {
         self.tasks
             .watched_addrs
             .values()
-            .find(|&&x| x == TxLabel::AccLock)
-            .is_some()
+            .any(|&x| x == TxLabel::AccLock)
     }
     fn handle_tx_confs(&self, id: &u32, confirmations: &Option<u32>) {
         if let Some(txlabel) = self.tasks.watched_txs.get(id) {
@@ -647,9 +646,7 @@ impl Runtime {
         if self.peer_service != source {
             return Err(Error::Farcaster(format!(
                 "{}: expected {}, found {}",
-                "Incorrect peer connection",
-                self.peer_service,
-                source
+                "Incorrect peer connection", self.peer_service, source
             )));
         }
         let msg_bus = ServiceBus::Msg;
