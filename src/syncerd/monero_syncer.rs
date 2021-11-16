@@ -78,7 +78,7 @@ impl MoneroRpc {
     async fn get_block_hash(&mut self, height: u64) -> Result<Vec<u8>, Error> {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
-        let selector = GetBlockHeaderSelector::Height(height.into());
+        let selector = GetBlockHeaderSelector::Height(height);
         let header = daemon.get_block_header(selector).await?;
         Ok(header.hash.0.to_vec())
     }
@@ -459,7 +459,7 @@ fn height_polling(
             if let Some(block_notif) = block_notif {
                 let mut state_guard = state.lock().await;
                 state_guard
-                    .change_height(block_notif.height, block_notif.block_hash.into())
+                    .change_height(block_notif.height, block_notif.block_hash)
                     .await;
                 let mut transactions = state_guard.transactions.clone();
                 drop(state_guard);

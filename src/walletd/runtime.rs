@@ -285,7 +285,7 @@ impl Runtime {
                 let external_address = self.btc_addrs.remove(&swap_id).expect("checked above");
                 match offer.maker_role {
                     SwapRole::Bob => {
-                        let bob = Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
+                        let bob = Bob::<BtcXmr>::new(external_address, FeePriority::Low);
                         let wallet_index = self.node_secrets.increment_wallet_counter();
                         let mut key_manager =
                             KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
@@ -336,8 +336,7 @@ impl Runtime {
                         }
                     }
                     SwapRole::Alice => {
-                        let alice: Alice<BtcXmr> =
-                            Alice::new(external_address.into(), FeePriority::Low);
+                        let alice: Alice<BtcXmr> = Alice::new(external_address, FeePriority::Low);
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let wallet_index = self.node_secrets.increment_wallet_counter();
                         let mut key_manager = KeyManager::new(wallet_seed, wallet_index)?;
@@ -949,7 +948,7 @@ impl Runtime {
             }) if source == ServiceId::Farcasterd => {
                 let PublicOffer { offer, node_id, .. } = public_offer.clone();
 
-                let swap_id: SwapId = SwapId::random().into();
+                let swap_id: SwapId = SwapId::random();
                 self.swaps.insert(swap_id, None);
                 self.xmr_addrs.insert(swap_id, internal_address);
 
@@ -959,7 +958,7 @@ impl Runtime {
                 let mut key_manager = KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
                 match taker_role {
                     SwapRole::Bob => {
-                        let bob: Bob<BtcXmr> = Bob::new(external_address.into(), FeePriority::Low);
+                        let bob: Bob<BtcXmr> = Bob::new(external_address, FeePriority::Low);
                         let (local_params, local_proof) =
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
                         let funding = create_funding(&mut key_manager, offer.network)?;
@@ -1004,8 +1003,7 @@ impl Runtime {
                         )?;
                     }
                     SwapRole::Alice => {
-                        let alice: Alice<BtcXmr> =
-                            Alice::new(external_address.into(), FeePriority::Low);
+                        let alice: Alice<BtcXmr> = Alice::new(external_address, FeePriority::Low);
                         let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
