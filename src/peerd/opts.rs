@@ -103,7 +103,7 @@ pub struct PeerKeyOpts {
     pub peer_secret_key: String,
 }
 
-/// WalletToken configuration
+/// ``WalletToken`` configuration
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 pub struct TokenString {
     #[clap(long)]
