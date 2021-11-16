@@ -106,7 +106,7 @@ impl NodeSecrets {
             NodeSecrets::strict_decode(fs::File::open(key_file.clone()).expect(&format!(
                 "Unable to open key file {}; please check that the user \
                     running the deamon has necessary permissions",
-                key_file.clone()
+                key_file
             )))
             .expect("Unable to read node code file format")
         } else {
