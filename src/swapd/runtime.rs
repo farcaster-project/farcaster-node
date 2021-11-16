@@ -2003,22 +2003,20 @@ fn aggregate_xmr_spend_view(
     alice_params: &AliceParameters<BtcXmr>,
     bob_params: &BobParameters<BtcXmr>,
 ) -> (monero::PublicKey, monero::PrivateKey) {
-    let alice_view = alice_params
+    let alice_view = *alice_params
         .accordant_shared_keys
         .clone()
         .into_iter()
         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .unwrap()
-        .elem()
-        .clone();
-    let bob_view = bob_params
+        .expect("accordant shared keys should always have a view key")
+        .elem();
+    let bob_view = *bob_params
         .accordant_shared_keys
         .clone()
         .into_iter()
         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .unwrap()
-        .elem()
-        .clone();
+        .expect("accordant shared keys should always have a view key")
+        .elem();
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 
