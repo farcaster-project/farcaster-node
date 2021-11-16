@@ -31,6 +31,8 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceId};
+
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     config: Config,
     connection: PeerConnection,

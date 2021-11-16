@@ -924,6 +924,7 @@ impl Runtime {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn launch_swapd(
     runtime: &mut Runtime,
     peerd: ServiceId,
