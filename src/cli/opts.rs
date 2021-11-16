@@ -51,7 +51,7 @@ pub struct Opts {
 
 impl Opts {
     pub fn process(&mut self) {
-        self.shared.process()
+        self.shared.process();
     }
 }
 /// Command-line commands:
