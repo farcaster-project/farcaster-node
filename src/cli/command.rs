@@ -175,7 +175,7 @@ impl Exec for Command {
             } => {
                 // println!("{:#?}", &public_offer);
                 let PublicOffer {
-                    version,
+                    version: _,
                     offer,
                     node_id,
                     peer_address,
@@ -212,7 +212,6 @@ impl Exec for Command {
                 runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
                 runtime.report_progress()?;
             }
-            _ => unimplemented!(),
         }
         Ok(())
     }
@@ -225,7 +224,7 @@ fn take_offer() -> bool {
     match std::str::from_utf8(&input[..]) {
         Ok("y") | Ok("Y") => true,
         Ok("n") | Ok("N") => {
-            println!("{}", "Rejecting offer");
+            println!("Rejecting offer");
             false
         }
         _ => take_offer(),

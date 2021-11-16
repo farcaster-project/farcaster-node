@@ -38,7 +38,6 @@ use hex;
 pub struct MoneroRpc {
     height: u64,
     node_rpc_url: String,
-    wallet_rpc_url: String,
     block_hash: Vec<u8>,
 }
 
@@ -61,10 +60,9 @@ pub struct Transaction {
 }
 
 impl MoneroRpc {
-    fn new(node_rpc_url: String, wallet_rpc_url: String) -> Self {
+    fn new(node_rpc_url: String) -> Self {
         MoneroRpc {
             node_rpc_url,
-            wallet_rpc_url,
             height: 0,
             block_hash: vec![0],
         }
@@ -140,10 +138,7 @@ impl MoneroRpc {
             let block_hash = self.get_block_hash(height).await?;
             self.height = height;
             self.block_hash = block_hash.clone();
-            block = Some(Block {
-                height,
-                block_hash: block_hash,
-            });
+            block = Some(Block { height, block_hash });
         }
         Ok(block)
     }
@@ -406,10 +401,7 @@ fn address_polling(
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(
-            syncer_servers.monero_daemon,
-            syncer_servers.monero_rpc_wallet,
-        );
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
             let state_guard = state.lock().await;
             let mut addresses = state_guard.addresses.clone();
@@ -457,10 +449,7 @@ fn height_polling(
     syncer_servers: SyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(
-            syncer_servers.monero_daemon,
-            syncer_servers.monero_rpc_wallet,
-        );
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
             let mut block_notif = None;
             match rpc.check_block().await {
@@ -551,10 +540,7 @@ fn unseen_transaction_polling(
     syncer_servers: SyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(
-            syncer_servers.monero_daemon,
-            syncer_servers.monero_rpc_wallet,
-        );
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
             let state_guard = state.lock().await;
             let unseen_transactions = state_guard.unseen_transactions.clone();

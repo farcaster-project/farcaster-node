@@ -84,7 +84,7 @@ use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 pub fn run(
     config: Config,
     swap_id: SwapId,
-    chain: Chain,
+    _chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
     local_trade_role: TradeRole,
 ) -> Result<(), Error> {
@@ -193,7 +193,7 @@ impl TemporalSafety {
     /// check if temporal params are in correct order
     fn valid_params(&self) -> Result<(), Error> {
         let btc_finality = self.btc_finality_thr;
-        let xmr_finality = self.xmr_finality_thr;
+        // let xmr_finality = self.xmr_finality_thr;
         let cancel = self.cancel_timelock;
         let punish = self.punish_timelock;
         let race = self.race_thr;
@@ -493,7 +493,7 @@ impl SyncerState {
         &mut self,
         spend: monero::PublicKey,
         view: monero::PrivateKey,
-        swap_role: SwapRole,
+        _swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
         info!("XMR view key: {}", view);
@@ -936,13 +936,11 @@ impl Runtime {
                         match &self.state {
                             State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: TradeRole::Maker,
-                                local_params,
                                 ..
                             }))
                             | State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: TradeRole::Maker,
-                                    local_params,
                                     ..
                                 },
                                 _,
@@ -983,7 +981,7 @@ impl Runtime {
                         lock,
                         cancel,
                         refund,
-                        cancel_sig,
+                        cancel_sig: _,
                     }) => {
                         if swap_id != &self.swap_id() {
                             error!("Swapd not responsible for swap {}", swap_id);
@@ -1087,7 +1085,6 @@ impl Runtime {
             ))?,
         };
 
-        let ctl_bus = ServiceBus::Ctl;
         match request {
             Request::SweepXmrAddress(SweepXmrAddress {
                 view_key,
@@ -1143,7 +1140,7 @@ impl Runtime {
                             (State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: local_trade_role,
-                                    local_params: local_params,
+                                    local_params,
                                     local_commit: local_commit.clone(),
                                     remote_commit: None,
                                 },
@@ -1156,7 +1153,7 @@ impl Runtime {
                         Ok((
                             (State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: local_trade_role,
-                                local_params: local_params,
+                                local_params,
                                 local_commit: local_commit.clone(),
                                 remote_commit: None,
                             }))),
@@ -1370,8 +1367,8 @@ impl Runtime {
                         id,
                         hash,
                         amount,
-                        block,
-                        tx,
+                        block: _,
+                        tx: _,
                     }) if self.state.swap_role() == SwapRole::Bob => {
                         if amount < &self.syncer_state.monero_amount.as_pico() {
                             error!(
@@ -1391,8 +1388,8 @@ impl Runtime {
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
-                        id,
-                        block,
+                        id: _,
+                        block: _,
                         confirmations: Some(confirmations),
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.swap_role() == SwapRole::Bob
@@ -1431,7 +1428,7 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block,
+                        block: _,
                         confirmations,
                     }) if self.syncer_state.tasks.watched_txs.contains_key(id) => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
@@ -1451,8 +1448,8 @@ impl Runtime {
                     Event::AddressTransaction(AddressTransaction {
                         id,
                         hash,
-                        amount,
-                        block,
+                        amount: _,
+                        block: _,
                         tx,
                     }) => {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
@@ -1511,7 +1508,7 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block,
+                        block: _,
                         confirmations: Some(confirmations),
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin) => {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
@@ -1682,7 +1679,7 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block,
+                        block: _,
                         confirmations,
                     }) => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
@@ -1707,11 +1704,11 @@ impl Runtime {
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
                 let CoreArbitratingSetup {
-                    swap_id,
+                    swap_id: _,
                     lock,
                     cancel,
                     refund,
-                    cancel_sig,
+                    cancel_sig: _,
                 } = core_arb_setup.clone();
                 for (tx, tx_label) in [lock, cancel, refund].iter().zip([
                     TxLabel::Lock,

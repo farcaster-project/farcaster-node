@@ -81,7 +81,6 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--wallet-token", &wallet_token.to_string()])?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
-        chain: config.chain.clone(),
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
@@ -106,7 +105,6 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
 
 pub struct Runtime {
     identity: ServiceId,
-    chain: Chain,
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
@@ -157,7 +155,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
+    fn _send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
         senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
         Ok(())
     }
@@ -165,7 +163,7 @@ impl Runtime {
         self.node_ids.iter().cloned().collect()
     }
 
-    fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
+    fn _known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
         let swap_id = get_swap_id(&source)?;
         if self.running_swaps.contains(&swap_id) {
             Ok(swap_id)
@@ -200,7 +198,7 @@ impl Runtime {
             // handled by farcasterd, receiving taker commit because we are
             // maker
             Request::Protocol(Msg::TakerCommit(request::TakeCommit {
-                commit,
+                commit: _,
                 public_offer_hex,
                 swap_id,
             })) => {
@@ -640,10 +638,6 @@ impl Runtime {
                     error!("{}", "Currently node supports only 1 node id");
                     return Ok(());
                 }
-                let peer = internet2::RemoteNodeAddr {
-                    node_id: node_ids[0], // checked above
-                    remote_addr: public_addr.clone(),
-                };
 
                 let public_offer = offer.clone().to_public_v1(node_ids[0], public_addr.into());
                 let pub_offer_id = public_offer.id();
@@ -698,8 +692,8 @@ impl Runtime {
                     ));
                 } else {
                     let PublicOffer {
-                        version,
-                        offer,
+                        version: _,
+                        offer: _,
                         node_id,      // bitcoin::Pubkey
                         peer_address, // InetSocketAddr
                     } = public_offer.clone();
@@ -780,13 +774,11 @@ impl Runtime {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
                 };
-                let identity = self.identity();
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 queue.push_back(request);
             }
             Request::ReadProgress(swapid) => {
                 let id = &ServiceId::Swap(swapid);
-                let identify = self.identity();
                 if let Some(queue) = self.progress.get_mut(id) {
                     let n = queue.len();
 

@@ -40,7 +40,6 @@ pub fn run(
     local_socket: Option<InetSocketAddr>,
     remote_socket: InetSocketAddr,
     connect: bool,
-    wallet_token: Token,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
     let (receiver, sender) = connection.split();
@@ -88,7 +87,6 @@ pub fn run(
         messages_sent: 0,
         messages_received: 0,
         awaited_pong: None,
-        wallet_token,
     };
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx)?;
@@ -109,9 +107,9 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 
     fn handle(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        bus: ServiceBus,
-        addr: ServiceId,
+        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _bus: ServiceBus,
+        _addr: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         // Bridge does not receive replies for now
@@ -194,7 +192,6 @@ pub struct Runtime {
     messages_sent: usize,
     messages_received: usize,
     awaited_pong: Option<u16>,
-    wallet_token: Token,
 }
 
 impl CtlServer for Runtime {}
@@ -258,7 +255,7 @@ impl Runtime {
     fn handle_rpc_msg(
         &mut self,
         _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        source: ServiceId,
+        _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         // match &request {
