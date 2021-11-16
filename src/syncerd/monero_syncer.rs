@@ -464,7 +464,7 @@ fn height_polling(
                 let mut transactions = state_guard.transactions.clone();
                 drop(state_guard);
 
-                if transactions.len() > 0 {
+                if !transactions.is_empty() {
                     let tx_ids: Vec<Vec<u8>> =
                         transactions.drain().map(|(_, tx)| tx.task.hash).collect();
                     let mut polled_transactions = vec![];
@@ -540,7 +540,7 @@ fn unseen_transaction_polling(
         loop {
             let state_guard = state.lock().await;
             let unseen_transactions = state_guard.unseen_transactions.clone();
-            if unseen_transactions.len() > 0 {
+            if !unseen_transactions.is_empty() {
                 let transactions = state_guard.transactions.clone();
                 let tx_ids: Vec<Vec<u8>> = unseen_transactions
                     .iter()
