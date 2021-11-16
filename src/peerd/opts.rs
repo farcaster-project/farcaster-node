@@ -13,14 +13,10 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, ArgGroup, Clap, ValueHint};
-use std::path::PathBuf;
-use std::{fs, io::Read};
 use std::{io, net::IpAddr};
 
 use internet2::{FramingProtocol, LocalNode, RemoteNodeAddr};
 use strict_encoding::{StrictDecode, StrictEncode};
-
-use crate::opts::FARCASTER_NODE_KEY_FILE;
 
 /// Lightning peer network connection daemon; part of LNP Node
 ///

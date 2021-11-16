@@ -16,7 +16,6 @@ use bitcoin::Address;
 use clap::{AppSettings, Clap};
 use monero::Address as XmrAddress;
 use std::net::IpAddr;
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use internet2::{FramingProtocol, PartialNodeAddr};
