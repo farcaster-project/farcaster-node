@@ -16,7 +16,7 @@
 extern crate amplify_derive;
 
 use clap::IntoApp;
-use clap_generate::{generate_to, generators::*};
+use clap_generate::{generate_to, generators::{Bash, PowerShell, Zsh}};
 
 pub mod opts {
     include!("src/opts.rs");
