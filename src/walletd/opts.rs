@@ -103,11 +103,13 @@ pub struct NodeSecrets {
 impl NodeSecrets {
     pub fn new(key_file: String) -> Self {
         if PathBuf::from(key_file.clone()).exists() {
-            NodeSecrets::strict_decode(fs::File::open(key_file.clone()).expect(&format!(
-                "Unable to open key file {}; please check that the user \
+            NodeSecrets::strict_decode(fs::File::open(key_file.clone()).unwrap_or_else(|_| {
+                panic!(
+                    "Unable to open key file {}; please check that the user \
                     running the deamon has necessary permissions",
-                key_file
-            )))
+                    key_file
+                )
+            }))
             .expect("Unable to read node code file format")
         } else {
             let mut rng = thread_rng();
@@ -120,10 +122,12 @@ impl NodeSecrets {
                 wallet_counter: Counter(0),
             };
 
-            let key_file_handle = fs::File::create(&key_file).expect(&format!(
-                "Unable to create key file '{}'; please check that path exists",
-                key_file
-            ));
+            let key_file_handle = fs::File::create(&key_file).unwrap_or_else(|_| {
+                panic!(
+                    "Unable to create key file '{}'; please check that path exists",
+                    key_file
+                )
+            });
             node_secrets
                 .strict_encode(key_file_handle)
                 .expect("Unable to save generated node secrets");
@@ -155,10 +159,12 @@ impl NodeSecrets {
 
     pub fn increment_wallet_counter(&mut self) -> u32 {
         self.wallet_counter.increment();
-        let key_file_handle = fs::File::create(&self.key_file).expect(&format!(
-            "Unable to create key file '{}'; please check that path exists",
-            self.key_file
-        ));
+        let key_file_handle = fs::File::create(&self.key_file).unwrap_or_else(|_| {
+            panic!(
+                "Unable to create key file '{}'; please check that path exists",
+                self.key_file
+            )
+        });
         self.strict_encode(key_file_handle)
             .expect("Unable to save incremented wallet counter");
         self.wallet_counter.0
