@@ -66,10 +66,11 @@ impl Exec for Command {
                     Request::NodeInfo(info) => println!("{}", info),
                     Request::PeerInfo(info) => println!("{}", info),
                     Request::SwapInfo(info) => println!("{}", info),
-                    _ => Err(Error::Other(format!(
-                        "{}",
-                        "Server returned unrecognizable response"
-                    )))?,
+                    _ => {
+                        return Err(Error::Other(
+                            "Server returned unrecognizable response".to_string(),
+                        ))
+                    }
                 }
             }
 
@@ -96,7 +97,7 @@ impl Exec for Command {
             Command::Connect { peer: node_locator } => {
                 let peer = node_locator
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                 runtime.request(ServiceId::Farcasterd, Request::ConnectPeer(peer))?;
                 runtime.report_progress()?;
@@ -105,7 +106,7 @@ impl Exec for Command {
             Command::Ping { peer } => {
                 let node_addr = peer
                     .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                 runtime.request(ServiceId::Peer(node_addr), Request::PingPeer)?;
             }

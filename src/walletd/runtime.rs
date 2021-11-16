@@ -483,7 +483,7 @@ impl Runtime {
                                                               * clone(), */
                                 );
 
-                                if !proof_verification.is_ok() {
+                                if proof_verification.is_err() {
                                     error!("DLEQ proof invalid");
                                     return Ok(());
                                 }
@@ -540,7 +540,7 @@ impl Runtime {
                                 remote_proof.proof.clone(),
                             );
 
-                            if !proof_verification.is_ok() {
+                            if proof_verification.is_err() {
                                 error!("DLEQ proof invalid");
                                 return Ok(());
                             }
@@ -1191,7 +1191,7 @@ impl Runtime {
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
                 if wallet_token != self.wallet_token {
-                    Err(Error::InvalidToken)?
+                    return Err(Error::InvalidToken);
                 }
                 trace!("sent Secret request to farcasterd");
                 self.send_farcasterd(

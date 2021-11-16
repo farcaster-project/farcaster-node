@@ -173,7 +173,7 @@ impl Runtime {
     }
     fn syncers_up(&self, coin_arb: Coin, coin_acc: Coin, network: Network) -> Result<(), Error> {
         if coin_arb == coin_acc {
-            Err(Error::Syncer(SyncerError::InvalidConfig))?
+            return Err(Error::Syncer(SyncerError::InvalidConfig));
         }
         if !self.syncers.contains_key(&(coin_arb.clone(), network)) {
             launch("syncerd", &[coin_arb.to_string(), network.to_string()])?;
@@ -202,7 +202,7 @@ impl Runtime {
                 public_offer_hex,
                 swap_id,
             })) => {
-                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
+                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(public_offer_hex)?;
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(
@@ -440,7 +440,7 @@ impl Runtime {
                 } else {
                     let msg = "unknown public_offer".to_string();
                     error!("{}", msg);
-                    Error::Farcaster(msg);
+                    return Err(Error::Farcaster(msg));
                 }
             }
             Request::Keys(Keys(sk, pk, id)) => {
@@ -477,11 +477,11 @@ impl Runtime {
                         listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
-                            .unwrap_or(Duration::from_secs(0)),
+                            .unwrap_or_else(|_| Duration::from_secs(0)),
                         since: self
                             .started
                             .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap_or(Duration::from_secs(0))
+                            .unwrap_or_else(|_| Duration::from_secs(0))
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
                         swaps: self.running_swaps.iter().cloned().collect(),
@@ -704,7 +704,7 @@ impl Runtime {
                     };
                     let peer = daemon_service
                         .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                        .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                     // Connect
                     let peer_connected_is_ok =
@@ -864,7 +864,7 @@ impl Runtime {
             return Err(Error::Other(format!(
                 "Already connected to peer {}",
                 node_addr
-            )))?;
+            )));
         }
 
         // Start peerd
@@ -887,7 +887,7 @@ impl Runtime {
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 
         if let Some(_) = status {
-            Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint))?
+            return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
         }
 
         let msg = format!("New instance of peerd launched with PID {}", child.id());

@@ -119,7 +119,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 
     fn handle_err(&mut self, err: esb::Error) -> Result<(), esb::Error> {
         // We simply propagate the error since it's already being reported
-        Err(err)?
+        Err(err)
     }
 }
 
@@ -316,11 +316,11 @@ impl Runtime {
                     remote_socket: vec![self.remote_socket],
                     uptime: SystemTime::now()
                         .duration_since(self.started)
-                        .unwrap_or(Duration::from_secs(0)),
+                        .unwrap_or_else(|_| Duration::from_secs(0)),
                     since: self
                         .started
                         .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or(Duration::from_secs(0))
+                        .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
                     messages_sent: self.messages_sent,
                     messages_received: self.messages_received,
@@ -453,7 +453,7 @@ impl Runtime {
             other => {
                 error!("Request is not supported by the BRIDGE interface");
                 dbg!(other);
-                return Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))?;
+                return Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()));
             }
         }
         Ok(())

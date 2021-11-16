@@ -92,14 +92,15 @@ impl Client {
 
     pub fn report_failure(&mut self) -> Result<Request, Error> {
         match self.response()? {
-            Request::Failure(fail) => {
-                // // Errors reported on swap-cli binary
-                // eprintln!(
-                //     "{}: {}",
-                //     "Request failure".err(),
-                //     fail.err_details()
-                // );
-                Err(Error::from(fail))?
+            Request::Failure(fail) =>
+            // // Errors reported on swap-cli binary
+            // eprintln!(
+            //     "{}: {}",
+            //     "Request failure".err(),
+            //     fail.err_details()
+            // );
+            {
+                Err(Error::from(fail))
             }
             resp => Ok(resp),
         }
@@ -131,7 +132,7 @@ impl Client {
                 }
                 other => {
                     eprintln!("{}: {}", "Unexpected report".err(), other.err_details());
-                    Err(Error::Other(s!("Unexpected server response")))?
+                    return Err(Error::Other(s!("Unexpected server response")));
                 }
             }
         }
@@ -165,6 +166,6 @@ impl esb::Handler<ServiceBus> for Handler {
 
     fn handle_err(&mut self, err: esb::Error) -> Result<(), esb::Error> {
         // We simply propagate the error since it's already being reported
-        Err(err)?
+        Err(err)
     }
 }

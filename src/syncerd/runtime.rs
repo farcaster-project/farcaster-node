@@ -192,11 +192,11 @@ impl Runtime {
                     Request::SyncerInfo(SyncerInfo {
                         uptime: SystemTime::now()
                             .duration_since(self.started)
-                            .unwrap_or(Duration::from_secs(0)),
+                            .unwrap_or_else(|_| Duration::from_secs(0)),
                         since: self
                             .started
                             .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap_or(Duration::from_secs(0))
+                            .unwrap_or_else(|_| Duration::from_secs(0))
                             .as_secs(),
                         tasks: self.tasks.iter().cloned().collect(),
                     }),

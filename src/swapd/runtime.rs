@@ -870,7 +870,7 @@ impl Runtime {
                                 _ => {
                                     let err_msg = "expected Some(Commit::Alice(commit))";
                                     error!("{}", err_msg);
-                                    Err(Error::Farcaster(err_msg.to_string()))?
+                                    return Err(Error::Farcaster(err_msg.to_string()));
                                 }
                             },
                             Reveal::BobParameters(reveal) => match &remote_commit {
@@ -881,7 +881,7 @@ impl Runtime {
                                 _ => {
                                     let err_msg = "expected Some(Commit::Bob(commit))";
                                     error!("{}", err_msg);
-                                    Err(Error::Farcaster(err_msg.to_string()))?
+                                    return Err(Error::Farcaster(err_msg.to_string()));
                                 }
                             },
                             Reveal::Proof(_) => {
@@ -1044,7 +1044,9 @@ impl Runtime {
                     }
 
                     // bob and alice
-                    Msg::Abort(_) => Err(Error::Farcaster("Abort not yet supported".to_string()))?,
+                    Msg::Abort(_) => {
+                        return Err(Error::Farcaster("Abort not yet supported".to_string()))
+                    }
                     Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
                         unreachable!("ping/pong must remain in peerd, and unreachable in swapd")
                     }
@@ -1079,10 +1081,10 @@ impl Runtime {
                 | ServiceId::Wallet
             ) => {}
             (Request::GetInfo, ServiceId::Client(_)) => {}
-            _ => Err(Error::Farcaster(
+            _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
-            ))?,
+            )),
         };
 
         match request {
@@ -1886,11 +1888,11 @@ impl Runtime {
                     maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
-                        .unwrap_or(Duration::from_secs(0)),
+                        .unwrap_or_else(|_| Duration::from_secs(0)),
                     since: self
                         .started
                         .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or(Duration::from_secs(0))
+                        .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
                     // params: self.params, // FIXME
                     // serde::Serialize/Deserialize missing

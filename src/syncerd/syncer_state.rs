@@ -521,7 +521,7 @@ impl SyncerState {
 
     fn add_lifetime(&mut self, lifetime: u64, id: u32) -> Result<(), Error> {
         if lifetime < self.block_height {
-            Err(Error::Farcaster("task lifetime expired".to_string()))?;
+            return Err(Error::Farcaster("task lifetime expired".to_string()));
         }
 
         if let Some(lifetimes) = self.lifetimes.get_mut(&lifetime) {
