@@ -195,6 +195,7 @@ where
         Self::with(config, runtime, true)
     }
 
+    #[allow(clippy::self_named_constructors)]
     pub fn service(config: Config, runtime: Runtime) -> Result<Self, esb::Error> {
         Self::with(config, runtime, false)
     }
