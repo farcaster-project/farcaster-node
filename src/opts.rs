@@ -22,29 +22,29 @@ use lnpbp::chain::Chain;
 use microservices::shell::LogLevel;
 
 #[cfg(any(target_os = "linux"))]
-pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/.farcaster_node";
+pub const FARCASTER_NODE_DATA_DIR: &str = "~/.farcaster_node";
 #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
-pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/.farcaster_node";
+pub const FARCASTER_NODE_DATA_DIR: &str = "~/.farcaster_node";
 #[cfg(target_os = "macos")]
-pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/Library/Application Support/FARCASTER Node";
+pub const FARCASTER_NODE_DATA_DIR: &str = "~/Library/Application Support/FARCASTER Node";
 #[cfg(target_os = "windows")]
-pub const FARCASTER_NODE_DATA_DIR: &'static str = "~\\AppData\\Local\\FARCASTER Node";
+pub const FARCASTER_NODE_DATA_DIR: &str = "~\\AppData\\Local\\FARCASTER Node";
 #[cfg(target_os = "ios")]
-pub const FARCASTER_NODE_DATA_DIR: &'static str = "~/Documents";
+pub const FARCASTER_NODE_DATA_DIR: &str = "~/Documents";
 #[cfg(target_os = "android")]
-pub const FARCASTER_NODE_DATA_DIR: &'static str = ".";
+pub const FARCASTER_NODE_DATA_DIR: &str = ".";
 
-pub const FARCASTER_NODE_MSG_SOCKET_NAME: &'static str = "lnpz:{data_dir}/msg.rpc?api=esb";
-pub const FARCASTER_NODE_CTL_SOCKET_NAME: &'static str = "lnpz:{data_dir}/ctl.rpc?api=esb";
+pub const FARCASTER_NODE_MSG_SOCKET_NAME: &str = "lnpz:{data_dir}/msg.rpc?api=esb";
+pub const FARCASTER_NODE_CTL_SOCKET_NAME: &str = "lnpz:{data_dir}/ctl.rpc?api=esb";
 
-pub const FARCASTER_NODE_CONFIG: &'static str = "{data_dir}/farcaster.toml";
+pub const FARCASTER_NODE_CONFIG: &str = "{data_dir}/farcaster.toml";
 
-pub const FARCASTER_NODE_TOR_PROXY: &'static str = "127.0.0.1:9050";
-pub const FARCASTER_NODE_KEY_FILE: &'static str = "{data_dir}/key.dat";
+pub const FARCASTER_NODE_TOR_PROXY: &str = "127.0.0.1:9050";
+pub const FARCASTER_NODE_KEY_FILE: &str = "{data_dir}/key.dat";
 
-pub const ELECTRUM_SERVER: &'static str = "tcp://localhost:50001";
-pub const MONERO_DAEMON: &'static str = "http://node.monerooutreach.org:18081";
-pub const MONERO_RPC_WALLET: &'static str = "http://localhost:18083";
+pub const ELECTRUM_SERVER: &str = "tcp://localhost:50001";
+pub const MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
+pub const MONERO_RPC_WALLET: &str = "http://localhost:18083";
 
 /// Shared options used by different binaries
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
