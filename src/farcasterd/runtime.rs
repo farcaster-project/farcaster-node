@@ -398,7 +398,7 @@ impl Runtime {
                         self.listens
                             .clone()
                             .into_iter()
-                            .find_map(|x| Some(x))
+                            .find_map(Some)
                             .expect("exactly 1 listener checked on pattern match"),
                     ),
                     (TradeRole::Taker, _) if public_offer.node_id == maker_node_id => (
