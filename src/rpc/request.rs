@@ -757,9 +757,9 @@ impl IntoSuccessOrFailure for Result<(), crate::Error> {
     }
 }
 
-impl Into<Reveal> for (SwapId, Params) {
-    fn into(self) -> Reveal {
-        match self {
+impl From<(SwapId, Params)> for Reveal {
+    fn from(tuple: (SwapId, Params)) -> Self {
+        match tuple {
             (swap_id, Params::Alice(params)) => Reveal::AliceParameters((swap_id, params).into()),
             (swap_id, Params::Bob(params)) => Reveal::BobParameters((swap_id, params).into()),
         }
