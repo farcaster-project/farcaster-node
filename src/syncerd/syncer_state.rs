@@ -982,5 +982,4 @@ async fn syncer_state_height() {
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
     assert!(event_rx.try_recv().is_err());
-    return;
 }

@@ -531,14 +531,11 @@ fn address_polling(
             };
 
             loop {
-                match rpc.ping() {
-                    Err(err) => {
-                        error!("error ping electrum client in address polling: {:?}", err);
-                        // break this loop and retry, since the electrum rpc client is probably
-                        // broken
-                        break;
-                    }
-                    _ => {}
+                if let Err(err) = rpc.ping() {
+                    error!("error ping electrum client in address polling: {:?}", err);
+                    // break this loop and retry, since the electrum rpc client is probably
+                    // broken
+                    break;
                 }
                 let state_guard = state.lock().await;
                 let addresses = state_guard.addresses.clone();
@@ -614,14 +611,11 @@ fn height_polling(
             drop(state_guard);
             // inner loop actually polls
             loop {
-                match rpc.ping() {
-                    Err(err) => {
-                        error!("error ping electrum client in height polling: {:?}", err);
-                        // break this loop and retry, since the electrum rpc client is probably
-                        // broken
-                        break;
-                    }
-                    _ => {}
+                if let Err(err) = rpc.ping() {
+                    error!("error ping electrum client in height polling: {:?}", err);
+                    // break this loop and retry, since the electrum rpc client is probably
+                    // broken
+                    break;
                 }
                 let mut blocks = match rpc.new_block_check() {
                     Ok(blks) => blks,
