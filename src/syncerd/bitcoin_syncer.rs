@@ -669,6 +669,7 @@ fn transaction_polling(
     })
 }
 
+#[derive(Default)]
 pub struct BitcoinSyncer {}
 
 impl BitcoinSyncer {

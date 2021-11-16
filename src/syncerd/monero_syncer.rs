@@ -311,6 +311,7 @@ async fn sweep_address(
     Ok(None)
 }
 
+#[derive(Default)]
 pub struct MoneroSyncer {}
 
 impl MoneroSyncer {
