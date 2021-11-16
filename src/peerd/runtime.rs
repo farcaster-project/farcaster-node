@@ -305,7 +305,7 @@ impl Runtime {
                     source, channel_id
                 );
                 self.routing.remove(&source);
-                self.routing.insert(channel_id.clone().into(), source);
+                self.routing.insert(channel_id.into(), source);
             }
 
             Request::GetInfo => {

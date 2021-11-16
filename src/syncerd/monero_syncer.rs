@@ -415,11 +415,7 @@ fn address_polling(
                 // wallet
                 let mut address_transactions = None;
                 match rpc
-                    .check_address(
-                        address_addendum.clone(),
-                        network.clone(),
-                        Arc::clone(&wallet_mutex),
-                    )
+                    .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
                     .await
                 {
                     Ok(addr_txs) => {
@@ -614,7 +610,7 @@ impl Synclet for MoneroSyncer {
         if !polling {
             error!("monero syncer only supports polling for now - switching to polling=true");
         }
-        let network = match chain.clone() {
+        let network = match chain {
             Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
             Chain::Testnet3 => monero::Network::Stagenet,
             Chain::Signet => monero::Network::Testnet,
@@ -654,7 +650,7 @@ impl Synclet for MoneroSyncer {
                 let address_handle = address_polling(
                     Arc::clone(&state),
                     syncer_servers.clone(),
-                    network.clone(),
+                    network,
                     Arc::clone(&wallet_mutex),
                 );
 

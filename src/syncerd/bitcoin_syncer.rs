@@ -96,7 +96,7 @@ pub struct AddressNotif {
 }
 
 impl ElectrumRpc {
-    fn new(electrum_server: &String, polling: bool) -> Result<Self, electrum_client::Error> {
+    fn new(electrum_server: &str, polling: bool) -> Result<Self, electrum_client::Error> {
         let client = Client::new(electrum_server)?;
         let header = client.block_headers_subscribe()?;
         info!("New ElectrumRpc at height {:?}", header.height);
@@ -132,7 +132,7 @@ impl ElectrumRpc {
         };
         if let Some(_) = self
             .addresses
-            .insert(address_addendum.clone(), script_status.clone())
+            .insert(address_addendum.clone(), script_status)
         {
         } else {
             info!(
@@ -200,11 +200,9 @@ impl ElectrumRpc {
                 // get pending notifications for this address/script_pubkey
                 let script_pubkey = &address.script_pubkey;
 
-                while let Ok(Some(script_status)) = self.client.script_pop(&script_pubkey) {
+                while let Ok(Some(script_status)) = self.client.script_pop(script_pubkey) {
                     if Some(script_status) != previous_status {
-                        if let Some(_) = self
-                            .addresses
-                            .insert(address.clone(), Some(script_status.clone()))
+                        if let Some(_) = self.addresses.insert(address.clone(), Some(script_status))
                         {
                             info!(
                                 "updated address {:?} with script_status {:?}",
@@ -730,7 +728,7 @@ impl Synclet for BitcoinSyncer {
     }
 }
 
-fn logging(txs: &Vec<AddressTx>, address: &BtcAddressAddendum) {
+fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
     txs.iter().for_each(|tx| {
         trace!(
             "processing address {} notification txid {}",

@@ -291,7 +291,7 @@ impl Runtime {
                         }
                     }
                     ServiceId::Swap(swap_id) => {
-                        if self.running_swaps.insert(swap_id.clone()) {
+                        if self.running_swaps.insert(*swap_id) {
                             info!(
                                 "Swap {} is registered; total {} \
                                  swaps are known",
@@ -309,7 +309,7 @@ impl Runtime {
                     ServiceId::Syncer(coin, network) => {
                         // TODO: check if correct network
                         self.syncers
-                            .insert((coin.clone(), network.clone()), source.clone());
+                            .insert((coin.clone(), *network), source.clone());
                     }
                     _ => {
                         // Ignoring the rest of daemon/client types
@@ -329,7 +329,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
                     // when online, Syncers say Hello, then they get registered to self.syncers
-                    self.syncers_up(Coin::Bitcoin, Coin::Monero, network.clone())?;
+                    self.syncers_up(Coin::Bitcoin, Coin::Monero, *network)?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -355,7 +355,7 @@ impl Runtime {
                         Params::Alice(_) => {}
                         Params::Bob(_) => {}
                     }
-                    self.syncers_up(Coin::Bitcoin, Coin::Monero, network.clone())?;
+                    self.syncers_up(Coin::Bitcoin, Coin::Monero, *network)?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -473,7 +473,7 @@ impl Runtime {
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
-                        node_ids: self.node_ids().clone(),
+                        node_ids: self.node_ids(),
                         listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -639,7 +639,7 @@ impl Runtime {
                     return Ok(());
                 }
 
-                let public_offer = offer.clone().to_public_v1(node_ids[0], public_addr.into());
+                let public_offer = offer.to_public_v1(node_ids[0], public_addr.into());
                 let pub_offer_id = public_offer.id();
                 let hex_public_offer = public_offer.to_hex();
                 if self.public_offers.insert(public_offer) {
@@ -696,7 +696,7 @@ impl Runtime {
                         offer: _,
                         node_id,      // bitcoin::Pubkey
                         peer_address, // InetSocketAddr
-                    } = public_offer.clone();
+                    } = public_offer;
 
                     let daemon_service = internet2::RemoteNodeAddr {
                         node_id,                                           // checked above
@@ -860,7 +860,7 @@ impl Runtime {
         sk: SecretKey,
     ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
-        if self.connections.contains(&node_addr) {
+        if self.connections.contains(node_addr) {
             return Err(Error::Other(format!(
                 "Already connected to peer {}",
                 node_addr

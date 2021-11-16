@@ -95,7 +95,7 @@ pub fn run(
         network,
         accordant_amount: monero_amount,
         ..
-    } = public_offer.offer.clone();
+    } = public_offer.offer;
     // alice or bob
     let local_swap_role = match local_trade_role {
         TradeRole::Maker => maker_role,
@@ -428,7 +428,7 @@ impl SyncerState {
             Coin::Bitcoin => &mut self.bitcoin_height,
             Coin::Monero => &mut self.monero_height,
         };
-        if &new_height > &height {
+        if &new_height > height {
             info!("{:?} new height {}", coin, &new_height);
             *height = new_height;
         } else {
@@ -645,12 +645,12 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         if self.peer_service != source {
-            Err(Error::Farcaster(format!(
+            return Err(Error::Farcaster(format!(
                 "{}: expected {}, found {}",
                 "Incorrect peer connection".to_string(),
                 self.peer_service,
                 source
-            )))?
+            )));
         }
         let msg_bus = ServiceBus::Msg;
         match &request {
@@ -1110,7 +1110,7 @@ impl Runtime {
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
             }) => {
-                if &ServiceId::Swap(swap_id) != &self.identity {
+                if ServiceId::Swap(swap_id) != self.identity {
                     error!(
                         "{}: {}",
                         "This swapd instance is not reponsible for swap_id", swap_id
@@ -1230,7 +1230,7 @@ impl Runtime {
                                 trade_role: *trade_role,
                                 local_params: local_params.clone(),
                                 local_commit: local_commit.clone(),
-                                remote_commit: Some(remote_commit.clone()),
+                                remote_commit: Some(remote_commit),
                             },
                             addr,
                         )))
@@ -1240,7 +1240,7 @@ impl Runtime {
                             trade_role: *trade_role,
                             local_params: local_params.clone(),
                             local_commit: local_commit.clone(),
-                            remote_commit: Some(remote_commit.clone()),
+                            remote_commit: Some(remote_commit),
                         })))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
@@ -1327,7 +1327,7 @@ impl Runtime {
             // Request::SyncerEvent(ref event) => match (&event, source) {
             // handle monero events here
             // }
-            Request::SyncerEvent(ref event) if &source == &self.syncer_state.monero_syncer => {
+            Request::SyncerEvent(ref event) if source == self.syncer_state.monero_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -1441,7 +1441,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::SyncerEvent(ref event) if &source == &self.syncer_state.bitcoin_syncer => {
+            Request::SyncerEvent(ref event) if source == self.syncer_state.bitcoin_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -1514,7 +1514,7 @@ impl Runtime {
                         confirmations: Some(confirmations),
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin) => {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
-                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(&id) {
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
                             info!(
                                 "tx {} final: {} confirmations",
                                 txlabel.bright_green_bold(),
@@ -1548,10 +1548,8 @@ impl Runtime {
                                             Some(Params::Bob(bob_params)),
                                         ) = (&self.local_params, &self.remote_params)
                                         {
-                                            let (spend, view) = aggregate_xmr_spend_view(
-                                                &alice_params,
-                                                &bob_params,
-                                            );
+                                            let (spend, view) =
+                                                aggregate_xmr_spend_view(alice_params, bob_params);
                                             let viewpair = monero::ViewPair { spend, view };
                                             let address = monero::Address::from_viewpair(
                                                 self.syncer_state.network.into(),
@@ -1738,7 +1736,7 @@ impl Runtime {
                     if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
                         (&self.local_params, &self.remote_params)
                     {
-                        let (spend, view) = aggregate_xmr_spend_view(&alice_params, &bob_params);
+                        let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
                         let task = self.syncer_state.watch_addr_xmr(
                             spend,
                             view,
@@ -1925,7 +1923,7 @@ impl Runtime {
         );
         info!("{}", &msg);
         let engine = CommitmentEngine;
-        let commitment = match params.clone() {
+        let commitment = match params {
             Params::Bob(params) => request::Commit::BobParameters(
                 CommitBobParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
@@ -1980,7 +1978,7 @@ impl Runtime {
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
         // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
-        Ok(commitment.clone())
+        Ok(commitment)
     }
 }
 

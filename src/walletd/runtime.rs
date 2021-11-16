@@ -243,7 +243,7 @@ impl Runtime {
             // TODO enter farcasterd messages allowed
             _ => {}
         }
-        match request.clone() {
+        match request {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
@@ -285,8 +285,7 @@ impl Runtime {
                 let external_address = self.btc_addrs.remove(&swap_id).expect("checked above");
                 match offer.maker_role {
                     SwapRole::Bob => {
-                        let bob =
-                            Bob::<BtcXmr>::new(external_address.clone().into(), FeePriority::Low);
+                        let bob = Bob::<BtcXmr>::new(external_address.into(), FeePriority::Low);
                         let wallet_index = self.node_secrets.increment_wallet_counter();
                         let mut key_manager =
                             KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
@@ -306,7 +305,7 @@ impl Runtime {
                                 let bob_wallet = BobState::new(
                                     bob,
                                     local_params.clone(),
-                                    local_proof.clone(),
+                                    local_proof,
                                     key_manager,
                                     pub_offer.clone(),
                                     Some(funding),
@@ -321,7 +320,7 @@ impl Runtime {
                                 maker_node_id: node_id,
                                 local_trade_role: TradeRole::Maker,
                                 public_offer: pub_offer,
-                                local_params: Params::Bob(local_params.clone()),
+                                local_params: Params::Bob(local_params),
                                 swap_id,
                                 remote_commit: Some(remote_commit),
                                 funding_address: Some(funding_addr),
@@ -338,7 +337,7 @@ impl Runtime {
                     }
                     SwapRole::Alice => {
                         let alice: Alice<BtcXmr> =
-                            Alice::new(external_address.clone().into(), FeePriority::Low);
+                            Alice::new(external_address.into(), FeePriority::Low);
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let wallet_index = self.node_secrets.increment_wallet_counter();
                         let mut key_manager = KeyManager::new(wallet_seed, wallet_index)?;
@@ -867,7 +866,7 @@ impl Runtime {
                     // cancel
                     let tx = core_arb_setup.cancel.clone();
                     let mut cancel_tx = CancelTx::from_partial(tx);
-                    cancel_tx.add_witness(alice_params.cancel, alice_cancel_sig.clone())?;
+                    cancel_tx.add_witness(alice_params.cancel, *alice_cancel_sig)?;
                     cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
                     let finalized_cancel_tx =
                         Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
@@ -929,7 +928,7 @@ impl Runtime {
         match request {
             Request::Hello => match &source {
                 ServiceId::Swap(swap_id) => {
-                    if let Some(option_req) = self.swaps.get_mut(&swap_id) {
+                    if let Some(option_req) = self.swaps.get_mut(swap_id) {
                         trace!("Known swapd, you launched it");
                         if let Some(req) = option_req {
                             let request = req.clone();
@@ -960,8 +959,7 @@ impl Runtime {
                 let mut key_manager = KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
                 match taker_role {
                     SwapRole::Bob => {
-                        let bob: Bob<BtcXmr> =
-                            Bob::new(external_address.clone().into(), FeePriority::Low);
+                        let bob: Bob<BtcXmr> = Bob::new(external_address.into(), FeePriority::Low);
                         let (local_params, local_proof) =
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
                         let funding = create_funding(&mut key_manager, offer.network)?;
@@ -978,7 +976,7 @@ impl Runtime {
                             let local_wallet = BobState::new(
                                 bob,
                                 local_params.clone(),
-                                local_proof.clone(),
+                                local_proof,
                                 key_manager,
                                 public_offer.clone(),
                                 Some(funding),
@@ -1007,7 +1005,7 @@ impl Runtime {
                     }
                     SwapRole::Alice => {
                         let alice: Alice<BtcXmr> =
-                            Alice::new(external_address.clone().into(), FeePriority::Low);
+                            Alice::new(external_address.into(), FeePriority::Low);
                         let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
@@ -1020,7 +1018,7 @@ impl Runtime {
                             let wallet = AliceState::new(
                                 alice,
                                 local_params.clone(),
-                                local_proof.clone(),
+                                local_proof,
                                 key_manager,
                                 public_offer.clone(),
                                 None,
@@ -1225,5 +1223,5 @@ pub fn create_funding(
 
 pub fn funding_update(funding: &mut FundingTx, tx: bitcoin::Transaction) -> Result<(), Error> {
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> { funding: tx };
-    Ok(funding.update(funding_bundle.funding.clone())?)
+    Ok(funding.update(funding_bundle.funding)?)
 }
