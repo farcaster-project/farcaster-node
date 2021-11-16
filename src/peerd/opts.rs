@@ -140,7 +140,6 @@ impl PeerKeyOpts {
         let secret_key = SecretKey::from_str(&self.peer_secret_key).expect("peer secret key");
         let ephemeral_secret_key = SecretKey::new(&mut rng);
         let local_node = LocalNode::from_keys(secret_key, ephemeral_secret_key);
-        let node_secrets = PeerSecrets { local_node };
-        node_secrets
+        PeerSecrets { local_node }
     }
 }
