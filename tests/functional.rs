@@ -744,13 +744,13 @@ fn find_coinbase_transaction_id(txs: Vec<bitcoin::Transaction>) -> bitcoin::Txid
             return transaction.txid();
         }
     }
-    bitcoin::Txid::from_slice(&vec![0; 32]).unwrap()
+    bitcoin::Txid::from_slice(&[0; 32]).unwrap()
 }
 
 fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
     for transaction in txs {
         if transaction.input[0].previous_output.txid
-            == bitcoin::Txid::from_slice(&vec![0; 32]).unwrap()
+            == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
         {
             return transaction.output[0].value;
         }
