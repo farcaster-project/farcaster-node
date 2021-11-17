@@ -37,7 +37,8 @@ use hex;
 #[derive(Debug, Clone)]
 pub struct MoneroRpc {
     height: u64,
-    node_rpc_url: String,
+    daemon: monero_rpc::DaemonClient,
+    daemon_rpc: monero_rpc::DaemonRpcClient,
     block_hash: Vec<u8>,
 }
 
@@ -62,31 +63,25 @@ pub struct Transaction {
 impl MoneroRpc {
     fn new(node_rpc_url: String) -> Self {
         MoneroRpc {
-            node_rpc_url,
+            daemon: monero_rpc::RpcClient::new(node_rpc_url.clone()).daemon(),
+            daemon_rpc: monero_rpc::RpcClient::new(node_rpc_url).daemon_rpc(),
             height: 0,
             block_hash: vec![0],
         }
     }
 
     async fn get_height(&mut self) -> Result<u64, Error> {
-        let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
-        let daemon = daemon_client.daemon();
-        let count: u64 = daemon.get_block_count().await?.into();
+        let count: u64 = self.daemon.get_block_count().await?.into();
         Ok(count - 1)
     }
 
     async fn get_block_hash(&mut self, height: u64) -> Result<Vec<u8>, Error> {
-        let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
-        let daemon = daemon_client.daemon();
         let selector = GetBlockHeaderSelector::Height(height);
-        let header = daemon.get_block_header(selector).await?;
+        let header = self.daemon.get_block_header(selector).await?;
         Ok(header.hash.0.to_vec())
     }
 
     async fn get_transactions(&mut self, tx_ids: Vec<Vec<u8>>) -> Result<Vec<Transaction>, Error> {
-        let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
-        let daemon = daemon_client.daemon_rpc();
-
         let mut buffer: [u8; 32] = [0; 32];
         let monero_txids = tx_ids
             .iter()
@@ -96,7 +91,8 @@ impl MoneroRpc {
             })
             .collect();
 
-        let txs = daemon
+        let txs = self
+            .daemon_rpc
             .get_transactions(monero_txids, Some(true), Some(true))
             .await?;
 
