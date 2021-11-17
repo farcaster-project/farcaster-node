@@ -824,7 +824,7 @@ impl Runtime {
     }
 
     fn listen(&mut self, addr: &RemoteSocketAddr, sk: SecretKey) -> Result<String, Error> {
-        if let &RemoteSocketAddr::Ftcp(inet) = addr {
+        if let RemoteSocketAddr::Ftcp(inet) = *addr {
             let socket_addr = SocketAddr::try_from(inet)?;
             let ip = socket_addr.ip();
             let port = socket_addr.port();
