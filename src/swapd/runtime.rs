@@ -106,7 +106,10 @@ pub fn run(
         SwapRole::Alice => State::Alice(AliceState::StartA(local_trade_role, public_offer)),
         SwapRole::Bob => State::Bob(BobState::StartB(local_trade_role, public_offer)),
     };
-
+    let sweep_monero_thr = match local_swap_role {
+        SwapRole::Bob => Some(10),
+        SwapRole::Alice => None,
+    };
     info!("Initial state: {}", init_state.bright_white_bold());
 
     let temporal_safety = TemporalSafety {
@@ -115,6 +118,7 @@ pub fn run(
         btc_finality_thr: 0,
         race_thr: 3,
         xmr_finality_thr: 0,
+        sweep_monero_thr,
     };
 
     temporal_safety.valid_params()?;
@@ -185,6 +189,7 @@ struct TemporalSafety {
     race_thr: BlockHeight,
     btc_finality_thr: BlockHeight,
     xmr_finality_thr: BlockHeight,
+    sweep_monero_thr: Option<BlockHeight>,
 }
 
 type BlockHeight = u32;
@@ -350,6 +355,20 @@ impl State {
     fn buy_published(&self) -> bool {
         if let State::Alice(AliceState::RefundSigA(RefundSigA { buy_published, .. })) = self {
             *buy_published
+        } else {
+            false
+        }
+    }
+    fn core_arb(&self) -> bool {
+        if let State::Bob(BobState::CorearbB(..)) = self {
+            true
+        } else {
+            false
+        }
+    }
+    fn buy_sig(&self) -> bool {
+        if let State::Bob(BobState::BuySigB) = self {
+            true
         } else {
             false
         }
@@ -1095,13 +1114,17 @@ impl Runtime {
                 address,
             }) if source == ServiceId::Wallet => {
                 let task = self.syncer_state.sweep_xmr(view_key, spend_key, address);
-
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.monero_syncer(),
-                    Request::SyncerTask(task),
-                )?
+                let request = Request::SyncerTask(task);
+                let dest = self.syncer_state.monero_syncer();
+                let pending_request = PendingRequest {
+                    request,
+                    dest: dest.clone(),
+                    bus_id: ServiceBus::Ctl,
+                };
+                if let None = self.pending_requests.insert(dest, vec![pending_request]) {
+                } else {
+                    error!("pending request for syncer already there")
+                }
             }
             Request::TakeSwap(InitSwap {
                 peerd,
@@ -1394,8 +1417,41 @@ impl Runtime {
                         id,
                         block,
                         confirmations: Some(confirmations),
+                    }) if self.state.buy_sig()
+                        && *confirmations
+                            > self.temporal_safety.sweep_monero_thr.expect(
+                                "buysig is bob's state, and bob set his sweep_monero_thr at launch",
+                            )
+                        && self.pending_requests.contains_key(&source) =>
+                    {
+                        let PendingRequest {
+                            request,
+                            dest,
+                            bus_id,
+                        } = self
+                            .pending_requests
+                            .remove(&source)
+                            .expect("Checked above")
+                            .pop()
+                            .unwrap();
+                        if let (Request::SyncerTask(Task::SweepAddress(..)), ServiceBus::Ctl) =
+                            (&request, &bus_id)
+                        {
+                            info!("sweeping monero");
+                            senders.send_to(bus_id, self.identity(), dest, request)?;
+                        } else {
+                            error!(
+                                "Not the sweep task {} or not Ctl bus found {}",
+                                request, bus_id
+                            );
+                        }
+                    }
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        block,
+                        confirmations: Some(confirmations),
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
-                        && self.state.swap_role() == SwapRole::Bob
+                        && self.state.core_arb()
                         && self.pending_requests.contains_key(&source) =>
                     {
                         // error!("not checking tx rcvd is accordant lock");
