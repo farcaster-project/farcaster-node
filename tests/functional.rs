@@ -738,8 +738,7 @@ fn create_bitcoin_syncer(
 
 fn find_coinbase_transaction_id(txs: Vec<bitcoin::Transaction>) -> bitcoin::Txid {
     for transaction in txs {
-        if transaction.input[0].previous_output.txid
-            == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
+        if transaction.input[0].previous_output.txid == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
         {
             return transaction.txid();
         }
@@ -749,8 +748,7 @@ fn find_coinbase_transaction_id(txs: Vec<bitcoin::Transaction>) -> bitcoin::Txid
 
 fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
     for transaction in txs {
-        if transaction.input[0].previous_output.txid
-            == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
+        if transaction.input[0].previous_output.txid == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
         {
             return transaction.output[0].value;
         }
@@ -763,7 +761,10 @@ fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded
-    if bitcoin_rpc.create_wallet("wallet", None, None, None, None).is_err() {
+    if bitcoin_rpc
+        .create_wallet("wallet", None, None, None, None)
+        .is_err()
+    {
         let _ = bitcoin_rpc.load_wallet("wallet");
     }
     bitcoin_rpc
@@ -1353,7 +1354,10 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
     let _ = wallet
         .create_wallet("test".to_string(), None, "English".to_string())
         .await;
-    wallet.open_wallet("test".to_string(), None).await.expect("The wallet exists, created the line before");
+    wallet
+        .open_wallet("test".to_string(), None)
+        .await
+        .expect("The wallet exists, created the line before");
     (regtest, wallet)
 }
 
