@@ -262,7 +262,7 @@ impl ElectrumRpc {
                             );
                             let mut state_guard = state.lock().await;
                             state_guard
-                                .change_transaction(tx_id.to_vec(), None, None)
+                                .change_transaction(tx_id.to_vec(), None, Some(0))
                                 .await;
                             drop(state_guard);
                             continue;
@@ -289,7 +289,7 @@ impl ElectrumRpc {
                                     );
                                     let mut state_guard = state.lock().await;
                                     state_guard
-                                        .change_transaction(tx_id.to_vec(), None, None)
+                                        .change_transaction(tx_id.to_vec(), None, Some(0))
                                         .await;
                                     drop(state_guard);
                                     continue;
