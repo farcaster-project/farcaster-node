@@ -5,7 +5,7 @@ services:
     ports:
       - "9735:9735"
       - "9981:9981"
-    command: "-vv --electrum-server blockstream.info:143 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://walletrpc:18083"
+    command: "-vv --electrum-server ssl://blockstream.info:993 --monero-daemon http://stagenet.melo.tools:38081 --monero-rpc-wallet http://walletrpc:18083"
     depends_on:
       - "walletrpc"
   walletrpc:
