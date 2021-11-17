@@ -348,7 +348,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
         task: Task::WatchAddress(WatchAddress {
             id: 5,
             lifetime: blocks + 5,
-            addendum: addendum_5.clone(),
+            addendum: addendum_5,
             include_tx: Boolean::False,
         }),
         source: SOURCE1.clone(),
@@ -739,7 +739,7 @@ fn create_bitcoin_syncer(
 fn find_coinbase_transaction_id(txs: Vec<bitcoin::Transaction>) -> bitcoin::Txid {
     for transaction in txs {
         if transaction.input[0].previous_output.txid
-            == bitcoin::Txid::from_slice(&vec![0; 32]).unwrap()
+            == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
         {
             return transaction.txid();
         }
