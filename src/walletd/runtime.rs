@@ -469,7 +469,6 @@ impl Runtime {
                         {
                             if let Some(remote_params) = remote_params {
                                 error!("bob_params were previously set to: {}", remote_params);
-                                return Ok(());
                             } else {
                                 trace!("Setting bob params: {}", reveal);
                                 bob_commit.verify_with_reveal(&CommitmentEngine, reveal.clone())?;
@@ -501,12 +500,11 @@ impl Runtime {
                                 }
                                 // nothing to do yet, waiting for Msg
                                 // CoreArbitratingSetup to proceed
-                                return Ok(());
                             }
                         } else {
                             error!("only Some(Wallet::Alice)");
-                            return Ok(());
                         }
+                        return Ok(());
                     }
                     // getting parameters from counterparty alice routed through
                     // swapd, thus I'm Bob on this swap: Bob can proceed
