@@ -7,7 +7,6 @@ use farcaster_node::rpc::Client;
 use farcaster_node::{Config, LogStyle};
 use sysinfo::{ProcessExt, System, SystemExt};
 
-use farcaster_node::cli::Command;
 use microservices::shell::Exec;
 
 #[test]
