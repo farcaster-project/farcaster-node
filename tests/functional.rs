@@ -946,7 +946,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address1.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     let watch_address_task_1 = SyncerdTask {
@@ -973,7 +973,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_2 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address2.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     let watch_address_task_2 = SyncerdTask {
@@ -1001,7 +1001,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_3 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address2.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     let watch_address_task_3 = SyncerdTask {
@@ -1031,7 +1031,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_4 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address4.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     for i in 0..5 {
@@ -1061,7 +1061,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address5.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: blocks,
     });
 
