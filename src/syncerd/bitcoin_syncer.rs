@@ -295,14 +295,13 @@ impl ElectrumRpc {
                                 }
                             };
                             let blockhash = Some(block.block_hash().to_vec());
-                            // SAFETY: safe cast u64 from usize, confirmations should not overflow
-                            // 32-bits
+                            // SAFETY: safe cast u64 from usize
                             (Some(confirm_height as u64), blockhash)
                         }
                     };
 
                     let current_block_height = match self.client.block_headers_subscribe() {
-                        // SAFETY: safe cast u64 from usize, confirmations should not overflow 32-bits
+                        // SAFETY: safe cast u64 from usize
                         Ok(block) => block.height as u64,
                         Err(err) => {
                             debug!(
