@@ -373,14 +373,16 @@ the threshold confs are reached
 
 - Submit a WatchTransaction task for a mined transaction, receive confirmation events
 
-- Submit two WatchTransaction tasks in parallel, receive confirmation events for both
+- Submit two WatchTransaction tasks in parallel with the same recipient address, receive confirmation events for both
 */
 fn bitcoin_syncer_transaction_test(polling: bool) {
     let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc.generate_to_address(110, &address).unwrap();
+    let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    bitcoin_rpc
+        .generate_to_address(110, &reusable_address)
+        .unwrap();
 
     // start a bitcoin syncer
     let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
@@ -392,9 +394,10 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
+    let address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     let txid_1 = bitcoin_rpc
-        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .send_to_address(&address_1, amount, None, None, None, None, None, None)
         .unwrap();
     std::thread::sleep(duration);
 
@@ -415,21 +418,26 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
-    let block_hash = bitcoin_rpc.generate_to_address(1, &address).unwrap();
+    let block_hash = bitcoin_rpc
+        .generate_to_address(1, &reusable_address)
+        .unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(1), block_hash[0].to_vec());
 
-    bitcoin_rpc.generate_to_address(1, &address).unwrap();
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_address)
+        .unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(2), block_hash[0].to_vec());
 
-    let block_hash = bitcoin_rpc.generate_to_address(1, &address).unwrap();
+    let address_2 = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let block_hash = bitcoin_rpc.generate_to_address(1, &address_2).unwrap();
     let block = bitcoin_rpc.get_block(&block_hash[0]).unwrap();
     let address_txid = find_coinbase_transaction_id(block.txdata);
     tx.send(SyncerdTask {
@@ -442,24 +450,28 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         source: SOURCE1.clone(),
     })
     .unwrap();
+
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(1), block_hash[0].to_vec());
 
-    bitcoin_rpc.generate_to_address(1, &address).unwrap();
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_address)
+        .unwrap();
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(2), block_hash[0].to_vec());
 
+    let address_3 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let txid_2 = bitcoin_rpc
-        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .send_to_address(&address_3, amount, None, None, None, None, None, None)
         .unwrap();
     let txid_3 = bitcoin_rpc
-        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .send_to_address(&address_3, amount, None, None, None, None, None, None)
         .unwrap();
 
     std::thread::sleep(duration);
@@ -496,6 +508,8 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
+    let address_4 = bitcoin_rpc.get_new_address(None, None).unwrap();
+
     let utxos = bitcoin_rpc
         .list_unspent(Some(100), None, None, Some(false), None)
         .unwrap();
@@ -515,7 +529,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
                     sequence: None,
                 },
             ],
-            &map! {address.to_string() => out_amount},
+            &map! {address_4.to_string() => out_amount},
             None,
             None,
         )
