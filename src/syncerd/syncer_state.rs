@@ -890,7 +890,10 @@ async fn syncer_state_sweep_addresses() {
                 "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
             )
             .unwrap(),
-            address: "address".to_string(),
+            address: monero::Address::from_str(
+                "51qzspbPiQ9Z9Wq3hR8HRhPmVcE3URCK8b8A9ypHHzyvhigWTefCapoG1MXVZQQi7B5t4DpJYrHZyaFjHSb5QqLe8YEaBpo"
+            )
+            .unwrap(),
         }),
     };
     let source1 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);

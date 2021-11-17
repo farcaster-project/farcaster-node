@@ -874,7 +874,7 @@ async fn monero_syncer_sweep_test() {
         spend: spend_key,
     };
     let to_be_sweeped_address = monero::Address::from_keypair(monero::Network::Mainnet, &keypair);
-    let dest_address = "43qHP7gSJJf8HZw1G3ZmpWVyYnbxkKdfta34Qj2nuRENjAsXBtj9JcMWcYMeT3n4NyTZqxhUkKgsTS6P2TNgM6ksM32czSp";
+    let dest_address = monero::Address::from_str("43qHP7gSJJf8HZw1G3ZmpWVyYnbxkKdfta34Qj2nuRENjAsXBtj9JcMWcYMeT3n4NyTZqxhUkKgsTS6P2TNgM6ksM32czSp").unwrap();
     send_monero(&wallet, to_be_sweeped_address, 1000000000000).await;
 
     let task = SyncerdTask {
@@ -884,7 +884,7 @@ async fn monero_syncer_sweep_test() {
             addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
                 spend_key,
                 view_key,
-                address: dest_address.to_string(),
+                address: dest_address,
             }),
         }),
         source: SOURCE2.clone(),

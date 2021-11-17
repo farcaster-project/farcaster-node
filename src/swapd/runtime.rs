@@ -530,7 +530,7 @@ impl SyncerState {
         &mut self,
         view_key: monero::PrivateKey,
         spend_key: monero::PrivateKey,
-        address: String,
+        address: monero::Address,
     ) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);

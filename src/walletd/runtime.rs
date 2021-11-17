@@ -90,7 +90,7 @@ pub struct Runtime {
     wallets: HashMap<SwapId, Wallet>,
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
-    xmr_addrs: HashMap<SwapId, String>,
+    xmr_addrs: HashMap<SwapId, monero::Address>,
 }
 
 pub enum Wallet {
@@ -948,7 +948,8 @@ impl Runtime {
 
                 let swap_id: SwapId = SwapId::random();
                 self.swaps.insert(swap_id, None);
-                self.xmr_addrs.insert(swap_id, internal_address);
+                self.xmr_addrs
+                    .insert(swap_id, monero::Address::from_str(&internal_address)?);
 
                 // since we're takers, we are on the other side of the trade
                 let taker_role = offer.maker_role.other();

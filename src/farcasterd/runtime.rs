@@ -114,7 +114,7 @@ pub struct Runtime {
     taking_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
-    acc_addrs: HashMap<PublicOfferId, String>,
+    acc_addrs: HashMap<PublicOfferId, monero::Address>,
     consumed_offers: HashSet<PublicOfferId>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
@@ -658,7 +658,8 @@ impl Runtime {
                         Request::Success(OptionDetails(Some(msg))),
                     ));
                     self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
-                    self.acc_addrs.insert(pub_offer_id, accordant_addr);
+                    self.acc_addrs
+                        .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
                 } else {
                     let msg = "This Public offer was previously registered";
                     warn!("{}", msg.err());
