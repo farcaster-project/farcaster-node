@@ -1349,14 +1349,11 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
     let regtest = daemon.regtest();
     let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
     let wallet = wallet_client.wallet();
-    match wallet
+    // Ignore if fails, maybe the wallet already exists
+    let _ = wallet
         .create_wallet("test".to_string(), None, "English".to_string())
-        .await
-    {
-        _ => {
-            wallet.open_wallet("test".to_string(), None).await.unwrap();
-        }
-    }
+        .await;
+    wallet.open_wallet("test".to_string(), None).await.expect("The wallet exists, created the line before");
     (regtest, wallet)
 }
 
