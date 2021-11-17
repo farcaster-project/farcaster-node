@@ -832,7 +832,8 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 [[package]]
 name = "electrum-client"
 version = "0.8.0"
-source = "git+https://github.com/Lederstrumpf/rust-electrum-client?branch=verboseTransactionGetRebased#7f6139290ace70b5904550bcaa6fb96bcb689f96"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd12f125852d77980725243b2a8b3bea73cd4c7a22c33bc52b08b664c561dc7"
 dependencies = [
  "bitcoin 0.27.1",
  "log",

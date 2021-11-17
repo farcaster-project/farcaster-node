@@ -245,17 +245,87 @@ impl ElectrumRpc {
         drop(state_guard);
         for (_, watched_tx) in transactions.iter() {
             let tx_id = bitcoin::Txid::from_slice(&watched_tx.task.hash).unwrap();
-            match self.client.transaction_get_verbose(&tx_id) {
+            // Get the full transaction
+            match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
                     debug!("Updated tx: {}", &tx_id);
-                    let blockhash = tx.blockhash.map(|x| x.to_vec());
-                    let confs = match tx.confirmations {
-                        Some(confs) => confs,
+                    // Look for history of the first output (maybe last is generally less likelly
+                    // to be used multiple times, so more efficient?!)
+                    let history = match self.client.script_get_history(&tx.output[0].script_pubkey)
+                    {
+                        Ok(history) => history,
+                        Err(err) => {
+                            debug!(
+                                "error getting script history, treating as not found: {}",
+                                err
+                            );
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .change_transaction(tx_id.to_vec(), None, Some(0))
+                                .await;
+                            drop(state_guard);
+                            continue;
+                        }
+                    };
+
+                    let entry = history.iter().find(|history_res| {
+                        history_res.tx_hash == tx_id
+                    }).expect("Should be found in the history if we successfully queried `transaction_get`");
+
+                    let (conf_in_block, blockhash) = match entry.height {
+                        // Transaction unconfirmed (0 or -1)
+                        i32::MIN..=0 => (None, None),
+                        // Transaction confirmed at this height
+                        1.. => {
+                            // SAFETY: safe cast as it strictly greater than 0
+                            let confirm_height = entry.height as usize;
+                            let block = match self.client.block_header(confirm_height) {
+                                Ok(block) => block,
+                                Err(err) => {
+                                    debug!(
+                                        "error getting block header, treating as not found: {}",
+                                        err
+                                    );
+                                    let mut state_guard = state.lock().await;
+                                    state_guard
+                                        .change_transaction(tx_id.to_vec(), None, Some(0))
+                                        .await;
+                                    drop(state_guard);
+                                    continue;
+                                }
+                            };
+                            let blockhash = Some(block.block_hash().to_vec());
+                            // SAFETY: safe cast u64 from usize
+                            (Some(confirm_height as u64), blockhash)
+                        }
+                    };
+
+                    let current_block_height = match self.client.block_headers_subscribe() {
+                        // SAFETY: safe cast u64 from usize
+                        Ok(block) => block.height as u64,
+                        Err(err) => {
+                            debug!(
+                                "error getting top block header, treating as not found: {}",
+                                err
+                            );
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .change_transaction(tx_id.to_vec(), None, Some(0))
+                                .await;
+                            drop(state_guard);
+                            continue;
+                        }
+                    };
+                    let confs = match conf_in_block {
+                        // check against block reorgs
+                        Some(conf_in_block) if current_block_height < conf_in_block => 0,
+                        // SAFETY: confirmations should not overflow 32-bits
+                        Some(conf_in_block) => (current_block_height - conf_in_block) as u32 + 1,
                         None => 0,
                     };
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(tx.txid.to_vec(), blockhash, Some(confs))
+                        .change_transaction(tx.txid().to_vec(), blockhash, Some(confs))
                         .await;
                     drop(state_guard);
                 }
