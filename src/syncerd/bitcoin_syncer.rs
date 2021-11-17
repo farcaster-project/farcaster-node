@@ -301,13 +301,30 @@ impl ElectrumRpc {
                         }
                     };
 
-                    let mut state_guard = state.lock().await;
-                    let current_block_height = state_guard.block_height();
+                    let current_block_height = match self.client.block_headers_subscribe() {
+                        // SAFETY: safe cast u64 from usize, confirmations should not overflow 32-bits
+                        Ok(block) => block.height as u64,
+                        Err(err) => {
+                            debug!(
+                                "error getting top block header, treating as not found: {}",
+                                err
+                            );
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .change_transaction(tx_id.to_vec(), None, Some(0))
+                                .await;
+                            drop(state_guard);
+                            continue;
+                        }
+                    };
                     let confs = match conf_in_block {
+                        // check against block reorgs
+                        Some(conf_in_block) if current_block_height < conf_in_block => 0,
                         // SAFETY: confirmations should not overflow 32-bits
                         Some(conf_in_block) => (current_block_height - conf_in_block) as u32 + 1,
                         None => 0,
                     };
+                    let mut state_guard = state.lock().await;
                     state_guard
                         .change_transaction(tx.txid().to_vec(), blockhash, Some(confs))
                         .await;
