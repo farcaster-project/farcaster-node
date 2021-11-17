@@ -22,7 +22,7 @@ farcasterd -vv\
 
 | daemon            | value                              |
 | ----------------- | ---------------------------------- |
-| `electrum-server` | `blockstream.info:143`             |
+| `electrum-server` | `ssl://blockstream.info:993`       |
 | `monero-daemon`   | `http://stagenet.melo.tools:38081` |
 
 ## Configure `swap-cli` clients
