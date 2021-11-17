@@ -242,7 +242,6 @@ impl ElectrumRpc {
     async fn query_transactions(&self, state: Arc<Mutex<SyncerState>>) {
         let state_guard = state.lock().await;
         let transactions = state_guard.transactions.clone();
-        let current_block_height = state_guard.block_height();
         drop(state_guard);
         for (_, watched_tx) in transactions.iter() {
             let tx_id = bitcoin::Txid::from_slice(&watched_tx.task.hash).unwrap();
@@ -273,9 +272,9 @@ impl ElectrumRpc {
                         history_res.tx_hash == tx_id
                     }).expect("Should be found in the history if we successfully queried `transaction_get`");
 
-                    let (confs, blockhash) = match entry.height {
+                    let (conf_in_block, blockhash) = match entry.height {
                         // Transaction unconfirmed (0 or -1)
-                        i32::MIN..=0 => (0, None),
+                        i32::MIN..=0 => (None, None),
                         // Transaction confirmed at this height
                         1.. => {
                             // SAFETY: safe cast as it strictly greater than 0
@@ -298,14 +297,17 @@ impl ElectrumRpc {
                             let blockhash = Some(block.block_hash().to_vec());
                             // SAFETY: safe cast u64 from usize, confirmations should not overflow
                             // 32-bits
-                            (
-                                (current_block_height - confirm_height as u64) as u32 + 1,
-                                blockhash,
-                            )
+                            (Some(confirm_height as u64), blockhash)
                         }
                     };
 
                     let mut state_guard = state.lock().await;
+                    let current_block_height = state_guard.block_height();
+                    let confs = match conf_in_block {
+                        // SAFETY: confirmations should not overflow 32-bits
+                        Some(conf_in_block) => (current_block_height - conf_in_block) as u32 + 1,
+                        None => 0,
+                    };
                     state_guard
                         .change_transaction(tx.txid().to_vec(), blockhash, Some(confs))
                         .await;
