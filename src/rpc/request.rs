@@ -12,6 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+#![allow(clippy::clone_on_copy)]
+
 use crate::syncerd::{
     types::{Event, Task},
     SweepXmrAddress,
