@@ -823,7 +823,7 @@ async fn monero_syncer_block_height_test() {
     let task = SyncerdTask {
         task: Task::WatchHeight(WatchHeight {
             id: 1,
-            lifetime: u64::from(blocks) + 2,
+            lifetime: blocks + 2,
         }),
         source: SOURCE1.clone(),
     };
@@ -1234,7 +1234,7 @@ async fn monero_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: 1,
             lifetime: blocks + 5,
-            hash: hex::decode(transaction.tx_hash.to_string()).unwrap().into(),
+            hash: hex::decode(transaction.tx_hash.to_string()).unwrap(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
