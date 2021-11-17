@@ -641,12 +641,12 @@ impl Runtime {
 
                 let public_offer = offer.to_public_v1(node_ids[0], public_addr.into());
                 let pub_offer_id = public_offer.id();
-                let hex_public_offer = public_offer.to_hex();
+                let serialized_offer = public_offer.to_string();
                 if self.public_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
                         "Public offer registered, please share with taker: ".bright_blue_bold(),
-                        hex_public_offer.bright_yellow_bold()
+                        serialized_offer.bright_yellow_bold()
                     );
                     info!(
                         "Maker: {} {}",

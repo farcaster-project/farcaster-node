@@ -555,7 +555,6 @@ pub struct NodeInfo {
     pub since: u64,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub peers: Vec<NodeAddr>,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
     pub swaps: Vec<SwapId>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub offers: Vec<PublicOffer<BtcXmr>>,

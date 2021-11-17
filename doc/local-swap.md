@@ -40,7 +40,7 @@ You need to have access to Bitcoin (testnet) and Monero (stagenet) test coins, u
 
 ## Make the offer
 
-Maker creates offer and start listening. Command used to print a hex representation of the offer that shall be shared with taker. Additionally it spins up the listener awaiting for connection related to this offer (binded on `0.0.0.0:9735` with an offer public address of `127.0.0.1:9735`).
+Maker creates offer and start listening. Command used to print a serialized representation of the offer that shall be shared with taker. Additionally it spins up the listener awaiting for connection related to this offer (binded on `0.0.0.0:9735` with an offer public address of `127.0.0.1:9735`).
 
 ```
 swap1-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
@@ -53,9 +53,9 @@ swap1-cli make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
 
 :mag_right: The `ECDSA` above is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms.
 
-This will produce the following hex encoded offer:
+This will produce the following encoded offer:
 
-`464353574150010002000000808000008008004605000000000000080010270000000000000400040000000400050000000108000100000000000000012100027c083752e022b460a24b436f05998723188791e5367d1bd81ff3de96b697eaa40000000000000000000000000000000000000000000000000000000000007f000001260700`
+`Offer:Cke4ftrP5A71LQM2fvVdFMNR4gmBqNCsR11111uMM4pF11111112Lvo11111TB9zym113GTvtvqfD1111112g5B8NNdQ79CnoUCEtZVSK1pYzGhNQeM28QBZNSKAZ5sJk8WA11111111111111111111111111111111111111111AfZ113XRBtzfJQ4h`
 
 This public offer should be shared by maker with taker. It also contains information on how to connect to maker. Additionally, it adds the public offers to the set of public offers in `farcasterd` that will be later used to initiate the swap upon takers message.
 
@@ -70,7 +70,7 @@ Example of taking the offer above produced by maker:
 ```
 swap2-cli take tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j\
     54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
-    464353574150010002000000808000008008004605000000000000080010270000000000000400040000000400050000000108000100000000000000012100027c083752e022b460a24b436f05998723188791e5367d1bd81ff3de96b697eaa40000000000000000000000000000000000000000000000000000000000007f000001260700
+    Offer:Cke4ftrP5A71LQM2fvVdFMNR4gmBqNCsR11111uMM4pF11111112Lvo11111TB9zym113GTvtvqfD1111112g5B8NNdQ79CnoUCEtZVSK1pYzGhNQeM28QBZNSKAZ5sJk8WA11111111111111111111111111111111111111111AfZ113XRBtzfJQ4h
 ```
 
 The first argument is the Bitcoin destination address in case the bitcoins needs to be refunded or if the swap completes (depending on the swap role).
