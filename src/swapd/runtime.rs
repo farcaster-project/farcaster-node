@@ -282,7 +282,7 @@ pub enum AliceState {
     CommitA(CommitC), // local, local, local, remote
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealA(Option<Params>, Commit), // local, remote
+    RevealA(Params, Commit), // local, remote
     // #[display("RefundProcSigs: {0}")]
     #[display("RefundProcSigs")]
     RefundSigA(RefundSigA),
@@ -321,7 +321,7 @@ pub enum BobState {
     CommitB(CommitC, bitcoin::Address),
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealB(Option<Params>, Commit), // local, remote
+    RevealB(Params, Commit), // local, remote
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
@@ -718,7 +718,7 @@ impl Runtime {
                         let next_state = match self.state.clone() {
                             State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
                                 Ok(State::Alice(AliceState::RevealA(
-                                    Some(local_params),
+                                    local_params,
                                     remote_commit.clone(),
                                 )))
                             }
@@ -747,7 +747,7 @@ impl Runtime {
                                     Request::SyncerTask(task),
                                 )?;
                                 Ok(State::Bob(BobState::RevealB(
-                                    Some(local_params),
+                                    local_params,
                                     remote_commit.clone(),
                                 )))
                             }
@@ -850,7 +850,7 @@ impl Runtime {
                                 ..
                             })) => Ok((
                                 State::Alice(AliceState::RevealA(
-                                    Some(local_params),
+                                    local_params,
                                     remote_commit.clone(),
                                 )),
                                 remote_commit,
@@ -881,7 +881,7 @@ impl Runtime {
                                 )?;
                                 Ok((
                                     State::Bob(BobState::RevealB(
-                                        Some(local_params),
+                                        local_params,
                                         remote_commit.clone(),
                                     )),
                                     remote_commit,
@@ -1231,18 +1231,20 @@ impl Runtime {
                 self.state_update(senders, next_state)?;
             }
             Request::Protocol(Msg::Reveal(reveal)) => match self.state.clone() {
-                State::Alice(AliceState::RevealA(Some(local_params), remote_commit))
-                | State::Bob(BobState::RevealB(Some(local_params), remote_commit)) => {
+                State::Alice(AliceState::RevealA(local_params, remote_commit))
+                | State::Bob(BobState::RevealB(local_params, remote_commit)) => {
                     let reveal_proof = Msg::Reveal(reveal);
                     let swap_id = reveal_proof.swap_id();
                     self.send_peer(senders, reveal_proof)?;
                     trace!("forwarded reveal_proof");
-                    let reveal_params: Reveal = (swap_id, local_params).into();
+                    let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                     self.send_peer(senders, Msg::Reveal(reveal_params))?;
                     trace!("sent reveal_proof to peerd");
                     let next_state = match self.state {
-                        State::Alice(_) => State::Alice(AliceState::RevealA(None, remote_commit)),
-                        State::Bob(_) => State::Bob(BobState::RevealB(None, remote_commit)),
+                        State::Alice(_) => {
+                            State::Alice(AliceState::RevealA(local_params, remote_commit))
+                        }
+                        State::Bob(_) => State::Bob(BobState::RevealB(local_params, remote_commit)),
                     };
                     self.state_update(senders, next_state)?;
                 }
