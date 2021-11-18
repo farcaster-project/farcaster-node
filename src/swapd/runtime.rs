@@ -1533,6 +1533,9 @@ impl Runtime {
                             self.syncer_state.bitcoin_syncer(),
                             Request::SyncerTask(abort_all),
                         )?;
+                        // remove txs to invalidate outdated states
+                        self.txs.remove(&TxLabel::Cancel);
+                        self.txs.remove(&TxLabel::Refund);
                     }
                     event => {
                         error!("event not handled {}", event)
