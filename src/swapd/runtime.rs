@@ -1597,7 +1597,8 @@ impl Runtime {
                                     }
                                 }
                                 TxLabel::Lock
-                                    if self.temporal_safety.valid_cancel(*confirmations) =>
+                                    if self.temporal_safety.valid_cancel(*confirmations)
+                                        && !self.state.buy_published() =>
                                 {
                                     if let Some((tx_label, cancel_tx)) =
                                         self.txs.remove_entry(&TxLabel::Cancel)
