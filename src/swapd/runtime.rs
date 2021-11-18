@@ -367,6 +367,15 @@ impl State {
     fn buy_sig(&self) -> bool {
         matches!(self, State::Bob(BobState::BuySigB))
     }
+    fn trade_role(&self) -> Option<TradeRole> {
+        match self {
+            State::Alice(AliceState::StartA(trade_role, ..))
+            | State::Bob(BobState::StartB(trade_role, ..))
+            | State::Alice(AliceState::CommitA(CommitC { trade_role, .. }))
+            | State::Bob(BobState::CommitB(CommitC { trade_role, .. }, ..)) => Some(*trade_role),
+            _ => None,
+        }
+    }
 }
 
 impl CtlServer for Runtime {}
