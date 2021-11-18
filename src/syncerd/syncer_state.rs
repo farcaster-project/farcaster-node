@@ -111,18 +111,23 @@ impl SyncerState {
             })
             .collect();
 
-        aborted_ids.append(&mut ids.iter().filter_map(|(internal_id, found_task_id)| {
-            if let Some(source_id) = self.tasks_sources.get(&internal_id) {
-                if *source_id == source {
-                    self.remove_address(internal_id);
-                    Some(*found_task_id)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        }).collect());
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                        if *source_id == source {
+                            self.remove_address(internal_id);
+                            Some(*found_task_id)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        );
 
         // check transactions tasks
         let ids: Vec<(InternalId, u32)> = self
@@ -131,23 +136,27 @@ impl SyncerState {
             .filter_map(|(id, watched_transaction)| {
                 if task_id.is_none() {
                     Some((id.clone(), watched_transaction.task.id))
-                }
-                else if watched_transaction.task.id == task_id.unwrap() {
+                } else if watched_transaction.task.id == task_id.unwrap() {
                     Some((id.clone(), watched_transaction.task.id))
                 } else {
                     None
                 }
             })
             .collect();
-        aborted_ids.append(&mut ids.iter().filter_map(|(internal_id, found_task_id)| {
-            if let Some(source_id) = self.tasks_sources.get(&internal_id) {
-                if *source_id == source {
-                    self.remove_transaction(internal_id);
-                    return Some(*found_task_id);
-                }
-            }
-            None
-        }).collect());
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                        if *source_id == source {
+                            self.remove_transaction(internal_id);
+                            return Some(*found_task_id);
+                        }
+                    }
+                    None
+                })
+                .collect(),
+        );
 
         // check height tasks
         let ids: Vec<(InternalId, u32)> = self
@@ -163,15 +172,20 @@ impl SyncerState {
                 }
             })
             .collect();
-        aborted_ids.append(&mut ids.iter().filter_map(|(internal_id, found_task_id)| {
-            if let Some(source_id) = self.tasks_sources.get(&internal_id) {
-                if *source_id == source {
-                    self.remove_height(internal_id);
-                    return Some(*found_task_id);
-                }
-            }
-            None
-        }).collect());
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                        if *source_id == source {
+                            self.remove_height(internal_id);
+                            return Some(*found_task_id);
+                        }
+                    }
+                    None
+                })
+                .collect(),
+        );
 
         // check sweep address tasks
         let ids: Vec<(InternalId, u32)> = self
@@ -187,15 +201,20 @@ impl SyncerState {
                 }
             })
             .collect();
-        aborted_ids.append(&mut ids.iter().filter_map(|(internal_id, found_task_id)| {
-            if let Some(source_id) = self.tasks_sources.get(&internal_id) {
-                if *source_id == source {
-                    self.remove_sweep_address(internal_id);
-                    return Some(*found_task_id);
-                }
-            }
-            None
-        }).collect());
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                        if *source_id == source {
+                            self.remove_sweep_address(internal_id);
+                            return Some(*found_task_id);
+                        }
+                    }
+                    None
+                })
+                .collect(),
+        );
 
         if aborted_ids.is_empty() {
             send_event(
@@ -237,8 +256,10 @@ impl SyncerState {
             error!("{}", e);
             return;
         }
-        self.watch_height.insert(self.task_count.into(), task.clone());
-        self.tasks_sources.insert(self.task_count.into(), source.clone());
+        self.watch_height
+            .insert(self.task_count.into(), task.clone());
+        self.tasks_sources
+            .insert(self.task_count.into(), source.clone());
 
         if self.block_height != 0 {
             send_event(
@@ -300,8 +321,10 @@ impl SyncerState {
             error!("{}", e);
             return;
         }
-        self.sweep_addresses.insert(self.task_count.into(), task.clone());
-        self.tasks_sources.insert(self.task_count.into(), source.clone());
+        self.sweep_addresses
+            .insert(self.task_count.into(), task.clone());
+        self.tasks_sources
+            .insert(self.task_count.into(), source.clone());
     }
 
     pub async fn change_height(&mut self, height: u64, block: Vec<u8>) {
