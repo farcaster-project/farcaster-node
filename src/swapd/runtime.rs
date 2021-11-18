@@ -1639,19 +1639,14 @@ impl Runtime {
                                     }
                                 }
                                 TxLabel::Cancel
-                                    if self.temporal_safety.valid_punish(*confirmations) =>
+                                    if self.temporal_safety.valid_punish(*confirmations)
+                                        && self.state.xmr_locked() =>
                                 {
                                     trace!("Alice publishes punish tx");
                                     if let Some((tx_label, punish_tx)) =
                                         self.txs.remove_entry(&TxLabel::Punish)
                                     {
-                                        if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                                            xmr_locked: true,
-                                            ..
-                                        })) = self.state
-                                        {
-                                            self.broadcast(punish_tx, tx_label, senders)?
-                                        }
+                                        self.broadcast(punish_tx, tx_label, senders)?
                                     }
                                 }
                                 TxLabel::Cancel
