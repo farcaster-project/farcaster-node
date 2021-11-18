@@ -398,19 +398,6 @@ impl SyncerState {
             u64::MAX
         }
     }
-
-    fn from_height(&self, coin: Coin) -> u64 {
-        let lookback = match coin {
-            Coin::Monero => 300,
-            Coin::Bitcoin => 50,
-        }; // blocks
-        let height = self.height(coin);
-        if height > lookback {
-            height - lookback
-        } else {
-            height
-        }
-    }
     fn bitcoin_syncer(&self) -> ServiceId {
         self.bitcoin_syncer.clone()
     }
@@ -469,7 +456,7 @@ impl SyncerState {
     }
     fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        let from_height = self.from_height(Coin::Bitcoin);
+        let from_height = self.height(Coin::Bitcoin);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
             "Watching {} address with {}",
@@ -501,7 +488,7 @@ impl SyncerState {
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
 
-        let from_height = self.from_height(Coin::Monero);
+        let from_height = self.height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: spend,
