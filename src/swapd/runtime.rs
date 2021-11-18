@@ -1661,7 +1661,8 @@ impl Runtime {
                                             .temporal_safety
                                             .final_tx(*confirmations, Coin::Bitcoin) =>
                                 {
-                                    // FIXME: swap ends here for alice, clean up with syncer + wallet + farcaster
+                                    // FIXME: swap ends here for alice, clean up with syncer +
+                                    // wallet + farcaster
                                     // transactions don't belong to current state
                                     self.txs.remove(&TxLabel::Cancel);
                                     self.txs.remove(&TxLabel::Punish);
