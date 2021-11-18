@@ -367,6 +367,18 @@ impl State {
     fn buy_sig(&self) -> bool {
         matches!(self, State::Bob(BobState::BuySigB))
     }
+    fn commit(&self) -> bool {
+        match self {
+            State::Alice(AliceState::CommitA(..)) | State::Bob(BobState::CommitB(..)) => true,
+            _ => false,
+        }
+    }
+    fn reveal(&self) -> bool {
+        match self {
+            State::Alice(AliceState::RevealA(..)) | State::Bob(BobState::RevealB(..)) => true,
+            _ => false,
+        }
+    }
     fn trade_role(&self) -> Option<TradeRole> {
         match self {
             State::Alice(AliceState::StartA(trade_role, ..))
