@@ -569,6 +569,17 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     assert_transaction_confirmations(request, Some(0), vec![0]);
 }
 
+/*
+We test for the following scenarios in the abort tests:
+
+- Submit a WatchTransaction task for a non-existing transaction, receive a confirmation events
+
+- Submit an Abort task for the transaction, receive success
+
+- Submit an Abort task for the transaction, receive an error
+
+- Submit two WatchTransaction tasks, abort them both and receive both their aborted id's.
+*/
 #[test]
 #[ignore]
 fn bitcoin_syncer_abort_test() {
@@ -602,6 +613,62 @@ fn bitcoin_syncer_abort_test() {
     println!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(request, None, vec![0]);
+
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: Some(0) }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(
+        request,
+        Some("abort failed, task from source syncer<Bitcoin> not found".to_string()),
+        vec![],
+    );
+
+    let task = SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 0,
+            lifetime: blocks + 10,
+            hash: vec![0; 32],
+            confirmation_bound: 2,
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for confirmation");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, None, vec![0]);
+    let task = SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: blocks + 10,
+            hash: vec![0; 32],
+            confirmation_bound: 2,
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for confirmation");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, None, vec![0]);
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: None }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(request, None, vec![0, 1]);
 
     let task = SyncerdTask {
         task: Task::Abort(Abort { id: Some(0) }),
@@ -1266,6 +1333,17 @@ async fn monero_syncer_transaction_test() {
     assert_transaction_confirmations(request, Some(1), block_hash);
 }
 
+/*
+We test for the following scenarios in the abort tests:
+
+- Submit a WatchTransaction task for a non-existing transaction, receive a confirmation events
+
+- Submit an Abort task for the transaction, receive success
+
+- Submit an Abort task for the transaction, receive an error
+
+- Submit two WatchTransaction tasks, abort them both and receive both their aborted id's.
+*/
 #[tokio::test]
 #[ignore]
 async fn monero_syncer_abort_test() {
@@ -1298,6 +1376,58 @@ async fn monero_syncer_abort_test() {
     println!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(request, None, vec![0]);
+
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: Some(0) }),
+        source: SOURCE2.clone(),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(
+        request,
+        Some("abort failed, task from source syncer<Monero> not found".to_string()),
+        vec![],
+    );
+
+    let task = SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 0,
+            lifetime: blocks + 10,
+            hash: vec![0; 32],
+            confirmation_bound: 2,
+        }),
+        source: SOURCE2.clone(),
+    };
+    tx.send(task).unwrap();
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, None, vec![0]);
+    let task = SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: 1,
+            lifetime: blocks + 10,
+            hash: vec![0; 32],
+            confirmation_bound: 2,
+        }),
+        source: SOURCE2.clone(),
+    };
+    tx.send(task).unwrap();
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, None, vec![0]);
+    let task = SyncerdTask {
+        task: Task::Abort(Abort { id: None }),
+        source: SOURCE2.clone(),
+    };
+    tx.send(task).unwrap();
+    println!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("task aborted");
+    let request = get_request_from_message(message);
+    assert_task_aborted(request, None, vec![0, 1]);
 
     let task = SyncerdTask {
         task: Task::Abort(Abort { id: Some(0) }),
@@ -1517,11 +1647,15 @@ fn assert_transaction_confirmations(
     }
 }
 
-fn assert_task_aborted(request: Request, expected_error: Option<String>, expected_id: Vec<u32>) {
+fn assert_task_aborted(
+    request: Request,
+    expected_error: Option<String>,
+    mut expected_id: Vec<u32>,
+) {
     match request {
         Request::SyncerdBridgeEvent(event) => match event.event {
-            Event::TaskAborted(task_aborted) => {
-                assert_eq!(task_aborted.id, expected_id);
+            Event::TaskAborted(mut task_aborted) => {
+                assert_eq!(task_aborted.id.sort(), expected_id.sort());
                 assert_eq!(task_aborted.error, expected_error);
             }
             _ => {
