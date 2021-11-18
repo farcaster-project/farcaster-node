@@ -419,19 +419,6 @@ impl SyncerState {
             u64::MAX
         }
     }
-
-    fn from_height(&self, coin: Coin) -> u64 {
-        let lookback = match coin {
-            Coin::Monero => 300,
-            Coin::Bitcoin => 50,
-        }; // blocks
-        let height = self.height(coin);
-        if height > lookback {
-            height - lookback
-        } else {
-            height
-        }
-    }
     fn bitcoin_syncer(&self) -> ServiceId {
         self.bitcoin_syncer.clone()
     }
@@ -490,7 +477,7 @@ impl SyncerState {
     }
     fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        let from_height = self.from_height(Coin::Bitcoin);
+        let from_height = self.height(Coin::Bitcoin);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
             "Watching {} address with {}",
@@ -522,7 +509,7 @@ impl SyncerState {
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
 
-        let from_height = self.from_height(Coin::Monero);
+        let from_height = self.height(Coin::Monero);
 
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: spend,
@@ -1707,19 +1694,14 @@ impl Runtime {
                                     }
                                 }
                                 TxLabel::Cancel
-                                    if self.temporal_safety.valid_punish(*confirmations) =>
+                                    if self.temporal_safety.valid_punish(*confirmations)
+                                        && self.state.xmr_locked() =>
                                 {
                                     trace!("Alice publishes punish tx");
                                     if let Some((tx_label, punish_tx)) =
                                         self.txs.remove_entry(&TxLabel::Punish)
                                     {
-                                        if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                                            xmr_locked: true,
-                                            ..
-                                        })) = self.state
-                                        {
-                                            self.broadcast(punish_tx, tx_label, senders)?
-                                        }
+                                        self.broadcast(punish_tx, tx_label, senders)?
                                     }
                                 }
                                 TxLabel::Cancel
@@ -1741,8 +1723,17 @@ impl Runtime {
                                         );
                                     }
                                 }
-                                TxLabel::Buy => {
-                                    info!("found buy by txid")
+                                TxLabel::Buy
+                                    if self.state.buy_published()
+                                        && self
+                                            .temporal_safety
+                                            .final_tx(*confirmations, Coin::Bitcoin) =>
+                                {
+                                    // FIXME: swap ends here for alice, clean up with syncer +
+                                    // wallet + farcaster
+                                    // transactions don't belong to current state
+                                    self.txs.remove(&TxLabel::Cancel);
+                                    self.txs.remove(&TxLabel::Punish);
                                 }
                                 tx_label => warn!("tx label {} not supported", tx_label),
                             }
