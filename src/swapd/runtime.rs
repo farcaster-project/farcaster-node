@@ -1666,6 +1666,11 @@ impl Runtime {
                                         {
                                             self.broadcast(refund_tx, tx_label, senders)?;
                                         }
+                                    } else {
+                                        error!(
+                                            "expected BuySig or Corearb state, found {}",
+                                            &self.state
+                                        );
                                     }
                                 }
                                 TxLabel::Buy => {
