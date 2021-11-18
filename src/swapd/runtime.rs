@@ -1655,8 +1655,16 @@ impl Runtime {
                                         );
                                     }
                                 }
-                                TxLabel::Buy => {
-                                    info!("found buy by txid")
+                                TxLabel::Buy
+                                    if self.state.buy_published()
+                                        && self
+                                            .temporal_safety
+                                            .final_tx(*confirmations, Coin::Bitcoin) =>
+                                {
+                                    // FIXME: swap ends here for alice, clean up with syncer + wallet + farcaster
+                                    // transactions don't belong to current state
+                                    self.txs.remove(&TxLabel::Cancel);
+                                    self.txs.remove(&TxLabel::Punish);
                                 }
                                 tx_label => warn!("tx label {} not supported", tx_label),
                             }
