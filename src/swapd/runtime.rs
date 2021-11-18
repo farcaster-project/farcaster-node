@@ -713,14 +713,14 @@ impl Runtime {
                 match &msg {
                     // we are taker and the maker committed, now we reveal after checking
                     // whether we're Bob or Alice and that we're on a compatible state
-                    Msg::MakerCommit(remote_commit) => {
+                    Msg::MakerCommit(remote_commit) if self.state.commit() => {
                         trace!("received commitment from counterparty, can now reveal");
                         let next_state = match self.state.clone() {
                             State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
-                                Ok(State::Alice(AliceState::RevealA(
+                                State::Alice(AliceState::RevealA(
                                     local_params,
                                     remote_commit.clone(),
-                                )))
+                                ))
                             }
                             State::Bob(BobState::CommitB(
                                 CommitC {
@@ -746,16 +746,10 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(task),
                                 )?;
-                                Ok(State::Bob(BobState::RevealB(
-                                    local_params,
-                                    remote_commit.clone(),
-                                )))
+                                State::Bob(BobState::RevealB(local_params, remote_commit.clone()))
                             }
-                            state => Err(Error::Farcaster(format!(
-                                "Must be on Commit state, found {}",
-                                state
-                            ))),
-                        }?;
+                            state => unreachable!("checked state on pattern to be Commit"),
+                        };
 
                         if let State::Alice(AliceState::CommitA(CommitC {
                             trade_role: TradeRole::Taker,
