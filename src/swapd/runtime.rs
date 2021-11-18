@@ -14,8 +14,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::syncerd::{
-    opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepXmrAddress,
-    WatchHeight, XmrAddressAddendum,
+    opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
+    SweepXmrAddress, WatchHeight, XmrAddressAddendum,
 };
 use std::{
     any::Any,
@@ -126,6 +126,7 @@ pub fn run(
         counter: 0,
         watched_addrs: none!(),
         watched_txs: none!(),
+        sweeping_addr: none!(),
     };
     let syncer_state = SyncerState {
         tasks,
@@ -248,6 +249,7 @@ struct SyncerTasks {
     counter: u32,
     watched_txs: HashMap<u32, TxLabel>,
     watched_addrs: HashMap<u32, TxLabel>,
+    sweeping_addr: Option<u32>,
 }
 
 impl SyncerTasks {
@@ -552,6 +554,7 @@ impl SyncerState {
         address: String,
     ) -> Task {
         let id = self.tasks.new_taskid();
+        self.tasks.sweeping_addr = Some(id);
         let lifetime = self.task_lifetime(Coin::Monero);
         let addendum = SweepAddressAddendum::Monero(SweepXmrAddress {
             view_key,
@@ -941,7 +944,8 @@ impl Runtime {
                                     "This pending request will be called later: {:?}",
                                     &pending_request
                                 );
-                                let pending_requests = self.pending_requests.get_mut(&ServiceId::Wallet).expect("should already have received Reveal::Proof, so this key should exist.");
+                                let pending_requests = self.pending_requests.get_mut(&ServiceId::Wallet)
+                                    .expect("should already have received Reveal::Proof, so this key should exist.");
                                 if pending_requests.len() != 1 {
                                     error!("should have a single pending Reveal::Proof only FIXME")
                                 }
@@ -1420,7 +1424,7 @@ impl Runtime {
                     }) if self.state.buy_sig()
                         && *confirmations
                             > self.temporal_safety.sweep_monero_thr.expect(
-                                "buysig is bob's state, and bob set his sweep_monero_thr at launch",
+                                "buysig is bob's state, and bob sets his sweep_monero_thr at launch",
                             )
                         && self.pending_requests.contains_key(&source) =>
                     {
@@ -1493,6 +1497,13 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
                     Event::TaskAborted(_) => {}
+                    Event::SweepSuccess(SweepSuccess { id, txids })
+                        if self.state.buy_sig()
+                            && self.syncer_state.tasks.sweeping_addr.is_some()
+                            && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
+                    {
+                        self.state_update(senders, State::Bob(BobState::FinishB))?;
+                    }
                     event => {
                         error!("event not handled {}", event)
                     }
@@ -1722,6 +1733,11 @@ impl Runtime {
                                         {
                                             self.broadcast(refund_tx, tx_label, senders)?;
                                         }
+                                    } else {
+                                        error!(
+                                            "expected BuySig or Corearb state, found {}",
+                                            &self.state
+                                        );
                                     }
                                 }
                                 TxLabel::Buy => {
