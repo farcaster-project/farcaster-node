@@ -60,7 +60,7 @@ pub struct SweepBitcoinAddress {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct Abort {
-    pub id: u32,
+    pub id: Option<u32>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -127,7 +127,7 @@ pub enum Task {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct TaskAborted {
-    pub id: u32,
+    pub id: Vec<u32>,
     pub error: Option<String>,
 }
 

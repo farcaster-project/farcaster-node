@@ -340,7 +340,7 @@ async fn run_syncerd_task_receiver(
                             _ => {
                                 error!("Aborting sweep address task - unable to decode sweep address addendum");
                                 let mut state_guard = state.lock().await;
-                                state_guard.abort(task.id, syncerd_task.source).await;
+                                state_guard.abort(Some(task.id), syncerd_task.source).await;
                             }
                         },
                         Task::Abort(task) => {
@@ -368,7 +368,7 @@ async fn run_syncerd_task_receiver(
                             _ => {
                                 error!("Aborting watch address task - unable to decode address addendum");
                                 let mut state_guard = state.lock().await;
-                                state_guard.abort(task.id, syncerd_task.source).await;
+                                state_guard.abort(Some(task.id), syncerd_task.source).await;
                             }
                         },
                         Task::WatchHeight(task) => {

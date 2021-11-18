@@ -471,7 +471,7 @@ async fn run_syncerd_task_receiver(
                                             source: syncerd_task.source,
                                         })
                                         .await
-                                        .expect("error sending transactio broadcast event");
+                                        .expect("error sending transaction broadcast event");
                                     error!("failed to broadcast tx: {}", e.err());
                                 }
                             }
@@ -487,7 +487,7 @@ async fn run_syncerd_task_receiver(
                             _ => {
                                 error!("Aborting watch address task - unable to decode address addendum");
                                 let mut state_guard = state.lock().await;
-                                state_guard.abort(task.id, syncerd_task.source).await;
+                                state_guard.abort(Some(task.id), syncerd_task.source).await;
                             }
                         },
                         Task::WatchHeight(task) => {

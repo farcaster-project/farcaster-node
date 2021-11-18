@@ -593,7 +593,7 @@ fn bitcoin_syncer_abort_test() {
     assert_transaction_confirmations(request, None, vec![0]);
 
     let task = SyncerdTask {
-        task: Task::Abort(Abort { id: 0 }),
+        task: Task::Abort(Abort { id: Some(0) }),
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
@@ -601,10 +601,10 @@ fn bitcoin_syncer_abort_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     println!("task aborted");
     let request = get_request_from_message(message);
-    assert_task_aborted(request, None, 0);
+    assert_task_aborted(request, None, vec![0]);
 
     let task = SyncerdTask {
-        task: Task::Abort(Abort { id: 0 }),
+        task: Task::Abort(Abort { id: Some(0) }),
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
@@ -614,8 +614,8 @@ fn bitcoin_syncer_abort_test() {
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
-        Some("abort failed, task with id 0 from source syncer<Bitcoin> not found".to_string()),
-        0,
+        Some("abort failed, task from source syncer<Bitcoin> not found".to_string()),
+        vec![],
     );
 }
 
@@ -1289,7 +1289,7 @@ async fn monero_syncer_abort_test() {
     assert_transaction_confirmations(request, None, vec![0]);
 
     let task = SyncerdTask {
-        task: Task::Abort(Abort { id: 0 }),
+        task: Task::Abort(Abort { id: Some(0) }),
         source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
@@ -1297,10 +1297,10 @@ async fn monero_syncer_abort_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     println!("task aborted");
     let request = get_request_from_message(message);
-    assert_task_aborted(request, None, 0);
+    assert_task_aborted(request, None, vec![0]);
 
     let task = SyncerdTask {
-        task: Task::Abort(Abort { id: 0 }),
+        task: Task::Abort(Abort { id: Some(0) }),
         source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
@@ -1310,8 +1310,8 @@ async fn monero_syncer_abort_test() {
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
-        Some("abort failed, task with id 0 from source syncer<Monero> not found".to_string()),
-        0,
+        Some("abort failed, task from source syncer<Monero> not found".to_string()),
+        vec![],
     );
 }
 
@@ -1517,7 +1517,7 @@ fn assert_transaction_confirmations(
     }
 }
 
-fn assert_task_aborted(request: Request, expected_error: Option<String>, expected_id: u32) {
+fn assert_task_aborted(request: Request, expected_error: Option<String>, expected_id: Vec<u32>) {
     match request {
         Request::SyncerdBridgeEvent(event) => match event.event {
             Event::TaskAborted(task_aborted) => {
