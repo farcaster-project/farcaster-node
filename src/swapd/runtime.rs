@@ -975,46 +975,38 @@ impl Runtime {
 
                         // if did not yet reveal, maker only. on the msg flow as
                         // of 2021-07-13 taker reveals first
-                        match &self.state {
-                            State::Alice(AliceState::CommitA(CommitC {
-                                trade_role: TradeRole::Maker,
-                                ..
-                            }))
-                            | State::Bob(BobState::CommitB(
-                                CommitC {
-                                    trade_role: TradeRole::Maker,
-                                    ..
-                                },
-                                _,
-                            )) => {
-                                trace!("Watch height bitcoin");
-                                let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
-                                    id: self.syncer_state.tasks.new_taskid(),
-                                    lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                                });
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    self.syncer_state.bitcoin_syncer(),
-                                    Request::SyncerTask(watch_height_bitcoin),
-                                )?;
+                        if self.state.commit() && self.state.trade_role() == Some(TradeRole::Maker)
+                        {
+                            trace!("Watch height bitcoin");
+                            let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
+                                id: self.syncer_state.tasks.new_taskid(),
+                                lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.bitcoin_syncer(),
+                                Request::SyncerTask(watch_height_bitcoin),
+                            )?;
 
-                                trace!("Watch height monero");
-                                let watch_height_monero = Task::WatchHeight(WatchHeight {
-                                    id: self.syncer_state.tasks.new_taskid(),
-                                    lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                                });
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    self.syncer_state.monero_syncer(),
-                                    Request::SyncerTask(watch_height_monero),
-                                )?;
-                                self.state_update(senders, next_state)?;
-                            }
-                            _ => debug!(
-                                "You are the Taker, which revealed already, nothing to reveal."
-                            ),
+                            trace!("Watch height monero");
+                            let watch_height_monero = Task::WatchHeight(WatchHeight {
+                                id: self.syncer_state.tasks.new_taskid(),
+                                lifetime: self.syncer_state.task_lifetime(Coin::Monero),
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.monero_syncer(),
+                                Request::SyncerTask(watch_height_monero),
+                            )?;
+                            self.state_update(senders, next_state)?;
+                        } else {
+                            debug!(
+                                "You are the Taker, which revealed already, nothing to reveal. \
+                                    Or state is not Commit, state {}",
+                                &self.state
+                            );
                         }
                     }
                     // alice receives, bob sends
