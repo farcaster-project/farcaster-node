@@ -367,6 +367,35 @@ impl State {
     fn buy_sig(&self) -> bool {
         matches!(self, State::Bob(BobState::BuySigB))
     }
+    fn remote_commit(&self) -> Option<&Commit> {
+        match self {
+            State::Alice(AliceState::CommitA(CommitC { remote_commit, .. }))
+            | State::Bob(BobState::CommitB(CommitC { remote_commit, .. }, _)) => {
+                remote_commit.as_ref()
+            }
+            _ => None,
+        }
+    }
+    fn local_params(&self) -> Option<&Params> {
+        match self {
+            State::Alice(AliceState::CommitA(CommitC { local_params, .. }))
+            | State::Bob(BobState::CommitB(CommitC { local_params, .. }, ..))
+            | State::Alice(AliceState::RevealA(local_params, ..))
+            | State::Bob(BobState::RevealB(local_params, ..)) => Some(local_params),
+            _ => None,
+        }
+    }
+    fn remote_params(&self) -> Option<&Params> {
+        match self {
+            _ => None,
+        }
+    }
+    fn address(&self) -> Option<&bitcoin::Address> {
+        match self {
+            State::Bob(BobState::CommitB(_, addr)) => Some(addr),
+            _ => None,
+        }
+    }
     fn commit(&self) -> bool {
         match self {
             State::Alice(AliceState::CommitA(..)) | State::Bob(BobState::CommitB(..)) => true,
