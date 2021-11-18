@@ -81,21 +81,21 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, address_transaction)| {
                 if address_transaction.task.id == task_id {
-                    Some(id.clone())
+                    Some(*id)
                 } else {
                     None
                 }
             })
             .collect();
         for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(&id) {
+            if let Some(source_id) = self.tasks_sources.get(id) {
                 if *source_id == source {
                     self.remove_address(id);
                     send_event(
                         &self.tx_event,
                         &mut vec![(
                             Event::TaskAborted(TaskAborted {
-                                id: task_id.clone(),
+                                id: task_id,
                                 error: None,
                             }),
                             source.clone(),
@@ -113,21 +113,21 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, watched_transaction)| {
                 if watched_transaction.task.id == task_id {
-                    Some(id.clone())
+                    Some(*id)
                 } else {
                     None
                 }
             })
             .collect();
         for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(&id) {
+            if let Some(source_id) = self.tasks_sources.get(id) {
                 if *source_id == source {
                     self.remove_transaction(id);
                     send_event(
                         &self.tx_event,
                         &mut vec![(
                             Event::TaskAborted(TaskAborted {
-                                id: task_id.clone(),
+                                id: task_id,
                                 error: None,
                             }),
                             source.clone(),
@@ -145,21 +145,21 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, watch_height)| {
                 if watch_height.id == task_id {
-                    Some(id.clone())
+                    Some(*id)
                 } else {
                     None
                 }
             })
             .collect();
         for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(&id) {
+            if let Some(source_id) = self.tasks_sources.get(id) {
                 if *source_id == source {
                     self.remove_height(id);
                     send_event(
                         &self.tx_event,
                         &mut vec![(
                             Event::TaskAborted(TaskAborted {
-                                id: task_id.clone(),
+                                id: task_id,
                                 error: None,
                             }),
                             source.clone(),
@@ -177,21 +177,21 @@ impl SyncerState {
             .iter()
             .filter_map(|(id, sweep_address)| {
                 if sweep_address.id == task_id {
-                    Some(id.clone())
+                    Some(*id)
                 } else {
                     None
                 }
             })
             .collect();
         for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(&id) {
+            if let Some(source_id) = self.tasks_sources.get(id) {
                 if *source_id == source {
                     self.remove_sweep_address(id);
                     send_event(
                         &self.tx_event,
                         &mut vec![(
                             Event::TaskAborted(TaskAborted {
-                                id: task_id.clone(),
+                                id: task_id,
                                 error: None,
                             }),
                             source.clone(),
@@ -207,7 +207,7 @@ impl SyncerState {
             &self.tx_event,
             &mut vec![(
                 Event::TaskAborted(TaskAborted {
-                    id: task_id.clone(),
+                    id: task_id,
                     error: Some(format!(
                         "abort failed, task with id {} from source {} not found",
                         task_id, source
@@ -291,8 +291,8 @@ impl SyncerState {
             error!("{}", e);
             return;
         }
-        self.sweep_addresses.insert(self.task_count, task.clone());
-        self.tasks_sources.insert(self.task_count, source.clone());
+        self.sweep_addresses.insert(self.task_count, task);
+        self.tasks_sources.insert(self.task_count, source);
     }
 
     pub async fn change_height(&mut self, height: u64, block: Vec<u8>) {
@@ -345,14 +345,14 @@ impl SyncerState {
             let changes_detected: bool = addresses
                 .iter()
                 .find_map(|(_, addr)| {
-                    let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
-                    if !new_txs.is_empty() {
+                    // let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
+                    if txs.difference(&addr.known_txs).next().is_some() {
                         Some(true)
                     } else {
                         None
                     }
                 })
-                .unwrap_or_else(|| false);
+                .unwrap_or(false);
 
             if !changes_detected {
                 trace!("no changes to process, skipping...");
@@ -389,7 +389,7 @@ impl SyncerState {
                     (
                         id,
                         AddressTransactions {
-                            task: addr.task.clone(),
+                            task: addr.task,
                             known_txs: txs.clone(),
                         },
                     )
@@ -439,12 +439,12 @@ impl SyncerState {
                 .filter_map(|(id, watched_tx)| {
                     // return unchanged transactions
                     if tx_id != watched_tx.task.hash {
-                        return Some((id.clone(), watched_tx.clone()));
+                        return Some((*id, watched_tx.clone()));
                     }
                     if confirmations.is_some() {
-                        unseen_transactions.remove(&id);
+                        unseen_transactions.remove(id);
                     } else {
-                        unseen_transactions.insert(id.clone());
+                        unseen_transactions.insert(*id);
                     }
                     let transaction_confirmations = if confirmations
                         != watched_tx.transaction_confirmations.confirmations
@@ -457,7 +457,7 @@ impl SyncerState {
                         };
                         events.push((
                             Event::TransactionConfirmations(tx_confs.clone()),
-                            tasks_sources.get(&id).unwrap().clone(),
+                            tasks_sources.get(id).unwrap().clone(),
                         ));
                         tx_confs
                     } else {
@@ -468,7 +468,7 @@ impl SyncerState {
                         None
                     } else {
                         Some((
-                            id.clone(),
+                            *id,
                             WatchedTransaction {
                                 task: watched_tx.task.clone(),
                                 transaction_confirmations,
@@ -492,7 +492,7 @@ impl SyncerState {
                         txids,
                     }),
                     self.tasks_sources
-                        .get(&id)
+                        .get(id)
                         .cloned()
                         .expect("task source missing"),
                 )],
@@ -521,7 +521,7 @@ impl SyncerState {
 
     fn add_lifetime(&mut self, lifetime: u64, id: u32) -> Result<(), Error> {
         if lifetime < self.block_height {
-            Err(Error::Farcaster("task lifetime expired".to_string()))?;
+            return Err(Error::Farcaster("task lifetime expired".to_string()));
         }
 
         if let Some(lifetimes) = self.lifetimes.get_mut(&lifetime) {
@@ -982,5 +982,4 @@ async fn syncer_state_height() {
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
     assert!(event_rx.try_recv().is_err());
-    return;
 }

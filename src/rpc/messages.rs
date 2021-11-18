@@ -109,25 +109,25 @@ pub struct Features {
 /// TODO: Implement proper strict encoding for Features
 
 impl StrictEncode for Features {
-    fn strict_encode<E: io::Write>(&self, e: E) -> Result<usize, strict_encoding::Error> {
+    fn strict_encode<E: io::Write>(&self, _e: E) -> Result<usize, strict_encoding::Error> {
         Ok(0)
     }
 }
 
 impl StrictDecode for Features {
-    fn strict_decode<D: io::Read>(d: D) -> Result<Self, strict_encoding::Error> {
+    fn strict_decode<D: io::Read>(_d: D) -> Result<Self, strict_encoding::Error> {
         Ok(none!())
     }
 }
 
 impl LightningEncode for Features {
-    fn lightning_encode<E: io::Write>(&self, e: E) -> Result<usize, lightning_encoding::Error> {
+    fn lightning_encode<E: io::Write>(&self, _e: E) -> Result<usize, lightning_encoding::Error> {
         Ok(0)
     }
 }
 
 impl LightningDecode for Features {
-    fn lightning_decode<D: io::Read>(d: D) -> Result<Self, lightning_encoding::Error> {
+    fn lightning_decode<D: io::Read>(_d: D) -> Result<Self, lightning_encoding::Error> {
         Ok(none!())
     }
 }

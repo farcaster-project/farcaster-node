@@ -84,7 +84,7 @@ use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 pub fn run(
     config: Config,
     swap_id: SwapId,
-    chain: Chain,
+    _chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
     local_trade_role: TradeRole,
 ) -> Result<(), Error> {
@@ -95,7 +95,7 @@ pub fn run(
         network,
         accordant_amount: monero_amount,
         ..
-    } = public_offer.offer.clone();
+    } = public_offer.offer;
     // alice or bob
     let local_swap_role = match local_trade_role {
         TradeRole::Maker => maker_role,
@@ -199,7 +199,7 @@ impl TemporalSafety {
     /// check if temporal params are in correct order
     fn valid_params(&self) -> Result<(), Error> {
         let btc_finality = self.btc_finality_thr;
-        let xmr_finality = self.xmr_finality_thr;
+        // let xmr_finality = self.xmr_finality_thr;
         let cancel = self.cancel_timelock;
         let punish = self.punish_timelock;
         let race = self.race_thr;
@@ -436,7 +436,7 @@ impl SyncerState {
             Coin::Bitcoin => &mut self.bitcoin_height,
             Coin::Monero => &mut self.monero_height,
         };
-        if &new_height > &height {
+        if &new_height > height {
             info!("{:?} new height {}", coin, &new_height);
             *height = new_height;
         } else {
@@ -501,7 +501,7 @@ impl SyncerState {
         &mut self,
         spend: monero::PublicKey,
         view: monero::PrivateKey,
-        swap_role: SwapRole,
+        _swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
         info!("XMR view key: {}", view);
@@ -560,8 +560,7 @@ impl SyncerState {
         self.tasks
             .watched_addrs
             .values()
-            .find(|&&x| x == TxLabel::AccLock)
-            .is_some()
+            .any(|&x| x == TxLabel::AccLock)
     }
     fn handle_tx_confs(&self, id: &u32, confirmations: &Option<u32>) {
         if let Some(txlabel) = self.tasks.watched_txs.get(id) {
@@ -654,23 +653,21 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         if self.peer_service != source {
-            Err(Error::Farcaster(format!(
+            return Err(Error::Farcaster(format!(
                 "{}: expected {}, found {}",
-                "Incorrect peer connection".to_string(),
-                self.peer_service,
-                source
-            )))?
+                "Incorrect peer connection", self.peer_service, source
+            )));
         }
         let msg_bus = ServiceBus::Msg;
         match &request {
             Request::Protocol(msg) => {
                 if msg.swap_id() != self.swap_id() {
-                    Err(Error::Farcaster(format!(
+                    return Err(Error::Farcaster(format!(
                         "{}: expected {}, found {}",
-                        "Incorrect swap_id ".to_string(),
+                        "Incorrect swap_id ",
                         self.swap_id(),
                         msg.swap_id(),
-                    )))?
+                    )));
                 }
                 match &msg {
                     // we are taker and the maker committed, now we reveal after checking
@@ -879,7 +876,7 @@ impl Runtime {
                                 _ => {
                                     let err_msg = "expected Some(Commit::Alice(commit))";
                                     error!("{}", err_msg);
-                                    Err(Error::Farcaster(err_msg.to_string()))?
+                                    return Err(Error::Farcaster(err_msg.to_string()));
                                 }
                             },
                             Reveal::BobParameters(reveal) => match &remote_commit {
@@ -890,7 +887,7 @@ impl Runtime {
                                 _ => {
                                     let err_msg = "expected Some(Commit::Bob(commit))";
                                     error!("{}", err_msg);
-                                    Err(Error::Farcaster(err_msg.to_string()))?
+                                    return Err(Error::Farcaster(err_msg.to_string()));
                                 }
                             },
                             Reveal::Proof(_) => {
@@ -946,13 +943,11 @@ impl Runtime {
                         match &self.state {
                             State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: TradeRole::Maker,
-                                local_params,
                                 ..
                             }))
                             | State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: TradeRole::Maker,
-                                    local_params,
                                     ..
                                 },
                                 _,
@@ -993,7 +988,7 @@ impl Runtime {
                         lock,
                         cancel,
                         refund,
-                        cancel_sig,
+                        cancel_sig: _,
                     }) => {
                         if swap_id != &self.swap_id() {
                             error!("Swapd not responsible for swap {}", swap_id);
@@ -1056,7 +1051,9 @@ impl Runtime {
                     }
 
                     // bob and alice
-                    Msg::Abort(_) => Err(Error::Farcaster("Abort not yet supported".to_string()))?,
+                    Msg::Abort(_) => {
+                        return Err(Error::Farcaster("Abort not yet supported".to_string()))
+                    }
                     Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
                         unreachable!("ping/pong must remain in peerd, and unreachable in swapd")
                     }
@@ -1091,13 +1088,12 @@ impl Runtime {
                 | ServiceId::Wallet
             ) => {}
             (Request::GetInfo, ServiceId::Client(_)) => {}
-            _ => Err(Error::Farcaster(
+            _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
-            ))?,
+            )),
         };
 
-        let ctl_bus = ServiceBus::Ctl;
         match request {
             Request::SweepXmrAddress(SweepXmrAddress {
                 view_key,
@@ -1125,7 +1121,7 @@ impl Runtime {
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
             }) => {
-                if &ServiceId::Swap(swap_id) != &self.identity {
+                if ServiceId::Swap(swap_id) != self.identity {
                     error!(
                         "{}: {}",
                         "This swapd instance is not reponsible for swap_id", swap_id
@@ -1157,7 +1153,7 @@ impl Runtime {
                             (State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: local_trade_role,
-                                    local_params: local_params,
+                                    local_params,
                                     local_commit: local_commit.clone(),
                                     remote_commit: None,
                                 },
@@ -1170,7 +1166,7 @@ impl Runtime {
                         Ok((
                             (State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: local_trade_role,
-                                local_params: local_params,
+                                local_params,
                                 local_commit: local_commit.clone(),
                                 remote_commit: None,
                             }))),
@@ -1245,7 +1241,7 @@ impl Runtime {
                                 trade_role: *trade_role,
                                 local_params: local_params.clone(),
                                 local_commit: local_commit.clone(),
-                                remote_commit: Some(remote_commit.clone()),
+                                remote_commit: Some(remote_commit),
                             },
                             addr,
                         )))
@@ -1255,7 +1251,7 @@ impl Runtime {
                             trade_role: *trade_role,
                             local_params: local_params.clone(),
                             local_commit: local_commit.clone(),
-                            remote_commit: Some(remote_commit.clone()),
+                            remote_commit: Some(remote_commit),
                         })))
                     }
                     _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
@@ -1342,7 +1338,7 @@ impl Runtime {
             // Request::SyncerEvent(ref event) => match (&event, source) {
             // handle monero events here
             // }
-            Request::SyncerEvent(ref event) if &source == &self.syncer_state.monero_syncer => {
+            Request::SyncerEvent(ref event) if source == self.syncer_state.monero_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -1384,8 +1380,8 @@ impl Runtime {
                         id,
                         hash,
                         amount,
-                        block,
-                        tx,
+                        block: _,
+                        tx: _,
                     }) if self.state.swap_role() == SwapRole::Bob => {
                         if amount < &self.syncer_state.monero_amount.as_pico() {
                             error!(
@@ -1405,8 +1401,8 @@ impl Runtime {
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
-                        id,
-                        block,
+                        id: _,
+                        block: _,
                         confirmations: Some(confirmations),
                     }) if self.state.buy_sig()
                         && *confirmations
@@ -1478,7 +1474,7 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block,
+                        block: _,
                         confirmations,
                     }) if self.syncer_state.tasks.watched_txs.contains_key(id) => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
@@ -1496,7 +1492,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::SyncerEvent(ref event) if &source == &self.syncer_state.bitcoin_syncer => {
+            Request::SyncerEvent(ref event) if source == self.syncer_state.bitcoin_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -1505,8 +1501,8 @@ impl Runtime {
                     Event::AddressTransaction(AddressTransaction {
                         id,
                         hash,
-                        amount,
-                        block,
+                        amount: _,
+                        block: _,
                         tx,
                     }) => {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
@@ -1565,11 +1561,11 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block,
+                        block: _,
                         confirmations: Some(confirmations),
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin) => {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
-                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(&id) {
+                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
                             info!(
                                 "tx {} final: {} confirmations",
                                 txlabel.bright_green_bold(),
@@ -1603,10 +1599,8 @@ impl Runtime {
                                             Some(Params::Bob(bob_params)),
                                         ) = (&self.local_params, &self.remote_params)
                                         {
-                                            let (spend, view) = aggregate_xmr_spend_view(
-                                                &alice_params,
-                                                &bob_params,
-                                            );
+                                            let (spend, view) =
+                                                aggregate_xmr_spend_view(alice_params, bob_params);
                                             let viewpair = monero::ViewPair { spend, view };
                                             let address = monero::Address::from_viewpair(
                                                 self.syncer_state.network.into(),
@@ -1746,7 +1740,7 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block,
+                        block: _,
                         confirmations,
                     }) => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
@@ -1771,11 +1765,11 @@ impl Runtime {
                     _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
                 }?;
                 let CoreArbitratingSetup {
-                    swap_id,
+                    swap_id: _,
                     lock,
                     cancel,
                     refund,
-                    cancel_sig,
+                    cancel_sig: _,
                 } = core_arb_setup.clone();
                 for (tx, tx_label) in [lock, cancel, refund].iter().zip([
                     TxLabel::Lock,
@@ -1803,7 +1797,7 @@ impl Runtime {
                     if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
                         (&self.local_params, &self.remote_params)
                     {
-                        let (spend, view) = aggregate_xmr_spend_view(&alice_params, &bob_params);
+                        let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
                         let task = self.syncer_state.watch_addr_xmr(
                             spend,
                             view,
@@ -1953,11 +1947,11 @@ impl Runtime {
                     maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
-                        .unwrap_or(Duration::from_secs(0)),
+                        .unwrap_or_else(|_| Duration::from_secs(0)),
                     since: self
                         .started
                         .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or(Duration::from_secs(0))
+                        .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
                     // params: self.params, // FIXME
                     // serde::Serialize/Deserialize missing
@@ -1990,7 +1984,7 @@ impl Runtime {
         );
         info!("{}", &msg);
         let engine = CommitmentEngine;
-        let commitment = match params.clone() {
+        let commitment = match params {
             Params::Bob(params) => request::Commit::BobParameters(
                 CommitBobParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
@@ -2045,7 +2039,7 @@ impl Runtime {
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
         // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
-        Ok(commitment.clone())
+        Ok(commitment)
     }
 }
 
@@ -2073,22 +2067,20 @@ fn aggregate_xmr_spend_view(
     alice_params: &AliceParameters<BtcXmr>,
     bob_params: &BobParameters<BtcXmr>,
 ) -> (monero::PublicKey, monero::PrivateKey) {
-    let alice_view = alice_params
+    let alice_view = *alice_params
         .accordant_shared_keys
         .clone()
         .into_iter()
         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .unwrap()
-        .elem()
-        .clone();
-    let bob_view = bob_params
+        .expect("accordant shared keys should always have a view key")
+        .elem();
+    let bob_view = *bob_params
         .accordant_shared_keys
         .clone()
         .into_iter()
         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
-        .unwrap()
-        .elem()
-        .clone();
+        .expect("accordant shared keys should always have a view key")
+        .elem();
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 

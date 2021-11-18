@@ -78,7 +78,7 @@ impl From<&ElectrumRpc> for Vec<Script> {
     fn from(x: &ElectrumRpc) -> Self {
         x.addresses
             .keys()
-            .filter_map(|addr| Some(addr.script_pubkey.clone()))
+            .map(|addr| addr.script_pubkey.clone())
             .collect()
     }
 }
@@ -96,7 +96,7 @@ pub struct AddressNotif {
 }
 
 impl ElectrumRpc {
-    fn new(electrum_server: &String, polling: bool) -> Result<Self, electrum_client::Error> {
+    fn new(electrum_server: &str, polling: bool) -> Result<Self, electrum_client::Error> {
         let client = Client::new(electrum_server)?;
         let header = client.block_headers_subscribe()?;
         info!("New ElectrumRpc at height {:?}", header.height);
@@ -130,9 +130,10 @@ impl ElectrumRpc {
             self.client
                 .script_subscribe(&address_addendum.script_pubkey)?
         };
-        if let Some(_) = self
+        if self
             .addresses
-            .insert(address_addendum.clone(), script_status.clone())
+            .insert(address_addendum.clone(), script_status)
+            .is_some()
         {
         } else {
             info!(
@@ -200,11 +201,12 @@ impl ElectrumRpc {
                 // get pending notifications for this address/script_pubkey
                 let script_pubkey = &address.script_pubkey;
 
-                while let Ok(Some(script_status)) = self.client.script_pop(&script_pubkey) {
+                while let Ok(Some(script_status)) = self.client.script_pop(script_pubkey) {
                     if Some(script_status) != previous_status {
-                        if let Some(_) = self
+                        if self
                             .addresses
-                            .insert(address.clone(), Some(script_status.clone()))
+                            .insert(address.clone(), Some(script_status))
+                            .is_some()
                         {
                             info!(
                                 "updated address {:?} with script_status {:?}",
@@ -529,14 +531,11 @@ fn address_polling(
             };
 
             loop {
-                match rpc.ping() {
-                    Err(err) => {
-                        error!("error ping electrum client in address polling: {:?}", err);
-                        // break this loop and retry, since the electrum rpc client is probably
-                        // broken
-                        break;
-                    }
-                    _ => {}
+                if let Err(err) = rpc.ping() {
+                    error!("error ping electrum client in address polling: {:?}", err);
+                    // break this loop and retry, since the electrum rpc client is probably
+                    // broken
+                    break;
                 }
                 let state_guard = state.lock().await;
                 let addresses = state_guard.addresses.clone();
@@ -612,14 +611,11 @@ fn height_polling(
             drop(state_guard);
             // inner loop actually polls
             loop {
-                match rpc.ping() {
-                    Err(err) => {
-                        error!("error ping electrum client in height polling: {:?}", err);
-                        // break this loop and retry, since the electrum rpc client is probably
-                        // broken
-                        break;
-                    }
-                    _ => {}
+                if let Err(err) = rpc.ping() {
+                    error!("error ping electrum client in height polling: {:?}", err);
+                    // break this loop and retry, since the electrum rpc client is probably
+                    // broken
+                    break;
                 }
                 let mut blocks = match rpc.new_block_check() {
                     Ok(blks) => blks,
@@ -673,6 +669,7 @@ fn transaction_polling(
     })
 }
 
+#[derive(Default)]
 pub struct BitcoinSyncer {}
 
 impl BitcoinSyncer {
@@ -730,7 +727,7 @@ impl Synclet for BitcoinSyncer {
     }
 }
 
-fn logging(txs: &Vec<AddressTx>, address: &BtcAddressAddendum) {
+fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
     txs.iter().for_each(|tx| {
         trace!(
             "processing address {} notification txid {}",

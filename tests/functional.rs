@@ -348,7 +348,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
         task: Task::WatchAddress(WatchAddress {
             id: 5,
             lifetime: blocks + 5,
-            addendum: addendum_5.clone(),
+            addendum: addendum_5,
             include_tx: Boolean::False,
         }),
         source: SOURCE1.clone(),
@@ -738,19 +738,17 @@ fn create_bitcoin_syncer(
 
 fn find_coinbase_transaction_id(txs: Vec<bitcoin::Transaction>) -> bitcoin::Txid {
     for transaction in txs {
-        if transaction.input[0].previous_output.txid
-            == bitcoin::Txid::from_slice(&vec![0; 32]).unwrap()
+        if transaction.input[0].previous_output.txid == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
         {
             return transaction.txid();
         }
     }
-    bitcoin::Txid::from_slice(&vec![0; 32]).unwrap()
+    bitcoin::Txid::from_slice(&[0; 32]).unwrap()
 }
 
 fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
     for transaction in txs {
-        if transaction.input[0].previous_output.txid
-            == bitcoin::Txid::from_slice(&vec![0; 32]).unwrap()
+        if transaction.input[0].previous_output.txid == bitcoin::Txid::from_slice(&[0; 32]).unwrap()
         {
             return transaction.output[0].value;
         }
@@ -763,11 +761,11 @@ fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded
-    match bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
-        Err(_e) => match bitcoin_rpc.load_wallet("wallet") {
-            _ => {}
-        },
-        _ => {}
+    if bitcoin_rpc
+        .create_wallet("wallet", None, None, None, None)
+        .is_err()
+    {
+        let _ = bitcoin_rpc.load_wallet("wallet");
     }
     bitcoin_rpc
 }
@@ -826,7 +824,7 @@ async fn monero_syncer_block_height_test() {
     let task = SyncerdTask {
         task: Task::WatchHeight(WatchHeight {
             id: 1,
-            lifetime: u64::from(blocks) + 2,
+            lifetime: blocks + 2,
         }),
         source: SOURCE1.clone(),
     };
@@ -946,7 +944,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address1.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     let watch_address_task_1 = SyncerdTask {
@@ -973,7 +971,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_2 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address2.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     let watch_address_task_2 = SyncerdTask {
@@ -1001,7 +999,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_3 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address2.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     let watch_address_task_3 = SyncerdTask {
@@ -1031,7 +1029,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_4 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address4.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: 0,
     });
     for i in 0..5 {
@@ -1061,7 +1059,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address5.public_spend,
-        view_key: view_key,
+        view_key,
         from_height: blocks,
     });
 
@@ -1237,7 +1235,7 @@ async fn monero_syncer_transaction_test() {
         task: Task::WatchTransaction(WatchTransaction {
             id: 1,
             lifetime: blocks + 5,
-            hash: hex::decode(transaction.tx_hash.to_string()).unwrap().into(),
+            hash: hex::decode(transaction.tx_hash.to_string()).unwrap(),
             confirmation_bound: 2,
         }),
         source: SOURCE1.clone(),
@@ -1352,14 +1350,14 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
     let regtest = daemon.regtest();
     let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
     let wallet = wallet_client.wallet();
-    match wallet
+    // Ignore if fails, maybe the wallet already exists
+    let _ = wallet
         .create_wallet("test".to_string(), None, "English".to_string())
+        .await;
+    wallet
+        .open_wallet("test".to_string(), None)
         .await
-    {
-        _ => {
-            wallet.open_wallet("test".to_string(), None).await.unwrap();
-        }
-    }
+        .expect("The wallet exists, created the line before");
     (regtest, wallet)
 }
 
@@ -1432,8 +1430,7 @@ fn get_request_from_message(message: Vec<Vec<u8>>) -> Request {
     let mut transcoder = PlainTranscoder {};
     let routed_message = recv_routed(message);
     let plain_message = transcoder.decrypt(routed_message.msg).unwrap();
-    let request = (&*unmarshaller.unmarshall(&plain_message).unwrap()).clone();
-    request
+    (&*unmarshaller.unmarshall(&plain_message).unwrap()).clone()
 }
 
 // as taken from the rust-internet2 crate - for now we only use the message

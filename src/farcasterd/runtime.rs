@@ -81,7 +81,6 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--wallet-token", &wallet_token.to_string()])?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
-        chain: config.chain.clone(),
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
@@ -106,7 +105,6 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
 
 pub struct Runtime {
     identity: ServiceId,
-    chain: Chain,
     listens: HashSet<RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
@@ -157,7 +155,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
+    fn _send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
         senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
         Ok(())
     }
@@ -165,7 +163,7 @@ impl Runtime {
         self.node_ids.iter().cloned().collect()
     }
 
-    fn known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
+    fn _known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
         let swap_id = get_swap_id(&source)?;
         if self.running_swaps.contains(&swap_id) {
             Ok(swap_id)
@@ -175,7 +173,7 @@ impl Runtime {
     }
     fn syncers_up(&self, coin_arb: Coin, coin_acc: Coin, network: Network) -> Result<(), Error> {
         if coin_arb == coin_acc {
-            Err(Error::Syncer(SyncerError::InvalidConfig))?
+            return Err(Error::Syncer(SyncerError::InvalidConfig));
         }
         if !self.syncers.contains_key(&(coin_arb.clone(), network)) {
             launch("syncerd", &[coin_arb.to_string(), network.to_string()])?;
@@ -200,11 +198,11 @@ impl Runtime {
             // handled by farcasterd, receiving taker commit because we are
             // maker
             Request::Protocol(Msg::TakerCommit(request::TakeCommit {
-                commit,
+                commit: _,
                 public_offer_hex,
                 swap_id,
             })) => {
-                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
+                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(public_offer_hex)?;
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(
@@ -293,7 +291,7 @@ impl Runtime {
                         }
                     }
                     ServiceId::Swap(swap_id) => {
-                        if self.running_swaps.insert(swap_id.clone()) {
+                        if self.running_swaps.insert(*swap_id) {
                             info!(
                                 "Swap {} is registered; total {} \
                                  swaps are known",
@@ -311,7 +309,7 @@ impl Runtime {
                     ServiceId::Syncer(coin, network) => {
                         // TODO: check if correct network
                         self.syncers
-                            .insert((coin.clone(), network.clone()), source.clone());
+                            .insert((coin.clone(), *network), source.clone());
                     }
                     _ => {
                         // Ignoring the rest of daemon/client types
@@ -331,7 +329,7 @@ impl Runtime {
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
                     // when online, Syncers say Hello, then they get registered to self.syncers
-                    self.syncers_up(Coin::Bitcoin, Coin::Monero, network.clone())?;
+                    self.syncers_up(Coin::Bitcoin, Coin::Monero, *network)?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -357,7 +355,7 @@ impl Runtime {
                         Params::Alice(_) => {}
                         Params::Bob(_) => {}
                     }
-                    self.syncers_up(Coin::Bitcoin, Coin::Monero, network.clone())?;
+                    self.syncers_up(Coin::Bitcoin, Coin::Monero, *network)?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -400,7 +398,7 @@ impl Runtime {
                         self.listens
                             .clone()
                             .into_iter()
-                            .find_map(|x| Some(x))
+                            .find_map(Some)
                             .expect("exactly 1 listener checked on pattern match"),
                     ),
                     (TradeRole::Taker, _) if public_offer.node_id == maker_node_id => (
@@ -424,7 +422,7 @@ impl Runtime {
                     };
                     let peer = daemon_service
                         .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?
+                        .ok_or(internet2::presentation::Error::InvalidEndpoint)?
                         .into();
 
                     self.consumed_offers.insert(public_offer.id());
@@ -442,7 +440,7 @@ impl Runtime {
                 } else {
                     let msg = "unknown public_offer".to_string();
                     error!("{}", msg);
-                    Error::Farcaster(msg);
+                    return Err(Error::Farcaster(msg));
                 }
             }
             Request::Keys(Keys(sk, pk, id)) => {
@@ -475,15 +473,15 @@ impl Runtime {
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
-                        node_ids: self.node_ids().clone(),
+                        node_ids: self.node_ids(),
                         listens: self.listens.iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
-                            .unwrap_or(Duration::from_secs(0)),
+                            .unwrap_or_else(|_| Duration::from_secs(0)),
                         since: self
                             .started
                             .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap_or(Duration::from_secs(0))
+                            .unwrap_or_else(|_| Duration::from_secs(0))
                             .as_secs(),
                         peers: self.connections.iter().cloned().collect(),
                         swaps: self.running_swaps.iter().cloned().collect(),
@@ -640,12 +638,8 @@ impl Runtime {
                     error!("{}", "Currently node supports only 1 node id");
                     return Ok(());
                 }
-                let peer = internet2::RemoteNodeAddr {
-                    node_id: node_ids[0], // checked above
-                    remote_addr: public_addr.clone(),
-                };
 
-                let public_offer = offer.clone().to_public_v1(node_ids[0], public_addr.into());
+                let public_offer = offer.to_public_v1(node_ids[0], public_addr.into());
                 let pub_offer_id = public_offer.id();
                 let hex_public_offer = public_offer.to_hex();
                 if self.public_offers.insert(public_offer) {
@@ -698,11 +692,11 @@ impl Runtime {
                     ));
                 } else {
                     let PublicOffer {
-                        version,
-                        offer,
+                        version: _,
+                        offer: _,
                         node_id,      // bitcoin::Pubkey
                         peer_address, // InetSocketAddr
-                    } = public_offer.clone();
+                    } = public_offer;
 
                     let daemon_service = internet2::RemoteNodeAddr {
                         node_id,                                           // checked above
@@ -710,7 +704,7 @@ impl Runtime {
                     };
                     let peer = daemon_service
                         .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or_else(|| internet2::presentation::Error::InvalidEndpoint)?;
+                        .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                     // Connect
                     let peer_connected_is_ok =
@@ -780,13 +774,11 @@ impl Runtime {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
                 };
-                let identity = self.identity();
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 queue.push_back(request);
             }
             Request::ReadProgress(swapid) => {
                 let id = &ServiceId::Swap(swapid);
-                let identify = self.identity();
                 if let Some(queue) = self.progress.get_mut(id) {
                     let n = queue.len();
 
@@ -832,7 +824,7 @@ impl Runtime {
     }
 
     fn listen(&mut self, addr: &RemoteSocketAddr, sk: SecretKey) -> Result<String, Error> {
-        if let &RemoteSocketAddr::Ftcp(inet) = addr {
+        if let RemoteSocketAddr::Ftcp(inet) = *addr {
             let socket_addr = SocketAddr::try_from(inet)?;
             let ip = socket_addr.ip();
             let port = socket_addr.port();
@@ -868,11 +860,11 @@ impl Runtime {
         sk: SecretKey,
     ) -> Result<String, Error> {
         debug!("Instantiating peerd...");
-        if self.connections.contains(&node_addr) {
+        if self.connections.contains(node_addr) {
             return Err(Error::Other(format!(
                 "Already connected to peer {}",
                 node_addr
-            )))?;
+            )));
         }
 
         // Start peerd
@@ -884,7 +876,7 @@ impl Runtime {
                 "--peer-secret-key",
                 &format!("{:x}", sk),
                 "--wallet-token",
-                &format!("{}", self.wallet_token.clone().to_string()),
+                &format!("{}", self.wallet_token.clone()),
             ],
         );
 
@@ -894,8 +886,8 @@ impl Runtime {
         // status is Some if peerd returns because it crashed
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 
-        if let Some(_) = status {
-            Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint))?
+        if status.is_some() {
+            return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
         }
 
         let msg = format!("New instance of peerd launched with PID {}", child.id());
@@ -932,6 +924,7 @@ impl Runtime {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn launch_swapd(
     runtime: &mut Runtime,
     peerd: ServiceId,

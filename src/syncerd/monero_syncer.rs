@@ -38,7 +38,6 @@ use hex;
 pub struct MoneroRpc {
     height: u64,
     node_rpc_url: String,
-    wallet_rpc_url: String,
     block_hash: Vec<u8>,
 }
 
@@ -61,10 +60,9 @@ pub struct Transaction {
 }
 
 impl MoneroRpc {
-    fn new(node_rpc_url: String, wallet_rpc_url: String) -> Self {
+    fn new(node_rpc_url: String) -> Self {
         MoneroRpc {
             node_rpc_url,
-            wallet_rpc_url,
             height: 0,
             block_hash: vec![0],
         }
@@ -80,7 +78,7 @@ impl MoneroRpc {
     async fn get_block_hash(&mut self, height: u64) -> Result<Vec<u8>, Error> {
         let daemon_client = monero_rpc::RpcClient::new(self.node_rpc_url.clone());
         let daemon = daemon_client.daemon();
-        let selector = GetBlockHeaderSelector::Height(height.into());
+        let selector = GetBlockHeaderSelector::Height(height);
         let header = daemon.get_block_header(selector).await?;
         Ok(header.hash.0.to_vec())
     }
@@ -140,10 +138,7 @@ impl MoneroRpc {
             let block_hash = self.get_block_hash(height).await?;
             self.height = height;
             self.block_hash = block_hash.clone();
-            block = Some(Block {
-                height,
-                block_hash: block_hash,
-            });
+            block = Some(Block { height, block_hash });
         }
         Ok(block)
     }
@@ -316,6 +311,7 @@ async fn sweep_address(
     Ok(None)
 }
 
+#[derive(Default)]
 pub struct MoneroSyncer {}
 
 impl MoneroSyncer {
@@ -406,10 +402,7 @@ fn address_polling(
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(
-            syncer_servers.monero_daemon,
-            syncer_servers.monero_rpc_wallet,
-        );
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
             let state_guard = state.lock().await;
             let mut addresses = state_guard.addresses.clone();
@@ -423,11 +416,7 @@ fn address_polling(
                 // wallet
                 let mut address_transactions = None;
                 match rpc
-                    .check_address(
-                        address_addendum.clone(),
-                        network.clone(),
-                        Arc::clone(&wallet_mutex),
-                    )
+                    .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
                     .await
                 {
                     Ok(addr_txs) => {
@@ -457,10 +446,7 @@ fn height_polling(
     syncer_servers: SyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(
-            syncer_servers.monero_daemon,
-            syncer_servers.monero_rpc_wallet,
-        );
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
             let mut block_notif = None;
             match rpc.check_block().await {
@@ -474,12 +460,12 @@ fn height_polling(
             if let Some(block_notif) = block_notif {
                 let mut state_guard = state.lock().await;
                 state_guard
-                    .change_height(block_notif.height, block_notif.block_hash.into())
+                    .change_height(block_notif.height, block_notif.block_hash)
                     .await;
                 let mut transactions = state_guard.transactions.clone();
                 drop(state_guard);
 
-                if transactions.len() > 0 {
+                if !transactions.is_empty() {
                     let tx_ids: Vec<Vec<u8>> =
                         transactions.drain().map(|(_, tx)| tx.task.hash).collect();
                     let mut polled_transactions = vec![];
@@ -551,14 +537,11 @@ fn unseen_transaction_polling(
     syncer_servers: SyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut rpc = MoneroRpc::new(
-            syncer_servers.monero_daemon,
-            syncer_servers.monero_rpc_wallet,
-        );
+        let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
             let state_guard = state.lock().await;
             let unseen_transactions = state_guard.unseen_transactions.clone();
-            if unseen_transactions.len() > 0 {
+            if !unseen_transactions.is_empty() {
                 let transactions = state_guard.transactions.clone();
                 let tx_ids: Vec<Vec<u8>> = unseen_transactions
                     .iter()
@@ -628,7 +611,7 @@ impl Synclet for MoneroSyncer {
         if !polling {
             error!("monero syncer only supports polling for now - switching to polling=true");
         }
-        let network = match chain.clone() {
+        let network = match chain {
             Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
             Chain::Testnet3 => monero::Network::Stagenet,
             Chain::Signet => monero::Network::Testnet,
@@ -668,7 +651,7 @@ impl Synclet for MoneroSyncer {
                 let address_handle = address_polling(
                     Arc::clone(&state),
                     syncer_servers.clone(),
-                    network.clone(),
+                    network,
                     Arc::clone(&wallet_mutex),
                 );
 

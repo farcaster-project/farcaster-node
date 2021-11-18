@@ -13,7 +13,6 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, Clap};
-use farcaster_core::blockchain;
 use std::str::FromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
 

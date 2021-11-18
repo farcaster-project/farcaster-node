@@ -16,7 +16,6 @@ use bitcoin::Address;
 use clap::{AppSettings, Clap};
 use monero::Address as XmrAddress;
 use std::net::IpAddr;
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use internet2::{FramingProtocol, PartialNodeAddr};
@@ -52,7 +51,7 @@ pub struct Opts {
 
 impl Opts {
     pub fn process(&mut self) {
-        self.shared.process()
+        self.shared.process();
     }
 }
 /// Command-line commands:
@@ -230,7 +229,7 @@ impl FromStr for AmountOfAsset {
                 .next()
                 .ok_or(AmountOfAssetParseError::NeedsValuePair)?;
             if split.count() > 0 {
-                Err(AmountOfAssetParseError::NeedsValuePair)?
+                return Err(AmountOfAssetParseError::NeedsValuePair);
             }
         } else if s.contains(' ') {
             let mut split = s.split(' ');
@@ -241,7 +240,7 @@ impl FromStr for AmountOfAsset {
                 .next()
                 .ok_or(AmountOfAssetParseError::NeedsValuePair)?;
             if split.count() > 0 {
-                Err(AmountOfAssetParseError::NeedsValuePair)?
+                return Err(AmountOfAssetParseError::NeedsValuePair);
             }
         } else {
             return Err(AmountOfAssetParseError::NeedsValuePair);

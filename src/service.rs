@@ -68,15 +68,14 @@ impl FromStr for ClientName {
     type Err = hex::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut me = Self::default();
         if s.len() > 32 {
-            let mut me = Self::default();
             me.0.copy_from_slice(&s.as_bytes()[0..32]);
-            Ok(me)
         } else {
             let mut me = Self::default();
             me.0[0..s.len()].copy_from_slice(s.as_bytes());
-            Ok(me)
         }
+        Ok(me)
     }
 }
 
@@ -195,6 +194,7 @@ where
         Self::with(config, runtime, true)
     }
 
+    #[allow(clippy::self_named_constructors)]
     pub fn service(config: Config, runtime: Runtime) -> Result<Self, esb::Error> {
         Self::with(config, runtime, false)
     }

@@ -61,5 +61,5 @@ pub fn main() {
     let args: Vec<_> = std::env::args().collect();
     let path = args[1].as_str();
     let address = pop_address(path);
-    io::stdout().write(address.to_string().as_bytes()).unwrap();
+    let _ = io::stdout().write(address.to_string().as_bytes()).unwrap();
 }

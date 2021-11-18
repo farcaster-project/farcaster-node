@@ -7,7 +7,6 @@ use farcaster_node::rpc::Client;
 use farcaster_node::{Config, LogStyle};
 use sysinfo::{ProcessExt, System, SystemExt};
 
-use farcaster_node::cli::Command;
 use microservices::shell::Exec;
 
 #[test]
@@ -25,8 +24,7 @@ fn spawn_swap() {
     info!("opts: {:?}", opts);
     let config: Config = opts.shared.clone().into();
 
-    let mut client =
-        Client::with(config.clone(), config.chain.clone()).expect("Error running client");
+    let mut client = Client::with(config.clone(), config.chain).expect("Error running client");
 
     let mut farcasterd_maker = launch("../farcasterd", data_dir_maker.clone()).unwrap();
     let mut farcasterd_taker = launch("../farcasterd", data_dir_taker.clone()).unwrap();

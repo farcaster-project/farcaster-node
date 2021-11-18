@@ -12,12 +12,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use clap::{AppSettings, Clap, ValueHint};
+use clap::{AppSettings, Clap};
 
-use bitcoin::hashes::hex::FromHex;
 use farcaster_core::swap::SwapId;
 use farcaster_core::{negotiation::PublicOffer, role::TradeRole, swap::btcxmr::BtcXmr};
-use internet2::PartialNodeAddr;
 use std::str::FromStr;
 
 /// Lightning peer network channel daemon; part of LNP Node

@@ -31,6 +31,8 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceId};
+
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     config: Config,
     connection: PeerConnection,
@@ -40,7 +42,6 @@ pub fn run(
     local_socket: Option<InetSocketAddr>,
     remote_socket: InetSocketAddr,
     connect: bool,
-    wallet_token: Token,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
     let (receiver, sender) = connection.split();
@@ -88,7 +89,6 @@ pub fn run(
         messages_sent: 0,
         messages_received: 0,
         awaited_pong: None,
-        wallet_token,
     };
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx)?;
@@ -109,9 +109,9 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 
     fn handle(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        bus: ServiceBus,
-        addr: ServiceId,
+        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _bus: ServiceBus,
+        _addr: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         // Bridge does not receive replies for now
@@ -121,7 +121,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 
     fn handle_err(&mut self, err: esb::Error) -> Result<(), esb::Error> {
         // We simply propagate the error since it's already being reported
-        Err(err)?
+        Err(err)
     }
 }
 
@@ -194,7 +194,6 @@ pub struct Runtime {
     messages_sent: usize,
     messages_received: usize,
     awaited_pong: Option<u16>,
-    wallet_token: Token,
 }
 
 impl CtlServer for Runtime {}
@@ -258,7 +257,7 @@ impl Runtime {
     fn handle_rpc_msg(
         &mut self,
         _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-        source: ServiceId,
+        _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         // match &request {
@@ -308,7 +307,7 @@ impl Runtime {
                     source, channel_id
                 );
                 self.routing.remove(&source);
-                self.routing.insert(channel_id.clone().into(), source);
+                self.routing.insert(channel_id.into(), source);
             }
 
             Request::GetInfo => {
@@ -319,11 +318,11 @@ impl Runtime {
                     remote_socket: vec![self.remote_socket],
                     uptime: SystemTime::now()
                         .duration_since(self.started)
-                        .unwrap_or(Duration::from_secs(0)),
+                        .unwrap_or_else(|_| Duration::from_secs(0)),
                     since: self
                         .started
                         .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or(Duration::from_secs(0))
+                        .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
                     messages_sent: self.messages_sent,
                     messages_received: self.messages_received,
@@ -456,7 +455,7 @@ impl Runtime {
             other => {
                 error!("Request is not supported by the BRIDGE interface");
                 dbg!(other);
-                return Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()))?;
+                return Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()));
             }
         }
         Ok(())
@@ -469,10 +468,7 @@ impl Runtime {
         }
         let mut rng = rand::thread_rng();
         let len: u16 = rng.gen_range(4, 32);
-        let mut noise = vec![0u8; len as usize];
-        for i in 0..noise.len() {
-            noise[i] = rng.gen();
-        }
+        let noise = vec![0u8; len as usize].iter().map(|_| rng.gen()).collect();
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
         self.sender.send_message(Msg::Ping(message::Ping {
@@ -485,11 +481,11 @@ impl Runtime {
 
     fn pong(&mut self, pong_size: u16) -> Result<(), Error> {
         trace!("Replying with pong to the remote peer");
-        let mut noise = vec![0u8; pong_size as usize];
         let mut rng = rand::thread_rng();
-        for i in 0..noise.len() {
-            noise[i] = rng.gen();
-        }
+        let noise = vec![0u8; pong_size as usize]
+            .iter()
+            .map(|_| rng.gen())
+            .collect();
         self.messages_sent += 1;
         self.sender.send_message(Msg::Pong(noise))?;
         Ok(())

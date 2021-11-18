@@ -13,14 +13,10 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, ArgGroup, Clap, ValueHint};
-use std::path::PathBuf;
-use std::{fs, io::Read};
 use std::{io, net::IpAddr};
 
 use internet2::{FramingProtocol, LocalNode, RemoteNodeAddr};
 use strict_encoding::{StrictDecode, StrictEncode};
-
-use crate::opts::FARCASTER_NODE_KEY_FILE;
 
 /// Lightning peer network connection daemon; part of LNP Node
 ///
@@ -107,7 +103,7 @@ pub struct PeerKeyOpts {
     pub peer_secret_key: String,
 }
 
-/// WalletToken configuration
+/// ``WalletToken`` configuration
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 pub struct TokenString {
     #[clap(long)]
@@ -144,7 +140,6 @@ impl PeerKeyOpts {
         let secret_key = SecretKey::from_str(&self.peer_secret_key).expect("peer secret key");
         let ephemeral_secret_key = SecretKey::new(&mut rng);
         let local_node = LocalNode::from_keys(secret_key, ephemeral_secret_key);
-        let node_secrets = PeerSecrets { local_node };
-        node_secrets
+        PeerSecrets { local_node }
     }
 }
