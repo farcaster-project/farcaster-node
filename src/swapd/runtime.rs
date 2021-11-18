@@ -543,7 +543,6 @@ impl SyncerState {
         &mut self,
         spend: monero::PublicKey,
         view: monero::PrivateKey,
-        _swap_role: SwapRole,
         tx_label: TxLabel,
     ) -> Task {
         info!("XMR view key: {}", view);
@@ -1686,7 +1685,6 @@ impl Runtime {
                                             let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                                 spend,
                                                 view,
-                                                self.state.swap_role(),
                                                 TxLabel::AccLock,
                                             );
                                             senders.send_to(
@@ -1860,7 +1858,6 @@ impl Runtime {
                         let task = self.syncer_state.watch_addr_xmr(
                             spend,
                             view,
-                            self.state.swap_role(),
                             TxLabel::AccLock,
                         );
                         senders.send_to(
