@@ -1222,13 +1222,6 @@ impl Runtime {
                     let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                     self.send_peer(senders, Msg::Reveal(reveal_params))?;
                     trace!("sent reveal_proof to peerd");
-                    let next_state = match self.state {
-                        State::Alice(_) => {
-                            State::Alice(AliceState::RevealA(local_params, remote_commit))
-                        }
-                        State::Bob(_) => State::Bob(BobState::RevealB(local_params, remote_commit)),
-                    };
-                    self.state_update(senders, next_state)?;
                 }
                 _ => {
                     error!("Wrong state: Expects RevealA | RevealB");
