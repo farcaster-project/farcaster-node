@@ -385,6 +385,13 @@ impl State {
             _ => None,
         }
     }
+    fn puboffer(&self) -> Option<&PublicOffer<BtcXmr>> {
+        match self {
+            State::Alice(AliceState::StartA(_, puboffer))
+            | State::Bob(BobState::StartB(_, puboffer)) => Some(puboffer),
+            _ => None,
+        }
+    }
     fn address(&self) -> Option<&bitcoin::Address> {
         match self {
             State::Bob(BobState::CommitB(_, addr)) => Some(addr),
@@ -402,6 +409,9 @@ impl State {
             self,
             State::Alice(AliceState::RevealA(..)) | State::Bob(BobState::RevealB(..))
         )
+    }
+    fn refundsig(&self) -> bool {
+        matches!(self, State::Alice(AliceState::RefundSigA(..)))
     }
     fn start(&self) -> bool {
         matches!(
