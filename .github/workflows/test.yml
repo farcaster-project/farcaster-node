@@ -81,4 +81,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --tests ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
+          args: ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
