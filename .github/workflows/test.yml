@@ -12,6 +12,7 @@ env:
 jobs:
   test:
     name: Unit tests
+    runs-on: ubuntu-latest
     container:
       image: xd009642/tarpaulin:develop-nightly
       options: --security-opt seccomp=unconfined
