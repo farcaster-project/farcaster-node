@@ -1172,10 +1172,10 @@ impl Runtime {
                         "Wrong state: Expects Start state, and funding_address"
                     ))),
                 }?;
-                let public_offer_hex = public_offer.to_hex();
+                let public_offer = public_offer.to_string();
                 let take_swap = TakeCommit {
                     commit: local_commit,
-                    public_offer_hex,
+                    public_offer,
                     swap_id,
                 };
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
