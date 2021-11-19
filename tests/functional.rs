@@ -11,7 +11,7 @@ use farcaster_node::syncerd::SweepAddress;
 use farcaster_node::syncerd::SweepAddressAddendum;
 use farcaster_node::syncerd::SweepXmrAddress;
 use farcaster_node::syncerd::SyncerServers;
-use farcaster_node::syncerd::TaskIdOrAllTasks;
+use farcaster_node::syncerd::TaskTarget;
 use farcaster_node::syncerd::XmrAddressAddendum;
 use farcaster_node::ServiceId;
 use internet2::transport::MAX_FRAME_SIZE;
@@ -606,7 +606,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::TaskId(0),
+            task_target: TaskTarget::TaskId(0),
         }),
         source: SOURCE1.clone(),
     };
@@ -619,7 +619,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::TaskId(0),
+            task_target: TaskTarget::TaskId(0),
         }),
         source: SOURCE1.clone(),
     };
@@ -666,7 +666,7 @@ fn bitcoin_syncer_abort_test() {
     assert_transaction_confirmations(request, None, vec![0]);
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::AllTasks,
+            task_target: TaskTarget::AllTasks,
         }),
         source: SOURCE1.clone(),
     };
@@ -679,7 +679,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::TaskId(0),
+            task_target: TaskTarget::TaskId(0),
         }),
         source: SOURCE1.clone(),
     };
@@ -1377,7 +1377,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::TaskId(0),
+            task_target: TaskTarget::TaskId(0),
         }),
         source: SOURCE2.clone(),
     };
@@ -1390,7 +1390,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::TaskId(0),
+            task_target: TaskTarget::TaskId(0),
         }),
         source: SOURCE2.clone(),
     };
@@ -1433,7 +1433,7 @@ async fn monero_syncer_abort_test() {
     assert_transaction_confirmations(request, None, vec![0]);
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::AllTasks,
+            task_target: TaskTarget::AllTasks,
         }),
         source: SOURCE2.clone(),
     };
@@ -1446,7 +1446,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_id_or_all_tasks: TaskIdOrAllTasks::TaskId(0),
+            task_target: TaskTarget::TaskId(0),
         }),
         source: SOURCE2.clone(),
     };

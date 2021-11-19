@@ -11,7 +11,7 @@ use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::syncerd::types::{AddressAddendum, Task};
 use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
-use crate::syncerd::TaskIdOrAllTasks;
+use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::ServiceId;
 use crate::{error::Error, syncerd::syncer_state::create_set};
@@ -433,7 +433,7 @@ async fn run_syncerd_task_receiver(
                         Task::Abort(task) => {
                             let mut state_guard = state.lock().await;
                             state_guard
-                                .abort(task.task_id_or_all_tasks, syncerd_task.source)
+                                .abort(task.task_target, syncerd_task.source)
                                 .await;
                         }
                         Task::BroadcastTransaction(task) => {
@@ -491,7 +491,7 @@ async fn run_syncerd_task_receiver(
                                 error!("Aborting watch address task - unable to decode address addendum");
                                 let mut state_guard = state.lock().await;
                                 state_guard
-                                    .abort(TaskIdOrAllTasks::TaskId(task.id), syncerd_task.source)
+                                    .abort(TaskTarget::TaskId(task.id), syncerd_task.source)
                                     .await;
                             }
                         },
