@@ -1,7 +1,7 @@
 ARG BUILDER_DIR=/srv/farcaster
 
 
-FROM rust:1.54.0-slim-buster as builder
+FROM rust:1.55.0-slim-buster as builder
 
 ARG SRC_DIR=/usr/local/src/farcaster
 ARG BUILDER_DIR

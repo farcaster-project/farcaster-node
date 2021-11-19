@@ -12,6 +12,13 @@ env:
 jobs:
   binaries:
     name: Build binaries
+    strategy:
+      matrix:
+        rust: [
+          1.55.0,
+          stable,
+          nightly
+        ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -19,11 +26,12 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config build-essential cmake
 
-      - name: Install latest nightly
+      - name: Install Rust ${{ matrix.rust }}
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: ${{ matrix.rust }}
           override: true
+          profile: minimal
 
       - name: Build farcaster daemon
         uses: actions-rs/cargo@v1

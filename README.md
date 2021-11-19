@@ -2,7 +2,7 @@
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance)
 [![Crates.io](https://img.shields.io/crates/v/farcaster_node.svg)](https://crates.io/crates/farcaster_node)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MSRV](https://img.shields.io/badge/MSRV-1.54.0-blue)](https://blog.rust-lang.org/2021/07/29/Rust-1.54.0.html)
+[![MSRV](https://img.shields.io/badge/MSRV-1.55.0-blue)](https://blog.rust-lang.org/2021/09/09/Rust-1.55.0.html)
 
 # Farcaster: cross-chain atomic swaps
 
