@@ -42,6 +42,8 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v1.3.0
+        with:
+          key: bin-${{ matrix.bin }}
 
       - name: Build ${{ matrix.bin }} daemon
         uses: actions-rs/cargo@v1
