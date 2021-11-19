@@ -13,22 +13,36 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
-    container:
-      image: xd009642/tarpaulin:develop-nightly
-      options: --security-opt seccomp=unconfined
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: sudo apt-get install -y cmake libzmq3-dev
 
-      - name: Cargo test
-        run: cargo +nightly tarpaulin --verbose --all-features --workspace --no-fail-fast --timeout 120 --out Xml
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
 
-      - name: Upload to codecov.io
+      - name: Cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --all-targets --all-features --no-fail-fast --verbose
+        env:
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+
+      - id: coverage
+        name: Generate coverage
+        uses: actions-rs/grcov@v0.1.6
+
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
         with:
-          fail_ci_if_error: true # optional (default = false)
-          verbose: true # optional (default = false)
+          file: ${{ steps.coverage.outputs.report }}
+          directory: ./coverage/reports/
 
   functional-test:
     name: Functional tests
