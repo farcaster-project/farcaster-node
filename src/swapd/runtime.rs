@@ -1027,35 +1027,28 @@ impl Runtime {
                         cancel,
                         refund,
                         cancel_sig: _,
-                    }) => {
+                    }) if self.state.swap_role() == SwapRole::Alice && self.state.reveal() => {
                         if swap_id != &self.swap_id() {
                             error!("Swapd not responsible for swap {}", swap_id);
                             return Ok(());
                         }
-                        if let State::Alice(AliceState::RevealA(_, _)) = self.state {
-                            for (&tx, tx_label) in [lock, cancel, refund].iter().zip([
-                                TxLabel::Lock,
-                                TxLabel::Cancel,
-                                TxLabel::Refund,
-                            ]) {
-                                let txid = tx.clone().extract_tx().txid();
-                                let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    self.syncer_state.bitcoin_syncer(),
-                                    Request::SyncerTask(task),
-                                )?;
-                            }
-                            // senders.send_to(ServiceBus::Ctl, self.identity(),
-                            // self.syncer_state.bitcoin_syncer(), req)?;
-                            self.send_wallet(msg_bus, senders, request)?;
-                        } else {
-                            error!(
-                                "Wrong state: Only Alice receives CoreArbitratingSetup msg \
-                                 through peer connection at state RevealA"
-                            )
+                        for (&tx, tx_label) in [lock, cancel, refund].iter().zip([
+                            TxLabel::Lock,
+                            TxLabel::Cancel,
+                            TxLabel::Refund,
+                        ]) {
+                            let txid = tx.clone().extract_tx().txid();
+                            let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.bitcoin_syncer(),
+                                Request::SyncerTask(task),
+                            )?;
                         }
+                        // senders.send_to(ServiceBus::Ctl, self.identity(),
+                        // self.syncer_state.bitcoin_syncer(), req)?;
+                        self.send_wallet(msg_bus, senders, request)?;
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) => {
