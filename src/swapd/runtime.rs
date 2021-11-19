@@ -1051,15 +1051,8 @@ impl Runtime {
                         self.send_wallet(msg_bus, senders, request)?;
                     }
                     // bob receives, alice sends
-                    Msg::RefundProcedureSignatures(_) => {
-                        if let State::Bob(BobState::CorearbB(_)) = self.state {
-                            self.send_wallet(msg_bus, senders, request)?;
-                        } else {
-                            error!(
-                                "Wrong state: Bob receives RefundProcedureSignatures msg \
-                                 through peer connection in state CorearbB"
-                            )
-                        }
+                    Msg::RefundProcedureSignatures(_) if self.state.core_arb() => {
+                        self.send_wallet(msg_bus, senders, request)?;
                     }
                     // alice receives, bob sends
                     Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. }) => {
