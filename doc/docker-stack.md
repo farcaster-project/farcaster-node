@@ -47,7 +47,7 @@ docker run --rm -t -p 9735:9735 -p 9981:9981\
     --name farcaster_node\
     ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
     -vv\
-    --electrum-server {ip:port}\
+    --electrum-server ssl://{ip:port}\
     --monero-daemon http://{ip:port}\
     --monero-rpc-wallet http://{ip:port}
 ```
@@ -55,16 +55,16 @@ docker run --rm -t -p 9735:9735 -p 9981:9981\
 or build the node image and start a container by running inside the project folder:
 
 ```
-docker build -t farcasterd:latest .
-docker run --rm -t -p 9735:9735 -p 9981:9981\
+docker build --no-cache -t farcasterd:latest .
+docker run --rm -t --init -p 9735:9735 -p 9981:9981\
     --name farcaster_node\
     farcasterd:latest\
-    ...
+    {farcasterd args...}
 ```
 
 The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`-t`), and publish exposed ports `9735` and `9981` on the host.
 
-Stop the container with `docker stop farcaster_node` (ctrl+c does not work yet).
+Stop the container with `ctrl+c` or `docker stop farcaster_node`.
 
 :warning: this exposes the control bus on the host, only intended for debugging or on a trusted network.
 

@@ -10,43 +10,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust_format:
-    name: Rust Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-          components: rustfmt
-
-      - name: Run Rustfmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-
-  rust_clippy:
-    name: Rust Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Install latest stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: clippy
-
-      - name: Run Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all --all-targets --all-features -- -D warnings
-
   test:
     name: Unit tests
     runs-on: ubuntu-latest
@@ -61,7 +24,10 @@ jobs:
           toolchain: nightly
           override: true
 
-      - name: Build & test
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v1.3.0
+
+      - name: Cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -83,6 +49,12 @@ jobs:
 
   functional-test:
     name: Functional tests
+    strategy:
+      matrix:
+        test: [
+          bitcoin,
+          monero,
+        ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -92,21 +64,21 @@ jobs:
       - name: Compose docker services
         run: cd tests && docker-compose up -d
 
-      - name: Install latest nightly
+      - name: Install Rust stable
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
-          override: true
+          toolchain: stable
 
       - name: Correct permissions
         run: sudo chown -R $USER tests
 
-      - name: Build & test
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v1.3.0
+        with:
+          key: test-${{ matrix.test }}
+
+      - name: Cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
-        env:
-          CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          args: ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1

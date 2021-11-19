@@ -1,4 +1,4 @@
-name: Build and Publish GitHub Packages
+name: Create packages
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
 
 jobs:
   faracsterd_container:
+    name: Farcasterd Docker image
     runs-on: ubuntu-latest
 
     steps:
