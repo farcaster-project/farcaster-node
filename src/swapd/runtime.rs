@@ -15,7 +15,7 @@
 
 use crate::syncerd::{
     opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
-    SweepXmrAddress, TaskTarget, WatchHeight, XmrAddressAddendum,
+    SweepXmrAddress, TaskId, TaskTarget, WatchHeight, XmrAddressAddendum,
 };
 use std::{
     any::Any,
@@ -246,15 +246,15 @@ impl TemporalSafety {
 
 struct SyncerTasks {
     counter: u32,
-    watched_txs: HashMap<u32, TxLabel>,
-    watched_addrs: HashMap<u32, TxLabel>,
-    sweeping_addr: Option<u32>,
+    watched_txs: HashMap<TaskId, TxLabel>,
+    watched_addrs: HashMap<TaskId, TxLabel>,
+    sweeping_addr: Option<TaskId>,
 }
 
 impl SyncerTasks {
-    fn new_taskid(&mut self) -> u32 {
+    fn new_taskid(&mut self) -> TaskId {
         self.counter += 1;
-        self.counter
+        TaskId(self.counter)
     }
 }
 
@@ -724,7 +724,7 @@ impl SyncerState {
             .values()
             .any(|&x| x == TxLabel::AccLock)
     }
-    fn handle_tx_confs(&self, id: &u32, confirmations: &Option<u32>) {
+    fn handle_tx_confs(&self, id: &TaskId, confirmations: &Option<u32>) {
         if let Some(txlabel) = self.tasks.watched_txs.get(id) {
             match confirmations {
                 Some(0) => {

@@ -6,12 +6,10 @@ use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
 use farcaster_node::syncerd::opts::{Coin, Opts};
 use farcaster_node::syncerd::runtime::SyncerdTask;
-use farcaster_node::syncerd::runtime::Synclet;
-use farcaster_node::syncerd::SweepAddress;
-use farcaster_node::syncerd::SweepAddressAddendum;
-use farcaster_node::syncerd::SweepXmrAddress;
-use farcaster_node::syncerd::TaskTarget;
-use farcaster_node::syncerd::XmrAddressAddendum;
+use farcaster_node::syncerd::{
+    runtime::Synclet, SweepAddress, SweepAddressAddendum, SweepXmrAddress, TaskId, TaskTarget,
+    XmrAddressAddendum,
+};
 use farcaster_node::ServiceId;
 use internet2::transport::MAX_FRAME_SIZE;
 use internet2::Decrypt;
@@ -97,7 +95,7 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
     // Send a WatchHeight task
     let task = SyncerdTask {
         task: Task::WatchHeight(WatchHeight {
-            id: 0,
+            id: TaskId(0),
             lifetime: blocks + 2,
         }),
         source: SOURCE1.clone(),
@@ -123,7 +121,7 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
     // Send another WatchHeight task
     let task = SyncerdTask {
         task: Task::WatchHeight(WatchHeight {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 2,
         }),
         source: SOURCE1.clone(),
@@ -207,7 +205,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     });
     let watch_address_task_1 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 1,
             addendum: addendum_1,
             include_tx: Boolean::True,
@@ -217,7 +215,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     tx.send(watch_address_task_1).unwrap();
     let watch_address_task_2 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 2,
             addendum: addendum_2.clone(),
             include_tx: Boolean::True,
@@ -281,7 +279,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     // watch for the same address, it should already contain transactions
     let watch_address_task_3 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 2,
             addendum: addendum_2,
             include_tx: Boolean::True,
@@ -317,7 +315,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     for i in 0..5 {
         tx.send(SyncerdTask {
             task: Task::WatchAddress(WatchAddress {
-                id: i,
+                id: TaskId(i),
                 lifetime: blocks + 5,
                 addendum: addendum_4.clone(),
                 include_tx: Boolean::True,
@@ -352,7 +350,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     });
     tx.send(SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 5,
+            id: TaskId(5),
             lifetime: blocks + 5,
             addendum: addendum_5,
             include_tx: Boolean::False,
@@ -410,7 +408,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid_1.to_vec(),
             confirmation_bound: 2,
@@ -452,7 +450,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: address_txid.to_vec(),
             confirmation_bound: 2,
@@ -488,7 +486,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid_2.to_vec(),
             confirmation_bound: 2,
@@ -498,7 +496,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     .unwrap();
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid_3.to_vec(),
             confirmation_bound: 2,
@@ -553,7 +551,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid.to_vec(),
             confirmation_bound: 2,
@@ -601,7 +599,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 0,
+            id: TaskId(0),
             lifetime: blocks + 10,
             hash: vec![0; 32],
             confirmation_bound: 2,
@@ -617,7 +615,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_target: TaskTarget::TaskId(0),
+            task_target: TaskTarget::TaskId(TaskId(0)),
             respond: Boolean::True,
         }),
         source: SOURCE1.clone(),
@@ -631,7 +629,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_target: TaskTarget::TaskId(0),
+            task_target: TaskTarget::TaskId(TaskId(0)),
             respond: Boolean::True,
         }),
         source: SOURCE1.clone(),
@@ -649,7 +647,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 0,
+            id: TaskId(0),
             lifetime: blocks + 10,
             hash: vec![0; 32],
             confirmation_bound: 2,
@@ -664,7 +662,7 @@ fn bitcoin_syncer_abort_test() {
     assert_transaction_confirmations(request, None, vec![0]);
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 10,
             hash: vec![0; 32],
             confirmation_bound: 2,
@@ -693,7 +691,7 @@ fn bitcoin_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_target: TaskTarget::TaskId(0),
+            task_target: TaskTarget::TaskId(TaskId(0)),
             respond: Boolean::True,
         }),
         source: SOURCE1.clone(),
@@ -741,7 +739,7 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
 
     let task = SyncerdTask {
         task: Task::BroadcastTransaction(BroadcastTransaction {
-            id: 0,
+            id: TaskId(0),
             tx: transaction.hex,
         }),
         source: SOURCE1.clone(),
@@ -784,7 +782,7 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
         .unwrap();
     let task = SyncerdTask {
         task: Task::BroadcastTransaction(BroadcastTransaction {
-            id: 0,
+            id: TaskId(0),
             tx: signed_tx.hex,
         }),
         source: SOURCE1.clone(),
@@ -894,7 +892,7 @@ async fn monero_syncer_block_height_test() {
     // Send a WatchHeight task
     let task = SyncerdTask {
         task: Task::WatchHeight(WatchHeight {
-            id: 0,
+            id: TaskId(0),
             lifetime: blocks + 2,
         }),
         source: SOURCE1.clone(),
@@ -919,7 +917,7 @@ async fn monero_syncer_block_height_test() {
     // Send another WatchHeight task
     let task = SyncerdTask {
         task: Task::WatchHeight(WatchHeight {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 2,
         }),
         source: SOURCE1.clone(),
@@ -976,7 +974,7 @@ async fn monero_syncer_sweep_test() {
 
     let task = SyncerdTask {
         task: Task::SweepAddress(SweepAddress {
-            id: 0,
+            id: TaskId(0),
             lifetime: blocks + 40,
             addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
                 spend_key,
@@ -994,7 +992,7 @@ async fn monero_syncer_sweep_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received sweep success message");
     let request = get_request_from_message(message);
-    assert_sweep_success(request, 0);
+    assert_sweep_success(request, TaskId(0));
 }
 
 /*
@@ -1047,7 +1045,7 @@ async fn monero_syncer_address_test() {
     });
     let watch_address_task_1 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 1,
             addendum: addendum_1,
             include_tx: Boolean::True,
@@ -1074,7 +1072,7 @@ async fn monero_syncer_address_test() {
     });
     let watch_address_task_2 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 1,
             addendum: addendum_2,
             include_tx: Boolean::True,
@@ -1102,7 +1100,7 @@ async fn monero_syncer_address_test() {
     });
     let watch_address_task_3 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 1,
             addendum: addendum_3,
             include_tx: Boolean::True,
@@ -1133,7 +1131,7 @@ async fn monero_syncer_address_test() {
     for i in 0..5 {
         tx.send(SyncerdTask {
             task: Task::WatchAddress(WatchAddress {
-                id: i,
+                id: TaskId(i),
                 lifetime: blocks + 5,
                 addendum: addendum_4.clone(),
                 include_tx: Boolean::True,
@@ -1163,7 +1161,7 @@ async fn monero_syncer_address_test() {
 
     tx.send(SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
-            id: 5,
+            id: TaskId(5),
             lifetime: blocks + 5,
             addendum: addendum_5.clone(),
             include_tx: Boolean::True,
@@ -1220,7 +1218,7 @@ async fn monero_syncer_transaction_test() {
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid_1.to_vec(),
             confirmation_bound: 2,
@@ -1255,7 +1253,7 @@ async fn monero_syncer_transaction_test() {
     let block_hash = get_block_hash_from_height(&regtest, block_height).await;
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: block_height + 5,
             hash: tx_id2,
             confirmation_bound: 2,
@@ -1281,7 +1279,7 @@ async fn monero_syncer_transaction_test() {
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid_2.to_vec(),
             confirmation_bound: 2,
@@ -1291,7 +1289,7 @@ async fn monero_syncer_transaction_test() {
     .unwrap();
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid_3.to_vec(),
             confirmation_bound: 2,
@@ -1332,7 +1330,7 @@ async fn monero_syncer_transaction_test() {
         .unwrap();
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: hex::decode(transaction.tx_hash.to_string()).unwrap(),
             confirmation_bound: 2,
@@ -1387,7 +1385,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 0,
+            id: TaskId(0),
             lifetime: blocks + 2,
             hash: vec![0; 32],
             confirmation_bound: 2,
@@ -1401,7 +1399,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_target: TaskTarget::TaskId(0),
+            task_target: TaskTarget::TaskId(TaskId(0)),
             respond: Boolean::True,
         }),
         source: SOURCE2.clone(),
@@ -1415,7 +1413,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_target: TaskTarget::TaskId(0),
+            task_target: TaskTarget::TaskId(TaskId(0)),
             respond: Boolean::True,
         }),
         source: SOURCE2.clone(),
@@ -1433,7 +1431,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 0,
+            id: TaskId(0),
             lifetime: blocks + 10,
             hash: vec![0; 32],
             confirmation_bound: 2,
@@ -1446,7 +1444,7 @@ async fn monero_syncer_abort_test() {
     assert_transaction_confirmations(request, None, vec![0]);
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 10,
             hash: vec![0; 32],
             confirmation_bound: 2,
@@ -1473,7 +1471,7 @@ async fn monero_syncer_abort_test() {
 
     let task = SyncerdTask {
         task: Task::Abort(Abort {
-            task_target: TaskTarget::TaskId(0),
+            task_target: TaskTarget::TaskId(TaskId(0)),
             respond: Boolean::True,
         }),
         source: SOURCE2.clone(),
@@ -1504,7 +1502,10 @@ async fn monero_syncer_broadcast_tx_test() {
     let (tx, rx_event) = create_monero_syncer("broadcast");
 
     let task = SyncerdTask {
-        task: Task::BroadcastTransaction(BroadcastTransaction { id: 0, tx: vec![0] }),
+        task: Task::BroadcastTransaction(BroadcastTransaction {
+            id: TaskId(0),
+            tx: vec![0],
+        }),
         source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
@@ -1651,7 +1652,7 @@ fn assert_address_transaction(request: Request, expected_amount: u64, expected_t
     }
 }
 
-fn assert_sweep_success(request: Request, id: u32) {
+fn assert_sweep_success(request: Request, id: TaskId) {
     match request {
         Request::SyncerdBridgeEvent(event) => match event.event {
             Event::SweepSuccess(sweep_success) => {
