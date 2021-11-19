@@ -49,6 +49,12 @@ jobs:
 
   functional-test:
     name: Functional tests
+    strategy:
+      matrix:
+        test: [
+          bitcoin,
+          monero,
+        ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -68,9 +74,11 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v1.3.0
+        with:
+          key: test-${{ matrix.test }}
 
       - name: Cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
+          args: --tests ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
