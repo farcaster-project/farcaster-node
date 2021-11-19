@@ -392,16 +392,16 @@ impl State {
         }
     }
     fn commit(&self) -> bool {
-        match self {
-            State::Alice(AliceState::CommitA(..)) | State::Bob(BobState::CommitB(..)) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            State::Alice(AliceState::CommitA(..)) | State::Bob(BobState::CommitB(..))
+        )
     }
     fn reveal(&self) -> bool {
-        match self {
-            State::Alice(AliceState::RevealA(..)) | State::Bob(BobState::RevealB(..)) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            State::Alice(AliceState::RevealA(..)) | State::Bob(BobState::RevealB(..))
+        )
     }
     fn trade_role(&self) -> Option<TradeRole> {
         match self {
