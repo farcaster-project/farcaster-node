@@ -362,18 +362,10 @@ impl State {
         }
     }
     fn core_arb(&self) -> bool {
-        if let State::Bob(BobState::CorearbB(..)) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, State::Bob(BobState::CorearbB(..)))
     }
     fn buy_sig(&self) -> bool {
-        if let State::Bob(BobState::BuySigB) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, State::Bob(BobState::BuySigB))
     }
 }
 
@@ -1108,8 +1100,11 @@ impl Runtime {
                     dest: dest.clone(),
                     bus_id: ServiceBus::Ctl,
                 };
-                if let None = self.pending_requests.insert(dest, vec![pending_request]) {
-                } else {
+                if self
+                    .pending_requests
+                    .insert(dest, vec![pending_request])
+                    .is_some()
+                {
                     error!("pending request for syncer already there")
                 }
             }
@@ -1434,9 +1429,8 @@ impl Runtime {
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
-                        id,
-                        block,
                         confirmations: Some(confirmations),
+                        ..
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.core_arb()
                         && self.pending_requests.contains_key(&source) =>
@@ -1480,7 +1474,7 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
                     Event::TaskAborted(_) => {}
-                    Event::SweepSuccess(SweepSuccess { id, txids })
+                    Event::SweepSuccess(SweepSuccess { id, .. })
                         if self.state.buy_sig()
                             && self.syncer_state.tasks.sweeping_addr.is_some()
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
