@@ -13,7 +13,7 @@ Launch two `farcasterd` services with different data directories (`.node01` and 
 ```
 farcasterd -vv\
     --data-dir {.node01|.node02}\
-    --electrum-server {ip:port}\
+    --electrum-server ssl://{ip:port}\
     --monero-daemon http://{ip:port}\
     --monero-rpc-wallet http://{ip:port}
 ```

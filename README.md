@@ -47,7 +47,7 @@ Then start the node with:
 
 ```
 farcasterd -vv\
-    --electrum-server {ip:port}\
+    --electrum-server ssl://{ip:port}\
     --monero-daemon http://{ip:port}\
     --monero-rpc-wallet http://{ip:port}
 ```
