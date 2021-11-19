@@ -40,6 +40,9 @@ jobs:
           override: true
           profile: minimal
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v1.3.0
+
       - name: Build ${{ matrix.bin }} daemon
         uses: actions-rs/cargo@v1
         with:

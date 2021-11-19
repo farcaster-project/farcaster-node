@@ -24,6 +24,9 @@ jobs:
           toolchain: nightly
           override: true
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v1.3.0
+
       - name: Cargo test
         uses: actions-rs/cargo@v1
         with:
@@ -62,6 +65,9 @@ jobs:
 
       - name: Correct permissions
         run: sudo chown -R $USER tests
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v1.3.0
 
       - name: Cargo test
         uses: actions-rs/cargo@v1
