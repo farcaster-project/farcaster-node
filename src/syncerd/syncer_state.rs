@@ -2,6 +2,7 @@ use crate::farcaster_core::{blockchain::Network, consensus::Decodable};
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::syncerd::opts::Coin;
 use crate::syncerd::runtime::SyncerdTask;
+use crate::syncerd::TaskIdOrAllTasks;
 use crate::Error;
 use crate::ServiceId;
 use bitcoin::{hashes::Hash, Txid};
@@ -94,7 +95,12 @@ impl SyncerState {
         self.block_height
     }
 
-    pub async fn abort(&mut self, task_id: Option<u32>, source: ServiceId) {
+    pub async fn abort(&mut self, task_task_id_or_all_tasks: TaskIdOrAllTasks, source: ServiceId) {
+        let task_id = match task_task_id_or_all_tasks {
+            TaskIdOrAllTasks::AllTasks => None,
+            TaskIdOrAllTasks::TaskId(task_id) => Some(task_id),
+        };
+
         let mut aborted_ids: Vec<u32> = vec![];
         // check addresses tasks
         let ids: Vec<(InternalId, u32)> = self
@@ -659,7 +665,9 @@ async fn syncer_state_transaction() {
     let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
     state.watch_transaction(transaction_task_one.clone(), source1.clone());
-    state.abort(Some(0), source1.clone()).await;
+    state
+        .abort(TaskIdOrAllTasks::TaskId(0), source1.clone())
+        .await;
     assert!(event_rx.try_recv().is_ok());
 
     state.watch_transaction(transaction_task_one.clone(), source1.clone());
@@ -719,7 +727,9 @@ async fn syncer_state_transaction() {
 
     let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
     state.watch_transaction(transaction_task_two.clone(), source2.clone());
-    state.abort(Some(0), source2.clone()).await;
+    state
+        .abort(TaskIdOrAllTasks::TaskId(0), source2.clone())
+        .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -766,7 +776,9 @@ async fn syncer_state_addresses() {
     state
         .watch_address(address_task_two.clone(), source1.clone())
         .unwrap();
-    state.abort(Some(0), source1.clone()).await;
+    state
+        .abort(TaskIdOrAllTasks::TaskId(0), source1.clone())
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.addresses.len(), 0);
@@ -862,7 +874,9 @@ async fn syncer_state_addresses() {
     state
         .watch_address(address_task_two.clone(), source2.clone())
         .unwrap();
-    state.abort(Some(0), source2.clone()).await;
+    state
+        .abort(TaskIdOrAllTasks::TaskId(0), source2.clone())
+        .await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -918,7 +932,9 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
-    state.abort(Some(0), source1.clone()).await;
+    state
+        .abort(TaskIdOrAllTasks::TaskId(0), source1.clone())
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);
@@ -950,7 +966,9 @@ async fn syncer_state_height() {
     state
         .watch_height(height_task.clone(), source1.clone())
         .await;
-    state.abort(Some(0), source1.clone()).await;
+    state
+        .abort(TaskIdOrAllTasks::TaskId(0), source1.clone())
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
@@ -989,7 +1007,9 @@ async fn syncer_state_height() {
     state
         .watch_height(another_height_task.clone(), source2.clone())
         .await;
-    state.abort(Some(0), source2.clone()).await;
+    state
+        .abort(TaskIdOrAllTasks::TaskId(0), source2.clone())
+        .await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);

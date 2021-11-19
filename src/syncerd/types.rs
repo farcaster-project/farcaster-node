@@ -60,7 +60,13 @@ pub struct SweepBitcoinAddress {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct Abort {
-    pub id: Option<u32>,
+    pub task_id_or_all_tasks: TaskIdOrAllTasks,
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+pub enum TaskIdOrAllTasks {
+    TaskId(u32),
+    AllTasks,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
