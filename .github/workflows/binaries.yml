@@ -16,8 +16,7 @@ jobs:
       matrix:
         rust: [
           1.55.0,
-          stable,
-          nightly
+          stable
         ]
         bin: [
           farcasterd,
