@@ -403,6 +403,12 @@ impl State {
             State::Alice(AliceState::RevealA(..)) | State::Bob(BobState::RevealB(..))
         )
     }
+    fn start(&self) -> bool {
+        matches!(
+            self,
+            State::Alice(AliceState::StartA(..)) | State::Bob(BobState::StartB(..))
+        )
+    }
     fn trade_role(&self) -> Option<TradeRole> {
         match self {
             State::Alice(AliceState::StartA(trade_role, ..))
@@ -1146,7 +1152,7 @@ impl Runtime {
                 swap_id,
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
-            }) => {
+            }) if self.state.start() => {
                 if ServiceId::Swap(swap_id) != self.identity {
                     error!(
                         "{}: {}",
@@ -1175,7 +1181,7 @@ impl Runtime {
                         })?;
                 let (next_state, public_offer) = match (self.state.clone(), funding_address) {
                     (State::Bob(BobState::StartB(local_trade_role, public_offer)), Some(addr)) => {
-                        Ok((
+                        (
                             (State::Bob(BobState::CommitB(
                                 CommitC {
                                     trade_role: local_trade_role,
@@ -1186,10 +1192,10 @@ impl Runtime {
                                 addr,
                             ))),
                             public_offer,
-                        ))
+                        )
                     }
                     (State::Alice(AliceState::StartA(local_trade_role, public_offer)), None) => {
-                        Ok((
+                        (
                             (State::Alice(AliceState::CommitA(CommitC {
                                 trade_role: local_trade_role,
                                 local_params,
@@ -1197,13 +1203,13 @@ impl Runtime {
                                 remote_commit: None,
                             }))),
                             public_offer,
-                        ))
+                        )
                     }
-                    _ => Err(Error::Farcaster(s!(
-                        "Wrong state: Expects Start state, and funding_address"
-                    ))),
-                }?;
-                let public_offer = public_offer.to_string();
+                    _ => unreachable!(
+                        "state conditional at pattern match enforces state is Start: Expects Start state, and funding_address"
+                    ),
+                };
+                let public_offer_hex = public_offer.to_hex();
                 let take_swap = TakeCommit {
                     commit: local_commit,
                     public_offer,
@@ -1212,21 +1218,19 @@ impl Runtime {
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
                 self.state_update(senders, next_state)?;
             }
-            Request::Protocol(Msg::Reveal(reveal)) => match self.state.clone() {
-                State::Alice(AliceState::RevealA(local_params, remote_commit))
-                | State::Bob(BobState::RevealB(local_params, remote_commit)) => {
-                    let reveal_proof = Msg::Reveal(reveal);
-                    let swap_id = reveal_proof.swap_id();
-                    self.send_peer(senders, reveal_proof)?;
-                    trace!("forwarded reveal_proof");
-                    let reveal_params: Reveal = (swap_id, local_params.clone()).into();
-                    self.send_peer(senders, Msg::Reveal(reveal_params))?;
-                    trace!("sent reveal_proof to peerd");
-                }
-                _ => {
-                    error!("Wrong state: Expects RevealA | RevealB");
-                }
-            },
+            Request::Protocol(Msg::Reveal(reveal)) if self.state.reveal() => {
+                let local_params = self
+                    .state
+                    .local_params()
+                    .expect("reveal state has local_params");
+                let reveal_proof = Msg::Reveal(reveal);
+                let swap_id = reveal_proof.swap_id();
+                self.send_peer(senders, reveal_proof)?;
+                trace!("forwarded reveal_proof");
+                let reveal_params: Reveal = (swap_id, local_params.clone()).into();
+                self.send_peer(senders, Msg::Reveal(reveal_params))?;
+                trace!("sent reveal_proof to peerd");
+            }
 
             Request::MakeSwap(InitSwap {
                 peerd,
