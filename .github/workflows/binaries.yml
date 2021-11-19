@@ -19,6 +19,14 @@ jobs:
           stable,
           nightly
         ]
+        bin: [
+          farcasterd,
+          peerd,
+          swapd,
+          walletd,
+          syncerd,
+          swap-cli
+        ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -33,38 +41,8 @@ jobs:
           override: true
           profile: minimal
 
-      - name: Build farcaster daemon
+      - name: Build ${{ matrix.bin }} daemon
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --bin farcasterd --features server
-
-      - name: Build peer daemon
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin peerd --features server
-
-      - name: Build swap daemon
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin swapd --features server
-
-      - name: Build wallet daemon
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin walletd --features server
-
-      - name: Build syncer daemon
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin syncerd --features server
-
-      - name: Build swap CLI
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin swap-cli --features cli
+          args: --bin ${{ matrix.bin }} --all-features
