@@ -101,10 +101,8 @@ impl SyncerState {
             .addresses
             .iter()
             .filter_map(|(id, address_transaction)| {
-                if task_id.is_none() {
-                    Some((id.clone(), address_transaction.task.id))
-                } else if address_transaction.task.id == task_id.unwrap() {
-                    Some((id.clone(), address_transaction.task.id))
+                if task_id.is_none() || address_transaction.task.id == task_id.unwrap() {
+                    Some((*id, address_transaction.task.id))
                 } else {
                     None
                 }
@@ -115,16 +113,13 @@ impl SyncerState {
             &mut ids
                 .iter()
                 .filter_map(|(internal_id, found_task_id)| {
-                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
                         if *source_id == source {
                             self.remove_address(internal_id);
-                            Some(*found_task_id)
-                        } else {
-                            None
+                            return Some(*found_task_id);
                         }
-                    } else {
-                        None
                     }
+                    None
                 })
                 .collect(),
         );
@@ -134,10 +129,8 @@ impl SyncerState {
             .transactions
             .iter()
             .filter_map(|(id, watched_transaction)| {
-                if task_id.is_none() {
-                    Some((id.clone(), watched_transaction.task.id))
-                } else if watched_transaction.task.id == task_id.unwrap() {
-                    Some((id.clone(), watched_transaction.task.id))
+                if task_id.is_none() || watched_transaction.task.id == task_id.unwrap() {
+                    Some((*id, watched_transaction.task.id))
                 } else {
                     None
                 }
@@ -147,7 +140,7 @@ impl SyncerState {
             &mut ids
                 .iter()
                 .filter_map(|(internal_id, found_task_id)| {
-                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
                         if *source_id == source {
                             self.remove_transaction(internal_id);
                             return Some(*found_task_id);
@@ -163,10 +156,8 @@ impl SyncerState {
             .watch_height
             .iter()
             .filter_map(|(id, watch_height)| {
-                if task_id.is_none() {
-                    Some((id.clone(), watch_height.id))
-                } else if watch_height.id == task_id.unwrap() {
-                    Some((id.clone(), watch_height.id))
+                if task_id.is_none() || watch_height.id == task_id.unwrap() {
+                    Some((*id, watch_height.id))
                 } else {
                     None
                 }
@@ -176,7 +167,7 @@ impl SyncerState {
             &mut ids
                 .iter()
                 .filter_map(|(internal_id, found_task_id)| {
-                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
                         if *source_id == source {
                             self.remove_height(internal_id);
                             return Some(*found_task_id);
@@ -192,10 +183,8 @@ impl SyncerState {
             .sweep_addresses
             .iter()
             .filter_map(|(id, sweep_address)| {
-                if task_id.is_none() {
-                    Some((id.clone(), sweep_address.id))
-                } else if sweep_address.id == task_id.unwrap() {
-                    Some((id.clone(), sweep_address.id))
+                if task_id.is_none() || sweep_address.id == task_id.unwrap() {
+                    Some((*id, sweep_address.id))
                 } else {
                     None
                 }
@@ -205,7 +194,7 @@ impl SyncerState {
             &mut ids
                 .iter()
                 .filter_map(|(internal_id, found_task_id)| {
-                    if let Some(source_id) = self.tasks_sources.get(&internal_id) {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
                         if *source_id == source {
                             self.remove_sweep_address(internal_id);
                             return Some(*found_task_id);
@@ -252,7 +241,7 @@ impl SyncerState {
         self.task_count.increment();
         // This is technically valid behavior; immediately prune the task for being past
         // its lifetime by never inserting it
-        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.clone().into()) {
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.into()) {
             error!("{}", e);
             return;
         }
@@ -321,10 +310,8 @@ impl SyncerState {
             error!("{}", e);
             return;
         }
-        self.sweep_addresses
-            .insert(self.task_count.into(), task.clone());
-        self.tasks_sources
-            .insert(self.task_count.into(), source.clone());
+        self.sweep_addresses.insert(self.task_count.into(), task);
+        self.tasks_sources.insert(self.task_count.into(), source);
     }
 
     pub async fn change_height(&mut self, height: u64, block: Vec<u8>) {

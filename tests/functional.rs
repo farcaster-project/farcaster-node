@@ -1655,7 +1655,10 @@ fn assert_task_aborted(
     match request {
         Request::SyncerdBridgeEvent(event) => match event.event {
             Event::TaskAborted(mut task_aborted) => {
-                assert_eq!(task_aborted.id.sort(), expected_id.sort());
+                assert_eq!(
+                    &task_aborted.id.sort_unstable(),
+                    &expected_id.sort_unstable()
+                );
                 assert_eq!(task_aborted.error, expected_error);
             }
             _ => {
