@@ -12,36 +12,22 @@ env:
 jobs:
   test:
     name: Unit tests
-    runs-on: ubuntu-latest
+    container:
+      image: xd009642/tarpaulin:develop-nightly
+      options: --security-opt seccomp=unconfined
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: sudo apt-get install -y cmake libzmq3-dev
 
-      - name: Install Rust stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-
       - name: Cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --all-targets --all-features --no-fail-fast --verbose
-        env:
-          CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+        run: cargo +nightly tarpaulin --verbose --all-features --workspace --no-fail-fast --timeout 120 --out Xml
 
-      - id: coverage
-        name: Generate coverage
-        uses: actions-rs/grcov@v0.1.6
-
-      - name: Upload coverage to Codecov
+      - name: Upload to codecov.io
         uses: codecov/codecov-action@v2
         with:
-          file: ${{ steps.coverage.outputs.report }}
-          directory: ./coverage/reports/
+          fail_ci_if_error: true # optional (default = false)
+          verbose: true # optional (default = false)
 
   functional-test:
     name: Functional tests
@@ -67,7 +53,3 @@ jobs:
         with:
           command: test
           args: --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
-        env:
-          CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
