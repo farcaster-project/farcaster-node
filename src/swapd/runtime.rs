@@ -176,12 +176,12 @@ pub struct Runtime {
     enquirer: Option<ServiceId>,
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
-    pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
+    pending_requests: HashMap<ServiceId, Vec<PendingRequest>>, // FIXME Something more meaningfull than ServiceId to index
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    local_params: Option<Params>,
-    remote_params: Option<Params>,
+    local_params: Option<Params>,  // FIXME this should be removed
+    remote_params: Option<Params>, // FIXME this should be removed
 }
 
 struct TemporalSafety {
@@ -382,11 +382,6 @@ impl State {
             | State::Bob(BobState::CommitB(CommitC { local_params, .. }, ..))
             | State::Alice(AliceState::RevealA(local_params, ..))
             | State::Bob(BobState::RevealB(local_params, ..)) => Some(local_params),
-            _ => None,
-        }
-    }
-    fn remote_params(&self) -> Option<&Params> {
-        match self {
             _ => None,
         }
     }
@@ -748,7 +743,7 @@ impl Runtime {
                                 )?;
                                 State::Bob(BobState::RevealB(local_params, remote_commit.clone()))
                             }
-                            state => unreachable!("checked state on pattern to be Commit"),
+                            _state => unreachable!("checked state on pattern to be Commit"),
                         };
 
                         if let State::Alice(AliceState::CommitA(CommitC {
@@ -1847,11 +1842,9 @@ impl Runtime {
                         (&self.local_params, &self.remote_params)
                     {
                         let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
-                        let task = self.syncer_state.watch_addr_xmr(
-                            spend,
-                            view,
-                            TxLabel::AccLock,
-                        );
+                        let task = self
+                            .syncer_state
+                            .watch_addr_xmr(spend, view, TxLabel::AccLock);
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
