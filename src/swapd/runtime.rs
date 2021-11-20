@@ -1526,54 +1526,45 @@ impl Runtime {
                         amount: _,
                         block: _,
                         tx,
-                    }) => {
+                    }) if self.syncer_state.tasks.watched_addrs.get(id).is_some() => {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
                         trace!(
                             "Received AddressTransaction, processing tx {}",
                             &tx.txid().addr()
                         );
-                        if let Some(txlabel) = self.syncer_state.tasks.watched_addrs.get(id) {
-                            match txlabel {
-                                TxLabel::Funding => {
-                                    log_tx_seen(txlabel, &tx.txid());
-                                    let req = Request::Tx(Tx::Funding(tx));
-                                    self.send_wallet(ServiceBus::Ctl, senders, req)?;
-                                }
-                                TxLabel::Buy if self.state.buy_sig() => {
-                                    log_tx_seen(txlabel, &tx.txid());
-                                    let req = Request::Tx(Tx::Buy(tx));
-                                    self.send_wallet(ServiceBus::Ctl, senders, req)?
-                                }
-                                TxLabel::Buy => {
-                                    warn!(
-                                            "expected BobState(BuySigB), found {}. Any chance you reused the \
-                                         destination/refund address in the cli command? For your own privacy, \
-                                         do not reuse bitcoin addresses. Txid {}",
-                                            self.state,
-                                            tx.txid().addr(),
-                                        )
-                                }
-                                TxLabel::Refund
-                                    if self.state.refundsig()
-                                        && self.state.xmr_locked()
-                                        && !self.state.buy_published() =>
-                                {
-                                    log_tx_seen(txlabel, &tx.txid());
-                                    let req = Request::Tx(Tx::Refund(tx));
-                                    self.send_wallet(ServiceBus::Ctl, senders, req)?
-                                }
-                                txlabel => {
-                                    error!(
-                                        "address transaction event not supported for tx {}",
-                                        txlabel
-                                    )
-                                }
+                        let txlabel = self.syncer_state.tasks.watched_addrs.get(id).unwrap();
+                        match txlabel {
+                            TxLabel::Funding => {
+                                log_tx_seen(txlabel, &tx.txid());
+                                let req = Request::Tx(Tx::Funding(tx));
+                                self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
-                        } else {
-                            error!(
-                            "Transaction event received, unknow address with task id {} and txid {:?}",
-                            id.addr(), Txid::from_slice(hash).unwrap().addr()
-                        );
+                            TxLabel::Buy if self.state.buy_sig() => {
+                                log_tx_seen(txlabel, &tx.txid());
+                                let req = Request::Tx(Tx::Buy(tx));
+                                self.send_wallet(ServiceBus::Ctl, senders, req)?
+                            }
+                            TxLabel::Buy => {
+                                warn!(
+                                    "expected BobState(BuySigB), found {}. Any chance you reused the \
+                                     destination/refund address in the cli command? For your own privacy, \
+                                     do not reuse bitcoin addresses. Txid {}",
+                                    self.state,
+                                    tx.txid().addr(),
+                                )
+                            }
+                            TxLabel::Refund
+                                if self.state.refundsig()
+                                    && self.state.xmr_locked()
+                                    && !self.state.buy_published() =>
+                            {
+                                log_tx_seen(txlabel, &tx.txid());
+                                let req = Request::Tx(Tx::Refund(tx));
+                                self.send_wallet(ServiceBus::Ctl, senders, req)?
+                            }
+                            txlabel => {
+                                error!("address transaction event not supported for tx {}", txlabel)
+                            }
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
