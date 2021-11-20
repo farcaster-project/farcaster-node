@@ -15,7 +15,7 @@
 
 use crate::syncerd::{
     opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
-    SweepXmrAddress, WatchHeight, XmrAddressAddendum,
+    SweepXmrAddress, TaskTarget, WatchHeight, XmrAddressAddendum,
 };
 use std::{
     any::Any,
@@ -1480,6 +1480,15 @@ impl Runtime {
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
                     {
                         self.state_update(senders, State::Bob(BobState::FinishB))?;
+                        let abort_all = Task::Abort(Abort {
+                            task_target: TaskTarget::AllTasks,
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(abort_all),
+                        )?;
                     }
                     event => {
                         error!("event not handled {}", event)
