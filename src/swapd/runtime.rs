@@ -1681,6 +1681,7 @@ impl Runtime {
                             }
                             TxLabel::Cancel
                                 if self.temporal_safety.valid_punish(*confirmations)
+                                    && self.state.refundsig()
                                     && self.state.xmr_locked() =>
                             {
                                 trace!("Alice publishes punish tx");
