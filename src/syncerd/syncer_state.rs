@@ -2,6 +2,7 @@ use crate::farcaster_core::{blockchain::Network, consensus::Decodable};
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::syncerd::opts::Coin;
 use crate::syncerd::runtime::SyncerdTask;
+use crate::syncerd::TaskTarget;
 use crate::Error;
 use crate::ServiceId;
 use bitcoin::{hashes::Hash, Txid};
@@ -16,18 +17,38 @@ use crate::serde::Deserialize;
 use crate::syncerd::*;
 use hex;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
+#[display(Debug)]
+pub struct InternalId(u32);
+
+impl From<TaskCounter> for InternalId {
+    fn from(counter: TaskCounter) -> Self {
+        Self(counter.0)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Display, Debug)]
+#[display(Debug)]
+struct TaskCounter(pub u32);
+
+impl TaskCounter {
+    fn increment(&mut self) {
+        self.0 += 1;
+    }
+}
+
 pub struct SyncerState {
     block_height: u64,
     block_hash: Vec<u8>,
-    tasks_sources: HashMap<u32, ServiceId>,
-    watch_height: HashMap<u32, WatchHeight>,
-    lifetimes: HashMap<u64, HashSet<u32>>,
-    pub addresses: HashMap<u32, AddressTransactions>,
-    pub transactions: HashMap<u32, WatchedTransaction>,
-    pub unseen_transactions: HashSet<u32>,
-    pub sweep_addresses: HashMap<u32, SweepAddress>,
+    tasks_sources: HashMap<InternalId, ServiceId>,
+    watch_height: HashMap<InternalId, WatchHeight>,
+    lifetimes: HashMap<u64, HashSet<InternalId>>,
+    pub addresses: HashMap<InternalId, AddressTransactions>,
+    pub transactions: HashMap<InternalId, WatchedTransaction>,
+    pub unseen_transactions: HashSet<InternalId>,
+    pub sweep_addresses: HashMap<InternalId, SweepAddress>,
     tx_event: TokioSender<SyncerdBridgeEvent>,
-    task_count: u32,
+    task_count: TaskCounter,
 }
 
 #[derive(Clone, Debug)]
@@ -66,7 +87,7 @@ impl SyncerState {
             unseen_transactions: HashSet::new(),
             sweep_addresses: HashMap::new(),
             tx_event,
-            task_count: 0,
+            task_count: TaskCounter(0),
         }
     }
 
@@ -74,144 +95,146 @@ impl SyncerState {
         self.block_height
     }
 
-    pub async fn abort(&mut self, task_id: u32, source: ServiceId) {
+    pub async fn abort(&mut self, task_task_id_or_all_tasks: TaskTarget, source: ServiceId) {
+        let task_id = match task_task_id_or_all_tasks {
+            TaskTarget::AllTasks => None,
+            TaskTarget::TaskId(task_id) => Some(task_id),
+        };
+
+        let mut aborted_ids: Vec<u32> = vec![];
         // check addresses tasks
-        let ids: Vec<u32> = self
+        let ids: Vec<(InternalId, u32)> = self
             .addresses
             .iter()
             .filter_map(|(id, address_transaction)| {
-                if address_transaction.task.id == task_id {
-                    Some(*id)
+                if task_id.is_none() || address_transaction.task.id == task_id.unwrap() {
+                    Some((*id, address_transaction.task.id))
                 } else {
                     None
                 }
             })
             .collect();
-        for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(id) {
-                if *source_id == source {
-                    self.remove_address(id);
-                    send_event(
-                        &self.tx_event,
-                        &mut vec![(
-                            Event::TaskAborted(TaskAborted {
-                                id: task_id,
-                                error: None,
-                            }),
-                            source.clone(),
-                        )],
-                    )
-                    .await;
-                    return;
-                }
-            }
-        }
+
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
+                        if *source_id == source {
+                            self.remove_address(internal_id);
+                            return Some(*found_task_id);
+                        }
+                    }
+                    None
+                })
+                .collect(),
+        );
 
         // check transactions tasks
-        let ids: Vec<u32> = self
+        let ids: Vec<(InternalId, u32)> = self
             .transactions
             .iter()
             .filter_map(|(id, watched_transaction)| {
-                if watched_transaction.task.id == task_id {
-                    Some(*id)
+                if task_id.is_none() || watched_transaction.task.id == task_id.unwrap() {
+                    Some((*id, watched_transaction.task.id))
                 } else {
                     None
                 }
             })
             .collect();
-        for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(id) {
-                if *source_id == source {
-                    self.remove_transaction(id);
-                    send_event(
-                        &self.tx_event,
-                        &mut vec![(
-                            Event::TaskAborted(TaskAborted {
-                                id: task_id,
-                                error: None,
-                            }),
-                            source.clone(),
-                        )],
-                    )
-                    .await;
-                    return;
-                }
-            }
-        }
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
+                        if *source_id == source {
+                            self.remove_transaction(internal_id);
+                            return Some(*found_task_id);
+                        }
+                    }
+                    None
+                })
+                .collect(),
+        );
 
         // check height tasks
-        let ids: Vec<u32> = self
+        let ids: Vec<(InternalId, u32)> = self
             .watch_height
             .iter()
             .filter_map(|(id, watch_height)| {
-                if watch_height.id == task_id {
-                    Some(*id)
+                if task_id.is_none() || watch_height.id == task_id.unwrap() {
+                    Some((*id, watch_height.id))
                 } else {
                     None
                 }
             })
             .collect();
-        for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(id) {
-                if *source_id == source {
-                    self.remove_height(id);
-                    send_event(
-                        &self.tx_event,
-                        &mut vec![(
-                            Event::TaskAborted(TaskAborted {
-                                id: task_id,
-                                error: None,
-                            }),
-                            source.clone(),
-                        )],
-                    )
-                    .await;
-                    return;
-                }
-            }
-        }
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
+                        if *source_id == source {
+                            self.remove_height(internal_id);
+                            return Some(*found_task_id);
+                        }
+                    }
+                    None
+                })
+                .collect(),
+        );
 
         // check sweep address tasks
-        let ids: Vec<u32> = self
+        let ids: Vec<(InternalId, u32)> = self
             .sweep_addresses
             .iter()
             .filter_map(|(id, sweep_address)| {
-                if sweep_address.id == task_id {
-                    Some(*id)
+                if task_id.is_none() || sweep_address.id == task_id.unwrap() {
+                    Some((*id, sweep_address.id))
                 } else {
                     None
                 }
             })
             .collect();
-        for id in ids.iter() {
-            if let Some(source_id) = self.tasks_sources.get(id) {
-                if *source_id == source {
-                    self.remove_sweep_address(id);
-                    send_event(
-                        &self.tx_event,
-                        &mut vec![(
-                            Event::TaskAborted(TaskAborted {
-                                id: task_id,
-                                error: None,
-                            }),
-                            source.clone(),
-                        )],
-                    )
-                    .await;
-                    return;
-                }
-            }
+        aborted_ids.append(
+            &mut ids
+                .iter()
+                .filter_map(|(internal_id, found_task_id)| {
+                    if let Some(source_id) = self.tasks_sources.get(internal_id) {
+                        if *source_id == source {
+                            self.remove_sweep_address(internal_id);
+                            return Some(*found_task_id);
+                        }
+                    }
+                    None
+                })
+                .collect(),
+        );
+
+        if aborted_ids.is_empty() {
+            send_event(
+                &self.tx_event,
+                &mut vec![(
+                    Event::TaskAborted(TaskAborted {
+                        id: vec![],
+                        error: Some(format!(
+                            "abort failed, task from source {} not found",
+                            source
+                        )),
+                    }),
+                    source.clone(),
+                )],
+            )
+            .await;
+            return;
         }
 
         send_event(
             &self.tx_event,
             &mut vec![(
                 Event::TaskAborted(TaskAborted {
-                    id: task_id,
-                    error: Some(format!(
-                        "abort failed, task with id {} from source {} not found",
-                        task_id, source
-                    )),
+                    id: aborted_ids,
+                    error: None,
                 }),
                 source.clone(),
             )],
@@ -221,15 +244,17 @@ impl SyncerState {
 
     pub async fn watch_height(&mut self, task: WatchHeight, source: ServiceId) {
         // increment the count to use it as a unique internal id
-        self.task_count += 1;
+        self.task_count.increment();
         // This is technically valid behavior; immediately prune the task for being past
         // its lifetime by never inserting it
-        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.into()) {
             error!("{}", e);
             return;
         }
-        self.watch_height.insert(self.task_count, task.clone());
-        self.tasks_sources.insert(self.task_count, source.clone());
+        self.watch_height
+            .insert(self.task_count.into(), task.clone());
+        self.tasks_sources
+            .insert(self.task_count.into(), source.clone());
 
         if self.block_height != 0 {
             send_event(
@@ -249,28 +274,28 @@ impl SyncerState {
 
     pub fn watch_address(&mut self, task: WatchAddress, source: ServiceId) -> Result<(), Error> {
         // increment the count to use it as a unique internal id
-        self.task_count += 1;
-        self.add_lifetime(task.lifetime, self.task_count)?;
-        self.tasks_sources.insert(self.task_count, source);
+        self.task_count.increment();
+        self.add_lifetime(task.lifetime, self.task_count.into())?;
+        self.tasks_sources.insert(self.task_count.into(), source);
         let address_txs = AddressTransactions {
             task,
             known_txs: none!(),
         };
-        self.addresses.insert(self.task_count, address_txs);
+        self.addresses.insert(self.task_count.into(), address_txs);
         Ok(())
     }
 
     pub fn watch_transaction(&mut self, task: WatchTransaction, source: ServiceId) {
         // increment the count to use it as a unique internal id
-        self.task_count += 1;
+        self.task_count.increment();
 
-        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.into()) {
             error!("{}", e);
             return;
         };
-        self.tasks_sources.insert(self.task_count, source);
+        self.tasks_sources.insert(self.task_count.into(), source);
         self.transactions.insert(
-            self.task_count,
+            self.task_count.into(),
             WatchedTransaction {
                 task: task.clone(),
                 transaction_confirmations: TransactionConfirmations {
@@ -280,19 +305,19 @@ impl SyncerState {
                 },
             },
         );
-        self.unseen_transactions.insert(self.task_count);
+        self.unseen_transactions.insert(self.task_count.into());
     }
 
     pub fn sweep_address(&mut self, task: SweepAddress, source: ServiceId) {
-        self.task_count += 1;
+        self.task_count.increment();
         // This is technically valid behavior; immediately prune the task for being past
         // its lifetime by never inserting it
-        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count) {
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.into()) {
             error!("{}", e);
             return;
         }
-        self.sweep_addresses.insert(self.task_count, task);
-        self.tasks_sources.insert(self.task_count, source);
+        self.sweep_addresses.insert(self.task_count.into(), task);
+        self.tasks_sources.insert(self.task_count.into(), source);
     }
 
     pub async fn change_height(&mut self, height: u64, block: Vec<u8>) {
@@ -336,9 +361,9 @@ impl SyncerState {
         );
 
         fn inner(
-            addresses: &mut HashMap<u32, AddressTransactions>,
+            addresses: &mut HashMap<InternalId, AddressTransactions>,
             events: &mut Vec<(Event, ServiceId)>,
-            tasks_sources: &mut HashMap<u32, ServiceId>,
+            tasks_sources: &mut HashMap<InternalId, ServiceId>,
             address_addendum: AddressAddendum,
             txs: HashSet<AddressTx>,
         ) {
@@ -421,10 +446,10 @@ impl SyncerState {
         );
 
         fn inner(
-            transactions: &mut HashMap<u32, WatchedTransaction>,
-            unseen_transactions: &mut HashSet<u32>,
+            transactions: &mut HashMap<InternalId, WatchedTransaction>,
+            unseen_transactions: &mut HashSet<InternalId>,
             events: &mut Vec<(Event, ServiceId)>,
-            tasks_sources: &mut HashMap<u32, ServiceId>,
+            tasks_sources: &mut HashMap<InternalId, ServiceId>,
             tx_id: Vec<u8>,
             block_hash: Option<Vec<u8>>,
             confirmations: Option<u32>,
@@ -482,7 +507,7 @@ impl SyncerState {
         send_event(&self.tx_event, &mut events).await;
     }
 
-    pub async fn success_sweep(&mut self, id: &u32, txids: Vec<Vec<u8>>) {
+    pub async fn success_sweep(&mut self, id: &InternalId, txids: Vec<Vec<u8>>) {
         if let Some(sweep_address) = self.sweep_addresses.get(id) {
             send_event(
                 &self.tx_event,
@@ -519,7 +544,7 @@ impl SyncerState {
         }
     }
 
-    fn add_lifetime(&mut self, lifetime: u64, id: u32) -> Result<(), Error> {
+    fn add_lifetime(&mut self, lifetime: u64, id: InternalId) -> Result<(), Error> {
         if lifetime < self.block_height {
             return Err(Error::Farcaster("task lifetime expired".to_string()));
         }
@@ -549,7 +574,7 @@ impl SyncerState {
         }
     }
 
-    fn remove_transaction(&mut self, id: &u32) {
+    fn remove_transaction(&mut self, id: &InternalId) {
         if let Some(watch_transactions) = self.transactions.get(id) {
             if let Some(ids) = self.lifetimes.get_mut(&watch_transactions.task.lifetime) {
                 ids.remove(id);
@@ -563,7 +588,7 @@ impl SyncerState {
         self.tasks_sources.remove(id);
     }
 
-    fn remove_address(&mut self, id: &u32) {
+    fn remove_address(&mut self, id: &InternalId) {
         if let Some(address_transactions) = self.addresses.get(id) {
             if let Some(ids) = self.lifetimes.get_mut(&address_transactions.task.lifetime) {
                 ids.remove(id);
@@ -576,7 +601,7 @@ impl SyncerState {
         self.tasks_sources.remove(id);
     }
 
-    fn remove_height(&mut self, id: &u32) {
+    fn remove_height(&mut self, id: &InternalId) {
         if let Some(watch_height) = self.watch_height.get(id) {
             if let Some(ids) = self.lifetimes.get_mut(&watch_height.lifetime) {
                 ids.remove(id);
@@ -589,7 +614,7 @@ impl SyncerState {
         self.tasks_sources.remove(id);
     }
 
-    fn remove_sweep_address(&mut self, id: &u32) {
+    fn remove_sweep_address(&mut self, id: &InternalId) {
         if let Some(sweep_address) = self.sweep_addresses.get(id) {
             if let Some(ids) = self.lifetimes.get_mut(&sweep_address.lifetime) {
                 ids.remove(id);
@@ -640,7 +665,7 @@ async fn syncer_state_transaction() {
     let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
     state.watch_transaction(transaction_task_one.clone(), source1.clone());
-    state.abort(0, source1.clone()).await;
+    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
     assert!(event_rx.try_recv().is_ok());
 
     state.watch_transaction(transaction_task_one.clone(), source1.clone());
@@ -700,7 +725,7 @@ async fn syncer_state_transaction() {
 
     let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
     state.watch_transaction(transaction_task_two.clone(), source2.clone());
-    state.abort(0, source2.clone()).await;
+    state.abort(TaskTarget::TaskId(0), source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -747,7 +772,7 @@ async fn syncer_state_addresses() {
     state
         .watch_address(address_task_two.clone(), source1.clone())
         .unwrap();
-    state.abort(0, source1.clone()).await;
+    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.addresses.len(), 0);
@@ -843,7 +868,7 @@ async fn syncer_state_addresses() {
     state
         .watch_address(address_task_two.clone(), source2.clone())
         .unwrap();
-    state.abort(0, source2.clone()).await;
+    state.abort(TaskTarget::TaskId(0), source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -899,7 +924,7 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
-    state.abort(0, source1.clone()).await;
+    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);
@@ -909,7 +934,7 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
-    state.success_sweep(&2, vec![vec![0]]).await;
+    state.success_sweep(&InternalId(2), vec![vec![0]]).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);
@@ -931,7 +956,7 @@ async fn syncer_state_height() {
     state
         .watch_height(height_task.clone(), source1.clone())
         .await;
-    state.abort(0, source1.clone()).await;
+    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
@@ -970,7 +995,7 @@ async fn syncer_state_height() {
     state
         .watch_height(another_height_task.clone(), source2.clone())
         .await;
-    state.abort(0, source2.clone()).await;
+    state.abort(TaskTarget::TaskId(0), source2.clone()).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);

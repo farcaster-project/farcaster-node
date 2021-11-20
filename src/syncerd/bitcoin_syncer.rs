@@ -11,6 +11,7 @@ use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::syncerd::types::{AddressAddendum, Task};
 use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
+use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::ServiceId;
 use crate::{error::Error, syncerd::syncer_state::create_set};
@@ -431,7 +432,9 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::Abort(task) => {
                             let mut state_guard = state.lock().await;
-                            state_guard.abort(task.id, syncerd_task.source).await;
+                            state_guard
+                                .abort(task.task_target, syncerd_task.source)
+                                .await;
                         }
                         Task::BroadcastTransaction(task) => {
                             // TODO: match error and emit event with fail code
@@ -471,7 +474,7 @@ async fn run_syncerd_task_receiver(
                                             source: syncerd_task.source,
                                         })
                                         .await
-                                        .expect("error sending transactio broadcast event");
+                                        .expect("error sending transaction broadcast event");
                                     error!("failed to broadcast tx: {}", e.err());
                                 }
                             }
@@ -487,7 +490,9 @@ async fn run_syncerd_task_receiver(
                             _ => {
                                 error!("Aborting watch address task - unable to decode address addendum");
                                 let mut state_guard = state.lock().await;
-                                state_guard.abort(task.id, syncerd_task.source).await;
+                                state_guard
+                                    .abort(TaskTarget::TaskId(task.id), syncerd_task.source)
+                                    .await;
                             }
                         },
                         Task::WatchHeight(task) => {
