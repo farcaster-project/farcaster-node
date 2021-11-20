@@ -1585,178 +1585,166 @@ impl Runtime {
                         id,
                         block: _,
                         confirmations: Some(confirmations),
-                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin) => {
+                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
+                        && self.syncer_state.tasks.watched_txs.get(id).is_some() =>
+                    {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
-                        if let Some(txlabel) = self.syncer_state.tasks.watched_txs.get(id) {
-                            info!(
-                                "tx {} final: {} confirmations",
-                                txlabel.bright_green_bold(),
-                                confirmations.bright_green_bold()
-                            );
-                            // saving requests of interest for later replaying latest event
-                            match &txlabel {
-                                TxLabel::Lock => {
-                                    self.syncer_state.lock_tx_confs = Some(request.clone());
-                                }
-                                TxLabel::Cancel => {
-                                    self.syncer_state.cancel_tx_confs = Some(request.clone());
-                                }
-                                _ => {}
+                        let txlabel = self.syncer_state.tasks.watched_txs.get(id).unwrap();
+                        info!(
+                            "tx {} final: {} confirmations",
+                            txlabel.bright_green_bold(),
+                            confirmations.bright_green_bold()
+                        );
+                        // saving requests of interest for later replaying latest event
+                        match &txlabel {
+                            TxLabel::Lock => {
+                                self.syncer_state.lock_tx_confs = Some(request.clone());
                             }
+                            TxLabel::Cancel => {
+                                self.syncer_state.cancel_tx_confs = Some(request.clone());
+                            }
+                            _ => {}
+                        }
 
-                            match txlabel {
-                                TxLabel::Funding => {}
-                                TxLabel::Lock
-                                    if !self.state.xmr_locked()
-                                        && self.remote_params.is_some()
-                                        && !self.syncer_state.acc_lock_watched() =>
+                        match txlabel {
+                            TxLabel::Funding => {}
+                            TxLabel::Lock
+                                if !self.state.xmr_locked()
+                                    && self.remote_params.is_some()
+                                    && !self.syncer_state.acc_lock_watched()
+                                    && self.state.refundsig()
+                                    && !self.state.buy_published()
+                                    && !self.state.xmr_locked() =>
+                            {
+                                if let (
+                                    Some(Params::Alice(alice_params)),
+                                    Some(Params::Bob(bob_params)),
+                                ) = (&self.local_params, &self.remote_params)
                                 {
-                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                                        buy_published: false,
-                                        xmr_locked: false,
-                                    })) = self.state
-                                    {
-                                        if let (
-                                            Some(Params::Alice(alice_params)),
-                                            Some(Params::Bob(bob_params)),
-                                        ) = (&self.local_params, &self.remote_params)
-                                        {
-                                            let (spend, view) =
-                                                aggregate_xmr_spend_view(alice_params, bob_params);
-                                            let viewpair = monero::ViewPair { spend, view };
-                                            let address = monero::Address::from_viewpair(
-                                                self.syncer_state.network.into(),
-                                                &viewpair,
-                                            );
-                                            info!(
-                                                "Alice, please send {} to {}",
-                                                self.syncer_state
-                                                    .monero_amount
-                                                    .to_string()
-                                                    .bright_green_bold(),
-                                                address.addr(),
-                                            );
-                                            info!(
-                                                "reporting success of {} to {}",
-                                                address.to_string(),
-                                                self.enquirer.clone().unwrap()
-                                            );
-                                            self.report_success_to(
-                                                senders,
-                                                self.enquirer.clone(),
-                                                Some(address.to_string()),
-                                            )?;
-                                            let watch_addr_task = self.syncer_state.watch_addr_xmr(
-                                                spend,
-                                                view,
-                                                TxLabel::AccLock,
-                                            );
-                                            senders.send_to(
-                                                ServiceBus::Ctl,
-                                                self.identity(),
-                                                self.syncer_state.monero_syncer(),
-                                                Request::SyncerTask(watch_addr_task),
-                                            )?;
-                                        } else {
-                                            error!(
-                                                "remote_params not set for Bob, state {}",
-                                                self.state
-                                            )
-                                        }
-                                    }
+                                    let (spend, view) =
+                                        aggregate_xmr_spend_view(alice_params, bob_params);
+                                    let viewpair = monero::ViewPair { spend, view };
+                                    let address = monero::Address::from_viewpair(
+                                        self.syncer_state.network.into(),
+                                        &viewpair,
+                                    );
+                                    info!(
+                                        "Alice, please send {} to {}",
+                                        self.syncer_state
+                                            .monero_amount
+                                            .to_string()
+                                            .bright_green_bold(),
+                                        address.addr(),
+                                    );
+                                    info!(
+                                        "reporting success of {} to {}",
+                                        address.to_string(),
+                                        self.enquirer.clone().unwrap()
+                                    );
+                                    self.report_success_to(
+                                        senders,
+                                        self.enquirer.clone(),
+                                        Some(address.to_string()),
+                                    )?;
+                                    let watch_addr_task = self.syncer_state.watch_addr_xmr(
+                                        spend,
+                                        view,
+                                        TxLabel::AccLock,
+                                    );
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        self.syncer_state.monero_syncer(),
+                                        Request::SyncerTask(watch_addr_task),
+                                    )?;
+                                } else {
+                                    error!("remote_params not set for Bob, state {}", self.state)
                                 }
-                                TxLabel::Lock
-                                    if self.temporal_safety.valid_cancel(*confirmations)
-                                        && !self.state.buy_published() =>
+                            }
+                            TxLabel::Lock
+                                if self.temporal_safety.valid_cancel(*confirmations)
+                                    && !self.state.buy_published() =>
+                            {
+                                if let Some((tx_label, cancel_tx)) =
+                                    self.txs.remove_entry(&TxLabel::Cancel)
                                 {
-                                    if let Some((tx_label, cancel_tx)) =
-                                        self.txs.remove_entry(&TxLabel::Cancel)
-                                    {
-                                        self.broadcast(cancel_tx, tx_label, senders)?
-                                    }
+                                    self.broadcast(cancel_tx, tx_label, senders)?
                                 }
-                                TxLabel::Lock
-                                    if self.temporal_safety.safe_buy(*confirmations)
-                                        && self.state.swap_role() == SwapRole::Alice
-                                        && !self.state.buy_published() =>
+                            }
+                            TxLabel::Lock
+                                if self.temporal_safety.safe_buy(*confirmations)
+                                    && self.state.swap_role() == SwapRole::Alice
+                                    && !self.state.buy_published() =>
+                            {
+                                if let State::Alice(AliceState::RefundSigA(RefundSigA {
+                                    buy_published: false,
+                                    xmr_locked,
+                                    // local_params,
+                                })) = self.state.clone()
                                 {
-                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                                        buy_published: false,
-                                        xmr_locked,
-                                        // local_params,
-                                    })) = self.state.clone()
-                                    {
-                                        if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
-                                            self.broadcast(buy_tx, TxLabel::Buy, senders)?;
-                                            self.state =
-                                                State::Alice(AliceState::RefundSigA(RefundSigA {
-                                                    buy_published: true,
-                                                    xmr_locked,
-                                                    // local_params,
-                                                }));
-                                        } else {
-                                            warn!(
+                                    if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
+                                        self.broadcast(buy_tx, TxLabel::Buy, senders)?;
+                                        self.state =
+                                            State::Alice(AliceState::RefundSigA(RefundSigA {
+                                                buy_published: true,
+                                                xmr_locked,
+                                                // local_params,
+                                            }));
+                                    } else {
+                                        warn!(
                                             "Alice doesn't have the buy tx, probably didnt receive \
                                              the BuySig yet: {}",
                                             self.state
                                         );
-                                        }
-                                    } else {
-                                        error!(
+                                    }
+                                } else {
+                                    error!(
                                         "wrong state: expected RefundProcedureSignatures, found {}",
                                         &self.state
                                     )
-                                    }
                                 }
-                                TxLabel::Cancel
-                                    if self.temporal_safety.valid_punish(*confirmations)
-                                        && self.state.xmr_locked() =>
-                                {
-                                    trace!("Alice publishes punish tx");
-                                    if let Some((tx_label, punish_tx)) =
-                                        self.txs.remove_entry(&TxLabel::Punish)
-                                    {
-                                        self.broadcast(punish_tx, tx_label, senders)?
-                                    }
-                                }
-                                TxLabel::Cancel
-                                    if self.temporal_safety.safe_refund(*confirmations) =>
-                                {
-                                    if let State::Bob(BobState::BuySigB)
-                                    | State::Bob(BobState::CorearbB(..)) = self.state
-                                    {
-                                        trace!("here Bob publishes refund tx");
-                                        if let Some((tx_label, refund_tx)) =
-                                            self.txs.remove_entry(&TxLabel::Refund)
-                                        {
-                                            self.broadcast(refund_tx, tx_label, senders)?;
-                                        }
-                                    } else {
-                                        error!(
-                                            "expected BuySig or Corearb state, found {}",
-                                            &self.state
-                                        );
-                                    }
-                                }
-                                TxLabel::Buy
-                                    if self.state.buy_published()
-                                        && self
-                                            .temporal_safety
-                                            .final_tx(*confirmations, Coin::Bitcoin) =>
-                                {
-                                    // FIXME: swap ends here for alice, clean up with syncer +
-                                    // wallet + farcaster
-                                    // transactions don't belong to current state
-                                    self.txs.remove(&TxLabel::Cancel);
-                                    self.txs.remove(&TxLabel::Punish);
-                                }
-                                tx_label => warn!("tx label {} not supported", tx_label),
                             }
-                        } else {
-                            warn!(
-                                "received event with unknown transaction and task id {}",
-                                &id
-                            )
+                            TxLabel::Cancel
+                                if self.temporal_safety.valid_punish(*confirmations)
+                                    && self.state.xmr_locked() =>
+                            {
+                                trace!("Alice publishes punish tx");
+                                if let Some((tx_label, punish_tx)) =
+                                    self.txs.remove_entry(&TxLabel::Punish)
+                                {
+                                    self.broadcast(punish_tx, tx_label, senders)?
+                                }
+                            }
+                            TxLabel::Cancel if self.temporal_safety.safe_refund(*confirmations) => {
+                                if let State::Bob(BobState::BuySigB)
+                                | State::Bob(BobState::CorearbB(..)) = self.state
+                                {
+                                    trace!("here Bob publishes refund tx");
+                                    if let Some((tx_label, refund_tx)) =
+                                        self.txs.remove_entry(&TxLabel::Refund)
+                                    {
+                                        self.broadcast(refund_tx, tx_label, senders)?;
+                                    }
+                                } else {
+                                    error!(
+                                        "expected BuySig or Corearb state, found {}",
+                                        &self.state
+                                    );
+                                }
+                            }
+                            TxLabel::Buy
+                                if self.state.buy_published()
+                                    && self
+                                        .temporal_safety
+                                        .final_tx(*confirmations, Coin::Bitcoin) =>
+                            {
+                                // FIXME: swap ends here for alice, clean up with syncer +
+                                // wallet + farcaster
+                                // transactions don't belong to current state
+                                self.txs.remove(&TxLabel::Cancel);
+                                self.txs.remove(&TxLabel::Punish);
+                            }
+                            tx_label => warn!("tx label {} not supported", tx_label),
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
