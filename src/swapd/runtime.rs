@@ -1561,6 +1561,13 @@ impl Runtime {
                             }
                         }
                     }
+                    Event::AddressTransaction(AddressTransaction { tx, .. }) => {
+                        let tx = bitcoin::Transaction::deserialize(tx)?;
+                        warn!(
+                            "unknown address transaction with txid {}",
+                            &tx.txid().addr()
+                        )
+                    }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
                         block: _,
