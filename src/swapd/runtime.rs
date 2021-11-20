@@ -1092,23 +1092,20 @@ impl Runtime {
                         self.send_wallet(msg_bus, senders, request)?;
                     }
                     // alice receives, bob sends
-                    Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. }) => {
+                    Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. })
+                        if self.state.refundsig() =>
+                    {
                         // Alice verifies that she has sent refund procedure signatures before
                         // processing the buy signatures from Bob
-                        if let State::Alice(AliceState::RefundSigA(..)) = self.state {
-                            let txid = buy.clone().extract_tx().txid();
-                            let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                self.syncer_state.bitcoin_syncer(),
-                                Request::SyncerTask(task),
-                            )?;
-                            self.send_wallet(msg_bus, senders, request)?
-                        } else {
-                            error!("Wrong state: must be RefundProcedureSignatures");
-                            return Ok(());
-                        }
+                        let txid = buy.clone().extract_tx().txid();
+                        let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                        self.send_wallet(msg_bus, senders, request)?
                     }
 
                     // bob and alice
