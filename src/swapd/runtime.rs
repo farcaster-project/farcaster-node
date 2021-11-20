@@ -1703,10 +1703,9 @@ impl Runtime {
                                 }
                             }
                             TxLabel::Buy
-                                if self.state.buy_published()
-                                    && self
-                                        .temporal_safety
-                                        .final_tx(*confirmations, Coin::Bitcoin) =>
+                                if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
+                                    && self.state.refundsig()
+                                    && self.state.buy_published() =>
                             {
                                 // FIXME: swap ends here for alice, clean up with syncer +
                                 // wallet + farcaster
