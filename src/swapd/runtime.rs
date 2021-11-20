@@ -1596,12 +1596,11 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding => {}
                             TxLabel::Lock
-                                if !self.state.xmr_locked()
-                                    && self.remote_params.is_some()
-                                    && !self.syncer_state.acc_lock_watched()
-                                    && self.state.refundsig()
+                                if self.state.refundsig()
+                                    && !self.state.xmr_locked()
                                     && !self.state.buy_published()
-                                    && !self.state.xmr_locked() =>
+                                    && self.remote_params.is_some()
+                                    && !self.syncer_state.acc_lock_watched() =>
                             {
                                 if let (
                                     Some(Params::Alice(alice_params)),
