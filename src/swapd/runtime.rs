@@ -1448,10 +1448,10 @@ impl Runtime {
                         ..
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.core_arb()
-                        && self.pending_requests.contains_key(&source) =>
-                    {
+                        && self.pending_requests.contains_key(&source)
+                        && self.pending_requests.get(&source).map(|reqs| reqs.len() == 1).unwrap()
+                        => {
                         // error!("not checking tx rcvd is accordant lock");
-                        // TODO: Check length of pending_requests == 1
                         let PendingRequest {
                             request,
                             dest,
