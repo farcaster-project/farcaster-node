@@ -1200,11 +1200,6 @@ impl Runtime {
                                 },
                             )
                         })?;
-                let trade_role = self
-                    .state
-                    .trade_role()
-                    .clone()
-                    .expect("state Start has trade_role");
                 let next_state = self.state.clone().sup_start_to_commit(
                     local_commit.clone(),
                     local_params,
@@ -1265,7 +1260,6 @@ impl Runtime {
                             },
                         )
                     })?;
-                let trade_role = self.state.trade_role().expect("state Start has trade_role");
                 let next_state = self.state.clone().sup_start_to_commit(
                     local_commit.clone(),
                     local_params,
@@ -1522,7 +1516,7 @@ impl Runtime {
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
-                        hash,
+                        hash: _,
                         amount: _,
                         block: _,
                         tx,
