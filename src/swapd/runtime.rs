@@ -1410,7 +1410,7 @@ impl Runtime {
                         confirmations: Some(confirmations),
                     }) if self.state.buy_sig()
                         && *confirmations
-                            > self.temporal_safety.sweep_monero_thr.expect(
+                            >= self.temporal_safety.sweep_monero_thr.expect(
                                 "buysig is bob's state, and bob sets his sweep_monero_thr at launch",
                             )
                         && self.pending_requests.contains_key(&source) =>
