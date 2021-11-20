@@ -347,24 +347,24 @@ impl State {
             State::Bob(_) => SwapRole::Bob,
         }
     }
-    fn xmr_locked(&self) -> bool {
+    fn a_xmr_locked(&self) -> bool {
         if let State::Alice(AliceState::RefundSigA(RefundSigA { xmr_locked, .. })) = self {
             *xmr_locked
         } else {
             false
         }
     }
-    fn buy_published(&self) -> bool {
+    fn a_buy_published(&self) -> bool {
         if let State::Alice(AliceState::RefundSigA(RefundSigA { buy_published, .. })) = self {
             *buy_published
         } else {
             false
         }
     }
-    fn core_arb(&self) -> bool {
+    fn b_core_arb(&self) -> bool {
         matches!(self, State::Bob(BobState::CorearbB(..)))
     }
-    fn buy_sig(&self) -> bool {
+    fn b_buy_sig(&self) -> bool {
         matches!(self, State::Bob(BobState::BuySigB))
     }
     fn remote_commit(&self) -> Option<&Commit> {
@@ -392,7 +392,7 @@ impl State {
             _ => None,
         }
     }
-    fn address(&self) -> Option<&bitcoin::Address> {
+    fn b_address(&self) -> Option<&bitcoin::Address> {
         match self {
             State::Bob(BobState::CommitB(_, addr)) => Some(addr),
             _ => None,
@@ -410,7 +410,7 @@ impl State {
             State::Alice(AliceState::RevealA(..)) | State::Bob(BobState::RevealB(..))
         )
     }
-    fn refundsig(&self) -> bool {
+    fn a_refundsig(&self) -> bool {
         matches!(self, State::Alice(AliceState::RefundSigA(..)))
     }
     fn start(&self) -> bool {
@@ -1079,12 +1079,12 @@ impl Runtime {
                         self.send_wallet(msg_bus, senders, request)?;
                     }
                     // bob receives, alice sends
-                    Msg::RefundProcedureSignatures(_) if self.state.core_arb() => {
+                    Msg::RefundProcedureSignatures(_) if self.state.b_core_arb() => {
                         self.send_wallet(msg_bus, senders, request)?;
                     }
                     // alice receives, bob sends
                     Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. })
-                        if self.state.refundsig() =>
+                        if self.state.a_refundsig() =>
                     {
                         // Alice verifies that she has sent refund procedure signatures before
                         // processing the buy signatures from Bob
@@ -1408,7 +1408,7 @@ impl Runtime {
                         id: _,
                         block: _,
                         confirmations: Some(confirmations),
-                    }) if self.state.buy_sig()
+                    }) if self.state.b_buy_sig()
                         && *confirmations
                             >= self.temporal_safety.sweep_monero_thr.expect(
                                 "buysig is bob's state, and bob sets his sweep_monero_thr at launch",
@@ -1441,7 +1441,7 @@ impl Runtime {
                         confirmations: Some(confirmations),
                         ..
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
-                        && self.state.core_arb()
+                        && self.state.b_core_arb()
                         && self.pending_requests.contains_key(&source)
                         && self.pending_requests.get(&source).map(|reqs| reqs.len() == 1).unwrap()
                         => {
@@ -1479,7 +1479,7 @@ impl Runtime {
                     }
                     Event::TaskAborted(_) => {}
                     Event::SweepSuccess(SweepSuccess { id, .. })
-                        if self.state.buy_sig()
+                        if self.state.b_buy_sig()
                             && self.syncer_state.tasks.sweeping_addr.is_some()
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
                     {
@@ -1533,7 +1533,7 @@ impl Runtime {
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
-                            TxLabel::Buy if self.state.buy_sig() => {
+                            TxLabel::Buy if self.state.b_buy_sig() => {
                                 log_tx_seen(txlabel, &tx.txid());
                                 let req = Request::Tx(Tx::Buy(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
@@ -1548,9 +1548,9 @@ impl Runtime {
                                 )
                             }
                             TxLabel::Refund
-                                if self.state.refundsig()
-                                    && self.state.xmr_locked()
-                                    && !self.state.buy_published() =>
+                                if self.state.a_refundsig()
+                                    && self.state.a_xmr_locked()
+                                    && !self.state.a_buy_published() =>
                             {
                                 log_tx_seen(txlabel, &tx.txid());
                                 let req = Request::Tx(Tx::Refund(tx));
@@ -1596,9 +1596,9 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding => {}
                             TxLabel::Lock
-                                if self.state.refundsig()
-                                    && !self.state.xmr_locked()
-                                    && !self.state.buy_published()
+                                if self.state.a_refundsig()
+                                    && !self.state.a_xmr_locked()
+                                    && !self.state.a_buy_published()
                                     && self.remote_params.is_some()
                                     && !self.syncer_state.acc_lock_watched() =>
                             {
@@ -1649,7 +1649,7 @@ impl Runtime {
                             }
                             TxLabel::Lock
                                 if self.temporal_safety.valid_cancel(*confirmations)
-                                    && !self.state.buy_published() =>
+                                    && !self.state.a_buy_published() =>
                             {
                                 if let Some((tx_label, cancel_tx)) =
                                     self.txs.remove_entry(&TxLabel::Cancel)
@@ -1660,10 +1660,10 @@ impl Runtime {
                             TxLabel::Lock
                                 if self.temporal_safety.safe_buy(*confirmations)
                                     && self.state.swap_role() == SwapRole::Alice
-                                    && self.state.refundsig()
-                                    && !self.state.buy_published() =>
+                                    && self.state.a_refundsig()
+                                    && !self.state.a_buy_published() =>
                             {
-                                let xmr_locked = self.state.xmr_locked();
+                                let xmr_locked = self.state.a_xmr_locked();
                                 if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
                                     self.broadcast(buy_tx, TxLabel::Buy, senders)?;
                                     self.state = State::Alice(AliceState::RefundSigA(RefundSigA {
@@ -1681,8 +1681,8 @@ impl Runtime {
                             }
                             TxLabel::Cancel
                                 if self.temporal_safety.valid_punish(*confirmations)
-                                    && self.state.refundsig()
-                                    && self.state.xmr_locked() =>
+                                    && self.state.a_refundsig()
+                                    && self.state.a_xmr_locked() =>
                             {
                                 trace!("Alice publishes punish tx");
                                 if let Some((tx_label, punish_tx)) =
@@ -1693,7 +1693,7 @@ impl Runtime {
                             }
                             TxLabel::Cancel
                                 if self.temporal_safety.safe_refund(*confirmations)
-                                    && (self.state.buy_sig() || self.state.core_arb()) =>
+                                    && (self.state.b_buy_sig() || self.state.b_core_arb()) =>
                             {
                                 trace!("here Bob publishes refund tx");
                                 if let Some((tx_label, refund_tx)) =
@@ -1704,8 +1704,8 @@ impl Runtime {
                             }
                             TxLabel::Buy
                                 if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
-                                    && self.state.refundsig()
-                                    && self.state.buy_published() =>
+                                    && self.state.a_refundsig()
+                                    && self.state.a_buy_published() =>
                             {
                                 // FIXME: swap ends here for alice, clean up with syncer +
                                 // wallet + farcaster
@@ -1762,7 +1762,7 @@ impl Runtime {
                 self.state_update(senders, next_state)?;
             }
 
-            Request::Tx(Tx::Lock(btc_lock)) if self.state.core_arb() => {
+            Request::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
                 info!("received {}", TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, senders)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
@@ -1835,7 +1835,7 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig))
-                if self.state.core_arb() =>
+                if self.state.b_core_arb() =>
             {
                 debug!("subscribing with syncer for receiving raw buy tx ");
 
