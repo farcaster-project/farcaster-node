@@ -519,7 +519,8 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         vout,
         amount: in_amount,
         ..
-    } = &utxos[0];
+    } = utxos.iter().max_by_key(|utxo| utxo.amount).unwrap();
+
     let out_amount = *in_amount - amount - amount;
     let transaction = bitcoin_rpc
         .create_raw_transaction_hex(
