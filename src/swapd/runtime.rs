@@ -1690,21 +1690,15 @@ impl Runtime {
                                     self.broadcast(punish_tx, tx_label, senders)?
                                 }
                             }
-                            TxLabel::Cancel if self.temporal_safety.safe_refund(*confirmations) => {
-                                if let State::Bob(BobState::BuySigB)
-                                | State::Bob(BobState::CorearbB(..)) = self.state
+                            TxLabel::Cancel
+                                if self.temporal_safety.safe_refund(*confirmations)
+                                    && (self.state.buy_sig() || self.state.core_arb()) =>
+                            {
+                                trace!("here Bob publishes refund tx");
+                                if let Some((tx_label, refund_tx)) =
+                                    self.txs.remove_entry(&TxLabel::Refund)
                                 {
-                                    trace!("here Bob publishes refund tx");
-                                    if let Some((tx_label, refund_tx)) =
-                                        self.txs.remove_entry(&TxLabel::Refund)
-                                    {
-                                        self.broadcast(refund_tx, tx_label, senders)?;
-                                    }
-                                } else {
-                                    error!(
-                                        "expected BuySig or Corearb state, found {}",
-                                        &self.state
-                                    );
+                                    self.broadcast(refund_tx, tx_label, senders)?;
                                 }
                             }
                             TxLabel::Buy
