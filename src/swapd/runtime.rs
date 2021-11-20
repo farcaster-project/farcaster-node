@@ -1765,14 +1765,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) => {
-                let next_state = match self.state {
-                    State::Bob(BobState::RevealB(_, _)) => {
-                        // below tx is unsigned
-                        Ok(State::Bob(BobState::CorearbB(core_arb_setup.clone())))
-                    }
-                    _ => Err(Error::Farcaster(s!("Wrong state: must be RevealB"))),
-                }?;
+            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) if self.state.reveal() => {
                 let CoreArbitratingSetup {
                     swap_id: _,
                     lock,
@@ -1795,7 +1788,8 @@ impl Runtime {
                     )?;
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
-                self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup))?;
+                self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
+                let next_state = State::Bob(BobState::CorearbB(core_arb_setup));
                 self.state_update(senders, next_state)?;
             }
 
