@@ -1660,34 +1660,23 @@ impl Runtime {
                             TxLabel::Lock
                                 if self.temporal_safety.safe_buy(*confirmations)
                                     && self.state.swap_role() == SwapRole::Alice
+                                    && self.state.refundsig()
                                     && !self.state.buy_published() =>
                             {
-                                if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                                    buy_published: false,
-                                    xmr_locked,
-                                    // local_params,
-                                })) = self.state.clone()
-                                {
-                                    if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
-                                        self.broadcast(buy_tx, TxLabel::Buy, senders)?;
-                                        self.state =
-                                            State::Alice(AliceState::RefundSigA(RefundSigA {
-                                                buy_published: true,
-                                                xmr_locked,
-                                                // local_params,
-                                            }));
-                                    } else {
-                                        warn!(
-                                            "Alice doesn't have the buy tx, probably didnt receive \
-                                             the BuySig yet: {}",
-                                            self.state
-                                        );
-                                    }
+                                let xmr_locked = self.state.xmr_locked();
+                                if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
+                                    self.broadcast(buy_tx, TxLabel::Buy, senders)?;
+                                    self.state = State::Alice(AliceState::RefundSigA(RefundSigA {
+                                        buy_published: true,
+                                        xmr_locked,
+                                        // local_params,
+                                    }));
                                 } else {
-                                    error!(
-                                        "wrong state: expected RefundProcedureSignatures, found {}",
-                                        &self.state
-                                    )
+                                    warn!(
+                                        "Alice doesn't have the buy tx, probably didnt receive \
+                                             the BuySig yet: {}",
+                                        self.state
+                                    );
                                 }
                             }
                             TxLabel::Cancel
