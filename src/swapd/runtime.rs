@@ -1867,24 +1867,19 @@ impl Runtime {
                     Request::SyncerTask(task),
                 )?;
 
-                    let pending_request = PendingRequest {
-                        request,
-                        dest: self.peer_service.clone(),
-                        bus_id: ServiceBus::Msg,
-                    };
-                    if self
-                        .pending_requests
-                        .insert(self.syncer_state.monero_syncer(), vec![pending_request])
-                        .is_none()
-                    {
-                        debug!("deferring BuyProcedureSignature msg");
-                    } else {
-                        error!("removed a pending request by mistake")
-                    };
-                // self.send_peer(senders,
-                // Msg::BuyProcedureSignature(buy_proc_sig))?;
+                let pending_request = PendingRequest {
+                    request,
+                    dest: self.peer_service.clone(),
+                    bus_id: ServiceBus::Msg,
+                };
+                if self
+                    .pending_requests
+                    .insert(self.syncer_state.monero_syncer(), vec![pending_request])
+                    .is_none()
+                {
+                    debug!("deferring BuyProcedureSignature msg");
                 } else {
-                    error!("Wrong state: must be CorearbB ");
+                    error!("removed a pending request by mistake")
                 };
             }
 
