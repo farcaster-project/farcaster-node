@@ -761,7 +761,10 @@ impl Runtime {
                 match &msg {
                     // we are taker and the maker committed, now we reveal after checking
                     // whether we're Bob or Alice and that we're on a compatible state
-                    Msg::MakerCommit(remote_commit) if self.state.commit() => {
+                    Msg::MakerCommit(remote_commit)
+                        if self.state.commit()
+                            && self.state.trade_role() == Some(TradeRole::Taker) =>
+                    {
                         trace!("received commitment from counterparty, can now reveal");
                         let next_state = match self.state.clone() {
                             State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
