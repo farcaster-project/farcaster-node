@@ -47,7 +47,7 @@ Then start the node with:
 
 ```
 farcasterd -vv\
-    --electrum-server {ip:port}\
+    --electrum-server ssl://{ip:port}\
     --monero-daemon http://{ip:port}\
     --monero-rpc-wallet http://{ip:port}
 ```
@@ -56,7 +56,7 @@ farcasterd -vv\
 
 Once `farcasterd` is up & running you can issue commands to control its actions with a client. For the time being, only one client is provided within this repo: `swap-cli`.
 
-If you launched `farcasterd` with the default paramters (the `--data-dir` argument), `swap-cli` will be able to connect to `farcasterd` without further configuration. You can get informations about the node with (this require `swap-cli` to be installed on your host):
+If you launched `farcasterd` with the default paramters (the `--data-dir` argument or `-d`), `swap-cli` will be able to connect to `farcasterd` without further configuration. You can get informations about the node with (this require `swap-cli` to be installed on your host):
 
 ```
 swap-cli info
