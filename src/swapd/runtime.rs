@@ -1853,18 +1853,15 @@ impl Runtime {
                 }
             }
 
-            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) => {
-                let next_state = match self.state.clone() {
-                    State::Alice(AliceState::RevealA(_, _)) => {
-                        Ok(State::Alice(AliceState::RefundSigA(RefundSigA {
-                            xmr_locked: false,
-                            buy_published: false,
-                        })))
-                    }
-                    _ => Err(Error::Farcaster(s!("Wrong state: must be RevealA"))),
-                }?;
-                debug!("sending peer RefundProcedureSignatures msg");
+            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs))
+                if self.state.reveal() =>
+            {
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
+                trace!("sent peer RefundProcedureSignatures msg");
+                let next_state = State::Alice(AliceState::RefundSigA(RefundSigA {
+                    xmr_locked: false,
+                    buy_published: false,
+                }));
                 self.state_update(senders, next_state)?;
             }
 
