@@ -1558,18 +1558,14 @@ impl Runtime {
                                             tx.txid().addr(),
                                         )
                                 }
-                                TxLabel::Refund => {
-                                    if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                                        xmr_locked: true,
-                                        buy_published: false,
-                                    })) = self.state
-                                    {
-                                        log_tx_seen(txlabel, &tx.txid());
-                                        let req = Request::Tx(Tx::Refund(tx));
-                                        self.send_wallet(ServiceBus::Ctl, senders, req)?
-                                    } else {
-                                        error!("expected RefundSigA(true), found {}", self.state);
-                                    }
+                                TxLabel::Refund
+                                    if self.state.refundsig()
+                                        && self.state.xmr_locked()
+                                        && !self.state.buy_published() =>
+                                {
+                                    log_tx_seen(txlabel, &tx.txid());
+                                    let req = Request::Tx(Tx::Refund(tx));
+                                    self.send_wallet(ServiceBus::Ctl, senders, req)?
                                 }
                                 txlabel => {
                                     error!(
