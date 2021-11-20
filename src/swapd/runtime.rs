@@ -1287,77 +1287,71 @@ impl Runtime {
                 self.state_update(senders, next_state)?;
             }
             Request::FundingUpdated
-                if source == ServiceId::Wallet && self.pending_requests.contains_key(&source) =>
+                if source == ServiceId::Wallet
+                    && self.state.reveal()
+                    && self.pending_requests.contains_key(&source)
+                    && self
+                        .pending_requests
+                        .get(&source)
+                        .map(|reqs| reqs.len() == 2)
+                        .unwrap() =>
             {
                 trace!("funding updated received from wallet");
                 let mut pending_requests = self
                     .pending_requests
                     .remove(&source)
                     .expect("checked above, should have pending Reveal{Proof} requests");
-                if pending_requests.len() == 2 {
-                    let PendingRequest {
-                        request: request_parameters,
-                        dest: dest_parameters,
-                        bus_id: bus_id_parameters,
-                    } = pending_requests.pop().expect("checked .len() == 2");
-                    let PendingRequest {
-                        request: request_proof,
-                        dest: dest_proof,
-                        bus_id: bus_id_proof,
-                    } = pending_requests.pop().expect("checked .len() == 2");
-                    if let State::Bob(BobState::RevealB(..)) = self.state {
-                        // continue RevealProof
-                        // continuing request by sending it to wallet
-                        if let (
-                            Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
-                            ServiceId::Wallet,
-                            ServiceBus::Msg,
-                        ) = (&request_proof, &dest_proof, &bus_id_proof)
-                        {
-                            trace!(
-                                "sending request {} to {} on bus {}",
-                                &request_proof,
-                                &dest_proof,
-                                &bus_id_proof
-                            );
-                            senders.send_to(
-                                bus_id_proof,
-                                self.identity(),
-                                dest_proof,
-                                request_proof,
-                            )?
-                        } else {
-                            error!("Not the expected request: found {:?}", request);
-                        }
-
-                        // continue Reveal
-                        // continuing request by sending it to wallet
-                        if let (
-                            Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
-                            ServiceId::Wallet,
-                            ServiceBus::Msg,
-                        ) = (&request_parameters, &dest_parameters, &bus_id_parameters)
-                        {
-                            trace!(
-                                "sending request {} to {} on bus {}",
-                                &request_parameters,
-                                &dest_parameters,
-                                &bus_id_parameters
-                            );
-                            senders.send_to(
-                                bus_id_parameters,
-                                self.identity(),
-                                dest_parameters,
-                                request_parameters,
-                            )?
-                        } else {
-                            error!("Not the expected request: found {:?}", request);
-                        }
-                    } else {
-                        error!("Expected state RevealB, found {}", self.state);
-                    }
+                let PendingRequest {
+                    request: request_parameters,
+                    dest: dest_parameters,
+                    bus_id: bus_id_parameters,
+                } = pending_requests.pop().expect("checked .len() == 2");
+                let PendingRequest {
+                    request: request_proof,
+                    dest: dest_proof,
+                    bus_id: bus_id_proof,
+                } = pending_requests.pop().expect("checked .len() == 2");
+                // continue RevealProof
+                // continuing request by sending it to wallet
+                if let (
+                    Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
+                    ServiceId::Wallet,
+                    ServiceBus::Msg,
+                ) = (&request_proof, &dest_proof, &bus_id_proof)
+                {
+                    trace!(
+                        "sending request {} to {} on bus {}",
+                        &request_proof,
+                        &dest_proof,
+                        &bus_id_proof
+                    );
+                    senders.send_to(bus_id_proof, self.identity(), dest_proof, request_proof)?
                 } else {
-                    error!("pending requests not found")
+                    error!("Not the expected request: found {:?}", request);
+                }
+
+                // continue Reveal
+                // continuing request by sending it to wallet
+                if let (
+                    Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
+                    ServiceId::Wallet,
+                    ServiceBus::Msg,
+                ) = (&request_parameters, &dest_parameters, &bus_id_parameters)
+                {
+                    trace!(
+                        "sending request {} to {} on bus {}",
+                        &request_parameters,
+                        &dest_parameters,
+                        &bus_id_parameters
+                    );
+                    senders.send_to(
+                        bus_id_parameters,
+                        self.identity(),
+                        dest_parameters,
+                        request_parameters,
+                    )?
+                } else {
+                    error!("Not the expected request: found {:?}", request);
                 }
             }
             // Request::SyncerEvent(ref event) => match (&event, source) {
