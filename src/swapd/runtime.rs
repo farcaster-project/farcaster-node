@@ -1793,28 +1793,24 @@ impl Runtime {
                 self.state_update(senders, next_state)?;
             }
 
-            Request::Tx(Tx::Lock(btc_lock)) => {
-                if let State::Bob(BobState::CorearbB(..)) = self.state {
-                    info!("received {}", TxLabel::Lock);
-                    self.broadcast(btc_lock, TxLabel::Lock, senders)?;
-                    if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
-                        (&self.local_params, &self.remote_params)
-                    {
-                        let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
-                        let task = self
-                            .syncer_state
-                            .watch_addr_xmr(spend, view, TxLabel::AccLock);
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.monero_syncer(),
-                            Request::SyncerTask(task),
-                        )?
-                    } else {
-                        error!("remote_params not set, state {}", self.state)
-                    }
+            Request::Tx(Tx::Lock(btc_lock)) if self.state.core_arb() => {
+                info!("received {}", TxLabel::Lock);
+                self.broadcast(btc_lock, TxLabel::Lock, senders)?;
+                if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
+                    (&self.local_params, &self.remote_params)
+                {
+                    let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
+                    let task = self
+                        .syncer_state
+                        .watch_addr_xmr(spend, view, TxLabel::AccLock);
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.monero_syncer(),
+                        Request::SyncerTask(task),
+                    )?
                 } else {
-                    error!("Wrong state: must be CorearbB, found {}", &self.state)
+                    error!("remote_params not set, state {}", self.state)
                 }
             }
             Request::Tx(transaction) => {
