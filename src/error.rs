@@ -155,6 +155,12 @@ impl From<bitcoin::consensus::encode::Error> for Error {
     }
 }
 
+impl From<monero::util::address::Error> for Error {
+    fn from(err: monero::util::address::Error) -> Self {
+        Error::Farcaster(err.to_string())
+    }
+}
+
 impl From<electrum_client::Error> for Error {
     fn from(err: electrum_client::Error) -> Self {
         Error::Syncer(SyncerError::Electrum(err))

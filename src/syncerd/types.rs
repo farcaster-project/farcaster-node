@@ -1,4 +1,5 @@
-use farcaster_core::consensus::{self, CanonicalBytes, Decodable, Encodable};
+use monero::consensus::Decodable;
+use monero::consensus::Encodable;
 use std::io;
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -29,42 +30,37 @@ pub struct XmrAddressAddendum {
     pub from_height: u64,
 }
 
-impl Encodable for XmrAddressAddendum {
-    fn consensus_encode<W: io::Write>(&self, s: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.spend_key.as_canonical_bytes().consensus_encode(s)?;
-        len += self.view_key.as_canonical_bytes().consensus_encode(s)?;
-        Ok(len + self.from_height.consensus_encode(s)?)
-    }
-}
-
-impl Decodable for XmrAddressAddendum {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(Self {
-            spend_key: monero::PublicKey::from_canonical_bytes(
-                Vec::<u8>::consensus_decode(d)?.as_ref(),
-            )?,
-            view_key: monero::PrivateKey::from_canonical_bytes(
-                Vec::<u8>::consensus_decode(d)?.as_ref(),
-            )?,
-            from_height: u64::consensus_decode(d)?,
-        })
-    }
-}
-
 impl StrictEncode for XmrAddressAddendum {
     fn strict_encode<E: ::std::io::Write>(
         &self,
         mut e: E,
     ) -> Result<usize, strict_encoding::Error> {
-        farcaster_core::consensus::Encodable::consensus_encode(self, &mut e)
-            .map_err(strict_encoding::Error::from)
+        let mut len = self
+            .spend_key
+            .consensus_encode(&mut e)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
+        len += self
+            .view_key
+            .consensus_encode(&mut e)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
+        Ok(len
+            + self
+                .from_height
+                .consensus_encode(&mut e)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
     }
 }
 
 impl StrictDecode for XmrAddressAddendum {
     fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        farcaster_core::consensus::Decodable::consensus_decode(&mut d)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))
+        Ok(Self {
+            spend_key: monero::PublicKey::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            view_key: monero::PrivateKey::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            from_height: u64::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+        })
     }
 }
 
@@ -88,29 +84,7 @@ pub enum SweepAddressAddendum {
 pub struct SweepXmrAddress {
     pub spend_key: monero::PrivateKey,
     pub view_key: monero::PrivateKey,
-    pub address: String,
-}
-
-impl Encodable for SweepXmrAddress {
-    fn consensus_encode<W: io::Write>(&self, s: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.spend_key.as_canonical_bytes().consensus_encode(s)?;
-        len += self.view_key.as_canonical_bytes().consensus_encode(s)?;
-        Ok(len + self.address.consensus_encode(s)?)
-    }
-}
-
-impl Decodable for SweepXmrAddress {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(Self {
-            spend_key: monero::PrivateKey::from_canonical_bytes(
-                Vec::<u8>::consensus_decode(d)?.as_ref(),
-            )?,
-            view_key: monero::PrivateKey::from_canonical_bytes(
-                Vec::<u8>::consensus_decode(d)?.as_ref(),
-            )?,
-            address: String::consensus_decode(d)?,
-        })
-    }
+    pub address: monero::Address,
 }
 
 impl StrictEncode for SweepXmrAddress {
@@ -118,15 +92,32 @@ impl StrictEncode for SweepXmrAddress {
         &self,
         mut e: E,
     ) -> Result<usize, strict_encoding::Error> {
-        farcaster_core::consensus::Encodable::consensus_encode(self, &mut e)
-            .map_err(strict_encoding::Error::from)
+        let mut len = self
+            .spend_key
+            .consensus_encode(&mut e)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
+        len += self
+            .view_key
+            .consensus_encode(&mut e)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
+        Ok(len
+            + self
+                .address
+                .consensus_encode(&mut e)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
     }
 }
 
 impl StrictDecode for SweepXmrAddress {
     fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        farcaster_core::consensus::Decodable::consensus_decode(&mut d)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))
+        Ok(Self {
+            spend_key: monero::PrivateKey::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            view_key: monero::PrivateKey::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            address: monero::Address::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+        })
     }
 }
 

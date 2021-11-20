@@ -20,12 +20,14 @@ use crate::syncerd::{
 };
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
+use farcaster_core::consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
 use internet2::addr::InetSocketAddr;
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
 use lightning_encoding::{strategies::AsStrict, LightningDecode, LightningEncode};
+use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds, Same};
 use std::{collections::BTreeMap, convert::TryInto};
@@ -564,9 +566,38 @@ pub struct NodeInfo {
 #[display("bitcoin_address")]
 pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+impl StrictEncode for MoneroAddress {
+    fn strict_encode<E: ::std::io::Write>(
+        &self,
+        mut e: E,
+    ) -> Result<usize, strict_encoding::Error> {
+        let len = self
+            .0
+            .consensus_encode(&mut e)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
+        use monero::consensus::Encodable;
+        Ok(len
+            + self
+                .1
+                .consensus_encode(&mut e)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
+    }
+}
+
+impl StrictDecode for MoneroAddress {
+    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        Ok(Self(
+            SwapId::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            monero::Address::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+        ))
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
 #[display("monero_address")]
-pub struct MoneroAddress(pub SwapId, pub String);
+pub struct MoneroAddress(pub SwapId, pub monero::Address);
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("proto_puboffer")]

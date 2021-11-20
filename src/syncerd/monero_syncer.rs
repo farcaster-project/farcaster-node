@@ -508,7 +508,7 @@ fn sweep_polling(
                 {
                     let mut sweep_address_txs = None;
                     match sweep_address(
-                        monero::Address::from_str(&addendum.address).unwrap(),
+                        addendum.address,
                         addendum.view_key,
                         addendum.spend_key,
                         &network,
