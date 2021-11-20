@@ -1487,6 +1487,12 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(abort_all.clone()),
+                        )?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
                             Request::SyncerTask(abort_all),
                         )?;
                     }
