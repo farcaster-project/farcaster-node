@@ -1834,37 +1834,38 @@ impl Runtime {
                 self.state_update(senders, next_state)?;
             }
 
-            Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig)) => {
-                if let State::Bob(BobState::CorearbB(..)) = self.state {
-                    debug!("subscribing with syncer for receiving raw buy tx ");
+            Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig))
+                if self.state.core_arb() =>
+            {
+                debug!("subscribing with syncer for receiving raw buy tx ");
 
-                    let buy_tx = buy_proc_sig.buy.clone().extract_tx();
-                    let txid = buy_tx.txid();
-                    // register Buy tx task
-                    let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        Request::SyncerTask(task),
-                    )?;
+                let buy_tx = buy_proc_sig.buy.clone().extract_tx();
+                let txid = buy_tx.txid();
+                // register Buy tx task
+                let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(task),
+                )?;
 
-                    let script_pubkey = if buy_tx.output.len() == 1 {
-                        buy_tx.output[0].script_pubkey.clone()
-                    } else {
-                        error!("more than one output");
-                        return Ok(());
-                    };
-                    debug!("subscribe Buy address task");
-                    let task = self
-                        .syncer_state
-                        .watch_addr_btc(script_pubkey, TxLabel::Buy);
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        Request::SyncerTask(task),
-                    )?;
+                let script_pubkey = if buy_tx.output.len() == 1 {
+                    buy_tx.output[0].script_pubkey.clone()
+                } else {
+                    error!("more than one output");
+                    return Ok(());
+                };
+                debug!("subscribe Buy address task");
+                let task = self
+                    .syncer_state
+                    .watch_addr_btc(script_pubkey, TxLabel::Buy);
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(task),
+                )?;
 
                     let pending_request = PendingRequest {
                         request,
