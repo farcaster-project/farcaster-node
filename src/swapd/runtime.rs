@@ -1544,20 +1544,19 @@ impl Runtime {
                                     let req = Request::Tx(Tx::Funding(tx));
                                     self.send_wallet(ServiceBus::Ctl, senders, req)?;
                                 }
+                                TxLabel::Buy if self.state.buy_sig() => {
+                                    log_tx_seen(txlabel, &tx.txid());
+                                    let req = Request::Tx(Tx::Buy(tx));
+                                    self.send_wallet(ServiceBus::Ctl, senders, req)?
+                                }
                                 TxLabel::Buy => {
-                                    if let State::Bob(BobState::BuySigB) = self.state {
-                                        log_tx_seen(txlabel, &tx.txid());
-                                        let req = Request::Tx(Tx::Buy(tx));
-                                        self.send_wallet(ServiceBus::Ctl, senders, req)?
-                                    } else {
-                                        warn!(
+                                    warn!(
                                             "expected BobState(BuySigB), found {}. Any chance you reused the \
                                          destination/refund address in the cli command? For your own privacy, \
                                          do not reuse bitcoin addresses. Txid {}",
                                             self.state,
                                             tx.txid().addr(),
                                         )
-                                    }
                                 }
                                 TxLabel::Refund => {
                                     if let State::Alice(AliceState::RefundSigA(RefundSigA {
