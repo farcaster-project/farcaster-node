@@ -802,17 +802,8 @@ impl Runtime {
                             _state => unreachable!("checked state on pattern to be Commit"),
                         };
 
-                        if let State::Alice(AliceState::CommitA(CommitC {
-                            trade_role: TradeRole::Taker,
-                            ..
-                        }))
-                        | State::Bob(BobState::CommitB(
-                            CommitC {
-                                trade_role: TradeRole::Taker,
-                                ..
-                            },
-                            _,
-                        )) = &self.state
+                        if self.state.commit()
+                            && self.state.trade_role().unwrap() == TradeRole::Taker
                         {
                             trace!("Watch height bitcoin");
                             let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
@@ -1066,12 +1057,11 @@ impl Runtime {
                         lock,
                         cancel,
                         refund,
-                        cancel_sig: _,
-                    }) if self.state.swap_role() == SwapRole::Alice && self.state.reveal() => {
-                        if swap_id != &self.swap_id() {
-                            error!("Swapd not responsible for swap {}", swap_id);
-                            return Ok(());
-                        }
+                        ..
+                    }) if self.state.swap_role() == SwapRole::Alice
+                        && self.state.reveal()
+                        && swap_id == &self.swap_id() =>
+                    {
                         for (&tx, tx_label) in [lock, cancel, refund].iter().zip([
                             TxLabel::Lock,
                             TxLabel::Cancel,
@@ -1086,8 +1076,6 @@ impl Runtime {
                                 Request::SyncerTask(task),
                             )?;
                         }
-                        // senders.send_to(ServiceBus::Ctl, self.identity(),
-                        // self.syncer_state.bitcoin_syncer(), req)?;
                         self.send_wallet(msg_bus, senders, request)?;
                     }
                     // bob receives, alice sends
