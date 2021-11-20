@@ -1210,8 +1210,8 @@ impl Runtime {
                     .state
                     .puboffer()
                     .clone()
-                    .expect("state Start has puboffer");
-                let public_offer_hex = public_offer.to_hex();
+                    .expect("state Start has puboffer")
+                    .to_string();
                 let take_swap = TakeCommit {
                     commit: local_commit,
                     public_offer,
