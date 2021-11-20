@@ -428,6 +428,43 @@ impl State {
             _ => None,
         }
     }
+    fn sup_start_to_commit(
+        self,
+        local_commit: Commit,
+        local_params: Params,
+        funding_address: Option<bitcoin::Address>,
+        remote_commit: Option<Commit>,
+    ) -> Self {
+        if !self.start() {
+            error!("Not on Start state, not updating state");
+            return self;
+        }
+        match (self, funding_address) {
+            (State::Bob(BobState::StartB(trade_role, _)), Some(addr)) => {
+                State::Bob(BobState::CommitB(
+                    CommitC {
+                        trade_role,
+                        local_params,
+                        local_commit,
+                        remote_commit,
+                    },
+                    addr,
+                ))
+            }
+            (State::Alice(AliceState::StartA(trade_role, _)), None) => {
+                State::Alice(AliceState::CommitA(CommitC {
+                    trade_role,
+                    local_params,
+                    local_commit,
+                    remote_commit,
+                }))
+
+            }
+            _ => unreachable!(
+                "state conditional enforces state is Start: Expects Start state, and funding_address"
+            ),
+        }
+    }
 }
 
 impl CtlServer for Runtime {}
@@ -1175,36 +1212,22 @@ impl Runtime {
                                 },
                             )
                         })?;
-                let (next_state, public_offer) = match (self.state.clone(), funding_address) {
-                    (State::Bob(BobState::StartB(local_trade_role, public_offer)), Some(addr)) => {
-                        (
-                            (State::Bob(BobState::CommitB(
-                                CommitC {
-                                    trade_role: local_trade_role,
-                                    local_params,
-                                    local_commit: local_commit.clone(),
-                                    remote_commit: None,
-                                },
-                                addr,
-                            ))),
-                            public_offer,
-                        )
-                    }
-                    (State::Alice(AliceState::StartA(local_trade_role, public_offer)), None) => {
-                        (
-                            (State::Alice(AliceState::CommitA(CommitC {
-                                trade_role: local_trade_role,
-                                local_params,
-                                local_commit: local_commit.clone(),
-                                remote_commit: None,
-                            }))),
-                            public_offer,
-                        )
-                    }
-                    _ => unreachable!(
-                        "state conditional at pattern match enforces state is Start: Expects Start state, and funding_address"
-                    ),
-                };
+                let trade_role = self
+                    .state
+                    .trade_role()
+                    .clone()
+                    .expect("state Start has trade_role");
+                let next_state = self.state.clone().sup_start_to_commit(
+                    local_commit.clone(),
+                    local_params,
+                    funding_address,
+                    None,
+                );
+                let public_offer = self
+                    .state
+                    .puboffer()
+                    .clone()
+                    .expect("state Start has puboffer");
                 let public_offer_hex = public_offer.to_hex();
                 let take_swap = TakeCommit {
                     commit: local_commit,
@@ -1235,7 +1258,7 @@ impl Runtime {
                 swap_id,
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
-            }) => {
+            }) if self.state.start() => {
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
@@ -1254,29 +1277,13 @@ impl Runtime {
                             },
                         )
                     })?;
-
-                let next_state = match (&self.state, funding_address) {
-                    (State::Bob(BobState::StartB(trade_role, _)), Some(addr)) => {
-                        Ok(State::Bob(BobState::CommitB(
-                            CommitC {
-                                trade_role: *trade_role,
-                                local_params: local_params.clone(),
-                                local_commit: local_commit.clone(),
-                                remote_commit: Some(remote_commit),
-                            },
-                            addr,
-                        )))
-                    }
-                    (State::Alice(AliceState::StartA(trade_role, _)), None) => {
-                        Ok(State::Alice(AliceState::CommitA(CommitC {
-                            trade_role: *trade_role,
-                            local_params: local_params.clone(),
-                            local_commit: local_commit.clone(),
-                            remote_commit: Some(remote_commit),
-                        })))
-                    }
-                    _ => Err(Error::Farcaster(s!("Wrong state: Expects Start"))),
-                }?;
+                let trade_role = self.state.trade_role().expect("state Start has trade_role");
+                let next_state = self.state.clone().sup_start_to_commit(
+                    local_commit.clone(),
+                    local_params,
+                    funding_address,
+                    Some(remote_commit),
+                );
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(senders, Msg::MakerCommit(local_commit))?;
