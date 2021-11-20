@@ -270,12 +270,12 @@ impl Runtime {
             // maker
             Request::Protocol(Msg::TakerCommit(request::TakeCommit {
                 commit: remote_commit,
-                public_offer_hex,
+                public_offer,
                 swap_id,
             })) if self.btc_addrs.contains_key(&swap_id)
                 && self.xmr_addrs.contains_key(&swap_id) =>
             {
-                let pub_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer_hex)?;
+                let pub_offer: PublicOffer<BtcXmr> = FromStr::from_str(&public_offer)?;
                 trace!(
                     "Offer {} is known, you created it previously, initiating swap with taker",
                     &pub_offer

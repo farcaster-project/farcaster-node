@@ -105,18 +105,18 @@ Then the last three arguments in this example are: `public_ip_addr`, `bind_id_ad
 
 **The public offer result**
 
-The command will ouput a hex encoded **public offer** that must be shared to anyone susceptible to take it and your `farcasterd` will register this public offer in its list, waiting for someone to connect and take it.
+The command will ouput an encoded **public offer** that must be shared to anyone susceptible to take it and your `farcasterd` will register this public offer in its list, waiting for someone to connect and take it.
 
 Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when it asks so, at the end you should receive the counterparty assets.
 
 ### :moneybag: Take the offer
 
-Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an hex encoded public offer, and a bitcoin address to receive bitcoins (again, as a refund or if the swap completes depending on your swap role).
+Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an encoded public offer, and a bitcoin address to receive bitcoins (again, as a refund or if the swap completes depending on your swap role).
 
 ```
 swap-cli take tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
     54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
-    {hex encoded offer}
+    {offer}
 ```
 
 The cli will ask you to validate the offer informations (amounts, assets, etc.), you can use the flag of interest `--without-validation` or `-w` for externally validated automated setups.

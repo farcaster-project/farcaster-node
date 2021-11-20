@@ -1,3 +1,5 @@
+use farcaster_core::consensus::{self, CanonicalBytes, Decodable, Encodable};
+use std::io;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -18,13 +20,52 @@ pub struct BtcAddressAddendum {
     pub script_pubkey: bitcoin::Script,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct XmrAddressAddendum {
     pub spend_key: monero::PublicKey,
     pub view_key: monero::PrivateKey,
     /// The blockchain height where to start the query (not inclusive).
     pub from_height: u64,
+}
+
+impl Encodable for XmrAddressAddendum {
+    fn consensus_encode<W: io::Write>(&self, s: &mut W) -> Result<usize, io::Error> {
+        let mut len = self.spend_key.as_canonical_bytes().consensus_encode(s)?;
+        len += self.view_key.as_canonical_bytes().consensus_encode(s)?;
+        Ok(len + self.from_height.consensus_encode(s)?)
+    }
+}
+
+impl Decodable for XmrAddressAddendum {
+    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(Self {
+            spend_key: monero::PublicKey::from_canonical_bytes(
+                Vec::<u8>::consensus_decode(d)?.as_ref(),
+            )?,
+            view_key: monero::PrivateKey::from_canonical_bytes(
+                Vec::<u8>::consensus_decode(d)?.as_ref(),
+            )?,
+            from_height: u64::consensus_decode(d)?,
+        })
+    }
+}
+
+impl StrictEncode for XmrAddressAddendum {
+    fn strict_encode<E: ::std::io::Write>(
+        &self,
+        mut e: E,
+    ) -> Result<usize, strict_encoding::Error> {
+        farcaster_core::consensus::Encodable::consensus_encode(self, &mut e)
+            .map_err(strict_encoding::Error::from)
+    }
+}
+
+impl StrictDecode for XmrAddressAddendum {
+    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        farcaster_core::consensus::Decodable::consensus_decode(&mut d)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))
+    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -42,12 +83,51 @@ pub enum SweepAddressAddendum {
     Bitcoin(SweepBitcoinAddress),
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct SweepXmrAddress {
     pub spend_key: monero::PrivateKey,
     pub view_key: monero::PrivateKey,
     pub address: String,
+}
+
+impl Encodable for SweepXmrAddress {
+    fn consensus_encode<W: io::Write>(&self, s: &mut W) -> Result<usize, io::Error> {
+        let mut len = self.spend_key.as_canonical_bytes().consensus_encode(s)?;
+        len += self.view_key.as_canonical_bytes().consensus_encode(s)?;
+        Ok(len + self.address.consensus_encode(s)?)
+    }
+}
+
+impl Decodable for SweepXmrAddress {
+    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(Self {
+            spend_key: monero::PrivateKey::from_canonical_bytes(
+                Vec::<u8>::consensus_decode(d)?.as_ref(),
+            )?,
+            view_key: monero::PrivateKey::from_canonical_bytes(
+                Vec::<u8>::consensus_decode(d)?.as_ref(),
+            )?,
+            address: String::consensus_decode(d)?,
+        })
+    }
+}
+
+impl StrictEncode for SweepXmrAddress {
+    fn strict_encode<E: ::std::io::Write>(
+        &self,
+        mut e: E,
+    ) -> Result<usize, strict_encoding::Error> {
+        farcaster_core::consensus::Encodable::consensus_encode(self, &mut e)
+            .map_err(strict_encoding::Error::from)
+    }
+}
+
+impl StrictDecode for SweepXmrAddress {
+    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        farcaster_core::consensus::Decodable::consensus_decode(&mut d)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))
+    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

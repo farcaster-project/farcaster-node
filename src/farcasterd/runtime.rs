@@ -199,10 +199,10 @@ impl Runtime {
             // maker
             Request::Protocol(Msg::TakerCommit(request::TakeCommit {
                 commit: _,
-                public_offer_hex,
+                public_offer,
                 swap_id,
             })) => {
-                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(public_offer_hex)?;
+                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(public_offer)?;
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(
@@ -641,12 +641,12 @@ impl Runtime {
 
                 let public_offer = offer.to_public_v1(node_ids[0], public_addr.into());
                 let pub_offer_id = public_offer.id();
-                let hex_public_offer = public_offer.to_hex();
+                let serialized_offer = public_offer.to_string();
                 if self.public_offers.insert(public_offer) {
                     let msg = format!(
                         "{} {}",
                         "Public offer registered, please share with taker: ".bright_blue_bold(),
-                        hex_public_offer.bright_yellow_bold()
+                        serialized_offer.bright_yellow_bold()
                     );
                     info!(
                         "Maker: {} {}",
@@ -682,8 +682,8 @@ impl Runtime {
                     || self.consumed_offers.contains(&public_offer.id())
                 {
                     let msg = format!(
-                        "Offer {} already exists or was already taken, ignoring request",
-                        &public_offer.to_hex()
+                        "{} already exists or was already taken, ignoring request",
+                        &public_offer.to_string()
                     );
                     warn!("{}", msg.err());
                     report_to.push((
@@ -941,7 +941,7 @@ fn launch_swapd(
         "swapd",
         &[
             swap_id.to_hex(),
-            public_offer.to_hex(),
+            public_offer.to_string(),
             local_trade_role.to_string(),
         ],
     )?;

@@ -125,11 +125,12 @@ checksum = "5024ee8015f02155eee35c711107ddd9a9bf3cb689cf2a9089c97e79b6e1ae83"
 
 [[package]]
 name = "base58-monero"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "465ba1f408efdef4d9379bdfa7340899b63e472d50c7fb666480ccfd5a893e53"
+checksum = "935c90240f9b7749c80746bf88ad9cb346f34b01ee30ad4d566dfdecd6e3cc6a"
 dependencies = [
  "thiserror",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -887,11 +888,12 @@ checksum = "d9435d864e017c3c6afeac1654189b06cdb491cf2ff73dbf0d73b0f292f42ff8"
 
 [[package]]
 name = "farcaster_core"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c20a5a87c1321eabc87c9501b647661e97d26709eb4e0b0953ba9fd68c28e0d5"
+checksum = "3cd591f5878444ae926fbffca99e8dbeb621abc636541d2051093fe89e6076a2"
 dependencies = [
  "amplify",
+ "base58-monero",
  "bincode",
  "bitcoin 0.27.1",
  "bitcoin_hashes 0.10.0",
@@ -1715,9 +1717,9 @@ dependencies = [
 
 [[package]]
 name = "monero"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e65ccebd4c656eb7df22ea1132fd212be0986af9ea3c3bb489121137a76ea76"
+checksum = "e3732061cea7e75dc68ef986e0d5a393b3606c258c996abb4a81b759613ea1a0"
 dependencies = [
  "base58-monero",
  "curve25519-dalek",
@@ -1727,7 +1729,6 @@ dependencies = [
  "sealed",
  "serde 1.0.127",
  "serde-big-array",
- "strict_encoding",
  "thiserror",
  "tiny-keccak",
 ]
@@ -1735,7 +1736,7 @@ dependencies = [
 [[package]]
 name = "monero-rpc"
 version = "0.1.0"
-source = "git+https://github.com/monero-ecosystem/monero-rpc-rs?branch=master#e417ed4607d96d8e0172014e8efbb073c898fbb6"
+source = "git+https://github.com/monero-ecosystem/monero-rpc-rs?branch=master#dcda1161f279f345c95cde783f0d002ab2ae93cf"
 dependencies = [
  "anyhow",
  "chrono",

@@ -39,7 +39,7 @@ required-features = ["server"]
 
 [dependencies]
 # Farcaster crates
-farcaster_core = { version = "0.3.0", features = ["serde"] }
+farcaster_core = { version = "0.4.0", features = ["serde"] }
 
 anyhow = "1"
 hex = "^0.4.3"
@@ -69,7 +69,7 @@ lnp-core = "0.4.0-beta.3"
 lnpbp = { version = "0.5.0-beta.3", features = ["all"] }
 # Congig & logging
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
-monero = { version = "0.15", features = ["strict_encoding_support"] }
+monero = "0.16"
 monero-rpc = { git = "https://github.com/monero-ecosystem/monero-rpc-rs", branch = "master" }
 # monero-rpc = { path = "../monero-rpc-rs/" }
 nix = { version = "0.19", optional = true }
@@ -94,7 +94,7 @@ toml = { version = "0.5", optional = true }
 zmq = "0.9"
 
 [build-dependencies]
-farcaster_core = { version = "0.3.0", features = ["serde"] }
+farcaster_core = { version = "0.4.0", features = ["serde"] }
 anyhow = "1"
 serde_yaml = { version = "0.8", optional = true }
 toml = { version = "0.5", optional = true }
@@ -106,7 +106,7 @@ lightning_encoding = "0.5.0-beta.3"
 # Bitcoin
 bitcoin = "0.27"
 # Monero
-monero = "0.15"
+monero = "0.16"
 # lnp-core =  { path = "../ext/lnp-core" }
 # internet2 = { path = "../ext/rust-internet2" }
 lnp-core = "0.4.0-beta.3"
@@ -123,14 +123,12 @@ electrum-client = "0.8.0"
 
 [dependencies.microservices]
 # path = '../ext/rust-internet2'
-name = "rust-internet2"
 version = "0.5.0-alpha.1"
 default-features = false
 features = ['peer']
 
 [build-dependencies.microservices]
 # path = '../ext/rust-internet2'
-name = "rust-internet2"
 version = "0.5.0-alpha.1"
 default-features = false
 features = ['peer']

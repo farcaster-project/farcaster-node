@@ -237,7 +237,7 @@ pub struct LaunchSwap {
 #[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
 pub struct TakeCommit {
     pub commit: Commit,
-    pub public_offer_hex: String, // TODO: replace by public offer id
+    pub public_offer: String, // TODO: replace by public offer id
     pub swap_id: SwapId,
 }
 
@@ -555,7 +555,6 @@ pub struct NodeInfo {
     pub since: u64,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub peers: Vec<NodeAddr>,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
     pub swaps: Vec<SwapId>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub offers: Vec<PublicOffer<BtcXmr>>,
