@@ -1465,14 +1465,9 @@ impl Runtime {
                         if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
                             (&request, &bus_id)
                         {
-                            let next_state = match self.state {
-                                State::Bob(BobState::CorearbB(..)) => {
-                                    Ok(State::Bob(BobState::BuySigB))
-                                }
-                                _ => Err(Error::Farcaster(s!("Wrong state: must be CorearbB "))),
-                            }?;
-                            info!("sending buyproceduresignature at state {}", &self.state);
                             senders.send_to(bus_id, self.identity(), dest, request)?;
+                            info!("sent buyproceduresignature at state {}", &self.state);
+                            let next_state = State::Bob(BobState::BuySigB);
                             self.state_update(senders, next_state)?;
                         } else {
                             error!(
