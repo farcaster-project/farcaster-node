@@ -1517,6 +1517,11 @@ impl Runtime {
                             self.syncer_state.bitcoin_syncer(),
                             Request::SyncerTask(abort_all),
                         )?;
+                        self.send_wallet(
+                            ServiceBus::Ctl,
+                            senders,
+                            Request::SwapSuccess(true),
+                        )?;
                         // remove txs to invalidate outdated states
                         self.txs.remove(&TxLabel::Cancel);
                         self.txs.remove(&TxLabel::Refund);
@@ -1742,6 +1747,11 @@ impl Runtime {
                                     self.identity(),
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(abort_all),
+                                )?;
+                                self.send_wallet(
+                                    ServiceBus::Ctl,
+                                    senders,
+                                    Request::SwapSuccess(true),
                                 )?;
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);

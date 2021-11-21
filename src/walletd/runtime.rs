@@ -93,6 +93,15 @@ pub struct Runtime {
     xmr_addrs: HashMap<SwapId, monero::Address>,
 }
 
+impl Runtime {
+    fn clean_up_after_swap(&mut self, swapid: &SwapId) {
+        self.wallets.remove(swapid);
+        self.btc_addrs.remove(swapid);
+        self.xmr_addrs.remove(swapid);
+        self.swaps.remove(swapid);
+    }
+}
+
 pub enum Wallet {
     Alice(AliceState),
     Bob(BobState),
@@ -1197,6 +1206,21 @@ impl Runtime {
                         request_id,
                     )),
                 )?
+            }
+            Request::SwapSuccess(success) => {
+                let swapid = get_swap_id(&source)?;
+                let success = if success {
+                    "Success".bright_green_bold()
+                } else {
+                    "Failure".err()
+                };
+
+                info!(
+                    "{} in swap {}, cleaning up data related to it",
+                    &success,
+                    &swapid.addr(),
+                );
+                self.clean_up_after_swap(&swapid);
             }
 
             _ => {
