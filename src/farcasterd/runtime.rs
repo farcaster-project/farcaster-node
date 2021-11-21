@@ -97,6 +97,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         syncers: none!(),
         consumed_offers: none!(),
         progress: none!(),
+        stats: none!(),
     };
 
     let broker = true;
@@ -115,12 +116,48 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashSet<PublicOfferId>,
+    consumed_offers: HashSet<(PublicOfferId, SwapId)>,
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncers: HashMap<(Coin, Network), ServiceId>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
+    stats: Stats,
+}
+
+struct Stats {
+    success: u64,
+    failure: u64,
+}
+
+impl Stats {
+    fn incr_success(&mut self) {
+        self.success += 1
+    }
+    fn incr_failure(&mut self) {
+        self.failure += 1
+    }
+    fn success_rate(&self) -> f64 {
+        let Stats { success, failure } = self;
+        let total = success + failure;
+        let rate = *success as f64 / (total as f64);
+        info!(
+            "Swap success rate: Success({}) / Total({})  = {}",
+            success,
+            total,
+            rate.bright_yellow_bold()
+        );
+        rate
+    }
+}
+
+impl Default for Stats {
+    fn default() -> Self {
+        Stats {
+            success: 0,
+            failure: 0,
+        }
+    }
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
@@ -155,6 +192,28 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    fn clean_up_after_swap(&mut self, swapid: &SwapId) {
+        self.running_swaps.remove(swapid);
+        let offers2rm: Vec<_> = self
+            .consumed_offers
+            .iter()
+            .filter(|(_, i_swapid)| swapid == i_swapid)
+            .cloned()
+            .collect();
+
+        for offer in &offers2rm {
+            self.consumed_offers.remove(offer);
+        }
+    }
+
+    fn consumed_offers_contains(&self, offerid: &PublicOfferId) -> bool {
+        self.consumed_offers
+            .iter()
+            .filter(|(i_offerid, _)| i_offerid == offerid)
+            .find_map(|_| Some(true))
+            .unwrap_or(false)
+    }
+
     fn _send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
         senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
         Ok(())
@@ -381,6 +440,19 @@ impl Runtime {
                     self.spawning_services.remove(&source);
                 }
             }
+            Request::SwapSuccess(success) => {
+                let swapid = get_swap_id(&source)?;
+                self.clean_up_after_swap(&swapid);
+                if success {
+                    info!("Success on swap {}", &swapid);
+                    self.stats.incr_success();
+                } else {
+                    info!("Failure on swap {}", &swapid);
+                    self.stats.incr_failure();
+                }
+                self.stats.success_rate();
+                senders.send_to(ServiceBus::Ctl, self.identity(), source, request)?;
+            }
             Request::LaunchSwap(LaunchSwap {
                 maker_node_id,
                 local_trade_role,
@@ -425,7 +497,8 @@ impl Runtime {
                         .ok_or(internet2::presentation::Error::InvalidEndpoint)?
                         .into();
 
-                    self.consumed_offers.insert(public_offer.id());
+                    self.consumed_offers
+                        .insert((public_offer.id(), swap_id.clone()));
                     launch_swapd(
                         self,
                         peer,
@@ -443,7 +516,7 @@ impl Runtime {
                     return Err(Error::Farcaster(msg));
                 }
             }
-            Request::Keys(Keys(sk, pk, id)) => {
+            Request::Keys(Keys(sk, pk, id)) if self.pending_requests.contains_key(&id) => {
                 trace!("received peerd keys");
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
@@ -680,7 +753,7 @@ impl Runtime {
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
-                    || self.consumed_offers.contains(&public_offer.id())
+                    || self.consumed_offers_contains(&public_offer.id())
                 {
                     let msg = format!(
                         "{} already exists or was already taken, ignoring request",
