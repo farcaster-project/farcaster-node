@@ -465,6 +465,28 @@ impl State {
             ),
         }
     }
+    fn sup_commit_to_reveal(self, remote_commit: Commit) -> Self {
+        if !self.commit() {
+            error!("Not on Commit state, not updating state");
+            return self;
+        }
+
+        match self {
+            State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
+                State::Alice(AliceState::RevealA(local_params, remote_commit))
+            }
+            State::Bob(BobState::CommitB(
+                CommitC {
+                    local_params,
+                    remote_commit: None,
+                    ..
+                },
+                ..,
+            )) => State::Bob(BobState::RevealB(local_params, remote_commit)),
+
+            _ => unreachable!("checked state on pattern to be Commit"),
+        }
+    }
 }
 
 impl CtlServer for Runtime {}
@@ -766,21 +788,19 @@ impl Runtime {
                             && self.state.trade_role() == Some(TradeRole::Taker) =>
                     {
                         trace!("received commitment from counterparty, can now reveal");
-                        let next_state = match self.state.clone() {
-                            State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
-                                State::Alice(AliceState::RevealA(
-                                    local_params,
-                                    remote_commit.clone(),
-                                ))
-                            }
-                            State::Bob(BobState::CommitB(
-                                CommitC {
-                                    local_params,
-                                    remote_commit: None,
-                                    ..
-                                },
-                                addr,
-                            )) => {
+                        let next_state = self
+                            .state
+                            .clone()
+                            .sup_commit_to_reveal(remote_commit.clone());
+
+                        match self.state.swap_role() {
+                            SwapRole::Alice => {}
+                            SwapRole::Bob => {
+                                let addr = self
+                                    .state
+                                    .b_address()
+                                    .cloned()
+                                    .expect("address available at CommitB");
                                 let msg = format!(
                                     "{} {}",
                                     "Funding address:".bright_white_bold(),
@@ -797,38 +817,33 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(task),
                                 )?;
-                                State::Bob(BobState::RevealB(local_params, remote_commit.clone()))
                             }
-                            _state => unreachable!("checked state on pattern to be Commit"),
-                        };
-
-                        if self.state.commit()
-                            && self.state.trade_role().unwrap() == TradeRole::Taker
-                        {
-                            trace!("Watch height bitcoin");
-                            let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
-                                id: self.syncer_state.tasks.new_taskid(),
-                                lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                            });
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                self.syncer_state.bitcoin_syncer(),
-                                Request::SyncerTask(watch_height_bitcoin),
-                            )?;
-
-                            trace!("Watch height monero");
-                            let watch_height_monero = Task::WatchHeight(WatchHeight {
-                                id: self.syncer_state.tasks.new_taskid(),
-                                lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                            });
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                self.syncer_state.monero_syncer(),
-                                Request::SyncerTask(watch_height_monero),
-                            )?;
                         }
+
+                        trace!("Watch height bitcoin");
+                        let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
+                            id: self.syncer_state.tasks.new_taskid(),
+                            lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(watch_height_bitcoin),
+                        )?;
+
+                        trace!("Watch height monero");
+                        let watch_height_monero = Task::WatchHeight(WatchHeight {
+                            id: self.syncer_state.tasks.new_taskid(),
+                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
+                        });
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(watch_height_monero),
+                        )?;
+
                         self.send_wallet(msg_bus, senders, request)?;
                         self.state_update(senders, next_state)?;
                     }
