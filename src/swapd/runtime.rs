@@ -1246,10 +1246,10 @@ impl Runtime {
                 let reveal_proof = Msg::Reveal(reveal);
                 let swap_id = reveal_proof.swap_id();
                 self.send_peer(senders, reveal_proof)?;
-                trace!("forwarded reveal_proof");
+                trace!("sent reveal_proof to peerd");
                 let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                 self.send_peer(senders, Msg::Reveal(reveal_params))?;
-                trace!("sent reveal_proof to peerd");
+                trace!("sent reveal_params to peerd");
             }
 
             Request::MakeSwap(InitSwap {
