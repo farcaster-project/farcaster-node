@@ -1213,6 +1213,12 @@ impl Runtime {
         };
 
         match request {
+            Request::SwapSuccess(success) if source == ServiceId::Farcasterd => {
+                std::process::exit(match success {
+                    true => 0,
+                    false => 1,
+                });
+            }
             Request::SweepXmrAddress(SweepXmrAddress {
                 view_key,
                 spend_key,
@@ -1477,7 +1483,7 @@ impl Runtime {
                         confirmations: Some(confirmations),
                     }) if self.state.b_buy_sig()
                         && *confirmations
-                            >= self.temporal_safety.sweep_monero_thr.expect(
+                            > self.temporal_safety.sweep_monero_thr.expect(
                                 "buysig is bob's state, and bob sets his sweep_monero_thr at launch",
                             )
                         && self.pending_requests.contains_key(&source) =>
@@ -1567,9 +1573,9 @@ impl Runtime {
                             Request::SyncerTask(abort_all),
                         )?;
                         let swap_success_req = Request::SwapSuccess(true);
-                        self.send_wallet(
-                            ServiceBus::Ctl,
+                        self.send_ctl(
                             senders,
+                            ServiceId::Wallet,
                             swap_success_req.clone(),
                         )?;
                         self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
@@ -1632,7 +1638,10 @@ impl Runtime {
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
                             }
                             txlabel => {
-                                error!("address transaction event not supported for tx {}", txlabel)
+                                error!(
+                                    "address transaction event not supported for tx {} at state {}",
+                                    txlabel, &self.state
+                                )
                             }
                         }
                     }
