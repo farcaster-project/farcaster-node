@@ -728,6 +728,7 @@ impl Runtime {
             self.state.bright_white_bold(),
             next_state.bright_white_bold()
         );
+        info!("{}", &msg);
         self.state = next_state;
         self.report_success_to(senders, self.enquirer.clone(), Some(msg))?;
         Ok(())
@@ -1725,6 +1726,7 @@ impl Runtime {
                                 // FIXME: swap ends here for alice, clean up with syncer +
                                 // wallet + farcaster
                                 // transactions don't belong to current state
+                                self.state_update(senders, State::Alice(AliceState::FinishA))?;
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
                             }
