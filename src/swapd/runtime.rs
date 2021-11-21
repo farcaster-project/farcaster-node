@@ -1228,8 +1228,8 @@ impl Runtime {
                 let public_offer = self
                     .state
                     .puboffer()
-                    .expect("state Start has puboffer")
-                    .to_string();
+                    .map(|offer| offer.to_string())
+                    .expect("state Start has puboffer");
                 let take_swap = TakeCommit {
                     commit: local_commit,
                     public_offer,
