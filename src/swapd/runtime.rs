@@ -1517,11 +1517,13 @@ impl Runtime {
                             self.syncer_state.bitcoin_syncer(),
                             Request::SyncerTask(abort_all),
                         )?;
+                        let swap_success_req = Request::SwapSuccess(true);
                         self.send_wallet(
                             ServiceBus::Ctl,
                             senders,
-                            Request::SwapSuccess(true),
+                            swap_success_req.clone(),
                         )?;
+                        self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                         // remove txs to invalidate outdated states
                         self.txs.remove(&TxLabel::Cancel);
                         self.txs.remove(&TxLabel::Refund);
@@ -1748,11 +1750,13 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(abort_all),
                                 )?;
+                                let swap_success_req = Request::SwapSuccess(true);
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     senders,
-                                    Request::SwapSuccess(true),
+                                    swap_success_req.clone(),
                                 )?;
+                                self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
                             }
