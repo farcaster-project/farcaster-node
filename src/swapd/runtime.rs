@@ -1723,10 +1723,24 @@ impl Runtime {
                                     && self.state.a_refundsig()
                                     && self.state.a_buy_published() =>
                             {
-                                // FIXME: swap ends here for alice, clean up with syncer +
+                                // FIXME: swap ends here for alice
                                 // wallet + farcaster
-                                // transactions don't belong to current state
                                 self.state_update(senders, State::Alice(AliceState::FinishA))?;
+                                let abort_all = Task::Abort(Abort {
+                                    task_target: TaskTarget::AllTasks,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.monero_syncer(),
+                                    Request::SyncerTask(abort_all.clone()),
+                                )?;
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(abort_all),
+                                )?;
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
                             }
