@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{Error, SyncerError};
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
@@ -127,17 +127,17 @@ impl MoneroRpc {
         Ok(transactions)
     }
 
-    async fn check_block(&mut self) -> Result<Option<Block>, Error> {
-        let mut block: Option<Block> = none!();
+    async fn check_block(&mut self) -> Result<Block, Error> {
         let height = self.get_height().await?;
 
         if height != self.height {
             let block_hash = self.get_block_hash(height).await?;
             self.height = height;
             self.block_hash = block_hash.clone();
-            block = Some(Block { height, block_hash });
+            Ok(Block { height, block_hash })
+        } else {
+            Err(Error::Syncer(SyncerError::NoIncrementToHeight))
         }
-        Ok(block)
     }
 
     async fn check_address(
@@ -226,7 +226,7 @@ async fn sweep_address(
     spend: monero::PrivateKey,
     network: &monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
-) -> Result<Option<Vec<Vec<u8>>>, Error> {
+) -> Result<Vec<Vec<u8>>, Error> {
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
     let address = monero::Address::from_keypair(*network, &keypair);
@@ -452,6 +452,7 @@ fn height_polling(
         loop {
             let block_notif = match rpc.check_block().await {
                 Ok(notif) => Some(notif),
+                Err(Error::Syncer(SyncerError::NoIncrementToHeight)) => None,
                 Err(err) => {
                     error!("error processing height polling: {}", err);
                     None

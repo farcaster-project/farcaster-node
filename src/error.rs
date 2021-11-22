@@ -104,6 +104,8 @@ pub enum SyncerError {
     MoneroRpc(anyhow::Error),
     #[display(inner)]
     InvalidConfig,
+    #[display("height did not increment")]
+    NoIncrementToHeight,
 }
 
 impl microservices::error::Error for Error {}
