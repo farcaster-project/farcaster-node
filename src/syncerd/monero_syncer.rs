@@ -417,18 +417,16 @@ fn address_polling(
                 };
                 // we cannot parallelize polling here, since we have to open and close the
                 // wallet
-                let mut address_transactions = None;
-                match rpc
+                let address_transactions = match rpc
                     .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
                     .await
                 {
-                    Ok(addr_txs) => {
-                        address_transactions = Some(addr_txs);
-                    }
+                    Ok(addr_txs) => Some(addr_txs),
                     Err(err) => {
                         error!("error polling addresses: {:?}", err);
+                        None
                     }
-                }
+                };
                 if let Some(address_transactions) = address_transactions {
                     let mut state_guard = state.lock().await;
                     state_guard
@@ -451,15 +449,13 @@ fn height_polling(
     tokio::task::spawn(async move {
         let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
-            let mut block_notif = None;
-            match rpc.check_block().await {
-                Ok(notif) => {
-                    block_notif = notif;
-                }
+            let block_notif = match rpc.check_block().await {
+                Ok(notif) => Some(notif),
                 Err(err) => {
                     error!("error processing height polling: {}", err);
+                    None
                 }
-            }
+            };
             if let Some(block_notif) = block_notif {
                 let mut state_guard = state.lock().await;
                 state_guard
