@@ -57,9 +57,9 @@ docker run --rm -t -p 9735:9735 -p 9981:9981\
     --name farcaster_node\
     ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
     -vv\
-    --electrum-server ssl://{ip:port}\
-    --monero-daemon http://{ip:port}\
-    --monero-rpc-wallet http://{ip:port}
+    --electrum-server ssl://blockstream.info:993\
+    --monero-daemon http://stagenet.melo.tools:38081\
+    --monero-rpc-wallet http://localhost:38083
 ```
 
 or build the node image and start a container by running inside the project folder:
@@ -77,6 +77,31 @@ The container will be removed after execution (`--rm`), allocate a pseudo-TTY (`
 Stop the container with `ctrl+c` or `docker stop farcaster_node`.
 
 :warning: this exposes the control bus on the host, only intended for debugging or on a trusted network.
+
+## Run `monero rpc wallet`
+
+:mega: No monero are stored long-term in this wallet, the wallet is only used to detect locking and sweep to the specified external Monero address given in parameter at the beginning of the swap! Data needed to create this Monero wallet are managed by farcaster.
+
+You need to run a Monero wallet RPC server locally to manage receiving and transfering moneros during a swap. You can run your own wallet RPC or use the following commands to create a temporary wallet RPC with one of our Docker image:
+
+```
+docker pull ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
+docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest\
+    /usr/bin/monero-wallet-rpc --stagenet\
+    --disable-rpc-login --wallet-dir wallets\
+    --daemon-host stagenet.melo.tools:38081\
+    --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083\
+    --confirm-external-bind
+```
+
+Then use the following values when launching `farcasterd`:
+
+| `--monero-rpc-wallet` | value                    |
+| --------------------- | ------------------------ |
+| mainnet               | `http://localhost:18083` |
+| stagenet              | `http://localhost:38083` |
+
+Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](../README.md#bulb-use-public-infrastructure) for example.
 
 ## Connect a client
 

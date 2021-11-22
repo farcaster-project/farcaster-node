@@ -36,7 +36,7 @@ You can install and launch all the needed services locally by running the follow
 bitcoind -server -testnet
 electrs --network testnet
 monerod --stagenet
-monero-wallet-rpc --stagenet --rpc-bind-port 18083\
+monero-wallet-rpc --stagenet --rpc-bind-port 38083\
     --disable-rpc-login\
     --trusted-daemon\
     --password "pw"\
@@ -47,9 +47,9 @@ Then start the node with:
 
 ```
 farcasterd -vv\
-    --electrum-server ssl://{ip:port}\
-    --monero-daemon http://{ip:port}\
-    --monero-rpc-wallet http://{ip:port}
+    --electrum-server tcp://localhost:60001\
+    --monero-daemon http://localhost:38081\
+    --monero-rpc-wallet http://localhost:38083
 ```
 
 #### Connect a client
@@ -67,6 +67,27 @@ Run `help` command for more details about available commands.
 ### With docker
 
 You can follow the documentation on [how to use `farcasterd` with Docker](./doc/docker-stack.md) and [how to connect a remote client to `farcasterd`](./doc/docker-stack.md#connect-a-client).
+
+Running `monero-wallet-rpc` is also possible with Docker, see [run `monero rpc wallet`](./doc/docker-stack.md#run-monero-rpc-wallet) for more details.
+
+### :bulb: Use public infrastructure
+
+To help quickly test and avoid running the entire infrastructure on your machine you can make use of public nodes. Following is a non-exhaustive list of public nodes.
+
+**Mainnet**
+
+| daemon              | value                                  |
+| ------------------- | -------------------------------------- |
+| `--electrum-server` | `ssl://blockstream.info:700`           |
+| `--monero-daemon`   | `http://node.melo.tools:18081`         |
+| `--monero-daemon`   | `http://node.monerooutreach.org:18081` |
+
+**Testnet/Stagenet**
+
+| daemon              | value                              |
+| ------------------- | ---------------------------------- |
+| `--electrum-server` | `ssl://blockstream.info:993`       |
+| `--monero-daemon`   | `http://stagenet.melo.tools:38081` |
 
 ## Usage
 
