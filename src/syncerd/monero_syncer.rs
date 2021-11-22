@@ -268,8 +268,8 @@ async fn sweep_address(
     wallet.refresh(Some(1)).await?;
     // failsafe to check if the wallet really supports spending
     wallet.query_key(PrivateKeyType::Spend).await?;
-
-    let balance = wallet.get_balance(0, None).await?;
+    let (account, addrs) = (0, None);
+    let balance = wallet.get_balance(account, addrs).await?;
     // only sweep once all the balance is unlocked
     if balance.unlocked_balance != 0 {
         info!("sweeping address with balance: {:?}", balance);
@@ -422,7 +422,7 @@ fn address_polling(
                     .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
                     .await
                 {
-                    Ok(addr_txs) => Some(addr_txs),
+                    Ok(address_transactions) => Some(address_transactions),
                     Err(err) => {
                         error!("error polling addresses: {:?}", err);
                         None
