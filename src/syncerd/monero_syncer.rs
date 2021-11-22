@@ -503,8 +503,7 @@ fn sweep_polling(
             for (id, sweep_address_task) in sweep_addresses.iter() {
                 if let SweepAddressAddendum::Monero(addendum) = sweep_address_task.addendum.clone()
                 {
-                    let mut sweep_address_txs = None;
-                    match sweep_address(
+                    let sweep_address_txs = sweep_address(
                         addendum.address,
                         addendum.view_key,
                         addendum.spend_key,
@@ -512,17 +511,13 @@ fn sweep_polling(
                         Arc::clone(&wallet),
                     )
                     .await
-                    {
-                        Ok(val) => {
-                            sweep_address_txs = val;
-                        }
-                        Err(err) => {
-                            warn!("error polling sweep address {:?}, retrying", err);
-                        }
-                    }
-                    if let Some(txids) = sweep_address_txs {
+                    .unwrap_or_else(|err| {
+                        warn!("error polling sweep address {:?}, retrying", err);
+                        vec![]
+                    });
+                    if !sweep_address_txs.is_empty() {
                         let mut state_guard = state.lock().await;
-                        state_guard.success_sweep(id, txids).await;
+                        state_guard.success_sweep(id, sweep_address_txs).await;
                         drop(state_guard);
                     }
                 }
