@@ -101,7 +101,7 @@ Then use the following values when launching `farcasterd`:
 | mainnet               | `http://localhost:18083` |
 | stagenet              | `http://localhost:38083` |
 
-Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](../README.md#bulb-use-public-infrastructure) for example.
+Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](../README.md#bulb-use-public-infrastructure) for public mainnet daemon hosts.
 
 ## Connect a client
 
