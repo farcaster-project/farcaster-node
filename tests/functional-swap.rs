@@ -1,166 +1,173 @@
 #[macro_use]
 extern crate log;
 
-use clap::Clap;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
+use clap::Clap;
 use farcaster_node::rpc::Client as FarcasterClient;
 use farcaster_node::{Config, LogStyle};
-use sysinfo::{ProcessExt, System, SystemExt};
-use std::process;
-use std::{ffi::OsStr};
+use std::ffi::OsStr;
 use std::io;
+use std::process;
 use std::{thread, time};
+use sysinfo::{ProcessExt, System, SystemExt};
 
+use farcaster_node::cli::Opts;
 use microservices::shell::Exec;
 use std::str::FromStr;
-use farcaster_node::cli::Opts;
-
 
 #[tokio::test]
 async fn swap_test() {
-    // let res = process::Command::new("ls").output().expect("failed to execute swap-cli help");
-    // println!("result: {:?}", res);
-    // let res = process::Command::new("ls").arg("..").output().expect("failed to execute swap-cli help");
-    // println!("result: {:?}", res);
-
-    // electrum_server: "tcp://localhost:50001".to_string(),
-    // monero_daemon: "http://localhost:18081".to_string(),
-    // monero_rpc_wallet: "http://localhost:18084".to_string(),
-    // ./target/debug/farcasterd -vv -d .data_dir_1 
-    // --electrum-server localhost:60001 
-    // --monero-daemon http://localhost:38081 --monero-rpc-wallet http://localhost:18083
-
     let bitcoin_rpc = bitcoin_setup();
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    let (monero_regtest, monero_wallet) = monero_setup().await;
+    let (_monero_regtest, monero_wallet) = monero_setup().await;
     let xmr_address = monero_wallet.get_address(0, None).await.unwrap();
 
     // data directors
-    let data_dir_maker: Vec<&str> = vec!["-d", "tests/.farcaster_node_0"];
+    let data_dir_maker = vec!["-d", "tests/.farcaster_node_0"];
     let data_dir_taker = vec!["-d", "tests/.farcaster_node_1"];
     // destination addresses
     let btc_addr = btc_address.clone().to_string();
     let xmr_addr = xmr_address.address.clone().to_string();
-    // create config from opts
-    let mut opts = Opts::parse_from(
-        vec!["swap-cli"]
-            .into_iter()
-            .chain(data_dir_maker.clone())
-            .chain(vec!["make", &btc_addr, &xmr_addr]),
-    );
-    opts.process();
-    info!("opts: {:?}", opts);
-    let config: Config = opts.shared.clone().into();
-
-    // run("../swap-cli", vec!["help"]).expect("should always be ok");
-
-    let mut client =
-        FarcasterClient::with(config.clone(), config.chain.clone()).expect("Error running client");
 
     let server_args = vec![
-        "--electrum-server", "localhost:50001",
-        "--monero-daemon", "http://localhost:18081",
-        "--monero-rpc-wallet", "http://localhost:18084",
+        "--electrum-server",
+        "localhost:50001",
+        "--monero-daemon",
+        "http://localhost:18081",
+        "--monero-rpc-wallet",
+        "http://localhost:18084",
     ];
-    // let maker_args: Vec<String> = data_dir_maker.clone().extend(server_args.clone());
-    // let taker_args = data_dir_taker.clone().append(&mut server_args.clone());
-    let maker_args = vec![].into_iter().chain(data_dir_maker.clone()).chain(server_args.clone());
-    let taker_args = vec![].into_iter().chain(data_dir_taker.clone()).chain(server_args.clone());
+    let farcasterd_maker_args = vec![]
+        .into_iter()
+        .chain(data_dir_maker.clone())
+        .chain(server_args.clone());
+    let farcasterd_taker_args = vec![]
+        .into_iter()
+        .chain(data_dir_taker.clone())
+        .chain(server_args.clone());
 
-    let mut farcasterd_maker = launch("../farcasterd", maker_args).unwrap();
-    let mut farcasterd_taker = launch("../farcasterd", taker_args).unwrap();
+    let mut farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
+    let mut farcasterd_taker = launch("../farcasterd", farcasterd_taker_args).unwrap();
 
-    let maker_info_args = vec![].into_iter().chain(data_dir_maker.clone()).chain(vec!["info"]);
-    let taker_info_args = vec![].into_iter().chain(data_dir_taker.clone()).chain(vec!["info"]);
-    let (stdout, stderr) = run("../swap-cli", maker_info_args.clone()).expect("should always be ok");
+    let maker_info_args = vec![]
+        .into_iter()
+        .chain(data_dir_maker.clone())
+        .chain(vec!["info"]);
+    let taker_info_args = vec![]
+        .into_iter()
+        .chain(data_dir_taker.clone())
+        .chain(vec!["info"]);
+    let (stdout, stderr) =
+        run("../swap-cli", maker_info_args.clone()).expect("should always be ok");
     println!("stdout: {:?}", stdout);
     println!("stderr: {:?}", stderr);
 
-    // Command::Ls
-    //     .exec(&mut client)
-    //     .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
-
-    info!("executing command: {:?}", opts.command);
-    opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
-
-    // set up maker
-
-    // make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq
-    // 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt
-    // Testnet ECDSA Monero "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1
-    // satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745
-
-    let maker_args =  vec![
+    // make an offer
+    let cli_make_args = data_dir_maker.into_iter().chain(vec![
         "make",
         &btc_addr,
-		&xmr_addr,
-         "Testnet",
-         "ECDSA",
-         "Monero",
-         "1 BTC",
-         "1 XMR",
-         "Alice",
-         "10",
-         "30",
-         "1 satoshi/vByte",
-         "127.0.0.1",
-         "0.0.0.0",
-         "9376",
-    ];
+        &xmr_addr,
+        "Testnet",
+        "ECDSA",
+        "Monero",
+        "1 BTC",
+        "1 XMR",
+        "Alice",
+        "10",
+        "30",
+        "1 satoshi/vByte",
+        "127.0.0.1",
+        "0.0.0.0",
+        "9376",
+    ]);
 
-    let mut opts = Opts::parse_from(
-        vec!["swap-cli"]
-            .into_iter()
-            .chain(data_dir_maker.clone())
-            .chain(maker_args),
-    );
-    let res = opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
-
-    let (stdout, stderr) = run("../swap-cli", maker_info_args).expect("should always be ok");
+    let (stdout, stderr) = run("../swap-cli", cli_make_args).unwrap();
     println!("stdout: {:?}", stdout);
     println!("stderr: {:?}", stderr);
 
-    let offers: Vec<String> = stdout.iter().filter_map(|element| {
+    // get offer strings
+    let (stdout, _stderr) = run("../swap-cli", maker_info_args.clone()).unwrap();
+    let offers: Vec<String> = stdout
+        .iter()
+        .filter_map(|element| {
+            if element.to_string().len() > 5 {
+                let pos = element.find("Offer");
+                if pos.is_some() {
+                    let pos = pos.unwrap();
+                    let len = element.to_string().len() - 1;
+                    let offer = element[pos..len].to_string();
+                    return Some(offer);
+                }
+            }
+            None
+        })
+        .collect();
+    println!("offers: {:?}", offers);
+
+    // take the offer
+    let cli_take_args = data_dir_taker.clone().into_iter().chain(vec![
+        "take",
+        &btc_addr,
+        &xmr_addr,
+        &offers[0],
+        "--without-validation",
+    ]);
+    let (stdout, stderr) = run("../swap-cli", cli_take_args).unwrap();
+    println!("stdout: {:?}", stdout);
+    println!("stderr: {:?}", stderr);
+
+    thread::sleep(time::Duration::from_secs(30));
+
+    let (stdout, stderr) = run("../swap-cli", maker_info_args).unwrap();
+    println!("stdout: {:?}", stdout);
+    println!("stderr: {:?}", stderr);
+    let (stdout, stderr) = run("../swap-cli", taker_info_args).unwrap();
+    println!("stdout: {:?}", stdout);
+    println!("stderr: {:?}", stderr);
+
+    // get the swap id
+    let swap_ids: Vec<String> = stdout.iter().filter_map(|element| {
         if element.to_string().len() > 5 {
-            let pos = element.find("Offer");
+            let pos = element.find("\"0x");
             if pos.is_some() {
                 let pos = pos.unwrap();
-                let len = element.to_string().len()-1;
-                let offer = element[pos..len].to_string();
-                return Some(offer);
+                let len = element.to_string().len() -1;
+                let swap_id = element[pos+1..len].to_string();
+                return Some(swap_id);
             }
         }
         None
     }).collect();
-    println!("offers: {:?}", offers);
+    println!("swap_id: {:?}", swap_ids);
 
-    // set up taker
+    let cli_taker_progress_args = data_dir_taker.into_iter().chain(vec![
+        "progress",
+        &swap_ids[0],
+    ]);
+    let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args).unwrap();
+    println!("stdout: {:?}", stdout);
+    println!("stderr: {:?}", stderr);
 
-    opts = Opts::parse_from(
-        vec!["swap-cli"]
-            .into_iter()
-            .chain(data_dir_taker.clone())
-            .chain(vec![
-                "take", 
-                "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq", 
-                "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt", 
-                &offers[1],
-                "--without-validation",
-            ]),
-    );
-    opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    // get the btc funding address
+    let funding_address: Vec<String> = stdout.iter().filter_map(|element| {
+        println!("element: {:?}", element);
+        if element.to_string().len() > 5 {
+            let pos = element.find("tb1");
+            let end_pos = element.find("\\u{1b}");
+            println!("element: {:?}", element);
+            if pos.is_some() && end_pos.is_some() {
+                let pos = pos.unwrap();
+                let end_pos = end_pos.unwrap() - 1;
+                let swap_id = element[pos..end_pos].to_string();
+                return Some(swap_id);
+            }
+        }
+        None
+    }).collect();
+    println!("funding address: {:?}", funding_address);
 
     // clean up processes
-
-    thread::sleep(time::Duration::from_secs(20));
-
     thread::sleep(time::Duration::from_secs(2));
     let _procs: Vec<_> = System::new_all()
         .get_processes()
@@ -185,7 +192,6 @@ async fn swap_test() {
     farcasterd_taker
         .kill()
         .expect("Couldn't kill farcasterd taker");
-
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
@@ -218,7 +224,7 @@ async fn monero_setup() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
             wallet.open_wallet("test".to_string(), None).await.unwrap();
         }
     }
-    let address = wallet.get_address(0, None).await.unwrap(); 
+    let address = wallet.get_address(0, None).await.unwrap();
     regtest.generate_blocks(200, address.address).await.unwrap();
 
     (regtest, wallet)
@@ -244,12 +250,23 @@ pub fn run(
         bin_path.to_string_lossy()
     );
 
-    let res = process::Command::new(bin_path).args(args).output().expect("failed to run command");
+    let res = process::Command::new(bin_path)
+        .args(args)
+        .output()
+        .expect("failed to run command");
     // println!("result: {:?}", res);
     // let stderr: Vec<String> = stderr.lines().map(|line| line.to_string()).collect();
 
-    let stdout = String::from_utf8_lossy(&res.stdout).to_string().lines().map(|line| line.to_string()).collect();
-    let stderr = String::from_utf8_lossy(&res.stderr).to_string().lines().map(|line| line.to_string()).collect();
+    let stdout = String::from_utf8_lossy(&res.stdout)
+        .to_string()
+        .lines()
+        .map(|line| line.to_string())
+        .collect();
+    let stderr = String::from_utf8_lossy(&res.stderr)
+        .to_string()
+        .lines()
+        .map(|line| line.to_string())
+        .collect();
     Ok((stdout, stderr))
 }
 
