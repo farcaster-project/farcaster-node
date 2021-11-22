@@ -8,7 +8,7 @@ To launch `farcasterd` on your machine clone this project and run:
 
 ```
 docker-compose up -d
-docker-compose logs farcasterd -f --no-log-prefix
+docker-compose logs -f --no-log-prefix farcasterd
 ```
 
 These commands launch a local Monero Wallet RPC and the Farcaster node, then follow the logs produced by `farcasterd`. Daemons used by the services are public testnet servers.
