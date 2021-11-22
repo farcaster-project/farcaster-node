@@ -291,9 +291,10 @@ async fn sweep_address(
         let tx_ids: Vec<Vec<u8>> = res
             .tx_hash_list
             .iter()
-            .map(|hash| {
-                info!("sweep transaction hash {}", hash.to_string());
-                hex::decode(hash.to_string()).unwrap()
+            .filter_map(|hash| {
+                let hash_str = hash.to_string();
+                info!("sweep transaction hash {}", hash_str);
+                hex::decode(hash_str).ok()
             })
             .collect();
 
