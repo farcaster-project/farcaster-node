@@ -14,13 +14,16 @@ use sysinfo::{ProcessExt, System, SystemExt};
 use farcaster_node::cli::Opts;
 use microservices::shell::Exec;
 use std::str::FromStr;
+use colored::Colorize;
+use std::str;
+use std::collections::HashMap;
 
 #[tokio::test]
 async fn swap_test() {
     let bitcoin_rpc = bitcoin_setup();
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    let (_monero_regtest, monero_wallet) = monero_setup().await;
+    let (monero_regtest, monero_wallet) = monero_setup().await;
     let xmr_address = monero_wallet.get_address(0, None).await.unwrap();
 
     // data directors
@@ -64,11 +67,11 @@ async fn swap_test() {
     println!("stderr: {:?}", stderr);
 
     // make an offer
-    let cli_make_args = data_dir_maker.into_iter().chain(vec![
+    let cli_make_args = data_dir_maker.clone().into_iter().chain(vec![
         "make",
         &btc_addr,
         &xmr_addr,
-        "Testnet",
+        "Local",
         "ECDSA",
         "Monero",
         "1 BTC",
@@ -76,7 +79,7 @@ async fn swap_test() {
         "Alice",
         "10",
         "30",
-        "1 satoshi/vByte",
+        "5 satoshi/vByte",
         "127.0.0.1",
         "0.0.0.0",
         "9376",
@@ -145,35 +148,73 @@ async fn swap_test() {
         "progress",
         &swap_ids[0],
     ]);
-    let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args).unwrap();
+    let cli_maker_progress_args = data_dir_maker.into_iter().chain(vec![
+        "progress",
+        &swap_ids[0],
+    ]);
+    let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
     println!("stdout: {:?}", stdout);
     println!("stderr: {:?}", stderr);
 
+
+
     // get the btc funding address
     let funding_address: Vec<String> = stdout.iter().filter_map(|element| {
-        println!("element: {:?}", element);
         if element.to_string().len() > 5 {
-            let pos = element.find("tb1");
-            let end_pos = element.find("\\u{1b}");
-            println!("element: {:?}", element);
-            if pos.is_some() && end_pos.is_some() {
+            let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
+            let plain = str::from_utf8(&plain_bytes).unwrap();
+            let pos = plain.find("bcr");
+            if pos.is_some() {
                 let pos = pos.unwrap();
-                let end_pos = end_pos.unwrap() - 1;
-                let swap_id = element[pos..end_pos].to_string();
+                let len = plain.to_string().len();
+                let swap_id = plain[pos..len].to_string();
                 return Some(swap_id);
             }
         }
         None
     }).collect();
-    println!("funding address: {:?}", funding_address);
+    let address = bitcoin::Address::from_str(&funding_address[0]).unwrap();
+    let amount = bitcoin::Amount::ONE_SAT * 100100000;
+
+    // fund the address
+    let txid = bitcoin_rpc
+        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .unwrap();
+
+    thread::sleep(time::Duration::from_secs(30));
+
+    // let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
+    // println!("stdout: {:?}", stdout);
+    // println!("stderr: {:?}", stderr);
+    let (stdout, stderr) = run("../swap-cli", cli_maker_progress_args).unwrap();
+    println!("stdout: {:?}", stdout);
+    println!("stderr: {:?}", stderr);
+
+    // get the monero funding address
+    let monero_addresses: Vec<String> = stdout.iter().filter_map(|element| {
+        if element.to_string().len() > 5 {
+            println!("element: {:?}", element);
+            let pos = element.find("Success");
+            if pos.is_some() {
+                let monero_address = element[9..].to_string();
+                return Some(monero_address);
+            }
+        }
+        None
+    }).collect();
+    println!("monero address {:?}", monero_addresses);
+
+    let monero_address = monero::Address::from_str(&monero_addresses[0]).unwrap();
+    send_monero(&monero_wallet, monero_address, 1000000000).await;
+
+    thread::sleep(time::Duration::from_secs(30));
 
     // clean up processes
-    thread::sleep(time::Duration::from_secs(2));
     let _procs: Vec<_> = System::new_all()
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["peerd", "swapd", "walletd"].contains(&process.name())
+            ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
                 && [farcasterd_maker.id(), farcasterd_taker.id()]
                     .contains(&(process.parent().unwrap() as u32))
         })
@@ -206,7 +247,7 @@ fn bitcoin_setup() -> bitcoincore_rpc::Client {
         _ => {}
     }
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc.generate_to_address(100, &address).unwrap();
+    bitcoin_rpc.generate_to_address(200, &address).unwrap();
     bitcoin_rpc
 }
 
@@ -260,12 +301,12 @@ pub fn run(
     let stdout = String::from_utf8_lossy(&res.stdout)
         .to_string()
         .lines()
-        .map(|line| line.to_string())
+        .map(|line| line.to_string().normal().clear().to_string())
         .collect();
     let stderr = String::from_utf8_lossy(&res.stderr)
         .to_string()
         .lines()
-        .map(|line| line.to_string())
+        .map(|line| line.to_string().normal().clear().to_string())
         .collect();
     Ok((stdout, stderr))
 }
@@ -299,4 +340,31 @@ pub fn launch(
         error!("Error launching {}: {}", name, err);
         err
     })
+}
+
+async fn send_monero(
+    wallet: &monero_rpc::WalletClient,
+    address: monero::Address,
+    amount: u64,
+) -> Vec<u8> {
+    let mut destination: HashMap<monero::Address, u64> = HashMap::new();
+    destination.insert(address, amount);
+    let options = monero_rpc::TransferOptions {
+        account_index: None,
+        subaddr_indices: None,
+        mixin: None,
+        ring_size: None,
+        unlock_time: None,
+        payment_id: None,
+        do_not_relay: None,
+    };
+    let transaction = wallet
+        .transfer(
+            destination.clone(),
+            monero_rpc::TransferPriority::Default,
+            options.clone(),
+        )
+        .await
+        .unwrap();
+    hex::decode(transaction.tx_hash.to_string()).unwrap()
 }
