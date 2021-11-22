@@ -7,9 +7,12 @@ This project provide some docker images and a docker compose setup to help runni
 To launch `farcasterd` on your machine clone this project and run:
 
 ```
+docker pull ghcr.io/farcaster-project/farcaster-node/farcasterd:latest
 docker-compose up -d
 docker-compose logs -f --no-log-prefix farcasterd
 ```
+
+:mega: Don't forget to pull images to ensure you are running the lastest version!
 
 These commands launch a local Monero Wallet RPC and the Farcaster node, then follow the logs produced by `farcasterd`. Daemons used by the services are public testnet servers.
 
