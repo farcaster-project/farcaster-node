@@ -240,9 +240,6 @@ async fn sweep_address(
         .await
     {
         Ok(_) => {
-            wallet
-                .open_wallet(wallet_filename.clone(), Some(password.clone()))
-                .await?;
             debug!("opened sweep wallet");
         }
         Err(err) => {
