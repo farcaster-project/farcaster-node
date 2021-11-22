@@ -19,6 +19,13 @@ Install `swap-cli` on your machine (follow the documentation on [build and run l
 swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info
 ```
 
+For ease of use you can also create an alias:
+
+```
+alias swap='swap-cli -x "lnpz://127.0.0.1:9981/?api=esb"'
+swap info
+```
+
 You should get a returned value from the node. You can use this stack to take a public offer or to make an offer. In the case you want to make an offer make sure the public address and the port will be reachable from external networks.
 
 :mega: The only port forwarded to the host is `9735`, make sure to use this one when making offers.
@@ -94,10 +101,10 @@ farcasterd -vv -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?ap
 
 **Client**
 
-The following client can instruct the above `farcasterd` to return general informations as follows:
+The following client can instruct the above `farcasterd` to return general informations as follows (client uses the control bus to commuicate with `farcasterd`):
 
 ```
-swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb" info
+swap-cli -x "lnpz://127.0.0.1:9981/?api=esb" info
 ```
 
 :mega: It is worth noting that _ctl_ and _msg_ sockets can use different type of communication. E.g. the docker stack only binds the _ctl_ socket over the network and keeps the _msg_ to its default `msg.rpc` file inside the data directory.
