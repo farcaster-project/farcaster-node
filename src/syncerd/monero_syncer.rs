@@ -298,15 +298,15 @@ async fn sweep_address(
             })
             .collect();
 
-        return Ok(Some(tx_ids));
+        Ok(tx_ids)
     } else {
         info!(
             "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}",
             balance.unlocked_balance, balance.balance
         );
+        trace!("releasing sweep wallet lock");
+        Ok(vec![])
     }
-    trace!("releasing sweep wallet lock");
-    Ok(None)
 }
 
 #[derive(Default)]
