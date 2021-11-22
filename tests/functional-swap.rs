@@ -156,8 +156,6 @@ async fn swap_test() {
     println!("stdout: {:?}", stdout);
     println!("stderr: {:?}", stderr);
 
-
-
     // get the btc funding address
     let funding_address: Vec<String> = stdout.iter().filter_map(|element| {
         if element.to_string().len() > 5 {
@@ -186,7 +184,7 @@ async fn swap_test() {
     // let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
     // println!("stdout: {:?}", stdout);
     // println!("stderr: {:?}", stderr);
-    let (stdout, stderr) = run("../swap-cli", cli_maker_progress_args).unwrap();
+    let (stdout, stderr) = run("../swap-cli", cli_maker_progress_args.clone()).unwrap();
     println!("stdout: {:?}", stdout);
     println!("stderr: {:?}", stderr);
 
@@ -205,9 +203,18 @@ async fn swap_test() {
     println!("monero address {:?}", monero_addresses);
 
     let monero_address = monero::Address::from_str(&monero_addresses[0]).unwrap();
-    send_monero(&monero_wallet, monero_address, 1000000000).await;
+    send_monero(&monero_wallet, monero_address, 1000000000000).await;
 
-    thread::sleep(time::Duration::from_secs(30));
+    thread::sleep(time::Duration::from_secs(60));
+
+    let (stdout, stderr) = run("../swap-cli", cli_maker_progress_args).unwrap();
+    println!("stdout: {:?}", stdout);
+    println!("stderr: {:?}", stderr);
+
+    let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
+    println!("stdout: {:?}", stdout);
+    println!("stderr: {:?}", stderr);
+
 
     // clean up processes
     let _procs: Vec<_> = System::new_all()
