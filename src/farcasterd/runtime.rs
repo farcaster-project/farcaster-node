@@ -94,7 +94,8 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         node_ids: none!(),
         wallet_token,
         pending_requests: none!(),
-        syncers: none!(),
+        syncer_services: none!(),
+        syncer_clients: none!(),
         consumed_offers: none!(),
         progress: none!(),
         stats: none!(),
@@ -120,7 +121,8 @@ pub struct Runtime {
     node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
-    syncers: HashMap<(Coin, Network), ServiceId>,
+    syncer_services: HashMap<(Coin, Network), ServiceId>,
+    syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
     stats: Stats,
 }
@@ -204,6 +206,26 @@ impl Runtime {
         for offer in &offers2rm {
             self.consumed_offers.remove(offer);
         }
+
+        self.syncer_clients = self
+            .syncer_clients
+            .drain()
+            .map(|(key, mut xs)| {
+                xs.remove(swapid);
+                (key, xs)
+            })
+            .collect();
+
+        let syncers_wo_client: Vec<_> = self
+            .syncer_clients
+            .iter()
+            .filter(|(_, xs)| xs.is_empty())
+            .map(|(k, _)| k)
+            .collect();
+
+        if !syncers_wo_client.is_empty() {
+            warn!("Some syncers have no client and may exit");
+        }
     }
 
     fn consumed_offers_contains(&self, offerid: &PublicOfferId) -> bool {
@@ -229,18 +251,6 @@ impl Runtime {
         } else {
             Err(Error::Farcaster("Unknown swapd".to_string()))
         }
-    }
-    fn syncers_up(&self, coin_arb: Coin, coin_acc: Coin, network: Network) -> Result<(), Error> {
-        if coin_arb == coin_acc {
-            return Err(Error::Syncer(SyncerError::InvalidConfig));
-        }
-        if !self.syncers.contains_key(&(coin_arb.clone(), network)) {
-            launch("syncerd", &[coin_arb.to_string(), network.to_string()])?;
-        }
-        if !self.syncers.contains_key(&(coin_acc.clone(), network)) {
-            launch("syncerd", &[coin_acc.to_string(), network.to_string()])?;
-        }
-        Ok(())
     }
     fn handle_rpc_msg(
         &mut self,
@@ -365,9 +375,10 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Syncer(coin, network) => {
-                        // TODO: check if correct network
-                        self.syncers
+                    ServiceId::Syncer(coin, network)
+                        if !self.syncer_services.contains_key(&(coin.clone(), *network)) =>
+                    {
+                        self.syncer_services
                             .insert((coin.clone(), *network), source.clone());
                     }
                     _ => {
@@ -387,8 +398,22 @@ impl Runtime {
                         swap_params.report_to.clone(), // walletd
                         Request::Progress(format!("Swap daemon {} operational", source)),
                     ));
+                    let swapid = get_swap_id(&source)?;
                     // when online, Syncers say Hello, then they get registered to self.syncers
-                    self.syncers_up(Coin::Bitcoin, Coin::Monero, *network)?;
+                    syncers_up(
+                        &self.syncer_services,
+                        &mut self.syncer_clients,
+                        Coin::Bitcoin,
+                        *network,
+                        swapid,
+                    )?;
+                    syncers_up(
+                        &self.syncer_services,
+                        &mut self.syncer_clients,
+                        Coin::Monero,
+                        *network,
+                        swapid,
+                    )?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -414,7 +439,22 @@ impl Runtime {
                         Params::Alice(_) => {}
                         Params::Bob(_) => {}
                     }
-                    self.syncers_up(Coin::Bitcoin, Coin::Monero, *network)?;
+
+                    let swapid = get_swap_id(&source)?;
+                    syncers_up(
+                        &self.syncer_services,
+                        &mut self.syncer_clients,
+                        Coin::Bitcoin,
+                        *network,
+                        swapid,
+                    )?;
+                    syncers_up(
+                        &self.syncer_services,
+                        &mut self.syncer_clients,
+                        Coin::Monero,
+                        *network,
+                        swapid,
+                    )?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
                         ServiceBus::Ctl,
@@ -996,6 +1036,24 @@ impl Runtime {
         )?;
         Ok(())
     }
+}
+
+fn syncers_up(
+    services: &HashMap<(Coin, Network), ServiceId>,
+    clients: &mut HashMap<(Coin, Network), HashSet<SwapId>>,
+    coin: Coin,
+    network: Network,
+    swap_id: SwapId,
+) -> Result<(), Error> {
+    let k = (coin.clone(), network);
+    if !services.contains_key(&k) {
+        launch("syncerd", &[coin.to_string(), network.to_string()])?;
+        clients.insert(k.clone(), none!());
+    }
+    if let Some(xs) = clients.get_mut(&k) {
+        xs.insert(swap_id);
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
