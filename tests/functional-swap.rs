@@ -2,9 +2,6 @@
 extern crate log;
 
 use bitcoincore_rpc::{Auth, Client, RpcApi};
-use clap::Clap;
-use farcaster_node::rpc::Client as FarcasterClient;
-use farcaster_node::{Config, LogStyle};
 use std::ffi::OsStr;
 use std::io;
 use std::process;
@@ -12,8 +9,6 @@ use std::{thread, time};
 use sysinfo::{ProcessExt, System, SystemExt};
 
 use colored::Colorize;
-use farcaster_node::cli::Opts;
-use microservices::shell::Exec;
 use std::collections::HashMap;
 use std::str;
 use std::str::FromStr;
@@ -65,10 +60,12 @@ async fn swap_test() {
         .into_iter()
         .chain(data_dir_maker.clone())
         .chain(vec!["info"]);
-    let taker_info_args = vec![]
+    let taker_info_args: Vec<String> = vec![]
         .into_iter()
         .chain(data_dir_taker.clone())
-        .chain(vec!["info"]);
+        .chain(vec!["info"])
+        .map(|v| v.to_string())
+        .collect();
 
     // test connection to farcasterd and check that swap-cli is in the correct place
     run("../swap-cli", maker_info_args.clone()).unwrap();
@@ -123,100 +120,39 @@ async fn swap_test() {
     run("../swap-cli", cli_take_args).unwrap();
 
     // run until the swap id is available
-    let mut swap_ids: Vec<String> = vec![];
-    loop {
-        let (stdout, _stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
-        swap_ids = stdout
-            .iter()
-            .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    let pos = element.find("\"0x");
-                    if pos.is_some() {
-                        let pos = pos.unwrap();
-                        let len = element.to_string().len() - 1;
-                        let swap_id = element[pos + 1..len].to_string();
-                        return Some(swap_id);
-                    }
-                }
-                None
-            })
-            .collect();
-        if !swap_ids.is_empty() {
-            break;
-        }
-        thread::sleep(time::Duration::from_secs(2));
-    }
+    let swap_ids = get_swap_ids(60, taker_info_args.clone());
 
-    let cli_taker_progress_args = data_dir_taker
+    let cli_taker_progress_args: Vec<String> = data_dir_taker
         .into_iter()
-        .chain(vec!["progress", &swap_ids[0]]);
-    let cli_maker_progress_args = data_dir_maker
+        .chain(vec!["progress", &swap_ids[0]])
+        .map(|v| v.to_string())
+        .collect();
+
+    let cli_maker_progress_args: Vec<String> = data_dir_maker
         .into_iter()
-        .chain(vec!["progress", &swap_ids[0]]);
+        .chain(vec!["progress", &swap_ids[0]])
+        .map(|v| v.to_string())
+        .collect();
+
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address)
+        .unwrap();
 
     // run until the taker has the btc funding address
-    let mut funding_address: Vec<String> = vec![];
-    loop {
-        let (stdout, _stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
-        // get the btc funding address
-        funding_address = stdout
-            .iter()
-            .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
-                    let plain = str::from_utf8(&plain_bytes).unwrap();
-                    let pos = plain.find("bcr");
-                    if pos.is_some() {
-                        let pos = pos.unwrap();
-                        let len = plain.to_string().len();
-                        let swap_id = plain[pos..len].to_string();
-                        return Some(swap_id);
-                    }
-                }
-                None
-            })
-            .collect();
-
-        if !funding_address.is_empty() {
-            break;
-        }
-        thread::sleep(time::Duration::from_secs(2));
-    }
-
-    let address = bitcoin::Address::from_str(&funding_address[0]).unwrap();
+    let address = get_bitcoin_funding_address(60, cli_taker_progress_args.clone());
 
     // fund the bitcoin address
     let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
+    monero_regtest
+        .generate_blocks(11, reusable_xmr_address)
+        .await
+        .unwrap();
 
     // run until the taker has the monero funding address
-    let mut monero_addresses: Vec<String> = vec![];
-    loop {
-        let (stdout, _stderr) = run("../swap-cli", cli_maker_progress_args.clone()).unwrap();
-
-        // get the monero funding address
-        monero_addresses = stdout
-            .iter()
-            .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    if element.find("Success: 4").is_some() {
-                        let monero_address = element[9..].to_string();
-                        return Some(monero_address);
-                    }
-                }
-                None
-            })
-            .collect();
-
-        if !monero_addresses.is_empty() {
-            break;
-        }
-        thread::sleep(time::Duration::from_secs(2));
-    }
-
-    let monero_address = monero::Address::from_str(&monero_addresses[0]).unwrap();
+    let monero_address = get_monero_funding_address(60, cli_maker_progress_args.clone());
     send_monero(&monero_wallet, monero_address, 1000000000000).await;
 
     // generate some blocks on bitcoin's side for confirmations
@@ -225,36 +161,16 @@ async fn swap_test() {
         .unwrap();
 
     // run until the AliceState(Finish) is received
-    loop {
-        let (stdout, _stderr) = run("../swap-cli", cli_maker_progress_args.clone()).unwrap();
-
-        let alice_finish: Vec<String> = stdout
-            .iter()
-            .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
-                    let plain = str::from_utf8(&plain_bytes).unwrap();
-                    if plain.find("AliceState(Finish").is_some() {
-                        return Some(plain.to_string());
-                    }
-                }
-                None
-            })
-            .collect();
-
-        if !alice_finish.is_empty() {
-            break;
-        }
-
-        thread::sleep(time::Duration::from_secs(2));
-    }
+    get_finish_state_transition(
+        60,
+        cli_maker_progress_args.clone(),
+        "AliceState(Finish)".to_string(),
+    );
 
     // generate some blocks on bitcoin's side
     bitcoin_rpc
         .generate_to_address(1, &reusable_btc_address)
         .unwrap();
-
-    thread::sleep(time::Duration::from_secs(20));
 
     let (_stdout, _stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
 
@@ -275,28 +191,11 @@ async fn swap_test() {
         .unwrap();
 
     // run until the BobState(Finish) is received
-    loop {
-        let (stdout, _stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
-        let bob_finish: Vec<String> = stdout
-            .iter()
-            .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
-                    let plain = str::from_utf8(&plain_bytes).unwrap();
-                    if plain.find("BobState(Finish").is_some() {
-                        return Some(plain.to_string());
-                    }
-                }
-                None
-            })
-            .collect();
-
-        if !bob_finish.is_empty() {
-            break;
-        }
-
-        thread::sleep(time::Duration::from_secs(2));
-    }
+    get_finish_state_transition(
+        60,
+        cli_taker_progress_args.clone(),
+        "BobState(Finish)".to_string(),
+    );
 
     monero_regtest
         .generate_blocks(1, reusable_xmr_address)
@@ -332,6 +231,122 @@ async fn swap_test() {
     farcasterd_taker
         .kill()
         .expect("Couldn't kill farcasterd taker");
+}
+
+fn get_swap_ids(retries: u32, args: Vec<String>) -> Vec<String> {
+    for _ in 0..retries {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let swap_ids: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let pos = element.find("\"0x");
+                    if pos.is_some() {
+                        let pos = pos.unwrap();
+                        let len = element.to_string().len() - 1;
+                        let swap_id = element[pos + 1..len].to_string();
+                        return Some(swap_id);
+                    }
+                }
+                None
+            })
+            .collect();
+        if !swap_ids.is_empty() {
+            return swap_ids;
+        }
+        thread::sleep(time::Duration::from_secs(1));
+    }
+    panic!("timeout before any swapid could be retrieved");
+}
+
+fn get_bitcoin_funding_address(retries: u32, args: Vec<String>) -> bitcoin::Address {
+    for _ in 0..retries {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        // get the btc funding address
+        let bitcoin_address: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
+                    let plain = str::from_utf8(&plain_bytes).unwrap();
+                    let pos = plain.find("bcr");
+                    if pos.is_some() {
+                        let pos = pos.unwrap();
+                        let len = plain.to_string().len();
+                        let swap_id = plain[pos..len].to_string();
+                        return Some(swap_id);
+                    }
+                }
+                None
+            })
+            .collect();
+
+        if !bitcoin_address.is_empty() {
+            return bitcoin::Address::from_str(&bitcoin_address[0]).unwrap();
+        }
+        thread::sleep(time::Duration::from_secs(1));
+    }
+    panic!("timeout before any bitcoin funding address could be retrieved");
+}
+
+fn get_monero_funding_address(retries: u32, args: Vec<String>) -> monero::Address {
+    for _ in 0..retries {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+
+        // get the monero funding address
+        let monero_addresses: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    if element.find("Success: 4").is_some() {
+                        let monero_address = element[9..].to_string();
+                        return Some(monero_address);
+                    }
+                }
+                None
+            })
+            .collect();
+
+        if !monero_addresses.is_empty() {
+            return monero::Address::from_str(&monero_addresses[0]).unwrap();
+        }
+        thread::sleep(time::Duration::from_secs(1));
+    }
+    panic!("timeout before any monero funding address could be retrieved");
+}
+
+fn get_finish_state_transition(
+    retries: u32,
+    args: Vec<String>,
+    finish_state: String,
+) -> Vec<String> {
+    for _ in 0..retries {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+
+        let alice_finish: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
+                    let plain = str::from_utf8(&plain_bytes).unwrap();
+                    if plain.find(&finish_state).is_some() {
+                        return Some(plain.to_string());
+                    }
+                }
+                None
+            })
+            .collect();
+
+        if !alice_finish.is_empty() {
+            return alice_finish;
+        }
+
+        thread::sleep(time::Duration::from_secs(1));
+    }
+    panic!(
+        "timeout before finish state {:?} could be retrieved",
+        finish_state
+    );
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
