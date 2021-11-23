@@ -42,9 +42,9 @@ pub const FARCASTER_NODE_CONFIG: &str = "{data_dir}/farcaster.toml";
 pub const FARCASTER_NODE_TOR_PROXY: &str = "127.0.0.1:9050";
 pub const FARCASTER_NODE_KEY_FILE: &str = "{data_dir}/key.dat";
 
-pub const ELECTRUM_SERVER: &str = "tcp://localhost:50001";
-pub const MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
-pub const MONERO_RPC_WALLET: &str = "http://localhost:18083";
+pub const FARCASTER_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
+pub const FARCASTER_MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
+pub const FARCASTER_MONERO_RPC_WALLET: &str = "http://localhost:18083";
 
 /// Shared options used by different binaries
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
@@ -146,8 +146,8 @@ pub struct Opts {
     #[clap(
         long,
         global = true,
-        default_value = "tcp://localhost:50001",
-        env = "ELECTRUM_SERVER"
+        default_value = FARCASTER_ELECTRUM_SERVER,
+        env = "FARCASTER_ELECTRUM_SERVER"
     )]
     pub electrum_server: String,
 
@@ -155,8 +155,8 @@ pub struct Opts {
     #[clap(
         long,
         global = true,
-        default_value = "http://node.monerooutreach.org:18081",
-        env = "MONERO_DAEMON"
+        default_value = FARCASTER_MONERO_DAEMON,
+        env = "FARCASTER_MONERO_DAEMON"
     )]
     pub monero_daemon: String,
 
@@ -164,8 +164,8 @@ pub struct Opts {
     #[clap(
         long,
         global = true,
-        default_value = "http://localhost:18083",
-        env = "MONERO_RPC_WALLET"
+        default_value = FARCASTER_MONERO_RPC_WALLET,
+        env = "FARCASTER_MONERO_RPC_WALLET"
     )]
     pub monero_rpc_wallet: String,
 }
