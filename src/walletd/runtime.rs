@@ -974,11 +974,11 @@ impl Runtime {
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
                         let funding = create_funding(&mut key_manager, offer.network)?;
                         let funding_addr = funding.get_address()?;
-                        let funding_fee = 150;
-                        let funding_amount = offer.arbitrating_amount.as_sat() + funding_fee;
+                        let funding_fee = bitcoin::Amount::from_sat(150);
+                        let funding_amount = offer.arbitrating_amount + funding_fee;
                         info!(
-                            "Send {} sats to address: {}",
-                            funding_amount.bright_green_bold(),
+                            "Send {} to address: {}",
+                            funding_amount.to_string().bright_green_bold(),
                             funding_addr.addr(),
                         );
                         info!("Loading {}", "Wallet::Bob".bright_yellow());
