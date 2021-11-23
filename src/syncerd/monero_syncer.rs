@@ -235,31 +235,21 @@ async fn sweep_address(
     let wallet = wallet_mutex.lock().await;
     trace!("taking sweep wallet lock");
 
-    match wallet
+    while let Err(_) =  wallet
         .open_wallet(wallet_filename.clone(), Some(password.clone()))
         .await
     {
-        Ok(_) => {
-            debug!("opened sweep wallet");
-        }
-        Err(err) => {
-            warn!(
-                "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
-                err,
-            );
-            wallet
-                .generate_from_keys(GenerateFromKeysArgs {
-                    restore_height: Some(1),
-                    filename: wallet_filename.clone(),
-                    address,
-                    spendkey: Some(keypair.spend),
-                    viewkey: keypair.view,
-                    password: password.clone(),
-                    autosave_current: Some(true),
-                })
-                .await?;
-            wallet.open_wallet(wallet_filename, Some(password)).await?;
-        }
+        wallet
+            .generate_from_keys(GenerateFromKeysArgs {
+                restore_height: Some(1),
+                filename: wallet_filename.clone(),
+                address,
+                spendkey: Some(keypair.spend),
+                viewkey: keypair.view,
+                password: password.clone(),
+                autosave_current: Some(true),
+            })
+            .await?;
     }
 
     wallet.refresh(Some(1)).await?;
