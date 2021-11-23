@@ -11,16 +11,19 @@ use std::process;
 use std::{thread, time};
 use sysinfo::{ProcessExt, System, SystemExt};
 
+use colored::Colorize;
 use farcaster_node::cli::Opts;
 use microservices::shell::Exec;
-use std::str::FromStr;
-use colored::Colorize;
-use std::str;
 use std::collections::HashMap;
+use std::str;
+use std::str::FromStr;
 
 #[tokio::test]
 async fn swap_test() {
     let bitcoin_rpc = bitcoin_setup();
+    let reusable_btc_address =
+        bitcoin::Address::from_str("bcrt1q3rc4sm3w9fr6a46n08znfjt7eu2yhhel6j8rsa").unwrap();
+    let reusable_xmr_address = monero::Address::from_str("44CpGC77Kn6exUWYCUwfaUYmDeKn7MyRcNPikgeHBCz8M6LXUC3fGCWNMW7UACHyTL6QxzqKxvJbu5o2VESLzCaeNHNUkwv").unwrap();
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     let (monero_regtest, monero_wallet) = monero_setup().await;
@@ -61,10 +64,9 @@ async fn swap_test() {
         .into_iter()
         .chain(data_dir_taker.clone())
         .chain(vec!["info"]);
-    let (stdout, stderr) =
-        run("../swap-cli", maker_info_args.clone()).expect("should always be ok");
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
+
+    // test connection to farcasterd and check that swap-cli is in the correct place
+    run("../swap-cli", maker_info_args.clone()).unwrap();
 
     // make an offer
     let cli_make_args = data_dir_maker.clone().into_iter().chain(vec![
@@ -116,96 +118,115 @@ async fn swap_test() {
         &offers[0],
         "--without-validation",
     ]);
-    let (stdout, stderr) = run("../swap-cli", cli_take_args).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
+    run("../swap-cli", cli_take_args).unwrap();
 
-    thread::sleep(time::Duration::from_secs(30));
-
-    let (stdout, stderr) = run("../swap-cli", maker_info_args).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
-    let (stdout, stderr) = run("../swap-cli", taker_info_args).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
-
-    // get the swap id
-    let swap_ids: Vec<String> = stdout.iter().filter_map(|element| {
-        if element.to_string().len() > 5 {
-            let pos = element.find("\"0x");
-            if pos.is_some() {
-                let pos = pos.unwrap();
-                let len = element.to_string().len() -1;
-                let swap_id = element[pos+1..len].to_string();
-                return Some(swap_id);
-            }
+    // run until the swap id is available
+    let mut swap_ids: Vec<String> = vec![];
+    loop {
+        let (stdout, _stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
+        swap_ids = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let pos = element.find("\"0x");
+                    if pos.is_some() {
+                        let pos = pos.unwrap();
+                        let len = element.to_string().len() - 1;
+                        let swap_id = element[pos + 1..len].to_string();
+                        return Some(swap_id);
+                    }
+                }
+                None
+            })
+            .collect();
+        if !swap_ids.is_empty() {
+            break;
         }
-        None
-    }).collect();
-    println!("swap_id: {:?}", swap_ids);
+        thread::sleep(time::Duration::from_secs(2));
+    }
+    println!("swap ids: {:?}", swap_ids);
 
-    let cli_taker_progress_args = data_dir_taker.into_iter().chain(vec![
-        "progress",
-        &swap_ids[0],
-    ]);
-    let cli_maker_progress_args = data_dir_maker.into_iter().chain(vec![
-        "progress",
-        &swap_ids[0],
-    ]);
-    let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
+    let cli_taker_progress_args = data_dir_taker
+        .into_iter()
+        .chain(vec!["progress", &swap_ids[0]]);
+    let cli_maker_progress_args = data_dir_maker
+        .into_iter()
+        .chain(vec!["progress", &swap_ids[0]]);
 
-    // get the btc funding address
-    let funding_address: Vec<String> = stdout.iter().filter_map(|element| {
-        if element.to_string().len() > 5 {
-            let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
-            let plain = str::from_utf8(&plain_bytes).unwrap();
-            let pos = plain.find("bcr");
-            if pos.is_some() {
-                let pos = pos.unwrap();
-                let len = plain.to_string().len();
-                let swap_id = plain[pos..len].to_string();
-                return Some(swap_id);
-            }
+    // run until the taker has the btc funding address
+    let mut funding_address: Vec<String> = vec![];
+    loop {
+        let (stdout, _stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
+        // get the btc funding address
+        funding_address = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
+                    let plain = str::from_utf8(&plain_bytes).unwrap();
+                    let pos = plain.find("bcr");
+                    if pos.is_some() {
+                        let pos = pos.unwrap();
+                        let len = plain.to_string().len();
+                        let swap_id = plain[pos..len].to_string();
+                        return Some(swap_id);
+                    }
+                }
+                None
+            })
+            .collect();
+
+        if !funding_address.is_empty() {
+            break;
         }
-        None
-    }).collect();
+        thread::sleep(time::Duration::from_secs(2));
+    }
+
+    println!("btc funding address: {:?}", funding_address);
+
     let address = bitcoin::Address::from_str(&funding_address[0]).unwrap();
     let amount = bitcoin::Amount::ONE_SAT * 100100000;
 
-    // fund the address
-    let txid = bitcoin_rpc
+    // fund the bitcoin address
+    bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    thread::sleep(time::Duration::from_secs(30));
+    // run until the taker has the monero funding address
+    let mut monero_addresses: Vec<String> = vec![];
+    loop {
+        let (stdout, _stderr) = run("../swap-cli", cli_maker_progress_args.clone()).unwrap();
 
-    // let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
-    // println!("stdout: {:?}", stdout);
-    // println!("stderr: {:?}", stderr);
-    let (stdout, stderr) = run("../swap-cli", cli_maker_progress_args.clone()).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
+        // get the monero funding address
+        monero_addresses = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    if element.find("Success: 4").is_some() {
+                        let monero_address = element[9..].to_string();
+                        return Some(monero_address);
+                    }
+                }
+                None
+            })
+            .collect();
 
-    // get the monero funding address
-    let monero_addresses: Vec<String> = stdout.iter().filter_map(|element| {
-        if element.to_string().len() > 5 {
-            println!("element: {:?}", element);
-            let pos = element.find("Success");
-            if pos.is_some() {
-                let monero_address = element[9..].to_string();
-                return Some(monero_address);
-            }
+        if !monero_addresses.is_empty() {
+            break;
         }
-        None
-    }).collect();
-    println!("monero address {:?}", monero_addresses);
+        thread::sleep(time::Duration::from_secs(2));
+    }
 
+    println!("monero address {:?}", monero_addresses);
     let monero_address = monero::Address::from_str(&monero_addresses[0]).unwrap();
     send_monero(&monero_wallet, monero_address, 1000000000000).await;
 
-    thread::sleep(time::Duration::from_secs(60));
+    // generate some blocks on bitcoin's side
+    thread::sleep(time::Duration::from_secs(30));
+    bitcoin_rpc
+        .generate_to_address(7, &reusable_btc_address)
+        .unwrap();
+    thread::sleep(time::Duration::from_secs(30));
 
     let (stdout, stderr) = run("../swap-cli", cli_maker_progress_args).unwrap();
     println!("stdout: {:?}", stdout);
@@ -214,6 +235,28 @@ async fn swap_test() {
     let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
     println!("stdout: {:?}", stdout);
     println!("stderr: {:?}", stderr);
+
+    let res = bitcoin_rpc
+        .get_received_by_address(&btc_address, None)
+        .unwrap();
+    println!("res: {:?}", res);
+
+    monero_wallet.refresh(Some(1)).await.unwrap();
+    let balance = monero_wallet.get_balance(0, None).await.unwrap();
+    println!("balance: {:?}", balance);
+
+    // generate some blocks on monero's side
+    thread::sleep(time::Duration::from_secs(10));
+    monero_regtest.generate_blocks(10, reusable_xmr_address).await.unwrap();
+    thread::sleep(time::Duration::from_secs(10));
+    monero_regtest.generate_blocks(1, reusable_xmr_address).await.unwrap();
+    thread::sleep(time::Duration::from_secs(10));
+    monero_regtest.generate_blocks(1, reusable_xmr_address).await.unwrap();
+    thread::sleep(time::Duration::from_secs(10));
+
+    monero_wallet.refresh(Some(1)).await.unwrap();
+    let balance = monero_wallet.get_balance(0, None).await.unwrap();
+    println!("balance: {:?}", balance);
 
 
     // clean up processes
