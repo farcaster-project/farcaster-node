@@ -24,7 +24,7 @@ fn spawn_swap() {
     info!("opts: {:?}", opts);
     let config: Config = opts.shared.clone().into();
 
-    let mut client = Client::with(config.clone(), config.chain).expect("Error running client");
+    let mut client = Client::with(config).expect("Error running client");
 
     let mut farcasterd_maker = launch("../farcasterd", data_dir_maker.clone()).unwrap();
     let mut farcasterd_taker = launch("../farcasterd", data_dir_taker.clone()).unwrap();

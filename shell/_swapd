@@ -25,8 +25,8 @@ _swapd() {
 '--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
+'-n+[Blockchain networks to use for the swaps (mainnet, testnet, local)]' \
+'--network=[Blockchain networks to use for the swaps (mainnet, testnet, local)]' \
 '--electrum-server=[Electrum server to use]' \
 '--monero-daemon=[Monero daemon to use]' \
 '--monero-rpc-wallet=[Monero rpc wallet to use]' \
@@ -36,7 +36,7 @@ _swapd() {
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':swap-id -- Channel id:' \
+':swap-id -- Swap id:' \
 ':public-offer -- Public offer to initiate swapd runtime:' \
 ':trade-role -- Trade role of participant (Maker or Taker):' \
 && ret=0

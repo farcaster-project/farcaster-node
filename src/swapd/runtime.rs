@@ -84,7 +84,6 @@ use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 pub fn run(
     config: Config,
     swap_id: SwapId,
-    _chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
     local_trade_role: TradeRole,
 ) -> Result<(), Error> {

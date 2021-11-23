@@ -57,14 +57,8 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    swapd::run(
-        config,
-        opts.swap_id,
-        opts.shared.chain,
-        opts.public_offer,
-        opts.trade_role,
-    )
-    .expect("Error running swapd runtime");
+    swapd::run(config, opts.swap_id, opts.public_offer, opts.trade_role)
+        .expect("Error running swapd runtime");
 
     unreachable!()
 }

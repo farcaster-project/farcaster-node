@@ -1,5 +1,4 @@
 use amplify::map;
-use bitcoin::BlockHash;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
 use farcaster_node::rpc::Request;
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
@@ -19,7 +18,6 @@ use internet2::Decrypt;
 use internet2::PlainTranscoder;
 use internet2::RoutedFrame;
 use internet2::ZMQ_CONTEXT;
-use lnpbp::chain::Chain;
 use monero::Address;
 use monero_rpc::GetBlockHeaderSelector;
 use paste::paste;
@@ -807,13 +805,12 @@ fn create_bitcoin_syncer(
         monero_daemon: "".to_string(),
         monero_rpc_wallet: "".to_string(),
     };
-    let dummy = BlockHash::from_slice(&[0; 32]).unwrap();
     syncer.run(
         rx,
         tx_event,
         SOURCE1.clone().into(),
         syncer_servers,
-        Chain::Regtest(dummy),
+        Network::Local,
         polling,
     );
     (tx, rx_event)
@@ -1532,13 +1529,12 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
         monero_daemon: "http://localhost:18081".to_string(),
         monero_rpc_wallet: "http://localhost:18084".to_string(),
     };
-    let dummy = BlockHash::from_slice(&[0; 32]).unwrap();
     syncer.run(
         rx,
         tx_event,
         SOURCE2.clone().into(),
         syncer_servers,
-        Chain::Regtest(dummy),
+        Network::Local,
         true,
     );
     (tx, rx_event)

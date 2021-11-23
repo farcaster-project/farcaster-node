@@ -20,7 +20,7 @@ _swapd() {
 
     case "${cmd}" in
         swapd)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <SWAP_ID> <PUBLIC_OFFER> <TRADE_ROLE> "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  <SWAP_ID> <PUBLIC_OFFER> <TRADE_ROLE> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -67,7 +67,7 @@ _swapd() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

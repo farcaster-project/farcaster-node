@@ -37,13 +37,10 @@ pub struct Opts {
     /// Which coin this syncer should target
     #[clap(parse(try_from_str = Coin::from_str))]
     pub coin: Coin,
-
-    /// Which network this syncer should target
-    #[clap(parse(try_from_str = farcaster_core::blockchain::Network::from_str))]
-    pub network: farcaster_core::blockchain::Network,
 }
 
-#[derive(Clap, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
+#[derive(Clap, Display, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
+#[display(Debug)]
 pub enum Coin {
     /// Launches a bitcoin syncer
     Bitcoin,
@@ -61,18 +58,9 @@ impl FromStr for Coin {
     type Err = SyncerCoinError;
     fn from_str(input: &str) -> Result<Coin, Self::Err> {
         match input {
-            "bitcoin" => Ok(Coin::Bitcoin),
-            "monero" => Ok(Coin::Monero),
+            "Bitcoin" | "bitcoin" => Ok(Coin::Bitcoin),
+            "Monero" | "monero" => Ok(Coin::Monero),
             _ => Err(SyncerCoinError::InvalidCoin),
-        }
-    }
-}
-
-impl ToString for Coin {
-    fn to_string(&self) -> String {
-        match self {
-            Coin::Bitcoin => "bitcoin".to_string(),
-            Coin::Monero => "monero".to_string(),
         }
     }
 }
@@ -82,11 +70,3 @@ impl Opts {
         self.shared.process();
     }
 }
-
-// fn into(network: &farcaster_core::blockchain::Network) -> monero::Network {
-//     match network {
-//         blockchain::Network::Mainnet => monero::Network::Mainnet,
-//         blockchain::Network::Testnet => monero::Network::Stagenet,
-//         blockchain::Network::Local => monero::Network::Mainnet,
-//     }
-// }

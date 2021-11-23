@@ -16,8 +16,8 @@ use std::convert::TryInto;
 use std::thread::sleep;
 use std::time::Duration;
 
+use farcaster_core::blockchain::Network;
 use internet2::ZmqType;
-use lnpbp::chain::Chain;
 use microservices::esb;
 
 use crate::rpc::request::OptionDetails;
@@ -27,13 +27,13 @@ use crate::{Config, Error, LogStyle, ServiceId};
 #[repr(C)]
 pub struct Client {
     identity: ServiceId,
-    chain: Chain,
+    network: Network,
     response_queue: std::collections::VecDeque<Request>,
     esb: esb::Controller<ServiceBus, Request, Handler>,
 }
 
 impl Client {
-    pub fn with(config: Config, chain: Chain) -> Result<Self, Error> {
+    pub fn with(config: Config) -> Result<Self, Error> {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
         let bus_config = esb::BusConfig::with_locator(
@@ -58,7 +58,7 @@ impl Client {
 
         Ok(Self {
             identity,
-            chain,
+            network: config.network,
             response_queue: empty!(),
             esb,
         })
@@ -68,8 +68,8 @@ impl Client {
         self.identity.clone()
     }
 
-    pub fn chain(&self) -> Chain {
-        self.chain.clone()
+    pub fn network(&self) -> Network {
+        self.network
     }
 
     pub fn request(&mut self, daemon: ServiceId, req: Request) -> Result<(), Error> {

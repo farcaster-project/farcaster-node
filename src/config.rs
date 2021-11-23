@@ -12,8 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use farcaster_core::blockchain::Network;
 use internet2::NodeAddr;
-use lnpbp::chain::Chain;
 
 #[cfg(feature = "shell")]
 use crate::opts::Opts;
@@ -24,8 +24,8 @@ use crate::opts::Opts;
 #[derive(Clone, PartialEq, Eq, Debug, Display)]
 #[display(Debug)]
 pub struct Config {
-    /// Bitcoin blockchain to use (mainnet, testnet, signet, liquid etc)
-    pub chain: Chain,
+    /// Blockchain networks to use for the swaps (mainnet, testnet, local)
+    pub network: Network,
 
     /// ZMQ socket for lightning peer network message bus
     pub msg_endpoint: NodeAddr,
@@ -38,7 +38,7 @@ pub struct Config {
 impl From<Opts> for Config {
     fn from(opts: Opts) -> Self {
         Config {
-            chain: opts.chain,
+            network: opts.network,
             msg_endpoint: opts.msg_socket.into(),
             ctl_endpoint: opts.ctl_socket.into(),
         }

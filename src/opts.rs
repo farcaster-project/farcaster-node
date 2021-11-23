@@ -17,8 +17,8 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use farcaster_core::blockchain::Network;
 use internet2::PartialNodeAddr;
-use lnpbp::chain::Chain;
 use microservices::shell::LogLevel;
 
 #[cfg(any(target_os = "linux"))]
@@ -129,18 +129,16 @@ pub struct Opts {
     )]
     pub ctl_socket: PartialNodeAddr,
 
-    /// Blockchain to use
+    /// Blockchain networks to use for the swaps (mainnet, testnet, local)
     #[clap(
         short = 'n',
         long,
         global = true,
         alias = "network",
-        default_value = "testnet",
+        default_value = "Testnet",
         env = "FARCASTER_NETWORK"
     )]
-    // TODO: Put it back to `signet` default network once rust-bitcoin will
-    //       release signet support
-    pub chain: Chain,
+    pub network: Network,
 
     /// Electrum server to use
     #[clap(

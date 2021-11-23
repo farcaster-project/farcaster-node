@@ -15,9 +15,9 @@ use crate::syncerd::SyncerServers;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
+use farcaster_core::blockchain::Network;
 use internet2::zmqsocket::{Connection, ZmqType};
 use internet2::PlainTranscoder;
-use lnpbp::chain::Chain;
 use monero::Hash;
 use monero_rpc::{
     GenerateFromKeysArgs, GetBlockHeaderSelector, GetTransfersCategory, GetTransfersSelector,
@@ -593,24 +593,13 @@ impl Synclet for MoneroSyncer {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
-        chain: Chain,
+        network: Network,
         polling: bool,
     ) {
         if !polling {
             error!("monero syncer only supports polling for now - switching to polling=true");
         }
-        let network = match chain {
-            Chain::Mainnet | Chain::Regtest(_) => monero::Network::Mainnet,
-            Chain::Testnet3 => monero::Network::Stagenet,
-            Chain::Signet => monero::Network::Testnet,
-            _ => {
-                error!(
-                    "invalid chain type for monero: {}- switching to mainnet",
-                    chain
-                );
-                monero::Network::Mainnet
-            }
-        };
+        let network = network.into();
         let _handle = std::thread::spawn(move || {
             use tokio::runtime::Builder;
             let rt = Builder::new_multi_thread()

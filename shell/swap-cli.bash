@@ -50,7 +50,7 @@ _swap-cli() {
 
     case "${cmd}" in
         swap__cli)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  listen connect ping info peers ls make take progress help"
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  listen connect ping info peers ls make take progress help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -97,7 +97,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -126,7 +126,7 @@ _swap-cli() {
             ;;
         
         swap__cli__connect)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <PEER> "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  <PEER> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -173,7 +173,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -201,7 +201,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__help)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -248,7 +248,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -276,7 +276,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__info)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <SUBJECT> "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  <SUBJECT> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -323,7 +323,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -351,7 +351,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__listen)
-            opts=" -i -p -o -h -V -d -c -v -T -m -x -n  --ip --port --overlay --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  "
+            opts=" -i -p -o -h -V -d -c -v -T -m -x -n  --ip --port --overlay --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -422,7 +422,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -450,7 +450,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__ls)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -497,7 +497,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -525,7 +525,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__make)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <ARBITRATING_ADDR> <ACCORDANT_ADDR> <NETWORK> <ARBITRATING_BLOCKCHAIN> <ACCORDANT_BLOCKCHAIN> <ARBITRATING_AMOUNT> <ACCORDANT_AMOUNT> <MAKER_ROLE> <CANCEL_TIMELOCK> <PUNISH_TIMELOCK> <FEE_STRATEGY> <PUBLIC_IP_ADDR> <BIND_IP_ADDR> <PORT> <OVERLAY> "
+            opts=" -h -V -d -c -v -T -m -x  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --electrum-server --monero-daemon --monero-rpc-wallet  <ARBITRATING_ADDR> <ACCORDANT_ADDR> <NETWORK> <ARBITRATING_BLOCKCHAIN> <ACCORDANT_BLOCKCHAIN> <ARBITRATING_AMOUNT> <ACCORDANT_AMOUNT> <MAKER_ROLE> <CANCEL_TIMELOCK> <PUNISH_TIMELOCK> <FEE_STRATEGY> <PUBLIC_IP_ADDR> <BIND_IP_ADDR> <PORT> <OVERLAY> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -569,14 +569,6 @@ _swap-cli() {
                     return 0
                     ;;
                 -x)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --chain)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -n)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -600,7 +592,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__peers)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -647,7 +639,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -675,7 +667,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__ping)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <PEER> "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  <PEER> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -722,7 +714,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -750,7 +742,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__progress)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <SWAPID> "
+            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  <SWAPID> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -797,7 +789,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -825,7 +817,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__take)
-            opts=" -w -h -V -d -c -v -T -m -x -n  --without-validation --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  <BITCOIN_ADDRESS> <MONERO_ADDRESS> <PUBLIC_OFFER> "
+            opts=" -w -h -V -d -c -v -T -m -x -n  --without-validation --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  <BITCOIN_ADDRESS> <MONERO_ADDRESS> <PUBLIC_OFFER> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -872,7 +864,7 @@ _swap-cli() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --network)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

@@ -35,7 +35,6 @@ use internet2::{
     presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
 };
 use lnp::{message, Messages, TempChannelId as TempSwapId};
-use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
@@ -56,12 +55,7 @@ pub struct SyncerServers {
     pub monero_rpc_wallet: String,
 }
 
-pub fn run(
-    config: Config,
-    coin: Coin,
-    network: farcaster_core::blockchain::Network,
-    syncer_servers: SyncerServers,
-) -> Result<(), Error> {
+pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<(), Error> {
     info!(
         "Creating new {} {}",
         &coin.bright_green_bold(),
@@ -80,7 +74,7 @@ pub fn run(
     };
 
     let mut runtime = Runtime {
-        identity: ServiceId::Syncer(coin, network),
+        identity: ServiceId::Syncer(coin, config.network),
         started: SystemTime::now(),
         tasks: none!(),
         syncer,
@@ -92,7 +86,7 @@ pub fn run(
         tx_event,
         runtime.identity().into(),
         syncer_servers,
-        config.chain.clone(),
+        config.network,
         polling,
     );
     let mut service = Service::service(config, runtime)?;

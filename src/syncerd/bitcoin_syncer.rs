@@ -27,12 +27,12 @@ use electrum_client::Hex32Bytes;
 use electrum_client::{raw_client::ElectrumSslStream, HeaderNotification};
 use electrum_client::{raw_client::RawClient, GetHistoryRes};
 use electrum_client::{Client, ElectrumApi};
+use farcaster_core::blockchain::Network;
 use farcaster_core::consensus;
 use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
 use internet2::ZMQ_CONTEXT;
-use lnpbp::chain::Chain;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;
@@ -61,7 +61,7 @@ pub trait Synclet {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
-        chain: Chain,
+        network: Network,
         polling: bool,
     );
 }
@@ -717,7 +717,7 @@ impl Synclet for BitcoinSyncer {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         syncer_servers: SyncerServers,
-        _chain: Chain,
+        _network: Network,
         polling: bool,
     ) {
         std::thread::spawn(move || {
