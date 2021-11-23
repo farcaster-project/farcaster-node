@@ -6,6 +6,12 @@ You'll need to build and install the node locally as described [here](../README.
 
 We'll create two node instances and will make them running a swap, for that make sure to have access to the three services: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
 
+## Run `monero rpc wallet` with Docker
+
+:warning: You should run two containers, one for each `farcasterd` services, choose different ports and modify `--rpc-bind-port` and `-p` values accordingly.
+
+See [run `monero rpc wallet`](./docker-stack.md#run-monero-rpc-wallet) with Docker for more details.
+
 ## Launch `farcasterd` services
 
 Launch two `farcasterd` services with different data directories (`.node01` and `.node02`):
@@ -13,17 +19,12 @@ Launch two `farcasterd` services with different data directories (`.node01` and 
 ```
 farcasterd -vv\
     --data-dir {.node01|.node02}\
-    --electrum-server ssl://{ip:port}\
-    --monero-daemon http://{ip:port}\
-    --monero-rpc-wallet http://{ip:port}
+    --electrum-server ssl://blockstream.info:993\
+    --monero-daemon http://stagenet.melo.tools:38081\
+    --monero-rpc-wallet http://localhost:{38083|38084}
 ```
 
-:bulb: You can use a public daemons with
-
-| daemon            | value                              |
-| ----------------- | ---------------------------------- |
-| `electrum-server` | `ssl://blockstream.info:993`       |
-| `monero-daemon`   | `http://stagenet.melo.tools:38081` |
+You can use other public daemons, see [:bulb: Use public infrastructure](../README.md#bulb-use-public-infrastructure) for more details.
 
 ## Configure `swap-cli` clients
 
