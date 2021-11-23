@@ -496,6 +496,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "config"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b1b9d958c2b1368a663f05538fc1b5975adce1e19f435acceae987aceeeb369"
+dependencies = [
+ "lazy_static",
+ "nom",
+ "rust-ini",
+ "serde 1.0.127",
+ "serde-hjson",
+ "serde_json",
+ "toml 0.5.8",
+ "yaml-rust",
+]
+
+[[package]]
 name = "configure_me"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -933,7 +949,8 @@ dependencies = [
  "clap",
  "clap_generate",
  "colored",
- "config",
+ "config 0.10.1",
+ "config 0.11.0",
  "configure_me",
  "configure_me_codegen",
  "dotenv",
@@ -1665,7 +1682,7 @@ checksum = "0c9bab278af135e56ad7fa62a0589680ba0de52c749bb865467fe09324d0b9bf"
 dependencies = [
  "amplify",
  "clap",
- "config",
+ "config 0.10.1",
  "env_logger",
  "internet2",
  "lightning_encoding",

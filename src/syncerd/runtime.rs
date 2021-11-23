@@ -13,9 +13,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
-use crate::syncerd::bitcoin_syncer::Synclet;
 use crate::syncerd::monero_syncer::MoneroSyncer;
-use crate::syncerd::opts::Coin;
+use crate::syncerd::opts::{Coin, Opts};
 use amplify::Wrapper;
 use farcaster_core::blockchain::Network;
 use std::collections::{HashMap, HashSet};
@@ -41,26 +40,47 @@ use microservices::rpc::Failure;
 use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::syncerd::*;
-use crate::{Config, Error, LogStyle, Service, ServiceId};
+use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
+
+pub trait Synclet {
+    fn run(
+        &mut self,
+        rx: Receiver<SyncerdTask>,
+        tx: zmq::Socket,
+        syncer_address: Vec<u8>,
+        syncer_servers: SyncerServers,
+        network: Network,
+        polling: bool,
+    );
+}
+
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct SyncerServers {
+    /// Electrum server to use
+    pub electrum_server: String,
+
+    /// Monero daemon to use
+    pub monero_daemon: String,
+
+    /// Monero rpc wallet to use
+    pub monero_rpc_wallet: String,
+}
 
 pub struct SyncerdTask {
     pub task: Task,
     pub source: ServiceId,
 }
 
-#[derive(Debug, Clone, Hash)]
-pub struct SyncerServers {
-    pub electrum_server: String,
-    pub monero_daemon: String,
-    pub monero_rpc_wallet: String,
-}
+pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
+    let coin = opts.coin;
+    let network = opts.network;
+    let syncer_servers = SyncerServers {
+        electrum_server: opts.electrum_server,
+        monero_daemon: opts.monero_daemon,
+        monero_rpc_wallet: opts.monero_rpc_wallet,
+    };
 
-pub fn run(
-    config: Config,
-    coin: Coin,
-    network: Network,
-    syncer_servers: SyncerServers,
-) -> Result<(), Error> {
     info!(
         "Creating new {} ({}) {}",
         &coin.bright_green_bold(),

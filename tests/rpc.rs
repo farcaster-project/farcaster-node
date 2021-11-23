@@ -4,7 +4,7 @@ extern crate log;
 
 use clap::Clap;
 use farcaster_node::rpc::Client;
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::{LogStyle, ServiceConfig};
 use sysinfo::{ProcessExt, System, SystemExt};
 
 use microservices::shell::Exec;
@@ -22,7 +22,7 @@ fn spawn_swap() {
     );
     opts.process();
     info!("opts: {:?}", opts);
-    let config: Config = opts.shared.clone().into();
+    let config: ServiceConfig = opts.shared.clone().into();
 
     let mut client = Client::with(config).expect("Error running client");
 

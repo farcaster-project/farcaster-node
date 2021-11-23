@@ -13,9 +13,10 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{Clap, ValueHint};
-use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
+use std::{fs, io};
 
 use internet2::PartialNodeAddr;
 use microservices::shell::LogLevel;
@@ -36,22 +37,16 @@ pub const FARCASTER_DATA_DIR: &str = ".";
 pub const FARCASTER_MSG_SOCKET_NAME: &str = "lnpz:{data_dir}/msg.rpc?api=esb";
 pub const FARCASTER_CTL_SOCKET_NAME: &str = "lnpz:{data_dir}/ctl.rpc?api=esb";
 
-pub const FARCASTER_CONFIG: &str = "{data_dir}/farcaster.toml";
-
 pub const FARCASTER_TOR_PROXY: &str = "127.0.0.1:9050";
 pub const FARCASTER_KEY_FILE: &str = "{data_dir}/key.dat";
-
-pub const FARCASTER_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
-pub const FARCASTER_MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
-pub const FARCASTER_MONERO_RPC_WALLET: &str = "http://localhost:18083";
 
 /// Shared options used by different binaries
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 pub struct Opts {
     /// Data directory path
     ///
-    /// Path to the directory that contains FARCASTER Node data, and where ZMQ
-    /// RPC socket files are located
+    /// Path to the directory that contains Farcaster Node data, and where ZMQ
+    /// RPC socket files are located.
     #[clap(
         short,
         long,
@@ -62,21 +57,9 @@ pub struct Opts {
     )]
     pub data_dir: PathBuf,
 
-    /// Path to the configuration file.
-    ///
-    /// NB: Command-line options override configuration file values.
-    #[clap(
-        short,
-        long,
-        global = true,
-        env = "FARCASTER_CONFIG",
-        value_hint = ValueHint::FilePath
-    )]
-    pub config: Option<String>,
-
     /// Set verbosity level
     ///
-    /// Can be used multiple times to increase verbosity
+    /// Can be used multiple times to increase verbosity.
     #[clap(short, long, global = true, parse(from_occurrences))]
     pub verbose: u8,
 
@@ -96,12 +79,10 @@ pub struct Opts {
     )]
     pub tor_proxy: Option<Option<SocketAddr>>,
 
-    /// ZMQ socket name/address to forward all incoming lightning messages
+    /// ZMQ socket name/address to forward all incoming protocol messages
     ///
-    /// Internal interface for transmitting P2P lightning network messages.
-    /// Defaults to `msg.rpc` file inside `--data-dir` directory, unless
-    /// `--use-threads` is specified; in that cases uses in-memory
-    /// communication protocol.
+    /// Internal interface for transmitting P2P network messages. Defaults
+    /// to `msg.rpc` file inside `--data-dir` directory.
     #[clap(
         short = 'm',
         long,
@@ -114,10 +95,8 @@ pub struct Opts {
 
     /// ZMQ socket name/address for daemon control interface
     ///
-    /// Internal interface for control PRC protocol communications
-    /// Defaults to `ctl.rpc` file inside `--data-dir` directory, unless
-    /// `--use-threads` is specified; in that cases uses in-memory
-    /// communication protocol.
+    /// Internal interface for control PRC protocol communications. Defaults
+    /// to `ctl.rpc` file inside `--data-dir` directory.
     #[clap(
         short = 'x',
         long,
@@ -127,33 +106,24 @@ pub struct Opts {
         default_value = FARCASTER_CTL_SOCKET_NAME
     )]
     pub ctl_socket: PartialNodeAddr,
+}
 
-    /// Electrum server to use
-    #[clap(
-        long,
-        global = true,
-        default_value = FARCASTER_ELECTRUM_SERVER,
-        env = "FARCASTER_ELECTRUM_SERVER"
-    )]
-    pub electrum_server: String,
+/// Token used in services
+#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+pub struct TokenString {
+    /// Token used to authentify calls
+    #[clap(long, env = "FARCASTER_TOKEN")]
+    pub token: String,
+}
 
-    /// Monero daemon to use
-    #[clap(
-        long,
-        global = true,
-        default_value = FARCASTER_MONERO_DAEMON,
-        env = "FARCASTER_MONERO_DAEMON"
-    )]
-    pub monero_daemon: String,
+impl FromStr for TokenString {
+    type Err = io::Error;
 
-    /// Monero rpc wallet to use
-    #[clap(
-        long,
-        global = true,
-        default_value = FARCASTER_MONERO_RPC_WALLET,
-        env = "FARCASTER_MONERO_RPC_WALLET"
-    )]
-    pub monero_rpc_wallet: String,
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(TokenString {
+            token: s.to_string(),
+        })
+    }
 }
 
 impl Opts {

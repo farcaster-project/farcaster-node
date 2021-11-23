@@ -20,7 +20,7 @@ use crate::{
     },
     syncerd::SweepXmrAddress,
 };
-use crate::{Config, CtlServer, Error, Service, ServiceId};
+use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use bitcoin::{
     hashes::hex::FromHex,
     secp256k1::{self, Signature},
@@ -63,7 +63,7 @@ use microservices::esb::{self, Handler};
 use request::{LaunchSwap, NodeId};
 
 pub fn run(
-    config: Config,
+    config: ServiceConfig,
     wallet_token: Token,
     node_secrets: NodeSecrets,
     node_id: bitcoin::secp256k1::PublicKey,

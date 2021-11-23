@@ -1,0 +1,9 @@
+[syncers.mainnet]
+electrum_server = "ssl://blockstream.info:700"
+monero_daemon = "http://node.monerooutreach.org:18081"
+monero_rpc_wallet = "http://localhost:18083"
+
+[syncers.testnet]
+electrum_server = "ssl://blockstream.info:700"
+monero_daemon = "http://node.monerooutreach.org:18081"
+monero_rpc_wallet = "http://localhost:18083"

@@ -36,12 +36,35 @@ pub struct Opts {
     pub shared: crate::opts::Opts,
 
     /// Which coin this syncer should target
-    #[clap(parse(try_from_str = Coin::from_str))]
+    #[clap(long, parse(try_from_str = Coin::from_str))]
     pub coin: Coin,
 
-    /// Blockchain networks to use (mainnet, testnet, local)
-    #[clap(parse(try_from_str = Network::from_str))]
+    /// Blockchain networks to use (Mainnet, Testnet, Local)
+    #[clap(
+        short,
+        long,
+        global = true,
+        alias = "chain",
+        default_value = "Testnet",
+        parse(try_from_str = Network::from_str)
+    )]
     pub network: Network,
+
+    /// Electrum server to use for Bitcoin syncers
+    #[clap(long, global = true, default_value = "ssl://blockstream.info:993")]
+    pub electrum_server: String,
+
+    /// Monero daemon to use for Monero syncers
+    #[clap(
+        long,
+        global = true,
+        default_value = "http://stagenet.melo.tools:38081"
+    )]
+    pub monero_daemon: String,
+
+    /// Monero rpc wallet to use for Monero syncers
+    #[clap(long, global = true, default_value = "http://localhost:38083")]
+    pub monero_rpc_wallet: String,
 }
 
 #[derive(Clap, Display, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]

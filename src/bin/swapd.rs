@@ -32,20 +32,18 @@ extern crate log;
 use clap::Clap;
 
 use farcaster_node::swapd::{self, Opts};
-use farcaster_node::Config;
+use farcaster_node::ServiceConfig;
 
 fn main() {
-    println!("swapd: farcaster swap microservice");
-
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
     opts.process();
     trace!("Processed arguments: {:?}", &opts);
 
-    let config: Config = opts.shared.clone().into();
-    trace!("Daemon configuration: {:?}", &config);
-    debug!("MSG RPC socket {}", &config.msg_endpoint);
-    debug!("CTL RPC socket {}", &config.ctl_endpoint);
+    let service_config: ServiceConfig = opts.shared.clone().into();
+    trace!("Daemon configuration: {:#?}", &service_config);
+    debug!("MSG RPC socket {}", &service_config.msg_endpoint);
+    debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
     /*
     use self::internal::ResultExt;
@@ -57,8 +55,13 @@ fn main() {
      */
 
     debug!("Starting runtime ...");
-    swapd::run(config, opts.swap_id, opts.public_offer, opts.trade_role)
-        .expect("Error running swapd runtime");
+    swapd::run(
+        service_config,
+        opts.swap_id,
+        opts.public_offer,
+        opts.trade_role,
+    )
+    .expect("Error running swapd runtime");
 
     unreachable!()
 }

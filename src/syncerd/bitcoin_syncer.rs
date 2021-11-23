@@ -5,6 +5,7 @@ use crate::rpc::Request;
 use crate::syncerd::opts::Coin;
 use crate::syncerd::runtime::SyncerServers;
 use crate::syncerd::runtime::SyncerdTask;
+use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
@@ -53,18 +54,6 @@ use hex;
 
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
-
-pub trait Synclet {
-    fn run(
-        &mut self,
-        rx: Receiver<SyncerdTask>,
-        tx: zmq::Socket,
-        syncer_address: Vec<u8>,
-        syncer_servers: SyncerServers,
-        network: Network,
-        polling: bool,
-    );
-}
 
 pub struct ElectrumRpc {
     client: Client,

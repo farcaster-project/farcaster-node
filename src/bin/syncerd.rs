@@ -32,29 +32,20 @@ extern crate log;
 use clap::Clap;
 
 use farcaster_node::syncerd::{self, Opts};
-use farcaster_node::Config;
+use farcaster_node::{Error, ServiceConfig};
 
-fn main() {
-    println!("syncerd: blockchain tasks management microservice");
-
+fn main() -> Result<(), Error> {
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
     opts.process();
     trace!("Processed arguments: {:?}", &opts);
 
-    let config: Config = opts.shared.clone().into();
-    trace!("Daemon configuration: {:?}", &config);
-    debug!("MSG RPC socket {}", &config.msg_endpoint);
-    debug!("CTL RPC socket {}", &config.ctl_endpoint);
+    let service_config: ServiceConfig = opts.shared.clone().into();
+    trace!("Daemon configuration: {:#?}", &service_config);
+    debug!("MSG RPC socket {}", &service_config.msg_endpoint);
+    debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
     debug!("Starting runtime ...");
-    let syncer_servers = syncerd::SyncerServers {
-        electrum_server: opts.shared.electrum_server,
-        monero_daemon: opts.shared.monero_daemon,
-        monero_rpc_wallet: opts.shared.monero_rpc_wallet,
-    };
-    syncerd::run(config, opts.coin, opts.network, syncer_servers)
-        .expect("Error running syncerd runtime");
-
+    syncerd::run(service_config, opts).expect("Error running syncerd runtime");
     unreachable!()
 }

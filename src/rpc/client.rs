@@ -21,7 +21,8 @@ use microservices::esb;
 
 use crate::rpc::request::OptionDetails;
 use crate::rpc::{Request, ServiceBus};
-use crate::{Config, Error, LogStyle, ServiceId};
+use crate::service::ServiceConfig;
+use crate::{Error, LogStyle, ServiceId};
 
 #[repr(C)]
 pub struct Client {
@@ -31,7 +32,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn with(config: Config) -> Result<Self, Error> {
+    pub fn with(config: ServiceConfig) -> Result<Self, Error> {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
         let bus_config = esb::BusConfig::with_locator(

@@ -21,23 +21,22 @@ use clap::Clap;
 
 use farcaster_node::cli::Opts;
 use farcaster_node::rpc::Client;
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::LogStyle;
+use farcaster_node::ServiceConfig;
 use microservices::shell::Exec;
 
 fn main() {
-    println!("swap-cli: command-line tool for working with Farcaster node");
-
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
     opts.process();
     trace!("Processed arguments: {:?}", &opts);
 
-    let config: Config = opts.shared.clone().into();
-    trace!("Tool configuration: {:?}", &config);
-    debug!("MSG RPC socket {}", &config.msg_endpoint);
-    debug!("CTL RPC socket {}", &config.ctl_endpoint);
+    let service_config: ServiceConfig = opts.shared.clone().into();
+    trace!("Daemon configuration: {:#?}", &service_config);
+    debug!("MSG RPC socket {}", &service_config.msg_endpoint);
+    debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    let mut client = Client::with(config).expect("Error initializing client");
+    let mut client = Client::with(service_config).expect("Error initializing client");
 
     trace!("Executing command: {:?}", opts.command);
     opts.command

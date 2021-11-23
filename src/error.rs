@@ -36,6 +36,11 @@ pub enum Error {
 
     /// Wallet node errors: {0}
     Wallet(String),
+
+    /// Config errors: {0}
+    #[from(config::ConfigError)]
+    Config(config::ConfigError),
+
     /// I/O error: {0:?}
     #[from(io::Error)]
     Io(IoError),

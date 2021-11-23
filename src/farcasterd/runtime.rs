@@ -24,6 +24,8 @@ use crate::{
     Senders,
 };
 use amplify::Wrapper;
+use clap::Clap;
+use clap::IntoApp;
 use request::{Commit, Params};
 use std::io;
 use std::net::SocketAddr;
@@ -56,9 +58,10 @@ use microservices::rpc::Failure;
 
 use farcaster_core::{blockchain::Network, negotiation::PublicOfferId, swap::SwapId};
 
+use crate::farcasterd::Opts;
 use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
-use crate::{Config, Error, LogStyle, Service, ServiceId};
+use crate::{Config, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 use farcaster_core::{
     blockchain::FeePriority,
@@ -77,8 +80,13 @@ use farcaster_core::{
 
 use std::str::FromStr;
 
-pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
-    let _walletd = launch("walletd", &["--wallet-token", &wallet_token.to_string()])?;
+pub fn run(
+    service_config: ServiceConfig,
+    _config: Config,
+    _opts: Opts,
+    wallet_token: Token,
+) -> Result<(), Error> {
+    let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         listens: none!(),
@@ -102,7 +110,7 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
     };
 
     let broker = true;
-    Service::run(config, runtime, broker)
+    Service::run(service_config, runtime, broker)
 }
 
 pub struct Runtime {
@@ -969,7 +977,7 @@ impl Runtime {
                     &port.to_string(),
                     "--peer-secret-key",
                     &format!("{:x}", sk),
-                    "--wallet-token",
+                    "--token",
                     &self.wallet_token.clone().to_string(),
                 ],
             )?;
@@ -1005,8 +1013,8 @@ impl Runtime {
                 &node_addr.to_string(),
                 "--peer-secret-key",
                 &format!("{:x}", sk),
-                "--wallet-token",
-                &format!("{}", self.wallet_token.clone()),
+                "--token",
+                &self.wallet_token.clone().to_string(),
             ],
         );
 
@@ -1124,6 +1132,7 @@ pub fn launch(
     name: &str,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> io::Result<process::Child> {
+    let app = Opts::into_app();
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
         err
@@ -1142,9 +1151,47 @@ pub fn launch(
 
     let mut cmd = process::Command::new(bin_path);
 
-    cmd.args(std::env::args().skip(1)).args(args);
+    // Forwarded shared options from farcasterd to launched microservices
+    // Cannot use value_of directly because of default values
+    let matches = app.get_matches();
 
-    trace!("Executing `{:?}`", cmd);
+    // Set verbosity to same level
+    let verbose = matches.occurrences_of("verbose");
+    if verbose > 0 {
+        cmd.args(&[&format!(
+            "-{}",
+            (0..verbose).map(|_| "v").collect::<String>()
+        )]);
+    }
+
+    if let Some(d) = &matches.value_of("data-dir") {
+        cmd.args(&["-d", d]);
+    }
+
+    if let Some(m) = &matches.value_of("msg-socket") {
+        cmd.args(&["-m", m]);
+    }
+
+    if let Some(x) = &matches.value_of("ctl-socket") {
+        cmd.args(&["-x", x]);
+    }
+
+    // Forward tor proxy argument
+    let parsed = Opts::parse();
+    match &parsed.shared.tor_proxy {
+        Some(None) => {
+            cmd.args(&["-T"]);
+        }
+        Some(Some(val)) => {
+            cmd.args(&["-T", &format!("{}", val)]);
+        }
+        _ => (),
+    }
+
+    // Given specialized args in launch
+    cmd.args(args);
+
+    debug!("Executing `{:?}`", cmd);
     cmd.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err

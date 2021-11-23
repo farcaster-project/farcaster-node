@@ -35,31 +35,35 @@ use bitcoin::secp256k1::rand::RngCore;
 
 use clap::Clap;
 
-use farcaster_node::Config;
+use farcaster_node::ServiceConfig;
 use farcaster_node::{
+    config::parse_config,
     farcasterd::{self, Opts},
     rpc::request::Token,
 };
 
-fn main() {
-    println!("farcasterd: farcaster node management microservice");
-
+fn main() -> Result<(), config::ConfigError> {
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
     opts.process();
     trace!("Processed arguments: {:?}", &opts);
 
-    let config: Config = opts.shared.clone().into();
-    trace!("Daemon configuration: {:?}", &config);
-    debug!("MSG RPC socket {}", &config.msg_endpoint);
-    debug!("CTL RPC socket {}", &config.ctl_endpoint);
+    let service_config: ServiceConfig = opts.shared.clone().into();
+    trace!("Daemon configuration: {:#?}", &service_config);
+    debug!("MSG RPC socket {}", &service_config.msg_endpoint);
+    debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
+    debug!("Config file path: {}", &opts.config);
+    let config = parse_config(&opts.config)?;
+    debug!("Configuration: {:#?}", &config);
+
+    // Generate runtime token
     let mut dest = [0u8; 16];
     thread_rng().fill_bytes(&mut dest);
-    let wallet_token = Token(dest.to_hex());
+    let token = Token(dest.to_hex());
 
     debug!("Starting runtime ...");
-    farcasterd::run(config, wallet_token).expect("Error running farcasterd runtime");
+    farcasterd::run(service_config, config, opts, token).expect("Error running farcasterd runtime");
 
     unreachable!()
 }

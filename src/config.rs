@@ -12,31 +12,76 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::syncerd::runtime::SyncerServers;
+use crate::Error;
 use farcaster_core::blockchain::Network;
 use internet2::NodeAddr;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+pub const FARCASTER_MAINNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
+pub const FARCASTER_MAINNET_MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
+pub const FARCASTER_MAINNET_MONERO_RPC_WALLET: &str = "http://localhost:18083";
+
+pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993";
+pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.melo.tools:38081";
+pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
 
 #[cfg(feature = "shell")]
 use crate::opts::Opts;
 
-/// Final configuration resulting from data contained in config file environment
-/// variables and command-line options. For security reasons node key is kept
-/// separately.
-#[derive(Clone, PartialEq, Eq, Debug, Display)]
-#[display(Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
 pub struct Config {
-    /// ZMQ socket for lightning peer network message bus
-    pub msg_endpoint: NodeAddr,
-
-    /// ZMQ socket for internal service control bus
-    pub ctl_endpoint: NodeAddr,
+    /// Syncer configuration
+    pub syncers: Option<Syncers>,
 }
 
-#[cfg(feature = "shell")]
-impl From<Opts> for Config {
-    fn from(opts: Opts) -> Self {
+impl Default for Config {
+    fn default() -> Self {
         Config {
-            msg_endpoint: opts.msg_socket.into(),
-            ctl_endpoint: opts.ctl_socket.into(),
+            syncers: Some(Syncers::default()),
         }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct Syncers {
+    /// Mainnet syncer configuration
+    pub mainnet: Option<SyncerServers>,
+
+    /// Testnet syncer configuration
+    pub testnet: Option<SyncerServers>,
+}
+
+impl Default for Syncers {
+    fn default() -> Self {
+        Syncers {
+            mainnet: Some(SyncerServers {
+                electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
+                monero_daemon: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
+                monero_rpc_wallet: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
+            }),
+            testnet: Some(SyncerServers {
+                electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
+                monero_daemon: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
+                monero_rpc_wallet: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
+            }),
+        }
+    }
+}
+
+pub fn parse_config(path: &str) -> Result<Config, config::ConfigError> {
+    if Path::new(path).exists() {
+        let config_file = path;
+        debug!("Loading config file at: {}", &config_file);
+        let mut settings = config::Config::default();
+        settings.merge(config::File::with_name(config_file).required(true))?;
+        settings.try_into::<Config>()
+    } else {
+        debug!("No configuration file found, generate default config");
+        Ok(Config::default())
     }
 }

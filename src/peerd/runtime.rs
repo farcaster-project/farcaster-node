@@ -30,11 +30,11 @@ use crate::rpc::{
     request::{self, Msg, PeerInfo, TakeCommit, Token},
     Request, ServiceBus,
 };
-use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceId};
+use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
-    config: Config,
+    config: ServiceConfig,
     connection: PeerConnection,
     id: NodeAddr,
     local_id: PublicKey,

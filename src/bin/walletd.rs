@@ -24,14 +24,14 @@
     missing_docs
 )]
 
-//! Main executable for walletd: farcaster node wallet  microservice.
+//! Main executable for walletd: farcaster node wallet microservice.
 
 #[macro_use]
 extern crate log;
 
 use clap::Clap;
 
-use farcaster_node::Config;
+use farcaster_node::ServiceConfig;
 use farcaster_node::{
     rpc::request::Token,
     walletd::{self, NodeSecrets, Opts},
@@ -43,18 +43,18 @@ fn main() {
     opts.process();
     trace!("Processed arguments: {:?}", &opts);
 
-    let config: Config = opts.shared.clone().into();
-    trace!("Daemon configuration: {:?}", &config);
-    debug!("MSG RPC socket {}", &config.msg_endpoint);
-    debug!("CTL RPC socket {}", &config.ctl_endpoint);
+    let service_config: ServiceConfig = opts.shared.clone().into();
+    trace!("Daemon configuration: {:#?}", &service_config);
+    debug!("MSG RPC socket {}", &service_config.msg_endpoint);
+    debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    let wallet_token = Token(opts.token.wallet_token);
+    let wallet_token = Token(opts.wallet_token.token);
 
     let node_secrets = NodeSecrets::new(opts.key_opts.key_file.clone());
     let node_id = node_secrets.node_id();
 
     debug!("Starting runtime ...");
-    walletd::run(config, wallet_token, node_secrets, node_id)
+    walletd::run(service_config, wallet_token, node_secrets, node_id)
         .expect("Error running walletd runtime");
 
     unreachable!()
