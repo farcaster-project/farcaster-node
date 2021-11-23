@@ -35,7 +35,7 @@ async fn swap_test() {
     let btc_addr = btc_address.clone().to_string();
     let xmr_addr = xmr_address.address.clone().to_string();
 
-    let server_args = vec![
+    let server_args_maker = vec![
         "-vv",
         "--electrum-server",
         "localhost:50001",
@@ -44,14 +44,23 @@ async fn swap_test() {
         "--monero-rpc-wallet",
         "http://localhost:18084",
     ];
+    let server_args_taker = vec![
+        "-vv",
+        "--electrum-server",
+        "localhost:50001",
+        "--monero-daemon",
+        "http://localhost:18081",
+        "--monero-rpc-wallet",
+        "http://localhost:18085",
+    ];
     let farcasterd_maker_args = vec![]
         .into_iter()
         .chain(data_dir_maker.clone())
-        .chain(server_args.clone());
+        .chain(server_args_maker.clone());
     let farcasterd_taker_args = vec![]
         .into_iter()
         .chain(data_dir_taker.clone())
-        .chain(server_args.clone());
+        .chain(server_args_taker.clone());
 
     let mut farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
     let mut farcasterd_taker = launch("../farcasterd", farcasterd_taker_args).unwrap();
