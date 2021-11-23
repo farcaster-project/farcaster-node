@@ -340,6 +340,9 @@ pub enum State {
     Bob(BobState),
 }
 
+// The state impl is not public and may contain code not used yet, we can relax the linter and
+// allow dead code.
+#[allow(dead_code)]
 impl State {
     fn swap_role(&self) -> SwapRole {
         match self {
@@ -1225,7 +1228,6 @@ impl Runtime {
                 let public_offer = self
                     .state
                     .puboffer()
-                    .clone()
                     .expect("state Start has puboffer")
                     .to_string();
                 let take_swap = TakeCommit {
