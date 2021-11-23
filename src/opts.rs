@@ -22,25 +22,25 @@ use lnpbp::chain::Chain;
 use microservices::shell::LogLevel;
 
 #[cfg(any(target_os = "linux"))]
-pub const FARCASTER_NODE_DATA_DIR: &str = "~/.farcaster_node";
+pub const FARCASTER_DATA_DIR: &str = "~/.farcaster";
 #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
-pub const FARCASTER_NODE_DATA_DIR: &str = "~/.farcaster_node";
+pub const FARCASTER_DATA_DIR: &str = "~/.farcaster";
 #[cfg(target_os = "macos")]
-pub const FARCASTER_NODE_DATA_DIR: &str = "~/Library/Application Support/FARCASTER Node";
+pub const FARCASTER_DATA_DIR: &str = "~/Library/Application Support/Farcaster";
 #[cfg(target_os = "windows")]
-pub const FARCASTER_NODE_DATA_DIR: &str = "~\\AppData\\Local\\FARCASTER Node";
+pub const FARCASTER_DATA_DIR: &str = "~\\AppData\\Local\\Farcaster";
 #[cfg(target_os = "ios")]
-pub const FARCASTER_NODE_DATA_DIR: &str = "~/Documents";
+pub const FARCASTER_DATA_DIR: &str = "~/Documents";
 #[cfg(target_os = "android")]
-pub const FARCASTER_NODE_DATA_DIR: &str = ".";
+pub const FARCASTER_DATA_DIR: &str = ".";
 
-pub const FARCASTER_NODE_MSG_SOCKET_NAME: &str = "lnpz:{data_dir}/msg.rpc?api=esb";
-pub const FARCASTER_NODE_CTL_SOCKET_NAME: &str = "lnpz:{data_dir}/ctl.rpc?api=esb";
+pub const FARCASTER_MSG_SOCKET_NAME: &str = "lnpz:{data_dir}/msg.rpc?api=esb";
+pub const FARCASTER_CTL_SOCKET_NAME: &str = "lnpz:{data_dir}/ctl.rpc?api=esb";
 
-pub const FARCASTER_NODE_CONFIG: &str = "{data_dir}/farcaster.toml";
+pub const FARCASTER_CONFIG: &str = "{data_dir}/farcaster.toml";
 
-pub const FARCASTER_NODE_TOR_PROXY: &str = "127.0.0.1:9050";
-pub const FARCASTER_NODE_KEY_FILE: &str = "{data_dir}/key.dat";
+pub const FARCASTER_TOR_PROXY: &str = "127.0.0.1:9050";
+pub const FARCASTER_KEY_FILE: &str = "{data_dir}/key.dat";
 
 pub const FARCASTER_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
 pub const FARCASTER_MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
@@ -57,8 +57,8 @@ pub struct Opts {
         short,
         long,
         global = true,
-        default_value = FARCASTER_NODE_DATA_DIR,
-        env = "FARCASTER_NODE_DATA_DIR",
+        default_value = FARCASTER_DATA_DIR,
+        env = "FARCASTER_DATA_DIR",
         value_hint = ValueHint::DirPath
     )]
     pub data_dir: PathBuf,
@@ -70,7 +70,7 @@ pub struct Opts {
         short,
         long,
         global = true,
-        env = "FARCASTER_NODE_CONFIG",
+        env = "FARCASTER_CONFIG",
         value_hint = ValueHint::FilePath
     )]
     pub config: Option<String>,
@@ -92,7 +92,7 @@ pub struct Opts {
         long,
         alias = "tor",
         global = true,
-        env = "FARCASTER_NODE_TOR_PROXY",
+        env = "FARCASTER_TOR_PROXY",
         value_hint = ValueHint::Hostname
     )]
     pub tor_proxy: Option<Option<SocketAddr>>,
@@ -107,9 +107,9 @@ pub struct Opts {
         short = 'm',
         long,
         global = true,
-        env = "FARCASTER_NODE_MSG_SOCKET",
+        env = "FARCASTER_MSG_SOCKET",
         value_hint = ValueHint::FilePath,
-        default_value = FARCASTER_NODE_MSG_SOCKET_NAME
+        default_value = FARCASTER_MSG_SOCKET_NAME
     )]
     pub msg_socket: PartialNodeAddr,
 
@@ -123,9 +123,9 @@ pub struct Opts {
         short = 'x',
         long,
         global = true,
-        env = "FARCASTER_NODE_CTL_SOCKET",
+        env = "FARCASTER_CTL_SOCKET",
         value_hint = ValueHint::FilePath,
-        default_value = FARCASTER_NODE_CTL_SOCKET_NAME
+        default_value = FARCASTER_CTL_SOCKET_NAME
     )]
     pub ctl_socket: PartialNodeAddr,
 
@@ -136,7 +136,7 @@ pub struct Opts {
         global = true,
         alias = "network",
         default_value = "testnet",
-        env = "FARCASTER_NODE_NETWORK"
+        env = "FARCASTER_NETWORK"
     )]
     // TODO: Put it back to `signet` default network once rust-bitcoin will
     //       release signet support
