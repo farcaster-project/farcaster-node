@@ -222,8 +222,8 @@ async fn swap_test() {
         .iter()
         .filter(|(_pid, process)| {
             ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
-                && [farcasterd_maker.id(), farcasterd_taker.id()]
-                    .contains(&(process.parent().unwrap() as u32))
+                // && [farcasterd_maker.id(), farcasterd_taker.id()]
+                    // .contains(&(process.parent().unwrap() as u32))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
