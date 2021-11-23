@@ -28,6 +28,10 @@ async fn swap_test() {
 
     let (monero_regtest, monero_wallet) = monero_setup().await;
     let xmr_address = monero_wallet.get_address(0, None).await.unwrap();
+    monero_regtest
+        .generate_blocks(200, reusable_xmr_address)
+        .await
+        .unwrap();
 
     // data directors
     let data_dir_maker = vec!["-d", "tests/.farcaster_node_0"];
@@ -37,6 +41,7 @@ async fn swap_test() {
     let xmr_addr = xmr_address.address.clone().to_string();
 
     let server_args = vec![
+        "-vv",
         "--electrum-server",
         "localhost:50001",
         "--monero-daemon",
@@ -81,15 +86,13 @@ async fn swap_test() {
         "Alice",
         "10",
         "30",
-        "5 satoshi/vByte",
+        "1 satoshi/vByte",
         "127.0.0.1",
         "0.0.0.0",
         "9376",
     ]);
 
-    let (stdout, stderr) = run("../swap-cli", cli_make_args).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
+    let (_stdout, _stderr) = run("../swap-cli", cli_make_args).unwrap();
 
     // get offer strings
     let (stdout, _stderr) = run("../swap-cli", maker_info_args.clone()).unwrap();
@@ -108,7 +111,6 @@ async fn swap_test() {
             None
         })
         .collect();
-    println!("offers: {:?}", offers);
 
     // take the offer
     let cli_take_args = data_dir_taker.clone().into_iter().chain(vec![
@@ -144,7 +146,6 @@ async fn swap_test() {
         }
         thread::sleep(time::Duration::from_secs(2));
     }
-    println!("swap ids: {:?}", swap_ids);
 
     let cli_taker_progress_args = data_dir_taker
         .into_iter()
@@ -182,12 +183,10 @@ async fn swap_test() {
         thread::sleep(time::Duration::from_secs(2));
     }
 
-    println!("btc funding address: {:?}", funding_address);
-
     let address = bitcoin::Address::from_str(&funding_address[0]).unwrap();
-    let amount = bitcoin::Amount::ONE_SAT * 100100000;
 
     // fund the bitcoin address
+    let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
@@ -217,47 +216,97 @@ async fn swap_test() {
         thread::sleep(time::Duration::from_secs(2));
     }
 
-    println!("monero address {:?}", monero_addresses);
     let monero_address = monero::Address::from_str(&monero_addresses[0]).unwrap();
     send_monero(&monero_wallet, monero_address, 1000000000000).await;
 
-    // generate some blocks on bitcoin's side
-    thread::sleep(time::Duration::from_secs(30));
+    // generate some blocks on bitcoin's side for confirmations
     bitcoin_rpc
-        .generate_to_address(7, &reusable_btc_address)
+        .generate_to_address(5, &reusable_btc_address)
         .unwrap();
-    thread::sleep(time::Duration::from_secs(30));
 
-    let (stdout, stderr) = run("../swap-cli", cli_maker_progress_args).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
+    // run until the AliceState(Finish) is received
+    loop {
+        let (stdout, _stderr) = run("../swap-cli", cli_maker_progress_args.clone()).unwrap();
 
-    let (stdout, stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
-    println!("stdout: {:?}", stdout);
-    println!("stderr: {:?}", stderr);
+        let alice_finish: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
+                    let plain = str::from_utf8(&plain_bytes).unwrap();
+                    if plain.find("AliceState(Finish").is_some() {
+                        return Some(plain.to_string());
+                    }
+                }
+                None
+            })
+            .collect();
 
-    let res = bitcoin_rpc
+        if !alice_finish.is_empty() {
+            break;
+        }
+
+        thread::sleep(time::Duration::from_secs(2));
+    }
+
+    // generate some blocks on bitcoin's side
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address)
+        .unwrap();
+
+    thread::sleep(time::Duration::from_secs(20));
+
+    let (_stdout, _stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
+
+    // check that btc was received in the destination address
+    let balance = bitcoin_rpc
         .get_received_by_address(&btc_address, None)
         .unwrap();
-    println!("res: {:?}", res);
+    assert!(balance.as_sat() > 90000000);
 
+    // cache the monero balance before sweeping
     monero_wallet.refresh(Some(1)).await.unwrap();
-    let balance = monero_wallet.get_balance(0, None).await.unwrap();
-    println!("balance: {:?}", balance);
+    let before_balance = monero_wallet.get_balance(0, None).await.unwrap();
 
     // generate some blocks on monero's side
-    thread::sleep(time::Duration::from_secs(10));
-    monero_regtest.generate_blocks(10, reusable_xmr_address).await.unwrap();
-    thread::sleep(time::Duration::from_secs(10));
-    monero_regtest.generate_blocks(1, reusable_xmr_address).await.unwrap();
-    thread::sleep(time::Duration::from_secs(10));
-    monero_regtest.generate_blocks(1, reusable_xmr_address).await.unwrap();
-    thread::sleep(time::Duration::from_secs(10));
+    monero_regtest
+        .generate_blocks(11, reusable_xmr_address)
+        .await
+        .unwrap();
+
+    // run until the BobState(Finish) is received
+    loop {
+        let (stdout, _stderr) = run("../swap-cli", cli_taker_progress_args.clone()).unwrap();
+        let bob_finish: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
+                    let plain = str::from_utf8(&plain_bytes).unwrap();
+                    if plain.find("BobState(Finish").is_some() {
+                        return Some(plain.to_string());
+                    }
+                }
+                None
+            })
+            .collect();
+
+        if !bob_finish.is_empty() {
+            break;
+        }
+
+        thread::sleep(time::Duration::from_secs(2));
+    }
+
+    monero_regtest
+        .generate_blocks(1, reusable_xmr_address)
+        .await
+        .unwrap();
 
     monero_wallet.refresh(Some(1)).await.unwrap();
-    let balance = monero_wallet.get_balance(0, None).await.unwrap();
-    println!("balance: {:?}", balance);
-
+    let after_balance = monero_wallet.get_balance(0, None).await.unwrap();
+    let delta_balance = after_balance.balance - before_balance.balance;
+    assert!(delta_balance > 999660000000);
 
     // clean up processes
     let _procs: Vec<_> = System::new_all()
@@ -345,8 +394,6 @@ pub fn run(
         .args(args)
         .output()
         .expect("failed to run command");
-    // println!("result: {:?}", res);
-    // let stderr: Vec<String> = stderr.lines().map(|line| line.to_string()).collect();
 
     let stdout = String::from_utf8_lossy(&res.stdout)
         .to_string()
