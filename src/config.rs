@@ -24,9 +24,6 @@ use crate::opts::Opts;
 #[derive(Clone, PartialEq, Eq, Debug, Display)]
 #[display(Debug)]
 pub struct Config {
-    /// Blockchain networks to use for the swaps (mainnet, testnet, local)
-    pub network: Network,
-
     /// ZMQ socket for lightning peer network message bus
     pub msg_endpoint: NodeAddr,
 
@@ -38,7 +35,6 @@ pub struct Config {
 impl From<Opts> for Config {
     fn from(opts: Opts) -> Self {
         Config {
-            network: opts.network,
             msg_endpoint: opts.msg_socket.into(),
             ctl_endpoint: opts.ctl_socket.into(),
         }

@@ -55,10 +55,16 @@ pub struct SyncerServers {
     pub monero_rpc_wallet: String,
 }
 
-pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<(), Error> {
+pub fn run(
+    config: Config,
+    coin: Coin,
+    network: Network,
+    syncer_servers: SyncerServers,
+) -> Result<(), Error> {
     info!(
-        "Creating new {} {}",
+        "Creating new {} ({}) {}",
         &coin.bright_green_bold(),
+        &network.bright_white_bold(),
         "syncer".bright_green_bold()
     );
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -74,7 +80,7 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
     };
 
     let mut runtime = Runtime {
-        identity: ServiceId::Syncer(coin, config.network),
+        identity: ServiceId::Syncer(coin, network),
         started: SystemTime::now(),
         tasks: none!(),
         syncer,
@@ -86,7 +92,7 @@ pub fn run(config: Config, coin: Coin, syncer_servers: SyncerServers) -> Result<
         tx_event,
         runtime.identity().into(),
         syncer_servers,
-        config.network,
+        network,
         polling,
     );
     let mut service = Service::service(config, runtime)?;

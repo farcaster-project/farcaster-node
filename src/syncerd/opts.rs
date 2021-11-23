@@ -13,6 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use clap::{AppSettings, Clap};
+use farcaster_core::blockchain::Network;
 use std::str::FromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -37,6 +38,10 @@ pub struct Opts {
     /// Which coin this syncer should target
     #[clap(parse(try_from_str = Coin::from_str))]
     pub coin: Coin,
+
+    /// Blockchain networks to use (mainnet, testnet, local)
+    #[clap(parse(try_from_str = Network::from_str))]
+    pub network: Network,
 }
 
 #[derive(Clap, Display, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]

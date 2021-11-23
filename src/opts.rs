@@ -17,7 +17,6 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use farcaster_core::blockchain::Network;
 use internet2::PartialNodeAddr;
 use microservices::shell::LogLevel;
 
@@ -128,17 +127,6 @@ pub struct Opts {
         default_value = FARCASTER_CTL_SOCKET_NAME
     )]
     pub ctl_socket: PartialNodeAddr,
-
-    /// Blockchain networks to use for the swaps (mainnet, testnet, local)
-    #[clap(
-        short = 'n',
-        long,
-        global = true,
-        alias = "network",
-        default_value = "Testnet",
-        env = "FARCASTER_NETWORK"
-    )]
-    pub network: Network,
 
     /// Electrum server to use
     #[clap(

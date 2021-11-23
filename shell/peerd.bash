@@ -20,7 +20,7 @@ _peerd() {
 
     case "${cmd}" in
         peerd)
-            opts=" -h -V -L -C -p -o -d -c -v -T -m -x -n  --help --version --listen --connect --port --overlay --peer-secret-key --wallet-token --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --network --electrum-server --monero-daemon --monero-rpc-wallet  "
+            opts=" -h -V -L -C -p -o -d -c -v -T -m -x  --help --version --listen --connect --port --overlay --peer-secret-key --wallet-token --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --electrum-server --monero-daemon --monero-rpc-wallet  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -104,14 +104,6 @@ _peerd() {
                     return 0
                     ;;
                 -x)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --network)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -n)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

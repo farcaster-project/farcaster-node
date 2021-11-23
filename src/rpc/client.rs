@@ -16,7 +16,6 @@ use std::convert::TryInto;
 use std::thread::sleep;
 use std::time::Duration;
 
-use farcaster_core::blockchain::Network;
 use internet2::ZmqType;
 use microservices::esb;
 
@@ -27,7 +26,6 @@ use crate::{Config, Error, LogStyle, ServiceId};
 #[repr(C)]
 pub struct Client {
     identity: ServiceId,
-    network: Network,
     response_queue: std::collections::VecDeque<Request>,
     esb: esb::Controller<ServiceBus, Request, Handler>,
 }
@@ -58,7 +56,6 @@ impl Client {
 
         Ok(Self {
             identity,
-            network: config.network,
             response_queue: empty!(),
             esb,
         })
@@ -66,10 +63,6 @@ impl Client {
 
     pub fn identity(&self) -> ServiceId {
         self.identity.clone()
-    }
-
-    pub fn network(&self) -> Network {
-        self.network
     }
 
     pub fn request(&mut self, daemon: ServiceId, req: Request) -> Result<(), Error> {
