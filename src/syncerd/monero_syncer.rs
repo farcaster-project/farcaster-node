@@ -235,10 +235,14 @@ async fn sweep_address(
     let wallet = wallet_mutex.lock().await;
     trace!("taking sweep wallet lock");
 
-    while let Err(_) =  wallet
+    while let Err(err) = wallet
         .open_wallet(wallet_filename.clone(), Some(password.clone()))
         .await
     {
+        warn!(
+            "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
+            err,
+        );
         wallet
             .generate_from_keys(GenerateFromKeysArgs {
                 restore_height: Some(1),
