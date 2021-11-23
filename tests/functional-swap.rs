@@ -249,9 +249,7 @@ fn get_swap_ids(retries: u32, args: Vec<String>) -> Vec<String> {
             .iter()
             .filter_map(|element| {
                 if element.to_string().len() > 5 {
-                    let pos = element.find("\"0x");
-                    if pos.is_some() {
-                        let pos = pos.unwrap();
+                    if let Some(pos) = element.find("\"0x") {
                         let len = element.to_string().len() - 1;
                         let swap_id = element[pos + 1..len].to_string();
                         return Some(swap_id);
@@ -276,13 +274,9 @@ fn get_bitcoin_funding_address(retries: u32, args: Vec<String>) -> bitcoin::Addr
             .iter()
             .filter_map(|element| {
                 if element.to_string().len() > 5 {
-                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
-                    let plain = str::from_utf8(&plain_bytes).unwrap();
-                    let pos = plain.find("bcr");
-                    if pos.is_some() {
-                        let pos = pos.unwrap();
-                        let len = plain.to_string().len();
-                        let swap_id = plain[pos..len].to_string();
+                    if let Some(pos) = element.find("bcr") {
+                        let len = element.to_string().len();
+                        let swap_id = element[pos..len].to_string();
                         return Some(swap_id);
                     }
                 }
@@ -336,10 +330,8 @@ fn get_finish_state_transition(
             .iter()
             .filter_map(|element| {
                 if element.to_string().len() > 5 {
-                    let plain_bytes = strip_ansi_escapes::strip(&element).unwrap();
-                    let plain = str::from_utf8(&plain_bytes).unwrap();
-                    if plain.find(&finish_state).is_some() {
-                        return Some(plain.to_string());
+                    if element.find(&finish_state).is_some() {
+                        return Some(element.to_string());
                     }
                 }
                 None
@@ -422,12 +414,18 @@ pub fn run(
     let stdout = String::from_utf8_lossy(&res.stdout)
         .to_string()
         .lines()
-        .map(|line| line.to_string().normal().clear().to_string())
+        .map(|line| {
+            let plain_bytes = strip_ansi_escapes::strip(&line).unwrap();
+            str::from_utf8(&plain_bytes).unwrap().to_string()
+        })
         .collect();
     let stderr = String::from_utf8_lossy(&res.stderr)
         .to_string()
         .lines()
-        .map(|line| line.to_string().normal().clear().to_string())
+        .map(|line| {
+            let plain_bytes = strip_ansi_escapes::strip(&line).unwrap();
+            str::from_utf8(&plain_bytes).unwrap().to_string()
+        })
         .collect();
     Ok((stdout, stderr))
 }
