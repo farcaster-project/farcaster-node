@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{Error, SyncerError};
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
@@ -127,17 +127,17 @@ impl MoneroRpc {
         Ok(transactions)
     }
 
-    async fn check_block(&mut self) -> Result<Option<Block>, Error> {
-        let mut block: Option<Block> = none!();
+    async fn check_block(&mut self) -> Result<Block, Error> {
         let height = self.get_height().await?;
 
         if height != self.height {
             let block_hash = self.get_block_hash(height).await?;
             self.height = height;
             self.block_hash = block_hash.clone();
-            block = Some(Block { height, block_hash });
+            Ok(Block { height, block_hash })
+        } else {
+            Err(Error::Syncer(SyncerError::NoIncrementToHeight))
         }
-        Ok(block)
     }
 
     async fn check_address(
@@ -226,7 +226,7 @@ async fn sweep_address(
     spend: monero::PrivateKey,
     network: &monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
-) -> Result<Option<Vec<Vec<u8>>>, Error> {
+) -> Result<Vec<Vec<u8>>, Error> {
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
     let address = monero::Address::from_keypair(*network, &keypair);
@@ -235,41 +235,32 @@ async fn sweep_address(
     let wallet = wallet_mutex.lock().await;
     trace!("taking sweep wallet lock");
 
-    match wallet
+    while let Err(err) = wallet
         .open_wallet(wallet_filename.clone(), Some(password.clone()))
         .await
     {
-        Ok(_) => {
-            wallet
-                .open_wallet(wallet_filename.clone(), Some(password.clone()))
-                .await?;
-            debug!("opened sweep wallet");
-        }
-        Err(err) => {
-            warn!(
-                "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
-                err,
-            );
-            wallet
-                .generate_from_keys(GenerateFromKeysArgs {
-                    restore_height: Some(1),
-                    filename: wallet_filename.clone(),
-                    address,
-                    spendkey: Some(keypair.spend),
-                    viewkey: keypair.view,
-                    password: password.clone(),
-                    autosave_current: Some(true),
-                })
-                .await?;
-            wallet.open_wallet(wallet_filename, Some(password)).await?;
-        }
+        warn!(
+            "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
+            err,
+        );
+        wallet
+            .generate_from_keys(GenerateFromKeysArgs {
+                restore_height: Some(1),
+                filename: wallet_filename.clone(),
+                address,
+                spendkey: Some(keypair.spend),
+                viewkey: keypair.view,
+                password: password.clone(),
+                autosave_current: Some(true),
+            })
+            .await?;
     }
 
     wallet.refresh(Some(1)).await?;
     // failsafe to check if the wallet really supports spending
     wallet.query_key(PrivateKeyType::Spend).await?;
-
-    let balance = wallet.get_balance(0, None).await?;
+    let (account, addrs) = (0, None);
+    let balance = wallet.get_balance(account, addrs).await?;
     // only sweep once all the balance is unlocked
     if balance.unlocked_balance != 0 {
         info!("sweeping address with balance: {:?}", balance);
@@ -291,21 +282,22 @@ async fn sweep_address(
         let tx_ids: Vec<Vec<u8>> = res
             .tx_hash_list
             .iter()
-            .map(|hash| {
-                info!("sweep transaction hash {}", hash.to_string());
-                hex::decode(hash.to_string()).unwrap()
+            .filter_map(|hash| {
+                let hash_str = hash.to_string();
+                info!("sweep transaction hash {}", hash_str);
+                hex::decode(hash_str).ok()
             })
             .collect();
 
-        return Ok(Some(tx_ids));
+        Ok(tx_ids)
     } else {
         info!(
             "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}",
             balance.unlocked_balance, balance.balance
         );
+        trace!("releasing sweep wallet lock");
+        Ok(vec![])
     }
-    trace!("releasing sweep wallet lock");
-    Ok(None)
 }
 
 #[derive(Default)]
@@ -417,18 +409,16 @@ fn address_polling(
                 };
                 // we cannot parallelize polling here, since we have to open and close the
                 // wallet
-                let mut address_transactions = None;
-                match rpc
+                let address_transactions = match rpc
                     .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
                     .await
                 {
-                    Ok(addr_txs) => {
-                        address_transactions = Some(addr_txs);
-                    }
+                    Ok(address_transactions) => Some(address_transactions),
                     Err(err) => {
                         error!("error polling addresses: {:?}", err);
+                        None
                     }
-                }
+                };
                 if let Some(address_transactions) = address_transactions {
                     let mut state_guard = state.lock().await;
                     state_guard
@@ -451,15 +441,14 @@ fn height_polling(
     tokio::task::spawn(async move {
         let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
         loop {
-            let mut block_notif = None;
-            match rpc.check_block().await {
-                Ok(notif) => {
-                    block_notif = notif;
-                }
+            let block_notif = match rpc.check_block().await {
+                Ok(notif) => Some(notif),
+                Err(Error::Syncer(SyncerError::NoIncrementToHeight)) => None,
                 Err(err) => {
                     error!("error processing height polling: {}", err);
+                    None
                 }
-            }
+            };
             if let Some(block_notif) = block_notif {
                 let mut state_guard = state.lock().await;
                 state_guard
@@ -506,8 +495,7 @@ fn sweep_polling(
             for (id, sweep_address_task) in sweep_addresses.iter() {
                 if let SweepAddressAddendum::Monero(addendum) = sweep_address_task.addendum.clone()
                 {
-                    let mut sweep_address_txs = None;
-                    match sweep_address(
+                    let sweep_address_txs = sweep_address(
                         addendum.address,
                         addendum.view_key,
                         addendum.spend_key,
@@ -515,17 +503,13 @@ fn sweep_polling(
                         Arc::clone(&wallet),
                     )
                     .await
-                    {
-                        Ok(val) => {
-                            sweep_address_txs = val;
-                        }
-                        Err(err) => {
-                            warn!("error polling sweep address {:?}, retrying", err);
-                        }
-                    }
-                    if let Some(txids) = sweep_address_txs {
+                    .unwrap_or_else(|err| {
+                        warn!("error polling sweep address {:?}, retrying", err);
+                        vec![]
+                    });
+                    if !sweep_address_txs.is_empty() {
                         let mut state_guard = state.lock().await;
-                        state_guard.success_sweep(id, txids).await;
+                        state_guard.success_sweep(id, sweep_address_txs).await;
                         drop(state_guard);
                     }
                 }
