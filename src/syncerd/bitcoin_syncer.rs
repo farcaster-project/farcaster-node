@@ -242,17 +242,29 @@ impl ElectrumRpc {
         notifs
     }
 
-    async fn query_transactions(&self, state: Arc<Mutex<SyncerState>>) {
+    async fn query_transactions(&self, state: Arc<Mutex<SyncerState>>, unseen: bool) {
         let state_guard = state.lock().await;
-        let transactions = state_guard.transactions.clone();
+        let txids: Vec<Vec<u8>> = if unseen {
+            state_guard
+                .unseen_transactions
+                .iter()
+                .map(|task_id| state_guard.transactions[task_id].task.hash.clone())
+                .collect()
+        } else {
+            state_guard
+                .transactions
+                .iter()
+                .map(|(_, watched_tx)| watched_tx.task.hash.clone())
+                .collect()
+        };
         drop(state_guard);
-        for (_, watched_tx) in transactions.iter() {
-            let tx_id = bitcoin::Txid::from_slice(&watched_tx.task.hash).unwrap();
+        for tx_id in txids.iter() {
+            let tx_id = bitcoin::Txid::from_slice(&tx_id).unwrap();
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
                     debug!("Updated tx: {}", &tx_id);
-                    // Look for history of the first output (maybe last is generally less likelly
+                    // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
                     let history = match self.client.script_get_history(&tx.output[0].script_pubkey)
                     {
@@ -435,6 +447,7 @@ async fn run_syncerd_task_receiver(
                             state_guard
                                 .abort(task.task_target, syncerd_task.source)
                                 .await;
+                            drop(state_guard);
                         }
                         Task::BroadcastTransaction(task) => {
                             // TODO: match error and emit event with fail code
@@ -493,15 +506,18 @@ async fn run_syncerd_task_receiver(
                                 state_guard
                                     .abort(TaskTarget::TaskId(task.id), syncerd_task.source)
                                     .await;
+                                drop(state_guard);
                             }
                         },
                         Task::WatchHeight(task) => {
                             let mut state_guard = state.lock().await;
                             state_guard.watch_height(task, syncerd_task.source).await;
+                            drop(state_guard);
                         }
                         Task::WatchTransaction(task) => {
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
+                            drop(state_guard);
                         }
                     }
                 }
@@ -632,12 +648,19 @@ fn height_polling(
                     }
                 };
                 let mut state_guard = state.lock().await;
+                let mut block_change = false;
                 for block_notif in blocks.drain(..) {
-                    state_guard
+                    block_change = state_guard
                         .change_height(block_notif.height, block_notif.block_hash.to_vec())
                         .await;
                 }
                 drop(state_guard);
+
+                // if the blocks changed, query transactions
+                if block_change {
+                    rpc.query_transactions(Arc::clone(&state), false).await;
+                }
+
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
             // wait a bit before retrying the connection
@@ -646,7 +669,7 @@ fn height_polling(
     })
 }
 
-fn transaction_polling(
+fn unseen_transaction_polling(
     state: Arc<Mutex<SyncerState>>,
     syncer_servers: SyncerServers,
     polling: bool,
@@ -667,7 +690,7 @@ fn transaction_polling(
                 }
             };
             loop {
-                rpc.query_transactions(Arc::clone(&state)).await;
+                rpc.query_transactions(Arc::clone(&state), true).await;
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             }
         }
@@ -722,10 +745,11 @@ impl Synclet for BitcoinSyncer {
                 let height_handle =
                     height_polling(Arc::clone(&state), syncer_servers.clone(), polling);
 
-                let transaction_handle =
-                    transaction_polling(Arc::clone(&state), syncer_servers.clone(), polling);
+                let unseen_transaction_handle =
+                    unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone(), polling);
 
-                let res = tokio::try_join!(address_handle, height_handle, transaction_handle);
+                let res =
+                    tokio::try_join!(address_handle, height_handle, unseen_transaction_handle);
                 debug!("exiting bitcoin synclet run routine with: {:?}", res);
             });
         });
