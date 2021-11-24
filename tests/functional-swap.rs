@@ -13,6 +13,8 @@ use std::collections::HashMap;
 use std::str;
 use std::str::FromStr;
 
+const ALLOWED_RETRIES: u32 = 60;
+
 #[tokio::test]
 async fn swap_test() {
     let bitcoin_rpc = bitcoin_setup();
@@ -129,7 +131,7 @@ async fn swap_test() {
     run("../swap-cli", cli_take_args).unwrap();
 
     // run until the swap id is available
-    let swap_ids = get_swap_ids(60, taker_info_args.clone());
+    let swap_ids = retry_until_swap_ids(taker_info_args.clone());
 
     let cli_taker_progress_args: Vec<String> = data_dir_taker
         .into_iter()
@@ -148,7 +150,7 @@ async fn swap_test() {
         .unwrap();
 
     // run until the taker has the btc funding address
-    let address = get_bitcoin_funding_address(60, cli_taker_progress_args.clone());
+    let address = retry_until_bitcoin_funding_address(cli_taker_progress_args.clone());
 
     // this seems to improve reliability, probably there is a race condition somewhere with the address being funded too early
     // FIXME: change this once https://github.com/farcaster-project/farcaster-node/issues/225 is fixed
@@ -165,7 +167,7 @@ async fn swap_test() {
         .unwrap();
 
     // run until the taker has the monero funding address
-    let monero_address = get_monero_funding_address(60, cli_maker_progress_args.clone());
+    let monero_address = retry_until_monero_funding_address(cli_maker_progress_args.clone());
     send_monero(&monero_wallet, monero_address, 1000000000000).await;
 
     // generate some blocks on bitcoin's side for confirmations
@@ -174,8 +176,7 @@ async fn swap_test() {
         .unwrap();
 
     // run until the AliceState(Finish) is received
-    get_finish_state_transition(
-        60,
+    retry_until_finish_state_transition(
         cli_maker_progress_args.clone(),
         "AliceState(Finish)".to_string(),
     );
@@ -204,8 +205,7 @@ async fn swap_test() {
         .unwrap();
 
     // run until the BobState(Finish) is received
-    get_finish_state_transition(
-        60,
+    retry_until_finish_state_transition(
         cli_taker_progress_args.clone(),
         "BobState(Finish)".to_string(),
     );
@@ -246,8 +246,8 @@ async fn swap_test() {
         .expect("Couldn't kill farcasterd taker");
 }
 
-fn get_swap_ids(retries: u32, args: Vec<String>) -> Vec<String> {
-    for _ in 0..retries {
+fn retry_until_swap_ids(args: Vec<String>) -> Vec<String> {
+    for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
         let swap_ids: Vec<String> = stdout
             .iter()
@@ -270,8 +270,8 @@ fn get_swap_ids(retries: u32, args: Vec<String>) -> Vec<String> {
     panic!("timeout before any swapid could be retrieved");
 }
 
-fn get_bitcoin_funding_address(retries: u32, args: Vec<String>) -> bitcoin::Address {
-    for _ in 0..retries {
+fn retry_until_bitcoin_funding_address(args: Vec<String>) -> bitcoin::Address {
+    for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
         // get the btc funding address
         let bitcoin_address: Vec<String> = stdout
@@ -296,8 +296,8 @@ fn get_bitcoin_funding_address(retries: u32, args: Vec<String>) -> bitcoin::Addr
     panic!("timeout before any bitcoin funding address could be retrieved");
 }
 
-fn get_monero_funding_address(retries: u32, args: Vec<String>) -> monero::Address {
-    for _ in 0..retries {
+fn retry_until_monero_funding_address(args: Vec<String>) -> monero::Address {
+    for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
         // get the monero funding address
@@ -322,12 +322,8 @@ fn get_monero_funding_address(retries: u32, args: Vec<String>) -> monero::Addres
     panic!("timeout before any monero funding address could be retrieved");
 }
 
-fn get_finish_state_transition(
-    retries: u32,
-    args: Vec<String>,
-    finish_state: String,
-) -> Vec<String> {
-    for _ in 0..retries {
+fn retry_until_finish_state_transition(args: Vec<String>, finish_state: String) -> Vec<String> {
+    for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
         let alice_finish: Vec<String> = stdout
