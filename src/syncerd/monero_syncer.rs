@@ -182,8 +182,6 @@ impl MoneroRpc {
             }
         }
 
-        wallet.refresh(Some(address_addendum.from_height)).await?;
-
         let mut category_selector: HashMap<GetTransfersCategory, bool> = HashMap::new();
         category_selector.insert(GetTransfersCategory::In, true);
         category_selector.insert(GetTransfersCategory::Out, true);
@@ -256,7 +254,6 @@ async fn sweep_address(
             .await?;
     }
 
-    wallet.refresh(Some(1)).await?;
     // failsafe to check if the wallet really supports spending
     wallet.query_key(PrivateKeyType::Spend).await?;
     let (account, addrs) = (0, None);
