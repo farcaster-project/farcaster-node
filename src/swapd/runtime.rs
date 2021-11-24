@@ -846,31 +846,28 @@ impl Runtime {
                             .clone()
                             .sup_commit_to_reveal(remote_commit.clone());
 
-                        match self.state.swap_role() {
-                            SwapRole::Alice => {}
-                            SwapRole::Bob => {
-                                let addr = self
-                                    .state
-                                    .b_address()
-                                    .cloned()
-                                    .expect("address available at CommitB");
-                                let msg = format!(
-                                    "{} {}",
-                                    "Funding address:".bright_white_bold(),
-                                    addr.bright_yellow_bold()
-                                );
-                                let enquirer = self.enquirer.clone();
-                                let _ = self.report_progress_to(senders, &enquirer, msg);
+                        if self.state.swap_role() == SwapRole::Bob {
+                            let addr = self
+                                .state
+                                .b_address()
+                                .cloned()
+                                .expect("address available at CommitB");
+                            let msg = format!(
+                                "{} {}",
+                                "Funding address:".bright_white_bold(),
+                                addr.bright_yellow_bold()
+                            );
+                            let enquirer = self.enquirer.clone();
+                            let _ = self.report_progress_to(senders, &enquirer, msg);
 
-                                let task = self
-                                    .syncer_state
-                                    .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
-                                self.send_ctl(
-                                    senders,
-                                    self.syncer_state.bitcoin_syncer(),
-                                    Request::SyncerTask(task),
-                                )?;
-                            }
+                            let task = self
+                                .syncer_state
+                                .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
+                            self.send_ctl(
+                                senders,
+                                self.syncer_state.bitcoin_syncer(),
+                                Request::SyncerTask(task),
+                            )?;
                         }
 
                         trace!("Watch height bitcoin");
@@ -1046,9 +1043,9 @@ impl Runtime {
                         }
 
                         // pass request on to wallet daemon so that it can set remote params
-                        match self.state {
+                        match self.state.swap_role() {
                             // validated state above, no need to check again
-                            State::Alice(..) => {
+                            SwapRole::Alice => {
                                 // Alice already sends RevealProof immediately, so only have to
                                 // forward Reveal now
                                 trace!(
@@ -1059,7 +1056,7 @@ impl Runtime {
                                 );
                                 self.send_wallet(msg_bus, senders, request)?
                             }
-                            State::Bob(..) => {
+                            SwapRole::Bob => {
                                 // sending this request will initialize the
                                 // arbitrating setup, that can be only performed
                                 // after the funding tx was seen
