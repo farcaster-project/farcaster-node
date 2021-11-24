@@ -151,7 +151,8 @@ async fn swap_test() {
     let address = get_bitcoin_funding_address(60, cli_taker_progress_args.clone());
 
     // this seems to improve reliability, probably there is a race condition somewhere with the address being funded too early
-    thread::sleep(time::Duration::from_secs(2));
+    // FIXME: change this once https://github.com/farcaster-project/farcaster-node/issues/225 is fixed
+    thread::sleep(time::Duration::from_secs(5));
 
     // fund the bitcoin address
     let amount = bitcoin::Amount::ONE_SAT * 100000150;
@@ -225,8 +226,8 @@ async fn swap_test() {
         .iter()
         .filter(|(_pid, process)| {
             ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
-                // && [farcasterd_maker.id(), farcasterd_taker.id()]
-                    // .contains(&(process.parent().unwrap() as u32))
+            // && [farcasterd_maker.id(), farcasterd_taker.id()]
+            // .contains(&(process.parent().unwrap() as u32))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
