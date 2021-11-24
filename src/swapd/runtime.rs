@@ -521,6 +521,7 @@ impl State {
             _ => unreachable!("checked state on pattern to be Commit"),
         }
     }
+    /// Update Bob BuySig state from XMR unlocked to locked state
     fn b_sup_buysig_buy_tx_seen(&mut self) {
         if !self.b_buy_sig() {
             error!(
@@ -537,6 +538,22 @@ impl State {
                 *buy_tx_seen = true
             }
             _ => unreachable!("checked state"),
+        }
+    }
+    /// Update Alice RefundSig state from XMR unlocked to locked state
+    fn a_sup_refundsig_xmrlocked(&mut self) -> bool {
+        if let State::Alice(AliceState::RefundSigA(RefundSigA { xmr_locked, .. })) = self {
+            if !*xmr_locked {
+                trace!("setting xmr_locked");
+                *xmr_locked = true;
+                true
+            } else {
+                error!("xmr_locked was already set to true");
+                false
+            }
+        } else {
+            error!("Not on RefundSig state");
+            false
         }
     }
 }
@@ -1429,17 +1446,7 @@ impl Runtime {
                             "Event details: {} {:?} {} {:?} {:?}",
                             id, hash, amount, block, tx
                         );
-                        if let State::Alice(AliceState::RefundSigA(RefundSigA {
-                            xmr_locked, ..
-                        })) = &mut self.state
-                        {
-                            if !*xmr_locked {
-                                warn!("setting xmr_locked");
-                                *xmr_locked = true;
-                            } else {
-                                warn!("xmr_locked was already set to true")
-                            }
-                        }
+                        self.state.a_sup_refundsig_xmrlocked();
                         let task = self
                             .syncer_state
                             .watch_tx_xmr(hash.clone(), TxLabel::AccLock);
