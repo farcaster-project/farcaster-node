@@ -5,7 +5,6 @@ use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::TaskTarget;
 use crate::Error;
 use crate::ServiceId;
-use bitcoin::{hashes::Hash, Txid};
 use microservices::rpc_connection::Request;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
@@ -394,7 +393,7 @@ impl SyncerState {
                     }
                     // create events for new transactions
                     for new_tx in txs.difference(&addr.known_txs).cloned() {
-                        info!("new_tx seen: {}", Txid::from_slice(&new_tx.tx_id).unwrap());
+                        debug!("new tx seen: {}", hex::encode(&new_tx.tx_id));
                         let address_transaction = AddressTransaction {
                             id: addr.task.id,
                             hash: new_tx.tx_id,
