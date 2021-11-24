@@ -2113,7 +2113,6 @@ impl Runtime {
         );
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
-        // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
         Ok(commitment)
     }
 }
