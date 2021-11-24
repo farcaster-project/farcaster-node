@@ -527,10 +527,10 @@ impl State {
                 "Wrong state, not updating. Expected BuySig, found {}",
                 &*self
             );
-            return ();
+            return;
         } else if self.b_buy_tx_seen() {
             error!("Buy tx was previously seen, not updating state");
-            return ();
+            return;
         }
         match self {
             State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) if &*buy_tx_seen == &false => {
@@ -2104,7 +2104,6 @@ impl Runtime {
         );
         info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
-        // self.send_peer(senders, ProtocolMessages::Commit(swap_req.clone()))?;
         Ok(commitment)
     }
 }
