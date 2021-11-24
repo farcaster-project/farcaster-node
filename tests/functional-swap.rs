@@ -36,7 +36,7 @@ async fn swap_test() {
     let xmr_addr = xmr_address.address.clone().to_string();
 
     let server_args_maker = vec![
-        "-vv",
+        "-vvv",
         "--electrum-server",
         "localhost:50001",
         "--monero-daemon",
@@ -45,7 +45,7 @@ async fn swap_test() {
         "http://localhost:18084",
     ];
     let server_args_taker = vec![
-        "-vv",
+        "-vvv",
         "--electrum-server",
         "localhost:50001",
         "--monero-daemon",
@@ -149,6 +149,9 @@ async fn swap_test() {
 
     // run until the taker has the btc funding address
     let address = get_bitcoin_funding_address(60, cli_taker_progress_args.clone());
+
+    // this seems to improve reliability, probably there is a race condition somewhere with the address being funded too early
+    thread::sleep(time::Duration::from_secs(2));
 
     // fund the bitcoin address
     let amount = bitcoin::Amount::ONE_SAT * 100000150;
