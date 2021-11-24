@@ -358,6 +358,10 @@ pub enum Request {
     #[display("funding_updated()")]
     FundingUpdated,
 
+    #[api(type = 46)]
+    #[display("swap_success()")]
+    SwapSuccess(bool),
+
     #[api(type = 5)]
     #[display("send_message({0})")]
     Protocol(Msg),
