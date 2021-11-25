@@ -8,7 +8,6 @@ use std::process;
 use std::{thread, time};
 use sysinfo::{ProcessExt, System, SystemExt};
 
-use colored::Colorize;
 use std::collections::HashMap;
 use std::str;
 use std::str::FromStr;
@@ -16,7 +15,7 @@ use std::str::FromStr;
 const ALLOWED_RETRIES: u32 = 60;
 
 #[tokio::test]
-async fn swap_test() {
+async fn swap_test_alice_maker() {
     let bitcoin_rpc = bitcoin_setup();
     let reusable_btc_address =
         bitcoin::Address::from_str("bcrt1q3rc4sm3w9fr6a46n08znfjt7eu2yhhel6j8rsa").unwrap();
@@ -30,7 +29,7 @@ async fn swap_test() {
         .await
         .unwrap();
 
-    // data directors
+    // data directories
     let data_dir_maker = vec!["-d", "tests/.farcaster_node_0"];
     let data_dir_taker = vec!["-d", "tests/.farcaster_node_1"];
     // destination addresses
@@ -55,70 +54,24 @@ async fn swap_test() {
         "--monero-rpc-wallet",
         "http://localhost:18085",
     ];
-    let farcasterd_maker_args = vec![]
-        .into_iter()
-        .chain(data_dir_maker.clone())
-        .chain(server_args_maker.clone());
-    let farcasterd_taker_args = vec![]
-        .into_iter()
-        .chain(data_dir_taker.clone())
-        .chain(server_args_taker.clone());
+    let farcasterd_maker_args = farcasterd_args(data_dir_maker.clone(), server_args_maker);
+    let farcasterd_taker_args = farcasterd_args(data_dir_taker.clone(), server_args_taker);
 
     let mut farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
     let mut farcasterd_taker = launch("../farcasterd", farcasterd_taker_args).unwrap();
 
-    let maker_info_args = vec![]
-        .into_iter()
-        .chain(data_dir_maker.clone())
-        .chain(vec!["info"]);
-    let taker_info_args: Vec<String> = vec![]
-        .into_iter()
-        .chain(data_dir_taker.clone())
-        .chain(vec!["info"])
-        .map(|v| v.to_string())
-        .collect();
+    let maker_info_args = info_args(data_dir_maker.clone());
+    let taker_info_args = info_args(data_dir_taker.clone());
 
     // test connection to farcasterd and check that swap-cli is in the correct place
     run("../swap-cli", maker_info_args.clone()).unwrap();
 
     // make an offer
-    let cli_make_args = data_dir_maker.clone().into_iter().chain(vec![
-        "make",
-        &btc_addr,
-        &xmr_addr,
-        "Local",
-        "ECDSA",
-        "Monero",
-        "1 BTC",
-        "1 XMR",
-        "Alice",
-        "10",
-        "30",
-        "1 satoshi/vByte",
-        "127.0.0.1",
-        "0.0.0.0",
-        "9376",
-    ]);
-
+    let cli_make_args = make_args(data_dir_maker.clone(), "Alice", &btc_addr, &xmr_addr);
     let (_stdout, _stderr) = run("../swap-cli", cli_make_args).unwrap();
 
     // get offer strings
-    let (stdout, _stderr) = run("../swap-cli", maker_info_args.clone()).unwrap();
-    let offers: Vec<String> = stdout
-        .iter()
-        .filter_map(|element| {
-            if element.to_string().len() > 5 {
-                let pos = element.find("Offer");
-                if pos.is_some() {
-                    let pos = pos.unwrap();
-                    let len = element.to_string().len() - 1;
-                    let offer = element[pos..len].to_string();
-                    return Some(offer);
-                }
-            }
-            None
-        })
-        .collect();
+    let offers = retry_until_offer(maker_info_args.clone());
 
     // take the offer
     let cli_take_args = data_dir_taker.clone().into_iter().chain(vec![
@@ -133,17 +86,8 @@ async fn swap_test() {
     // run until the swap id is available
     let swap_ids = retry_until_swap_ids(taker_info_args.clone());
 
-    let cli_taker_progress_args: Vec<String> = data_dir_taker
-        .into_iter()
-        .chain(vec!["progress", &swap_ids[0]])
-        .map(|v| v.to_string())
-        .collect();
-
-    let cli_maker_progress_args: Vec<String> = data_dir_maker
-        .into_iter()
-        .chain(vec!["progress", &swap_ids[0]])
-        .map(|v| v.to_string())
-        .collect();
+    let cli_taker_progress_args: Vec<String> = progress_args(data_dir_taker, &swap_ids[0]);
+    let cli_maker_progress_args: Vec<String> = progress_args(data_dir_maker, &swap_ids[0]);
 
     bitcoin_rpc
         .generate_to_address(1, &reusable_btc_address)
@@ -195,7 +139,6 @@ async fn swap_test() {
     assert!(balance.as_sat() > 90000000);
 
     // cache the monero balance before sweeping
-    monero_wallet.refresh(Some(1)).await.unwrap();
     let before_balance = monero_wallet.get_balance(0, None).await.unwrap();
 
     // generate some blocks on monero's side
@@ -218,6 +161,7 @@ async fn swap_test() {
     monero_wallet.refresh(Some(1)).await.unwrap();
     let after_balance = monero_wallet.get_balance(0, None).await.unwrap();
     let delta_balance = after_balance.balance - before_balance.balance;
+    println!("delta balance: {:?}", delta_balance);
     assert!(delta_balance > 999660000000);
 
     // clean up processes
@@ -244,6 +188,80 @@ async fn swap_test() {
     farcasterd_taker
         .kill()
         .expect("Couldn't kill farcasterd taker");
+}
+
+fn info_args(data_dir: Vec<&str>) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(vec!["info"])
+        .map(|i| i.to_string())
+        .collect()
+}
+
+fn farcasterd_args(data_dir: Vec<&str>, server_args: Vec<&str>) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(server_args)
+        .map(|i| i.to_string())
+        .collect()
+}
+
+fn make_args(data_dir: Vec<&str>, role: &str, btc_addr: &str, xmr_addr: &str) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(vec![
+            "make",
+            &btc_addr,
+            &xmr_addr,
+            "Local",
+            "ECDSA",
+            "Monero",
+            "1 BTC",
+            "1 XMR",
+            role,
+            "10",
+            "30",
+            "1 satoshi/vByte",
+            "127.0.0.1",
+            "0.0.0.0",
+            "9376",
+        ])
+        .map(|i| i.to_string())
+        .collect()
+}
+
+fn progress_args(data_dir: Vec<&str>, swap_id: &str) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(vec!["progress", swap_id])
+        .map(|i| i.to_string())
+        .collect()
+}
+
+fn retry_until_offer(args: Vec<String>) -> Vec<String> {
+    for _ in 0..ALLOWED_RETRIES {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let offers: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                if element.to_string().len() > 5 {
+                    let pos = element.find("Offer");
+                    if pos.is_some() {
+                        let pos = pos.unwrap();
+                        let len = element.to_string().len() - 1;
+                        let offer = element[pos..len].to_string();
+                        return Some(offer);
+                    }
+                }
+                None
+            })
+            .collect();
+        if !offers.is_empty() {
+            return offers;
+        }
+        thread::sleep(time::Duration::from_secs(1));
+    }
+    panic!("timeout before any offer could be retrieved");
 }
 
 fn retry_until_swap_ids(args: Vec<String>) -> Vec<String> {
