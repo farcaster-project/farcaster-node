@@ -73,14 +73,7 @@ async fn swap_test_alice_maker() {
     // get offer strings
     let offers = retry_until_offer(maker_info_args.clone());
 
-    // take the offer
-    let cli_take_args = data_dir_taker.clone().into_iter().chain(vec![
-        "take",
-        &btc_addr,
-        &xmr_addr,
-        &offers[0],
-        "--without-validation",
-    ]);
+    let cli_take_args = take_args(data_dir_taker.clone(), &btc_addr, &xmr_addr, &offers[0]);
     run("../swap-cli", cli_take_args).unwrap();
 
     // run until the swap id is available
@@ -165,6 +158,13 @@ async fn swap_test_alice_maker() {
     assert!(delta_balance > 999660000000);
 
     // clean up processes
+    farcasterd_maker
+        .kill()
+        .expect("Couldn't kill farcasterd maker");
+    farcasterd_taker
+        .kill()
+        .expect("Couldn't kill farcasterd taker");
+
     let _procs: Vec<_> = System::new_all()
         .get_processes()
         .iter()
@@ -181,13 +181,6 @@ async fn swap_test_alice_maker() {
             .expect("Sending CTRL-C failed")
         })
         .collect();
-
-    farcasterd_maker
-        .kill()
-        .expect("Couldn't kill farcasterd maker");
-    farcasterd_taker
-        .kill()
-        .expect("Couldn't kill farcasterd taker");
 }
 
 fn info_args(data_dir: Vec<&str>) -> Vec<String> {
@@ -225,6 +218,21 @@ fn make_args(data_dir: Vec<&str>, role: &str, btc_addr: &str, xmr_addr: &str) ->
             "127.0.0.1",
             "0.0.0.0",
             "9376",
+        ])
+        .map(|i| i.to_string())
+        .collect()
+}
+
+fn take_args(data_dir: Vec<&str>, btc_addr: &str, xmr_addr: &str, offer: &str) -> Vec<String> {
+    data_dir
+        .clone()
+        .into_iter()
+        .chain(vec![
+            "take",
+            &btc_addr,
+            &xmr_addr,
+            &offer,
+            "--without-validation",
         ])
         .map(|i| i.to_string())
         .collect()
