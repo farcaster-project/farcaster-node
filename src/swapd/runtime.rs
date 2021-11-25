@@ -291,7 +291,7 @@ pub enum AliceState {
 }
 
 /// Content of Commit state Common to Bob and Alice
-#[derive(Clone, Display)]
+#[derive(Clone, Display, Getters)]
 #[display("{trade_role:#?} {local_params:#?} {local_commit:#?} {remote_commit:#?}")]
 pub struct CommitC {
     trade_role: TradeRole,
@@ -321,7 +321,7 @@ pub enum BobState {
     CommitB(CommitC, bitcoin::Address),
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealB(Params, Commit), // local, remote
+    RevealB(Params, Commit, bitcoin::Address), // local, remote, local
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
@@ -382,6 +382,8 @@ impl State {
             | State::Bob(BobState::CommitB(CommitC { remote_commit, .. }, _)) => {
                 remote_commit.as_ref()
             }
+            State::Alice(AliceState::RevealA(_, remote_commit))
+            | State::Bob(BobState::RevealB(_, remote_commit, ..)) => Some(remote_commit),
             _ => None,
         }
     }
@@ -403,10 +405,23 @@ impl State {
     }
     fn b_address(&self) -> Option<&bitcoin::Address> {
         match self {
-            State::Bob(BobState::CommitB(_, addr)) => Some(addr),
+            State::Bob(BobState::CommitB(_, addr)) | State::Bob(BobState::RevealB(_, _, addr)) => {
+                Some(addr)
+            }
             _ => None,
         }
     }
+    fn local_commit(&self) -> Option<&Commit> {
+        self.commit_c().map(|c| c.local_commit())
+    }
+    fn commit_c(&self) -> Option<&CommitC> {
+        match self {
+            State::Bob(BobState::CommitB(commit, ..))
+            | State::Alice(AliceState::CommitA(commit)) => Some(commit),
+            _ => None,
+        }
+    }
+
     fn commit(&self) -> bool {
         matches!(
             self,
@@ -430,6 +445,8 @@ impl State {
             State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) => *buy_tx_seen,
             _ => unreachable!("conditional early return"),
         }
+        // let State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) = self.try_into().unwrap_or(false);
+        // buy_tx_seen
     }
     fn safe_cancel(&self) -> bool {
         if self.finish() {
@@ -515,8 +532,8 @@ impl State {
                     remote_commit: None,
                     ..
                 },
-                ..,
-            )) => State::Bob(BobState::RevealB(local_params, remote_commit)),
+                addr,
+            )) => State::Bob(BobState::RevealB(local_params, remote_commit, addr)),
 
             _ => unreachable!("checked state on pattern to be Commit"),
         }
@@ -869,13 +886,6 @@ impl Runtime {
                                 .b_address()
                                 .cloned()
                                 .expect("address available at CommitB");
-                            let msg = format!(
-                                "{} {}",
-                                "Funding address:".bright_white_bold(),
-                                addr.bright_yellow_bold()
-                            );
-                            let enquirer = self.enquirer.clone();
-                            let _ = self.report_progress_to(senders, &enquirer, msg);
 
                             let task = self
                                 .syncer_state
@@ -956,73 +966,33 @@ impl Runtime {
                     // bob and alice
                     // store parameters from counterparty if we have not received them yet.
                     // if we're maker, also reveal to taker if their commitment is valid.
-                    Msg::Reveal(reveal) => {
+                    Msg::Reveal(reveal)
+                        if self.state.remote_commit().is_some()
+                            && (self.state.commit() || self.state.reveal()) =>
+                    {
                         // TODO: since we're not actually revealing, find other name for
                         // intermediary state
-                        let (next_state, remote_commit) = match self.state.clone() {
-                            // counterparty has already revealed commitment, i.e. we're
-                            // maker and counterparty is taker. now proceed to reveal state.
-                            State::Alice(AliceState::CommitA(CommitC {
-                                remote_commit: Some(remote_commit),
-                                local_params,
-                                ..
-                            })) => Ok((
-                                State::Alice(AliceState::RevealA(
-                                    local_params,
-                                    remote_commit.clone(),
-                                )),
-                                remote_commit,
-                            )),
-                            State::Bob(BobState::CommitB(
-                                CommitC {
-                                    remote_commit: Some(remote_commit),
-                                    local_params,
-                                    ..
-                                },
-                                addr,
-                            )) => {
-                                let msg = format!(
-                                    "{} {}",
-                                    "Funding address:".bright_white_bold(),
-                                    addr.bright_yellow_bold()
-                                );
-                                let enquirer = self.enquirer.clone();
-                                let _ = self.report_progress_to(senders, &enquirer, msg);
 
-                                let watch_addr_task = self
-                                    .syncer_state
-                                    .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
-                                self.send_ctl(
-                                    senders,
-                                    self.syncer_state.bitcoin_syncer(),
-                                    Request::SyncerTask(watch_addr_task),
-                                )?;
-                                Ok((
-                                    State::Bob(BobState::RevealB(
-                                        local_params,
-                                        remote_commit.clone(),
-                                    )),
-                                    remote_commit,
-                                ))
-                            }
-                            // we're already in reveal state, i.e. we're taker, so don't change
-                            // state once counterparty reveals too.
-                            State::Alice(AliceState::RevealA(local_params, remote_commit)) => Ok((
-                                State::Alice(AliceState::RevealA(
-                                    local_params,
-                                    remote_commit.clone(),
-                                )),
-                                remote_commit,
-                            )),
-                            State::Bob(BobState::RevealB(local_params, remote_commit)) => Ok((
-                                State::Bob(BobState::RevealB(local_params, remote_commit.clone())),
-                                remote_commit,
-                            )),
-                            state => Err(Error::Farcaster(format!(
-                                "Must be on Commit or Reveal state, found {}",
-                                state
-                            ))),
-                        }?;
+                        let remote_commit = self.state.remote_commit().cloned().unwrap();
+
+                        if let Some(addr) = self.state.b_address().cloned() {
+                            let msg = format!(
+                                "{} {}",
+                                "Funding address:".bright_white_bold(),
+                                addr.bright_yellow_bold()
+                            );
+                            let enquirer = self.enquirer.clone();
+                            let _ = self.report_progress_to(senders, &enquirer, msg);
+
+                            let watch_addr_task = self
+                                .syncer_state
+                                .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
+                            self.send_ctl(
+                                senders,
+                                self.syncer_state.bitcoin_syncer(),
+                                Request::SyncerTask(watch_addr_task),
+                            )?;
+                        }
 
                         // parameter processing irrespective of maker & taker role
                         let core_wallet = CommitmentEngine;
@@ -1059,6 +1029,7 @@ impl Runtime {
                             self.remote_params = remote_params_candidate
                         }
 
+                        // Specific to swap roles
                         // pass request on to wallet daemon so that it can set remote params
                         match self.state.swap_role() {
                             // validated state above, no need to check again
@@ -1093,8 +1064,25 @@ impl Runtime {
                                     error!("should have a single pending Reveal::Proof only FIXME")
                                 }
                                 pending_requests.push(pending_request);
+
+                                let addr = self
+                                    .state
+                                    .b_address()
+                                    .cloned()
+                                    .expect("address available at CommitB");
+                                let msg = format!(
+                                    "{} {}",
+                                    "Funding address:".bright_white_bold(),
+                                    addr.bright_yellow_bold()
+                                );
+                                let enquirer = self.enquirer.clone();
+
+                                // ask for funding
+                                let _ = self.report_success_to(senders, &enquirer, Some(msg));
+                                // self.send_ctl(senders, ServiceId::Farcasterd, msg);
                             }
                         }
+
                         // up to here for both maker and taker, following only Maker
 
                         // if did not yet reveal, maker only. on the msg flow as
@@ -1124,13 +1112,13 @@ impl Runtime {
                                 self.syncer_state.monero_syncer(),
                                 Request::SyncerTask(watch_height_monero),
                             )?;
+
+                            let next_state = self
+                                .state
+                                .clone()
+                                .sup_commit_to_reveal(remote_commit.clone());
+
                             self.state_update(senders, next_state)?;
-                        } else {
-                            debug!(
-                                "You are the Taker, which revealed already, nothing to reveal. \
-                                    Or state is not Commit, state {}",
-                                &self.state
-                            );
                         }
                     }
                     // alice receives, bob sends
@@ -1703,7 +1691,7 @@ impl Runtime {
                                         self.syncer_state.network.into(),
                                         &viewpair,
                                     );
-                                    info!(
+                                    let msg = format!(
                                         "Alice, please send {} to {}",
                                         self.syncer_state
                                             .monero_amount
@@ -1711,15 +1699,10 @@ impl Runtime {
                                             .bright_green_bold(),
                                         address.addr(),
                                     );
-                                    info!(
-                                        "reporting success of {} to {}",
-                                        address.to_string(),
-                                        self.enquirer.clone().unwrap()
-                                    );
                                     self.report_success_to(
                                         senders,
                                         self.enquirer.clone(),
-                                        Some(address.to_string()),
+                                        Some(msg.to_string()),
                                     )?;
                                     let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                         spend,
