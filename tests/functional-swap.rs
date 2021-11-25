@@ -12,9 +12,10 @@ use std::collections::HashMap;
 use std::str;
 use std::str::FromStr;
 
-const ALLOWED_RETRIES: u32 = 60;
+const ALLOWED_RETRIES: u32 = 120;
 
 #[tokio::test]
+#[ignore]
 async fn swap_test_alice_maker() {
     let bitcoin_rpc = bitcoin_setup();
     let reusable_btc_address =
@@ -154,7 +155,6 @@ async fn swap_test_alice_maker() {
     monero_wallet.refresh(Some(1)).await.unwrap();
     let after_balance = monero_wallet.get_balance(0, None).await.unwrap();
     let delta_balance = after_balance.balance - before_balance.balance;
-    println!("delta balance: {:?}", delta_balance);
     assert!(delta_balance > 999660000000);
 
     // clean up processes
