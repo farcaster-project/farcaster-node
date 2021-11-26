@@ -48,23 +48,10 @@ pub trait Synclet {
         rx: Receiver<SyncerdTask>,
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
-        syncer_servers: SyncerServers,
+        opts: &Opts,
         network: Network,
         polling: bool,
     );
-}
-
-#[derive(Deserialize, Serialize, Default, Debug, Clone)]
-#[serde(crate = "serde_crate")]
-pub struct SyncerServers {
-    /// Electrum server to use
-    pub electrum_server: String,
-
-    /// Monero daemon to use
-    pub monero_daemon: String,
-
-    /// Monero rpc wallet to use
-    pub monero_rpc_wallet: String,
 }
 
 pub struct SyncerdTask {
@@ -75,11 +62,6 @@ pub struct SyncerdTask {
 pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     let coin = opts.coin;
     let network = opts.network;
-    let syncer_servers = SyncerServers {
-        electrum_server: opts.electrum_server,
-        monero_daemon: opts.monero_daemon,
-        monero_rpc_wallet: opts.monero_rpc_wallet,
-    };
 
     info!(
         "Creating new {} ({}) {}",
@@ -111,7 +93,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         rx,
         tx_event,
         runtime.identity().into(),
-        syncer_servers,
+        &opts,
         network,
         polling,
     );

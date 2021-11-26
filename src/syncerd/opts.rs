@@ -52,18 +52,18 @@ pub struct Opts {
 
     /// Electrum server to use for Bitcoin syncers
     #[clap(long)]
-    pub electrum_server: String,
+    pub electrum_server: Option<String>,
 
     /// Monero daemon to use for Monero syncers
     #[clap(long)]
-    pub monero_daemon: String,
+    pub monero_daemon: Option<String>,
 
     /// Monero rpc wallet to use for Monero syncers
     #[clap(long)]
-    pub monero_rpc_wallet: String,
+    pub monero_rpc_wallet: Option<String>,
 }
 
-#[derive(Clap, Display, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
+#[derive(Clap, Display, Copy, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
 #[display(Debug)]
 pub enum Coin {
     /// Launches a bitcoin syncer

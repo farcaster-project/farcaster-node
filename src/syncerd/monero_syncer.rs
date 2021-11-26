@@ -4,7 +4,7 @@ use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
-use crate::syncerd::runtime::SyncerServers;
+use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::create_set;
@@ -393,7 +393,7 @@ async fn run_syncerd_task_receiver(
 
 fn address_polling(
     state: Arc<Mutex<SyncerState>>,
-    syncer_servers: SyncerServers,
+    syncer_servers: MoneroSyncerServers,
     network: monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
 ) -> tokio::task::JoinHandle<()> {
@@ -437,7 +437,7 @@ fn address_polling(
 
 fn height_polling(
     state: Arc<Mutex<SyncerState>>,
-    syncer_servers: SyncerServers,
+    syncer_servers: MoneroSyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
@@ -522,7 +522,7 @@ fn sweep_polling(
 
 fn unseen_transaction_polling(
     state: Arc<Mutex<SyncerState>>,
-    syncer_servers: SyncerServers,
+    syncer_servers: MoneroSyncerServers,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         let mut rpc = MoneroRpc::new(syncer_servers.monero_daemon);
@@ -586,13 +586,23 @@ async fn run_syncerd_bridge_event_sender(
     });
 }
 
+/// Specific Monero configuration
+#[derive(Default, Debug, Clone, Eq, PartialEq, Hash)]
+pub struct MoneroSyncerServers {
+    /// Monero daemon to use
+    pub monero_daemon: String,
+
+    /// Monero rpc wallet to use
+    pub monero_rpc_wallet: String,
+}
+
 impl Synclet for MoneroSyncer {
     fn run(
         &mut self,
         receive_task_channel: Receiver<SyncerdTask>,
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
-        syncer_servers: SyncerServers,
+        opts: &Opts,
         network: Network,
         polling: bool,
     ) {
@@ -600,55 +610,72 @@ impl Synclet for MoneroSyncer {
             error!("monero syncer only supports polling for now - switching to polling=true");
         }
         let network = network.into();
-        let _handle = std::thread::spawn(move || {
-            use tokio::runtime::Builder;
-            let rt = Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async {
-                let wallet_mutex = Arc::new(Mutex::new(
-                    monero_rpc::RpcClient::new(syncer_servers.monero_rpc_wallet.clone()).wallet(),
-                ));
-                let (event_tx, event_rx): (
-                    TokioSender<SyncerdBridgeEvent>,
-                    TokioReceiver<SyncerdBridgeEvent>,
-                ) = tokio::sync::mpsc::channel(120);
-                let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
+        if let Some(daemon) = &opts.monero_daemon {
+            if let Some(rpc_wallet) = &opts.monero_rpc_wallet {
+                let syncer_servers = MoneroSyncerServers {
+                    monero_daemon: daemon.clone(),
+                    monero_rpc_wallet: rpc_wallet.clone(),
+                };
 
-                run_syncerd_task_receiver(
-                    receive_task_channel,
-                    Arc::clone(&state),
-                    event_tx.clone(),
-                )
-                .await;
-                run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
+                let _handle = std::thread::spawn(move || {
+                    use tokio::runtime::Builder;
+                    let rt = Builder::new_multi_thread()
+                        .worker_threads(2)
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    rt.block_on(async {
+                        let wallet_mutex = Arc::new(Mutex::new(
+                            monero_rpc::RpcClient::new(syncer_servers.monero_rpc_wallet.clone())
+                                .wallet(),
+                        ));
+                        let (event_tx, event_rx): (
+                            TokioSender<SyncerdBridgeEvent>,
+                            TokioReceiver<SyncerdBridgeEvent>,
+                        ) = tokio::sync::mpsc::channel(120);
+                        let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
 
-                let address_handle = address_polling(
-                    Arc::clone(&state),
-                    syncer_servers.clone(),
-                    network,
-                    Arc::clone(&wallet_mutex),
-                );
+                        run_syncerd_task_receiver(
+                            receive_task_channel,
+                            Arc::clone(&state),
+                            event_tx.clone(),
+                        )
+                        .await;
+                        run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
 
-                // transaction polling is done in the same loop
-                let height_handle = height_polling(Arc::clone(&state), syncer_servers.clone());
+                        let address_handle = address_polling(
+                            Arc::clone(&state),
+                            syncer_servers.clone(),
+                            network,
+                            Arc::clone(&wallet_mutex),
+                        );
 
-                let unseen_transaction_handle =
-                    unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone());
+                        // transaction polling is done in the same loop
+                        let height_handle =
+                            height_polling(Arc::clone(&state), syncer_servers.clone());
 
-                let sweep_handle =
-                    sweep_polling(Arc::clone(&state), Arc::clone(&wallet_mutex), network);
+                        let unseen_transaction_handle =
+                            unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone());
 
-                let res = tokio::try_join!(
-                    address_handle,
-                    height_handle,
-                    unseen_transaction_handle,
-                    sweep_handle
-                );
-                debug!("exiting monero synclet run routine with: {:?}", res);
-            });
-        });
+                        let sweep_handle =
+                            sweep_polling(Arc::clone(&state), Arc::clone(&wallet_mutex), network);
+
+                        let res = tokio::try_join!(
+                            address_handle,
+                            height_handle,
+                            unseen_transaction_handle,
+                            sweep_handle
+                        );
+                        debug!("exiting monero synclet run routine with: {:?}", res);
+                    });
+                });
+            } else {
+                error!("Missing --monero-rpc-wallet argument");
+                return;
+            }
+        } else {
+            error!("Missing --monero-daemon argument");
+            return;
+        }
     }
 }

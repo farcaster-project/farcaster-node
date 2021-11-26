@@ -12,7 +12,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::runtime::SyncerServers;
 use crate::Error;
 use farcaster_core::blockchain::Network;
 use internet2::NodeAddr;
@@ -64,6 +63,19 @@ pub struct Syncers {
 
     /// Testnet syncer configuration
     pub testnet: Option<SyncerServers>,
+}
+
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct SyncerServers {
+    /// Electrum server to use
+    pub electrum_server: String,
+
+    /// Monero daemon to use
+    pub monero_daemon: String,
+
+    /// Monero rpc wallet to use
+    pub monero_rpc_wallet: String,
 }
 
 impl Default for Syncers {
