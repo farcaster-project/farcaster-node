@@ -535,8 +535,7 @@ fn address_polling(
                 Err(err) => {
                     error!(
                         "failed to spawn electrum rpc client ({}) t in address polling: {:?}",
-                        &electrum_server,
-                        err
+                        &electrum_server, err
                     );
                     // wait a bit before retrying the connection
                     tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
@@ -610,8 +609,7 @@ fn height_polling(
                 Err(err) => {
                     error!(
                         "failed to spawn electrum rpc client ({}) in height polling: {:?}",
-                        &electrum_server,
-                        err
+                        &electrum_server, err
                     );
                     // wait a bit before retrying the connection
                     tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
@@ -676,8 +674,7 @@ fn unseen_transaction_polling(
                 Err(err) => {
                     error!(
                         "failed to spawn electrum rpc client ({}) in transaction polling: {:?}",
-                        &electrum_server,
-                        err
+                        &electrum_server, err
                     );
                     // wait a bit before retrying the connection
                     tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
