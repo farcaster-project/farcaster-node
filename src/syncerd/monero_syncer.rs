@@ -605,9 +605,9 @@ impl Synclet for MoneroSyncer {
         opts: &Opts,
         network: Network,
         polling: bool,
-    ) {
+    ) -> Result<(), Error> {
         if !polling {
-            error!("monero syncer only supports polling for now - switching to polling=true");
+            warn!("monero syncer only supports polling for now - switching to polling=true");
         }
         let network = network.into();
         if let Some(daemon) = &opts.monero_daemon {
@@ -669,13 +669,14 @@ impl Synclet for MoneroSyncer {
                         debug!("exiting monero synclet run routine with: {:?}", res);
                     });
                 });
+                Ok(())
             } else {
                 error!("Missing --monero-rpc-wallet argument");
-                return;
+                Err(SyncerError::InvalidConfig.into())
             }
         } else {
             error!("Missing --monero-daemon argument");
-            return;
+            Err(SyncerError::InvalidConfig.into())
         }
     }
 }

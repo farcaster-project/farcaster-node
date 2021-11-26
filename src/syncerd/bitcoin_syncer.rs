@@ -707,7 +707,7 @@ impl Synclet for BitcoinSyncer {
         opts: &Opts,
         _network: Network,
         polling: bool,
-    ) {
+    ) -> Result<(), Error> {
         if let Some(electrum_server) = &opts.electrum_server {
             let electrum_server = electrum_server.clone();
             std::thread::spawn(move || {
@@ -747,9 +747,10 @@ impl Synclet for BitcoinSyncer {
                     debug!("exiting bitcoin synclet run routine with: {:?}", res);
                 });
             });
+            Ok(())
         } else {
             error!("Missing --electrum-server argument");
-            return;
+            Err(SyncerError::InvalidConfig.into())
         }
     }
 }
