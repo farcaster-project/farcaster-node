@@ -1800,7 +1800,10 @@ impl Runtime {
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
                             }
-                            tx_label => warn!("tx label {} not supported", tx_label),
+                            tx_label => debug!(
+                                "tx label {} with {} confs evokes no response in state {}",
+                                tx_label, confirmations, &self.state
+                            ),
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
