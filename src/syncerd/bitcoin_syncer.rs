@@ -534,7 +534,8 @@ fn address_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client in address polling: {:?}",
+                        "failed to spawn electrum rpc client ({}) t in address polling: {:?}",
+                        &electrum_server,
                         err
                     );
                     // wait a bit before retrying the connection
@@ -608,7 +609,8 @@ fn height_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client in height polling: {:?}",
+                        "failed to spawn electrum rpc client ({}) in height polling: {:?}",
+                        &electrum_server,
                         err
                     );
                     // wait a bit before retrying the connection
@@ -673,7 +675,8 @@ fn unseen_transaction_polling(
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client in transaction polling: {:?}",
+                        "failed to spawn electrum rpc client ({}) in transaction polling: {:?}",
+                        &electrum_server,
                         err
                     );
                     // wait a bit before retrying the connection

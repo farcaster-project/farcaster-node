@@ -1,7 +1,7 @@
 version: "3.7"
 services:
     bitcoin-core:
-        image: ghcr.io/farcaster-project/containers/bitcoin-core:latest
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:22.0
         environment:
             NETWORK: regtest
             RPC_PORT: 18443
@@ -10,15 +10,18 @@ services:
             - ./data_dir:/data
         ports:
             - 18443:18443
+            - 18444:18444
     electrs:
-        image: ghcr.io/farcaster-project/containers/electrs:latest
-        command: "/usr/bin/electrs -vv --network regtest --daemon-dir /data --daemon-rpc-addr bitcoin-core:18443 --electrum-rpc-addr 0.0.0.0:50001 --txid-limit 100000"
+        image: ghcr.io/farcaster-project/containers/electrs:0.9.3
+        command: "/usr/bin/electrs --log-filters info --network regtest --daemon-dir /data --daemon-rpc-addr bitcoin-core:18443 --daemon-p2p-addr bitcoin-core:18444 --electrum-rpc-addr 0.0.0.0:50001"
+        depends_on:
+            - "bitcoin-core"
         volumes:
             - ./data_dir:/data
         ports:
             - 50001:50001
     monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:latest
+        image: ghcr.io/farcaster-project/containers/monerod:0.17.2.3
         environment:
             NETWORK: regtest
             MONEROD_RPC_PORT: 18081
@@ -27,15 +30,19 @@ services:
         ports:
             - 18081:18081
     monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         environment:
             MONEROD_ADDRESS: monerod:18081
+        depends_on:
+            - "monerod"
         ports:
             - 18083:18083
     monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         environment:
             MONEROD_ADDRESS: monerod:18081
+        depends_on:
+            - "monerod"
         ports:
             - 18084:18083
 

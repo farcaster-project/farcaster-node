@@ -792,6 +792,7 @@ fn create_bitcoin_syncer(
     polling: bool,
     socket_name: &str,
 ) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+    env_logger::init();
     let addr = format!("inproc://testmonerobridge-{}", socket_name);
 
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -801,7 +802,12 @@ fn create_bitcoin_syncer(
     rx_event.bind(&addr).unwrap();
     let mut syncer = BitcoinSyncer::new();
 
-    let opts = Opts::parse_from(vec!["--electrum-server", "tcp://localhost:50001"]);
+    let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
+        "--coin",
+        "Bitcoin",
+        "--electrum-server",
+        "tcp://localhost:50001",
+    ]));
 
     syncer
         .run(
@@ -1517,6 +1523,7 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
 }
 
 fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+    env_logger::init();
     let addr = format!("inproc://testmonerobridge-{}", socket_name);
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
@@ -1525,12 +1532,14 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
     rx_event.bind(&addr).unwrap();
     let mut syncer = MoneroSyncer::new();
 
-    let opts = Opts::parse_from(vec![
+    let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
+        "--coin",
+        "Monero",
         "--monero-daemon",
         "http://localhost:18081",
         "--monero-rpc-wallet",
         "http://localhost:18084",
-    ]);
+    ]));
 
     syncer
         .run(
