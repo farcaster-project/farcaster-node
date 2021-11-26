@@ -83,13 +83,13 @@ impl Default for Syncers {
         Syncers {
             mainnet: Some(SyncerServers {
                 electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
-                monero_daemon: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
-                monero_rpc_wallet: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
+                monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),
+                monero_rpc_wallet: FARCASTER_MAINNET_MONERO_RPC_WALLET.into(),
             }),
             testnet: Some(SyncerServers {
                 electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
-                monero_daemon: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
-                monero_rpc_wallet: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
+                monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
+                monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
             }),
         }
     }
