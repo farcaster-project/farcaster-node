@@ -1,10 +1,10 @@
 use amplify::map;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
+use clap::Clap;
 use farcaster_node::rpc::Request;
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
-use farcaster_node::syncerd::opts::Coin;
-use farcaster_node::syncerd::runtime::SyncerServers;
+use farcaster_node::syncerd::opts::{Coin, Opts};
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::runtime::Synclet;
 use farcaster_node::syncerd::SweepAddress;
@@ -800,19 +800,19 @@ fn create_bitcoin_syncer(
     tx_event.connect(&addr).unwrap();
     rx_event.bind(&addr).unwrap();
     let mut syncer = BitcoinSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "tcp://localhost:50001".to_string(),
-        monero_daemon: "".to_string(),
-        monero_rpc_wallet: "".to_string(),
-    };
-    syncer.run(
-        rx,
-        tx_event,
-        SOURCE1.clone().into(),
-        syncer_servers,
-        Network::Local,
-        polling,
-    );
+
+    let opts = Opts::parse_from(vec!["--electrum-server", "tcp://localhost:50001"]);
+
+    syncer
+        .run(
+            rx,
+            tx_event,
+            SOURCE1.clone().into(),
+            &opts,
+            Network::Local,
+            polling,
+        )
+        .expect("Valid bitcoin syncer");
     (tx, rx_event)
 }
 
@@ -1524,19 +1524,24 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
     tx_event.connect(&addr).unwrap();
     rx_event.bind(&addr).unwrap();
     let mut syncer = MoneroSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "".to_string(),
-        monero_daemon: "http://localhost:18081".to_string(),
-        monero_rpc_wallet: "http://localhost:18084".to_string(),
-    };
-    syncer.run(
-        rx,
-        tx_event,
-        SOURCE2.clone().into(),
-        syncer_servers,
-        Network::Local,
-        true,
-    );
+
+    let opts = Opts::parse_from(vec![
+        "--monero-daemon",
+        "http://localhost:18081",
+        "--monero-rpc-wallet",
+        "http://localhost:18084",
+    ]);
+
+    syncer
+        .run(
+            rx,
+            tx_event,
+            SOURCE2.clone().into(),
+            &opts,
+            Network::Local,
+            true,
+        )
+        .expect("Valid monero syncer");
     (tx, rx_event)
 }
 

@@ -1,57 +1,49 @@
 // #![cfg(feature = "integration_test")]
-#[macro_use]
-extern crate log;
 
-use clap::Clap;
-use farcaster_node::rpc::Client;
-use farcaster_node::{LogStyle, ServiceConfig};
+use std::process;
+use std::{thread, time};
 use sysinfo::{ProcessExt, System, SystemExt};
-
-use microservices::shell::Exec;
 
 #[test]
 fn spawn_swap() {
-    use farcaster_node::{cli::Opts, farcasterd::launch};
-    let data_dir_maker = vec!["-d", "tests/.farcaster_node_0"];
-    let data_dir_taker = vec!["-d", "tests/.farcaster_node_1"];
-    let mut opts = Opts::parse_from(
-        vec!["swap-cli"]
-            .into_iter()
-            .chain(data_dir_maker.clone())
-            .chain(vec!["make", "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq", "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt"]),
-    );
-    opts.process();
-    info!("opts: {:?}", opts);
-    let config: ServiceConfig = opts.shared.clone().into();
+    // Config data dir for two fcd
+    let data_dir_maker = vec!["-d", "tests/.farcaster_node_0", "-vv"];
+    let data_dir_taker = vec!["-d", "tests/.farcaster_node_1", "-vv"];
 
-    let mut client = Client::with(config).expect("Error running client");
+    // Get path to target/debug bins
+    let mut bin_path = std::env::current_exe().unwrap();
+    bin_path.pop();
 
-    let mut farcasterd_maker = launch("../farcasterd", data_dir_maker.clone()).unwrap();
-    let mut farcasterd_taker = launch("../farcasterd", data_dir_taker.clone()).unwrap();
+    // Swap-cli bin path
+    let mut client_bin_path = bin_path.clone();
+    client_bin_path.push("../swap-cli");
 
-    use std::{thread, time};
+    // Farcasterd bin path
+    bin_path.push("../farcasterd");
 
-    // Command::Ls
-    //     .exec(&mut client)
-    //     .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    // Launch fcd node 0
+    let mut cmd = process::Command::new(bin_path.clone());
+    cmd.args(data_dir_maker.clone());
+    let mut farcasterd_maker = cmd.spawn().unwrap();
 
-    info!("executing command: {:?}", opts.command);
-    opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    // Launch fcd node 1
+    // FIXME this node is not used
+    let mut cmd = process::Command::new(bin_path);
+    cmd.args(data_dir_taker.clone());
+    let mut farcasterd_taker = cmd.spawn().unwrap();
+
+    // Wait for fcd to launch
+    thread::sleep(time::Duration::from_secs_f32(4.0));
 
     // set up maker
 
     // make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq
     // 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt
-    // Testnet ECDSA Monero "0.00001350 BTC" "0.00000001 XMR" Alice 10 30 "1
-    // satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745
+    // Testnet ECDSA Monero "101 BTC" "100 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9376
 
-    opts = Opts::parse_from(
-        vec!["swap-cli"]
-            .into_iter()
-            .chain(data_dir_maker.clone())
-            .chain(vec![
+    let mut cmd = process::Command::new(client_bin_path.clone());
+    cmd.args(data_dir_maker.clone());
+    cmd.args(vec![
                 "make",
                 "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq",
                 "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
@@ -67,29 +59,31 @@ fn spawn_swap() {
                 "127.0.0.1",
                 "0.0.0.0",
                 "9376",
-            ]),
-    );
-    opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+            ]);
+
+    println!("executing command: {:?}", cmd);
+    let _ = cmd.spawn().unwrap();
 
     // set up taker
+    // FIXME this cannot work as the identify of maker is not correct in public offer, this should
+    // inject result from past command
 
-    opts = Opts::parse_from(
-        vec!["swap-cli"]
-            .into_iter()
-            .chain(data_dir_taker.clone())
-            .chain(vec![
-                "take", "-w", "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq", "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt", "Offer:Cke4ftrP5A71LQM2fvVdFMNR4gdNgpBKX11111uMFj3o3qSdopKe2zu11111TBJQ23113GTvtvqfD1111112g5B8NNdQ79CnoUCEtZVSK1pYzGhNQeM28QBZNSKAZ5sJk8WA11111111111111111111111111111111111111111AfZ113XRBtZUCR5C",
-            ]),
-    );
-    opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+    //let mut cmd = process::Command::new(client_bin_path);
+    //cmd.args(data_dir_taker.clone());
+    //cmd.args(vec![
+    //            "take",
+    //            "-w",
+    //            "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq",
+    //            "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
+    //            "Offer:Cke4ftrP5A71LQM2fvVdFMNR4gdNgpBKX11111uMFj3o3qSdopKe2zu11111TBJQ23113GTvtvqfD1111112g5B8XgrFP91Y3iiLra8gGGsbrTcXkbEe6QqWDRirEYtXkCMp11111111111111111111111111111111111111111AfZ113Wigk7Ghe3R",
+    //        ]);
+
+    //println!("executing command: {:?}", cmd);
+    //let _ = cmd.spawn().unwrap();
 
     // clean up processes
+    thread::sleep(time::Duration::from_secs_f32(5.0));
 
-    thread::sleep(time::Duration::from_secs_f32(2.0));
     let _procs: Vec<_> = System::new_all()
         .get_processes()
         .iter()
@@ -116,7 +110,7 @@ fn spawn_swap() {
 
     #[cfg(feature = "integration_test")]
     {
-        let ps_out = std::process::Command::new("ps")
+        let ps_out = process::Command::new("ps")
             .args(&["-e"])
             .output()
             .expect("failed to execute process")
