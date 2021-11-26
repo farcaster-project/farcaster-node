@@ -1,7 +1,7 @@
 version: "3.7"
 services:
     bitcoin-core:
-        image: ghcr.io/farcaster-project/containers/bitcoin-core:22.0
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:0.21.1
         environment:
             NETWORK: regtest
             RPC_PORT: 18443
@@ -12,8 +12,8 @@ services:
             - 18443:18443
             - 18444:18444
     electrs:
-        image: ghcr.io/farcaster-project/containers/electrs:0.9.3
-        command: "/usr/bin/electrs --log-filters info --network regtest --daemon-dir /data --daemon-rpc-addr bitcoin-core:18443 --daemon-p2p-addr bitcoin-core:18444 --electrum-rpc-addr 0.0.0.0:50001"
+        image: ghcr.io/farcaster-project/containers/electrs:0.8.11
+        command: "/usr/bin/electrs -vv --network regtest --daemon-dir /data --daemon-rpc-addr bitcoin-core:18443 --electrum-rpc-addr 0.0.0.0:50001 --txid-limit 100000"
         depends_on:
             - "bitcoin-core"
         volumes:
