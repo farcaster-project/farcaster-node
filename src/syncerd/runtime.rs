@@ -214,6 +214,12 @@ impl Runtime {
                 notify_cli = Some((Some(source), resp));
             }
 
+            (Request::Terminate, _) => {
+                // terminate all runtimes
+                info!("Received terminate on syncer {:?}", self.identity());
+                std::process::exit(0);
+            }
+
             _ => {
                 error!("{}", "Request is not supported by the CTL interface".err());
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
