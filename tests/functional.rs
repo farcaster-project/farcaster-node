@@ -25,6 +25,8 @@ use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
+use ntest::timeout;
+
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
 use std::str::FromStr;
@@ -42,18 +44,23 @@ const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 These tests need to run serialy, otherwise we cannot verify events based on the
 state of electrum and bitcoin, for that we use `--test-threads=1` when running
 `cargo test`
+
+Timeout of 5 min max per test, otherwise test panic. This mitigate test that hangs
+because of syncers.
 */
 
 macro_rules! make_polling_test {
     ($name:ident) => {
         paste! {
             #[test]
+            #[timeout(300000)]
             #[ignore]
             fn [< $name _polling >] () {
                 $name(true);
             }
 
             #[test]
+            #[timeout(300000)]
             #[ignore]
             fn [< $name _no_polling >] () {
                 $name(false);
@@ -583,6 +590,7 @@ We test for the following scenarios in the abort tests:
 - Submit two WatchTransaction tasks, abort them both and receive both their aborted id's.
 */
 #[test]
+#[timeout(300000)]
 #[ignore]
 fn bitcoin_syncer_abort_test() {
     let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
@@ -792,7 +800,6 @@ fn create_bitcoin_syncer(
     polling: bool,
     socket_name: &str,
 ) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
-    env_logger::init();
     let addr = format!("inproc://testmonerobridge-{}", socket_name);
 
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -868,6 +875,7 @@ We test for the following scenarios in the block height tests:
 - Mine another block and receive two HeightChanged events
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_block_height_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -936,6 +944,7 @@ async fn monero_syncer_block_height_test() {
 }
 
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_sweep_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1007,6 +1016,7 @@ height
 
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_address_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1190,6 +1200,7 @@ the threshold confs are reached
 found confirmation event. Then relay and receive further events.
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_transaction_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1364,6 +1375,7 @@ We test for the following scenarios in the abort tests:
 - Submit two WatchTransaction tasks, abort them both and receive both their aborted id's.
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_abort_test() {
     let (tx, rx_event) = create_monero_syncer("abort");
@@ -1480,6 +1492,7 @@ async fn monero_syncer_abort_test() {
 Check that a monero BroadcastTransaction task generates an error
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_broadcast_tx_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1523,7 +1536,6 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
 }
 
 fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
-    env_logger::init();
     let addr = format!("inproc://testmonerobridge-{}", socket_name);
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
