@@ -38,6 +38,16 @@ pub struct Config {
     pub syncers: Option<Syncers>,
 }
 
+impl Config {
+    pub fn get_syncer_servers(&self, network: Network) -> Option<SyncerServers> {
+        match network {
+            Network::Mainnet => self.syncers.as_ref()?.mainnet.clone(),
+            Network::Testnet => self.syncers.as_ref()?.testnet.clone(),
+            Network::Local => None,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {

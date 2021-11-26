@@ -51,19 +51,15 @@ pub struct Opts {
     pub network: Network,
 
     /// Electrum server to use for Bitcoin syncers
-    #[clap(long, global = true, default_value = "ssl://blockstream.info:993")]
+    #[clap(long)]
     pub electrum_server: String,
 
     /// Monero daemon to use for Monero syncers
-    #[clap(
-        long,
-        global = true,
-        default_value = "http://stagenet.melo.tools:38081"
-    )]
+    #[clap(long)]
     pub monero_daemon: String,
 
     /// Monero rpc wallet to use for Monero syncers
-    #[clap(long, global = true, default_value = "http://localhost:38083")]
+    #[clap(long)]
     pub monero_rpc_wallet: String,
 }
 
