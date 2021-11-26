@@ -526,13 +526,13 @@ impl State {
                 "Wrong state, not updating. Expected BuySig, found {}",
                 &*self
             );
-            return ();
+            return;
         } else if self.b_buy_tx_seen() {
             error!("Buy tx was previously seen, not updating state");
-            return ();
+            return;
         }
         match self {
-            State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) if &*buy_tx_seen == &false => {
+            State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) if !(*buy_tx_seen) => {
                 *buy_tx_seen = true
             }
             _ => unreachable!("checked state"),

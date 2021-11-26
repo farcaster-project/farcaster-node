@@ -402,10 +402,10 @@ impl Runtime {
                         }
                     }
                     ServiceId::Syncer(coin, network)
-                        if !self.syncer_services.contains_key(&(coin.clone(), *network)) =>
+                        if !self.syncer_services.contains_key(&(*coin, *network)) =>
                     {
                         self.syncer_services
-                            .insert((coin.clone(), *network), source.clone());
+                            .insert((*coin, *network), source.clone());
                     }
                     _ => {
                         // Ignoring the rest of daemon/client types
@@ -567,8 +567,7 @@ impl Runtime {
                         .ok_or(internet2::presentation::Error::InvalidEndpoint)?
                         .into();
 
-                    self.consumed_offers
-                        .insert((public_offer.id(), swap_id.clone()));
+                    self.consumed_offers.insert((public_offer.id(), swap_id));
                     launch_swapd(
                         self,
                         peer,
@@ -1076,7 +1075,7 @@ fn syncers_up(
     swap_id: SwapId,
     config: &Config,
 ) -> Result<(), Error> {
-    let k = (coin.clone(), network);
+    let k = (coin, network);
     if !services.contains_key(&k) {
         let mut args = vec![
             "--coin".to_string(),
@@ -1086,7 +1085,7 @@ fn syncers_up(
         ];
         args.append(&mut syncer_servers_args(config, coin, network)?);
         launch("syncerd", args)?;
-        clients.insert(k.clone(), none!());
+        clients.insert(k, none!());
     }
     if let Some(xs) = clients.get_mut(&k) {
         xs.insert(swap_id);
@@ -1149,13 +1148,13 @@ fn syncer_servers_args(config: &Config, coin: Coin, net: Network) -> Result<Vec<
         Some(servers) => match coin {
             Coin::Bitcoin => Ok(vec![
                 "--electrum-server".to_string(),
-                servers.electrum_server.clone(),
+                servers.electrum_server,
             ]),
             Coin::Monero => Ok(vec![
                 "--monero-daemon".to_string(),
-                servers.monero_daemon.clone(),
+                servers.monero_daemon,
                 "--monero-rpc-wallet".to_string(),
-                servers.monero_rpc_wallet.clone(),
+                servers.monero_rpc_wallet,
             ]),
         },
         None => Err(SyncerError::InvalidConfig.into()),
