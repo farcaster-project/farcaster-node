@@ -1559,6 +1559,7 @@ impl Runtime {
                         self.state_update(senders, State::Bob(BobState::FinishB))?;
                         let abort_all = Task::Abort(Abort {
                             task_target: TaskTarget::AllTasks,
+                            respond: Boolean::False,
                         });
                         senders.send_to(
                             ServiceBus::Ctl,
@@ -1796,6 +1797,7 @@ impl Runtime {
                                 self.state_update(senders, State::Alice(AliceState::FinishA))?;
                                 let abort_all = Task::Abort(Abort {
                                     task_target: TaskTarget::AllTasks,
+                                    respond: Boolean::False,
                                 });
                                 senders.send_to(
                                     ServiceBus::Ctl,

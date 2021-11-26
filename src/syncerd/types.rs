@@ -132,6 +132,7 @@ pub struct SweepBitcoinAddress {
 #[display(Debug)]
 pub struct Abort {
     pub task_target: TaskTarget,
+    pub respond: Boolean,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

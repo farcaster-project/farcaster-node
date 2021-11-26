@@ -95,7 +95,12 @@ impl SyncerState {
         self.block_height
     }
 
-    pub async fn abort(&mut self, task_task_id_or_all_tasks: TaskTarget, source: ServiceId) {
+    pub async fn abort(
+        &mut self,
+        task_task_id_or_all_tasks: TaskTarget,
+        source: ServiceId,
+        respond: bool,
+    ) {
         let task_id = match task_task_id_or_all_tasks {
             TaskTarget::AllTasks => None,
             TaskTarget::TaskId(task_id) => Some(task_id),
@@ -229,17 +234,19 @@ impl SyncerState {
             return;
         }
 
-        send_event(
-            &self.tx_event,
-            &mut vec![(
-                Event::TaskAborted(TaskAborted {
-                    id: aborted_ids,
-                    error: None,
-                }),
-                source.clone(),
-            )],
-        )
-        .await;
+        if respond {
+            send_event(
+                &self.tx_event,
+                &mut vec![(
+                    Event::TaskAborted(TaskAborted {
+                        id: aborted_ids,
+                        error: None,
+                    }),
+                    source.clone(),
+                )],
+            )
+            .await;
+        }
     }
 
     pub async fn watch_height(&mut self, task: WatchHeight, source: ServiceId) {
@@ -668,7 +675,9 @@ async fn syncer_state_transaction() {
     let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
     state.watch_transaction(transaction_task_one.clone(), source1.clone());
-    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
+    state
+        .abort(TaskTarget::TaskId(0), source1.clone(), true)
+        .await;
     assert!(event_rx.try_recv().is_ok());
 
     state.watch_transaction(transaction_task_one.clone(), source1.clone());
@@ -728,7 +737,9 @@ async fn syncer_state_transaction() {
 
     let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
     state.watch_transaction(transaction_task_two.clone(), source2.clone());
-    state.abort(TaskTarget::TaskId(0), source2.clone()).await;
+    state
+        .abort(TaskTarget::TaskId(0), source2.clone(), true)
+        .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
@@ -775,7 +786,9 @@ async fn syncer_state_addresses() {
     state
         .watch_address(address_task_two.clone(), source1.clone())
         .unwrap();
-    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
+    state
+        .abort(TaskTarget::TaskId(0), source1.clone(), true)
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.addresses.len(), 0);
@@ -871,7 +884,9 @@ async fn syncer_state_addresses() {
     state
         .watch_address(address_task_two.clone(), source2.clone())
         .unwrap();
-    state.abort(TaskTarget::TaskId(0), source2.clone()).await;
+    state
+        .abort(TaskTarget::TaskId(0), source2.clone(), true)
+        .await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -930,7 +945,9 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.sweep_addresses.len(), 1);
-    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
+    state
+        .abort(TaskTarget::TaskId(0), source1.clone(), true)
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);
@@ -962,7 +979,9 @@ async fn syncer_state_height() {
     state
         .watch_height(height_task.clone(), source1.clone())
         .await;
-    state.abort(TaskTarget::TaskId(0), source1.clone()).await;
+    state
+        .abort(TaskTarget::TaskId(0), source1.clone(), true)
+        .await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
@@ -1001,7 +1020,9 @@ async fn syncer_state_height() {
     state
         .watch_height(another_height_task.clone(), source2.clone())
         .await;
-    state.abort(TaskTarget::TaskId(0), source2.clone()).await;
+    state
+        .abort(TaskTarget::TaskId(0), source2.clone(), true)
+        .await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);

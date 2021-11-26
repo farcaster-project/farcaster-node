@@ -610,6 +610,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(0),
+            respond: Boolean::True,
         }),
         source: SOURCE1.clone(),
     };
@@ -623,6 +624,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(0),
+            respond: Boolean::True,
         }),
         source: SOURCE1.clone(),
     };
@@ -670,6 +672,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::AllTasks,
+            respond: Boolean::True,
         }),
         source: SOURCE1.clone(),
     };
@@ -683,6 +686,7 @@ fn bitcoin_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(0),
+            respond: Boolean::True,
         }),
         source: SOURCE1.clone(),
     };
@@ -1381,6 +1385,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(0),
+            respond: Boolean::True,
         }),
         source: SOURCE2.clone(),
     };
@@ -1394,6 +1399,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(0),
+            respond: Boolean::True,
         }),
         source: SOURCE2.clone(),
     };
@@ -1437,6 +1443,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::AllTasks,
+            respond: Boolean::True,
         }),
         source: SOURCE2.clone(),
     };
@@ -1450,6 +1457,7 @@ async fn monero_syncer_abort_test() {
     let task = SyncerdTask {
         task: Task::Abort(Abort {
             task_target: TaskTarget::TaskId(0),
+            respond: Boolean::True,
         }),
         source: SOURCE2.clone(),
     };
