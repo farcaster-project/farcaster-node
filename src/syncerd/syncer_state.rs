@@ -308,6 +308,7 @@ impl SyncerState {
                     id: task.id,
                     block: none!(),
                     confirmations: None,
+                    tx: None,
                 },
             },
         );
@@ -441,6 +442,7 @@ impl SyncerState {
         tx_id: Vec<u8>,
         block_hash: Option<Vec<u8>>,
         confirmations: Option<u32>,
+        tx: Option<Vec<u8>>,
     ) {
         self.drop_lifetimes();
         let mut events: Vec<(Event, ServiceId)> = Vec::new();
@@ -452,6 +454,7 @@ impl SyncerState {
             tx_id,
             block_hash,
             confirmations,
+            tx,
         );
 
         fn inner(
@@ -462,6 +465,7 @@ impl SyncerState {
             tx_id: Vec<u8>,
             block_hash: Option<Vec<u8>>,
             confirmations: Option<u32>,
+            tx: Option<Vec<u8>>,
         ) {
             let block = match block_hash {
                 Some(bh) => bh,
@@ -488,6 +492,7 @@ impl SyncerState {
                             id: watched_tx.task.id,
                             block: block.clone(),
                             confirmations,
+                            tx: tx.clone(),
                         };
                         events.push((
                             Event::TransactionConfirmations(tx_confs.clone()),
@@ -691,29 +696,17 @@ async fn syncer_state_transaction() {
     assert_eq!(state.unseen_transactions.len(), 2);
     assert!(event_rx.try_recv().is_err());
 
-    state.change_transaction(vec![0], none!(), none!()).await;
+    state
+        .change_transaction(vec![0], none!(), none!(), none!())
+        .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);
     assert_eq!(state.unseen_transactions.len(), 2);
     assert!(event_rx.try_recv().is_ok());
 
-    state.change_transaction(vec![0], none!(), Some(0)).await;
-    assert_eq!(state.lifetimes.len(), 3);
-    assert_eq!(state.transactions.len(), 2);
-    assert_eq!(state.tasks_sources.len(), 3);
-    assert_eq!(state.unseen_transactions.len(), 1);
-    assert!(event_rx.try_recv().is_ok());
-
-    state.change_transaction(vec![0], none!(), Some(0)).await;
-    assert_eq!(state.lifetimes.len(), 3);
-    assert_eq!(state.transactions.len(), 2);
-    assert_eq!(state.tasks_sources.len(), 3);
-    assert_eq!(state.unseen_transactions.len(), 1);
-    assert!(event_rx.try_recv().is_err());
-
     state
-        .change_transaction(vec![0], Some(vec![1]), Some(1))
+        .change_transaction(vec![0], none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -722,7 +715,7 @@ async fn syncer_state_transaction() {
     assert!(event_rx.try_recv().is_ok());
 
     state
-        .change_transaction(vec![0], Some(vec![1]), Some(1))
+        .change_transaction(vec![0], none!(), Some(0), none!())
         .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
@@ -730,7 +723,27 @@ async fn syncer_state_transaction() {
     assert_eq!(state.unseen_transactions.len(), 1);
     assert!(event_rx.try_recv().is_err());
 
-    state.change_transaction(vec![0], none!(), none!()).await;
+    state
+        .change_transaction(vec![0], Some(vec![1]), Some(1), none!())
+        .await;
+    assert_eq!(state.lifetimes.len(), 3);
+    assert_eq!(state.transactions.len(), 2);
+    assert_eq!(state.tasks_sources.len(), 3);
+    assert_eq!(state.unseen_transactions.len(), 1);
+    assert!(event_rx.try_recv().is_ok());
+
+    state
+        .change_transaction(vec![0], Some(vec![1]), Some(1), none!())
+        .await;
+    assert_eq!(state.lifetimes.len(), 3);
+    assert_eq!(state.transactions.len(), 2);
+    assert_eq!(state.tasks_sources.len(), 3);
+    assert_eq!(state.unseen_transactions.len(), 1);
+    assert!(event_rx.try_recv().is_err());
+
+    state
+        .change_transaction(vec![0], none!(), none!(), none!())
+        .await;
     assert_eq!(state.lifetimes.len(), 3);
     assert_eq!(state.transactions.len(), 2);
     assert_eq!(state.tasks_sources.len(), 3);

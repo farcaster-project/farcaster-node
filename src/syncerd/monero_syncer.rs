@@ -481,7 +481,7 @@ fn height_polling(
                     let mut state_guard = state.lock().await;
                     for tx in polled_transactions.drain(..) {
                         state_guard
-                            .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations)
+                            .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations, None)
                             .await;
                     }
                 }
@@ -561,7 +561,7 @@ fn unseen_transaction_polling(
                 let mut state_guard = state.lock().await;
                 for tx in polled_transactions.drain(..) {
                     state_guard
-                        .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations)
+                        .change_transaction(tx.tx_id, tx.block_hash, tx.confirmations, None)
                         .await;
                 }
             }

@@ -241,6 +241,7 @@ pub struct TransactionConfirmations {
     pub id: TaskId,
     pub block: Vec<u8>,
     pub confirmations: Option<u32>,
+    pub tx: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

@@ -264,7 +264,12 @@ impl ElectrumRpc {
                             );
                             let mut state_guard = state.lock().await;
                             state_guard
-                                .change_transaction(tx_id.to_vec(), None, Some(0))
+                                .change_transaction(
+                                    tx_id.to_vec(),
+                                    None,
+                                    Some(0),
+                                    Some(bitcoin::consensus::serialize(&tx)),
+                                )
                                 .await;
                             drop(state_guard);
                             continue;
@@ -291,7 +296,12 @@ impl ElectrumRpc {
                                     );
                                     let mut state_guard = state.lock().await;
                                     state_guard
-                                        .change_transaction(tx_id.to_vec(), None, Some(0))
+                                        .change_transaction(
+                                            tx_id.to_vec(),
+                                            None,
+                                            Some(0),
+                                            Some(bitcoin::consensus::serialize(&tx)),
+                                        )
                                         .await;
                                     drop(state_guard);
                                     continue;
@@ -313,7 +323,12 @@ impl ElectrumRpc {
                             );
                             let mut state_guard = state.lock().await;
                             state_guard
-                                .change_transaction(tx_id.to_vec(), None, Some(0))
+                                .change_transaction(
+                                    tx_id.to_vec(),
+                                    None,
+                                    Some(0),
+                                    Some(bitcoin::consensus::serialize(&tx)),
+                                )
                                 .await;
                             drop(state_guard);
                             continue;
@@ -328,7 +343,12 @@ impl ElectrumRpc {
                     };
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(tx.txid().to_vec(), blockhash, Some(confs))
+                        .change_transaction(
+                            tx.txid().to_vec(),
+                            blockhash,
+                            Some(confs),
+                            Some(bitcoin::consensus::serialize(&tx)),
+                        )
                         .await;
                     drop(state_guard);
                 }
@@ -336,7 +356,7 @@ impl ElectrumRpc {
                     debug!("error getting transaction, treating as not found: {}", err);
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(tx_id.to_vec(), None, None)
+                        .change_transaction(tx_id.to_vec(), None, None, None)
                         .await;
                     drop(state_guard);
                 }
