@@ -452,6 +452,8 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     })
     .unwrap();
 
+    std::thread::sleep(duration);
+
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received confirmation");

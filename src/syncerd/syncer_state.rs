@@ -320,7 +320,7 @@ impl SyncerState {
         self.tasks_sources.insert(self.task_count.into(), source);
     }
 
-    pub async fn change_height(&mut self, height: u64, block: Vec<u8>) {
+    pub async fn change_height(&mut self, height: u64, block: Vec<u8>) -> bool {
         if self.block_height != height || self.block_hash != block {
             self.block_height = height;
             self.block_hash = block.clone();
@@ -342,6 +342,9 @@ impl SyncerState {
                 )
                 .await;
             }
+            true
+        } else {
+            false
         }
     }
 
