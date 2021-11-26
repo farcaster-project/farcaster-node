@@ -194,7 +194,11 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn clean_up_after_swap(&mut self, swapid: &SwapId) {
+    fn clean_up_after_swap(
+        &mut self,
+        swapid: &SwapId,
+        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+    ) -> Result<(), Error> {
         self.running_swaps.remove(swapid);
         let offers2rm: Vec<_> = self
             .consumed_offers
@@ -224,8 +228,19 @@ impl Runtime {
             .collect();
 
         if !syncers_wo_client.is_empty() {
-            warn!("Some syncers have no client and may exit");
+            // warn!("Some syncers have no client and may exit");
+            for (coin, network) in syncers_wo_client.iter() {
+                let service_id = ServiceId::Syncer(coin.clone(), network.clone());
+                info!("Terminating syncer: {:?}", service_id);
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    service_id,
+                    Request::Terminate,
+                )?;
+            }
         }
+        Ok(())
     }
 
     fn consumed_offers_contains(&self, offerid: &PublicOfferId) -> bool {
@@ -482,7 +497,7 @@ impl Runtime {
             }
             Request::SwapSuccess(success) => {
                 let swapid = get_swap_id(&source)?;
-                self.clean_up_after_swap(&swapid);
+                self.clean_up_after_swap(&swapid, senders)?;
                 if success {
                     info!("Success on swap {}", &swapid);
                     self.stats.incr_success();

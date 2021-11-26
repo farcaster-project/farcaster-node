@@ -338,6 +338,10 @@ pub enum Request {
     #[display("send_message({0})")]
     PeerMessage(Messages),
 
+    #[api(type = 3)]
+    #[display("terminate")]
+    Terminate,
+
     #[api(type = 32)]
     #[display("nodeid({0})")]
     NodeId(NodeId),
