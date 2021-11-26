@@ -82,7 +82,7 @@ use std::str::FromStr;
 
 pub fn run(
     service_config: ServiceConfig,
-    _config: Config,
+    config: Config,
     _opts: Opts,
     wallet_token: Token,
 ) -> Result<(), Error> {
@@ -107,6 +107,7 @@ pub fn run(
         consumed_offers: none!(),
         progress: none!(),
         stats: none!(),
+        config,
     };
 
     let broker = true;
@@ -133,6 +134,7 @@ pub struct Runtime {
     syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
     stats: Stats,
+    config: Config,
 }
 
 struct Stats {
@@ -430,6 +432,7 @@ impl Runtime {
                         Coin::Bitcoin,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     syncers_up(
                         &self.syncer_services,
@@ -437,6 +440,7 @@ impl Runtime {
                         Coin::Monero,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
@@ -471,6 +475,7 @@ impl Runtime {
                         Coin::Bitcoin,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     syncers_up(
                         &self.syncer_services,
@@ -478,6 +483,7 @@ impl Runtime {
                         Coin::Monero,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
@@ -1068,10 +1074,18 @@ fn syncers_up(
     coin: Coin,
     network: Network,
     swap_id: SwapId,
+    config: &Config,
 ) -> Result<(), Error> {
     let k = (coin.clone(), network);
     if !services.contains_key(&k) {
-        launch("syncerd", &[coin.to_string(), network.to_string()])?;
+        let mut args = vec![
+            "--coin".to_string(),
+            coin.to_string(),
+            "--network".to_string(),
+            network.to_string(),
+        ];
+        args.append(&mut syncer_servers_args(config, coin, network)?);
+        launch("syncerd", args)?;
         clients.insert(k.clone(), none!());
     }
     if let Some(xs) = clients.get_mut(&k) {
@@ -1126,6 +1140,26 @@ fn launch_swapd(
     debug!("Awaiting for swapd to connect...");
 
     Ok(msg)
+}
+
+/// Return the list of needed arguments for a syncer given a config and a network.
+/// This function only register the minimal set of URLs needed for the blockchain to work.
+fn syncer_servers_args(config: &Config, coin: Coin, net: Network) -> Result<Vec<String>, Error> {
+    match config.get_syncer_servers(net) {
+        Some(servers) => match coin {
+            Coin::Bitcoin => Ok(vec![
+                "--electrum-server".to_string(),
+                servers.electrum_server.clone(),
+            ]),
+            Coin::Monero => Ok(vec![
+                "--monero-daemon".to_string(),
+                servers.monero_daemon.clone(),
+                "--monero-rpc-wallet".to_string(),
+                servers.monero_rpc_wallet.clone(),
+            ]),
+        },
+        None => Err(SyncerError::InvalidConfig.into()),
+    }
 }
 
 pub fn launch(

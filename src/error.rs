@@ -88,6 +88,7 @@ pub enum Error {
 
     /// Syncer
     #[display(inner)]
+    #[from(SyncerError)]
     Syncer(SyncerError),
 
     /// BitcoinHashes
@@ -99,15 +100,20 @@ pub enum Error {
 pub enum SyncerError {
     #[display(inner)]
     Electrum(electrum_client::Error),
+
     #[display(inner)]
     NoTxsOnAddress,
+
     #[display(inner)]
     ScriptAlreadyRegistered,
+
     #[display("syncer creating error")]
     UnknownNetwork,
+
     #[display(inner)]
     MoneroRpc(anyhow::Error),
-    #[display(inner)]
+
+    #[display("Invalid configuration. Missing or malformed")]
     InvalidConfig,
     #[display("height did not increment")]
     NoIncrementToHeight,
