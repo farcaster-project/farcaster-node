@@ -516,20 +516,26 @@ impl State {
             ),
         }
     }
-    fn sup_commit_to_reveal(self, remote_commit: Commit) -> Self {
+    fn sup_commit_to_reveal(self) -> Self {
         if !self.commit() {
             error!("Not on Commit state, not updating state");
             return self;
         }
-
+        if self.remote_commit().is_none() {
+            error!("remote commit should be set already");
+            return self;
+        }
         match self {
-            State::Alice(AliceState::CommitA(CommitC { local_params, .. })) => {
-                State::Alice(AliceState::RevealA(local_params, remote_commit))
-            }
+            State::Alice(AliceState::CommitA(CommitC {
+                local_params,
+                remote_commit: Some(remote_commit),
+                ..
+            })) => State::Alice(AliceState::RevealA(local_params, remote_commit)),
+
             State::Bob(BobState::CommitB(
                 CommitC {
                     local_params,
-                    remote_commit: None,
+                    remote_commit: Some(remote_commit),
                     ..
                 },
                 addr,
@@ -538,6 +544,28 @@ impl State {
             _ => unreachable!("checked state on pattern to be Commit"),
         }
     }
+    fn t_sup_remote_commit(&mut self, commit: Commit) -> bool {
+        if !self.commit() {
+            error!("Not on Commit state, not updating state");
+            return false;
+        }
+        if self.remote_commit().is_some() {
+            error!("remote commit already set");
+            return false;
+        }
+
+        match self {
+            State::Alice(AliceState::CommitA(CommitC { remote_commit, .. })) => {
+                *remote_commit = Some(commit);
+            }
+            State::Bob(BobState::CommitB(CommitC { remote_commit, .. }, ..)) => {
+                *remote_commit = Some(commit);
+            }
+            _ => unreachable!("checked state on pattern to be Commit"),
+        }
+        true
+    }
+
     /// Update Bob BuySig state from XMR unlocked to locked state
     fn b_sup_buysig_buy_tx_seen(&mut self) {
         if !self.b_buy_sig() {
@@ -872,13 +900,11 @@ impl Runtime {
                     // whether we're Bob or Alice and that we're on a compatible state
                     Msg::MakerCommit(remote_commit)
                         if self.state.commit()
-                            && self.state.trade_role() == Some(TradeRole::Taker) =>
+                            && self.state.trade_role() == Some(TradeRole::Taker)
+                            && self.state.remote_commit().is_none() =>
                     {
-                        trace!("received commitment from counterparty, can now reveal");
-                        let next_state = self
-                            .state
-                            .clone()
-                            .sup_commit_to_reveal(remote_commit.clone());
+                        trace!("received remote commitment");
+                        self.state.t_sup_remote_commit(remote_commit.clone());
 
                         if self.state.swap_role() == SwapRole::Bob {
                             let addr = self
@@ -920,9 +946,7 @@ impl Runtime {
                             self.syncer_state.monero_syncer(),
                             Request::SyncerTask(watch_height_monero),
                         )?;
-
                         self.send_wallet(msg_bus, senders, request)?;
-                        self.state_update(senders, next_state)?;
                     }
                     Msg::TakerCommit(_) => {
                         unreachable!(
@@ -993,40 +1017,11 @@ impl Runtime {
                                 Request::SyncerTask(watch_addr_task),
                             )?;
                         }
-
-                        // parameter processing irrespective of maker & taker role
-                        let core_wallet = CommitmentEngine;
-                        let remote_params_candidate = match reveal {
-                            Reveal::AliceParameters(reveal) => match &remote_commit {
-                                Commit::AliceParameters(commit) => {
-                                    commit.verify_with_reveal(&core_wallet, reveal.clone())?;
-                                    Some(Params::Alice(reveal.clone().into()))
-                                }
-                                _ => {
-                                    let err_msg = "expected Some(Commit::Alice(commit))";
-                                    error!("{}", err_msg);
-                                    return Err(Error::Farcaster(err_msg.to_string()));
-                                }
-                            },
-                            Reveal::BobParameters(reveal) => match &remote_commit {
-                                Commit::BobParameters(commit) => {
-                                    commit.verify_with_reveal(&core_wallet, reveal.clone())?;
-                                    Some(Params::Bob(reveal.clone().into()))
-                                }
-                                _ => {
-                                    let err_msg = "expected Some(Commit::Bob(commit))";
-                                    error!("{}", err_msg);
-                                    return Err(Error::Farcaster(err_msg.to_string()));
-                                }
-                            },
-                            Reveal::Proof(_) => {
-                                error!("this should have been caught by another pattern!");
-                                None
-                            }
-                        };
-                        if remote_params_candidate.is_some() {
+                        if let Ok(remote_params_candidate) =
+                            remote_params_candidate(reveal, remote_commit)
+                        {
                             info!("{:?} sets remote_params", self.state.swap_role());
-                            self.remote_params = remote_params_candidate
+                            self.remote_params = Some(remote_params_candidate)
                         }
 
                         // Specific to swap roles
@@ -1112,13 +1107,6 @@ impl Runtime {
                                 self.syncer_state.monero_syncer(),
                                 Request::SyncerTask(watch_height_monero),
                             )?;
-
-                            let next_state = self
-                                .state
-                                .clone()
-                                .sup_commit_to_reveal(remote_commit.clone());
-
-                            self.state_update(senders, next_state)?;
                         }
                     }
                     // alice receives, bob sends
@@ -1295,11 +1283,13 @@ impl Runtime {
                 self.send_peer(senders, Msg::TakerCommit(take_swap))?;
                 self.state_update(senders, next_state)?;
             }
-            Request::Protocol(Msg::Reveal(reveal)) if self.state.reveal() => {
+            Request::Protocol(Msg::Reveal(reveal))
+                if self.state.commit() && self.state.remote_commit().is_some() =>
+            {
                 let local_params = self
                     .state
                     .local_params()
-                    .expect("reveal state has local_params");
+                    .expect("commit state has local_params");
                 let reveal_proof = Msg::Reveal(reveal);
                 let swap_id = reveal_proof.swap_id();
                 self.send_peer(senders, reveal_proof)?;
@@ -1307,6 +1297,8 @@ impl Runtime {
                 let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                 self.send_peer(senders, Msg::Reveal(reveal_params))?;
                 trace!("sent reveal_proof to peerd");
+                let next_state = self.state.clone().sup_commit_to_reveal();
+                self.state_update(senders, next_state)?;
             }
 
             Request::MakeSwap(InitSwap {
@@ -2141,4 +2133,35 @@ struct PendingRequest {
     request: Request,
     dest: ServiceId,
     bus_id: ServiceBus,
+}
+fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
+    // parameter processing irrespective of maker & taker role
+    let core_wallet = CommitmentEngine;
+    match reveal {
+        Reveal::AliceParameters(reveal) => match &remote_commit {
+            Commit::AliceParameters(commit) => {
+                commit.verify_with_reveal(&core_wallet, reveal.clone())?;
+                Ok(Params::Alice(reveal.clone().into()))
+            }
+            _ => {
+                let err_msg = "expected Some(Commit::Alice(commit))";
+                error!("{}", err_msg);
+                Err(Error::Farcaster(err_msg.to_string()))
+            }
+        },
+        Reveal::BobParameters(reveal) => match &remote_commit {
+            Commit::BobParameters(commit) => {
+                commit.verify_with_reveal(&core_wallet, reveal.clone())?;
+                Ok(Params::Bob(reveal.clone().into()))
+            }
+            _ => {
+                let err_msg = "expected Some(Commit::Bob(commit))";
+                error!("{}", err_msg);
+                Err(Error::Farcaster(err_msg.to_string()))
+            }
+        },
+        Reveal::Proof(_) => Err(Error::Farcaster(s!(
+            "this should have been caught by another pattern!"
+        ))),
+    }
 }
