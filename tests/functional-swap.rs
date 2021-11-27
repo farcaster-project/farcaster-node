@@ -16,6 +16,182 @@ const ALLOWED_RETRIES: u32 = 120;
 
 #[tokio::test]
 #[ignore]
+async fn swap_test_bob_maker() {
+    let bitcoin_rpc = bitcoin_setup();
+    let reusable_btc_address =
+        bitcoin::Address::from_str("bcrt1q3rc4sm3w9fr6a46n08znfjt7eu2yhhel6j8rsa").unwrap();
+    let reusable_xmr_address = monero::Address::from_str("44CpGC77Kn6exUWYCUwfaUYmDeKn7MyRcNPikgeHBCz8M6LXUC3fGCWNMW7UACHyTL6QxzqKxvJbu5o2VESLzCaeNHNUkwv").unwrap();
+    let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+
+    let (monero_regtest, monero_wallet) = monero_setup().await;
+    let xmr_address = monero_wallet.get_address(0, None).await.unwrap();
+    monero_regtest
+        .generate_blocks(200, reusable_xmr_address)
+        .await
+        .unwrap();
+
+    // data directories
+    let data_dir_maker = vec!["-d", "tests/.farcaster_node_0"];
+    let data_dir_taker = vec!["-d", "tests/.farcaster_node_1"];
+    // destination addresses
+    let btc_addr = btc_address.clone().to_string();
+    let xmr_addr = xmr_address.address.clone().to_string();
+
+    let server_args_maker = vec![
+        "-vvv",
+        "--electrum-server",
+        "localhost:50001",
+        "--monero-daemon",
+        "http://localhost:18081",
+        "--monero-rpc-wallet",
+        "http://localhost:18084",
+    ];
+    let server_args_taker = vec![
+        "-vvv",
+        "--electrum-server",
+        "localhost:50001",
+        "--monero-daemon",
+        "http://localhost:18081",
+        "--monero-rpc-wallet",
+        "http://localhost:18085",
+    ];
+    let farcasterd_maker_args = farcasterd_args(data_dir_maker.clone(), server_args_maker);
+    let farcasterd_taker_args = farcasterd_args(data_dir_taker.clone(), server_args_taker);
+
+    let mut farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
+    let mut farcasterd_taker = launch("../farcasterd", farcasterd_taker_args).unwrap();
+
+    let maker_info_args = info_args(data_dir_maker.clone());
+    let taker_info_args = info_args(data_dir_taker.clone());
+
+    // test connection to farcasterd and check that swap-cli is in the correct place
+    run("../swap-cli", maker_info_args.clone()).unwrap();
+
+    // make an offer
+    let cli_make_args = make_args(data_dir_maker.clone(), "Bob", &btc_addr, &xmr_addr);
+    let (_stdout, _stderr) = run("../swap-cli", cli_make_args).unwrap();
+
+    // get offer strings
+    let offers = retry_until_offer(maker_info_args.clone());
+
+    let cli_take_args = take_args(data_dir_taker.clone(), &btc_addr, &xmr_addr, &offers[0]);
+    run("../swap-cli", cli_take_args).unwrap();
+
+    // run until the swap id is available
+    let swap_ids = retry_until_swap_ids(maker_info_args.clone());
+    println!("swapid: \n {:?} \n", swap_ids);
+
+    let cli_taker_progress_args: Vec<String> = progress_args(data_dir_taker, &swap_ids[0]);
+    let cli_maker_progress_args: Vec<String> = progress_args(data_dir_maker, &swap_ids[0]);
+
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address)
+        .unwrap();
+
+    println!("waiting for funding address\n\n");
+
+    // run until the maker has the btc funding address
+    let address = retry_until_bitcoin_funding_address(cli_maker_progress_args.clone());
+
+    println!("\n\n funding address retrieved\n\n");
+
+    // this seems to improve reliability, probably there is a race condition somewhere with the address being funded too early
+    // FIXME: change this once https://github.com/farcaster-project/farcaster-node/issues/225 is fixed
+    thread::sleep(time::Duration::from_secs(10));
+
+    println!("funding the address now\n\n");
+
+    // fund the bitcoin address
+    let amount = bitcoin::Amount::ONE_SAT * 100000150;
+    bitcoin_rpc
+        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .unwrap();
+    monero_regtest
+        .generate_blocks(11, reusable_xmr_address)
+        .await
+        .unwrap();
+
+    // run until the taker has the monero funding address
+    let monero_address = retry_until_monero_funding_address(cli_taker_progress_args.clone());
+    send_monero(&monero_wallet, monero_address, 1000000000000).await;
+
+    // generate some blocks on bitcoin's side for confirmations
+    bitcoin_rpc
+        .generate_to_address(5, &reusable_btc_address)
+        .unwrap();
+
+    // run until the AliceState(Finish) is received
+    retry_until_finish_state_transition(
+        cli_taker_progress_args.clone(),
+        "AliceState(Finish)".to_string(),
+    );
+
+    // generate some blocks on bitcoin's side
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address)
+        .unwrap();
+
+    let (_stdout, _stderr) = run("../swap-cli", cli_maker_progress_args.clone()).unwrap();
+
+    // check that btc was received in the destination address
+    let balance = bitcoin_rpc
+        .get_received_by_address(&btc_address, None)
+        .unwrap();
+    assert!(balance.as_sat() > 90000000);
+
+    // cache the monero balance before sweeping
+    let before_balance = monero_wallet.get_balance(0, None).await.unwrap();
+
+    // generate some blocks on monero's side
+    monero_regtest
+        .generate_blocks(11, reusable_xmr_address)
+        .await
+        .unwrap();
+
+    // run until the BobState(Finish) is received
+    retry_until_finish_state_transition(
+        cli_maker_progress_args.clone(),
+        "BobState(Finish)".to_string(),
+    );
+
+    monero_regtest
+        .generate_blocks(1, reusable_xmr_address)
+        .await
+        .unwrap();
+
+    monero_wallet.refresh(Some(1)).await.unwrap();
+    let after_balance = monero_wallet.get_balance(0, None).await.unwrap();
+    let delta_balance = after_balance.balance - before_balance.balance;
+    assert!(delta_balance > 999660000000);
+
+    // clean up processes
+    farcasterd_maker
+        .kill()
+        .expect("Couldn't kill farcasterd maker");
+    farcasterd_taker
+        .kill()
+        .expect("Couldn't kill farcasterd taker");
+
+    let _procs: Vec<_> = System::new_all()
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| {
+            ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
+            // && [farcasterd_maker.id(), farcasterd_taker.id()]
+            // .contains(&(process.parent().unwrap() as u32))
+        })
+        .map(|(pid, _process)| {
+            nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(*pid as i32),
+                nix::sys::signal::Signal::SIGINT,
+            )
+            .expect("Sending CTRL-C failed")
+        })
+        .collect();
+}
+
+#[tokio::test]
+#[ignore]
 async fn swap_test_alice_maker() {
     let bitcoin_rpc = bitcoin_setup();
     let reusable_btc_address =
@@ -297,9 +473,12 @@ fn retry_until_swap_ids(args: Vec<String>) -> Vec<String> {
 }
 
 fn retry_until_bitcoin_funding_address(args: Vec<String>) -> bitcoin::Address {
+    println!("\n\n lol! \n\n");
     for _ in 0..ALLOWED_RETRIES {
+        println!("iterating with {:?}\n\n", args);
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
         // get the btc funding address
+        println!("\n\nfunding address: {:?}\n\n", stdout);
         let bitcoin_address: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
