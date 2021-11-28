@@ -210,36 +210,30 @@ impl Runtime {
         for offer in &offers2rm {
             self.consumed_offers.remove(offer);
         }
-
+        let identity = self.identity();
         self.syncer_clients = self
             .syncer_clients
             .drain()
-            .map(|(key, mut xs)| {
+            .filter_map(|((coin, network), mut xs)| {
                 xs.remove(swapid);
-                (key, xs)
+                if !xs.is_empty() {
+                    Some(((coin, network), xs))
+                } else {
+                    let service_id = ServiceId::Syncer(coin.clone(), network.clone());
+                    info!("Terminating syncer: {:?}", service_id);
+                    if let Ok(_) = senders.send_to(
+                        ServiceBus::Ctl,
+                        identity.clone(),
+                        service_id,
+                        Request::Terminate,
+                    ) {
+                        None
+                    } else {
+                        Some(((coin, network), xs))
+                    }
+                }
             })
             .collect();
-
-        let syncers_wo_client: Vec<_> = self
-            .syncer_clients
-            .iter()
-            .filter(|(_, xs)| xs.is_empty())
-            .map(|(k, _)| k)
-            .collect();
-
-        if !syncers_wo_client.is_empty() {
-            // warn!("Some syncers have no client and may exit");
-            for (coin, network) in syncers_wo_client.iter() {
-                let service_id = ServiceId::Syncer(coin.clone(), network.clone());
-                info!("Terminating syncer: {:?}", service_id);
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    service_id,
-                    Request::Terminate,
-                )?;
-            }
-        }
         Ok(())
     }
 
