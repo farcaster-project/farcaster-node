@@ -320,7 +320,7 @@ pub enum BobState {
     CommitB(CommitC, bitcoin::Address),
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealB(Params, Commit, bitcoin::Address), // local, remote, local
+    RevealB(Params, Commit, bitcoin::Address, TradeRole), // local, remote, local
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
@@ -404,9 +404,8 @@ impl State {
     }
     fn b_address(&self) -> Option<&bitcoin::Address> {
         match self {
-            State::Bob(BobState::CommitB(_, addr)) | State::Bob(BobState::RevealB(_, _, addr)) => {
-                Some(addr)
-            }
+            State::Bob(BobState::CommitB(_, addr))
+            | State::Bob(BobState::RevealB(_, _, addr, ..)) => Some(addr),
             _ => None,
         }
     }
@@ -474,7 +473,8 @@ impl State {
             State::Alice(AliceState::StartA(trade_role, ..))
             | State::Bob(BobState::StartB(trade_role, ..))
             | State::Alice(AliceState::CommitA(CommitC { trade_role, .. }))
-            | State::Bob(BobState::CommitB(CommitC { trade_role, .. }, ..)) => Some(*trade_role),
+            | State::Bob(BobState::CommitB(CommitC { trade_role, .. }, ..))
+            | State::Bob(BobState::RevealB(.., trade_role)) => Some(*trade_role),
             _ => None,
         }
     }
@@ -535,10 +535,16 @@ impl State {
                 CommitC {
                     local_params,
                     remote_commit: Some(remote_commit),
+                    trade_role,
                     ..
                 },
                 addr,
-            )) => State::Bob(BobState::RevealB(local_params, remote_commit, addr)),
+            )) => State::Bob(BobState::RevealB(
+                local_params,
+                remote_commit,
+                addr,
+                trade_role,
+            )),
 
             _ => unreachable!("checked state on pattern to be Commit"),
         }
@@ -1345,7 +1351,10 @@ impl Runtime {
             }
             Request::FundingUpdated
                 if source == ServiceId::Wallet
-                    && self.state.reveal()
+                    && ((self.state.trade_role() == Some(TradeRole::Taker)
+                        && self.state.reveal())
+                        || (self.state.trade_role() == Some(TradeRole::Maker)
+                            && self.state.commit()))
                     && self.pending_requests.contains_key(&source)
                     && self
                         .pending_requests
