@@ -303,9 +303,12 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             let funding = create_funding(&mut key_manager, offer.network)?;
                             let funding_addr = funding.get_address()?;
+                            let funding_fee = 150;
+                            let funding_amount = offer.arbitrating_amount.as_sat() + funding_fee;
                             info!(
-                                "Bob, please send Btc to address: {}",
-                                &funding_addr.bright_yellow_bold()
+                                "Send {} sats to address: {}",
+                                funding_amount.bright_green_bold(),
+                                funding_addr.addr(),
                             );
                             info!("Loading {}", "Wallet::Bob".bright_yellow());
                             if let request::Commit::AliceParameters(remote_commit) =
