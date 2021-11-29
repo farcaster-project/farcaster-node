@@ -1006,24 +1006,6 @@ impl Runtime {
 
                         let remote_commit = self.state.remote_commit().cloned().unwrap();
 
-                        if let Some(addr) = self.state.b_address().cloned() {
-                            let msg = format!(
-                                "{} {}",
-                                "Funding address:".bright_white_bold(),
-                                addr.bright_yellow_bold()
-                            );
-                            let enquirer = self.enquirer.clone();
-                            let _ = self.report_progress_to(senders, &enquirer, msg);
-
-                            let watch_addr_task = self
-                                .syncer_state
-                                .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
-                            self.send_ctl(
-                                senders,
-                                self.syncer_state.bitcoin_syncer(),
-                                Request::SyncerTask(watch_addr_task),
-                            )?;
-                        }
                         if let Ok(remote_params_candidate) =
                             remote_params_candidate(reveal, remote_commit)
                         {
@@ -1067,21 +1049,15 @@ impl Runtime {
                                 }
                                 pending_requests.push(pending_request);
 
-                                let addr = self
-                                    .state
-                                    .b_address()
-                                    .cloned()
-                                    .expect("address available at CommitB");
-                                let msg = format!(
-                                    "{} {}",
-                                    "Funding address:".bright_white_bold(),
-                                    addr.bright_yellow_bold()
-                                );
-                                let enquirer = self.enquirer.clone();
-
-                                // ask for funding
-                                let _ = self.report_success_to(senders, &enquirer, Some(msg));
-                                // self.send_ctl(senders, ServiceId::Farcasterd, msg);
+                                if let Some(addr) = self.state.b_address().cloned() {
+                                    let msg = format!(
+                                        "{} {}",
+                                        "Funding address:".bright_white_bold(),
+                                        addr.bright_yellow_bold()
+                                    );
+                                    let enquirer = self.enquirer.clone();
+                                    let _ = self.report_progress_to(senders, &enquirer, msg);
+                                }
                             }
                         }
 
@@ -1091,6 +1067,16 @@ impl Runtime {
                         // of 2021-07-13 taker reveals first
                         if self.state.commit() && self.state.trade_role() == Some(TradeRole::Maker)
                         {
+                            if let Some(addr) = self.state.b_address().cloned() {
+                                let watch_addr_task = self
+                                    .syncer_state
+                                    .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
+                                self.send_ctl(
+                                    senders,
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(watch_addr_task),
+                                )?;
+                            }
                             trace!("Watch height bitcoin");
                             let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
                                 id: self.syncer_state.tasks.new_taskid(),
@@ -1211,6 +1197,7 @@ impl Runtime {
 
         match request {
             Request::SwapSuccess(success) if source == ServiceId::Farcasterd => {
+                info!("Terminating {}", self.identity());
                 std::process::exit(match success {
                     true => 0,
                     false => 1,
