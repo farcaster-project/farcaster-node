@@ -1,7 +1,14 @@
 use monero::consensus::Decodable;
 use monero::consensus::Encodable;
 use std::io;
+use std::ops::Add;
 use strict_encoding::{StrictDecode, StrictEncode};
+
+#[derive(
+    Clone, Copy, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Ord, PartialOrd, Hash,
+)]
+#[display(Debug)]
+pub struct TaskId(pub u32);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
@@ -67,7 +74,7 @@ impl StrictDecode for XmrAddressAddendum {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct SweepAddress {
-    pub id: u32,
+    pub id: TaskId,
     pub lifetime: u64,
     pub addendum: SweepAddressAddendum,
 }
@@ -137,21 +144,21 @@ pub struct Abort {
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 pub enum TaskTarget {
-    TaskId(u32),
+    TaskId(TaskId),
     AllTasks,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct WatchHeight {
-    pub id: u32,
+    pub id: TaskId,
     pub lifetime: u64,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct WatchAddress {
-    pub id: u32,
+    pub id: TaskId,
     pub lifetime: u64,
     pub addendum: AddressAddendum,
     pub include_tx: Boolean,
@@ -176,7 +183,7 @@ impl From<Boolean> for bool {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct WatchTransaction {
-    pub id: u32,
+    pub id: TaskId,
     pub lifetime: u64,
     pub hash: Vec<u8>,
     pub confirmation_bound: u32,
@@ -185,7 +192,7 @@ pub struct WatchTransaction {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct BroadcastTransaction {
-    pub id: u32,
+    pub id: TaskId,
     pub tx: Vec<u8>,
 }
 
@@ -205,14 +212,14 @@ pub enum Task {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct TaskAborted {
-    pub id: Vec<u32>,
+    pub id: Vec<TaskId>,
     pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct HeightChanged {
-    pub id: u32,
+    pub id: TaskId,
     pub block: Vec<u8>,
     pub height: u64,
 }
@@ -220,7 +227,7 @@ pub struct HeightChanged {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct AddressTransaction {
-    pub id: u32,
+    pub id: TaskId,
     pub hash: Vec<u8>,
     pub amount: u64,
     pub block: Vec<u8>,
@@ -230,7 +237,7 @@ pub struct AddressTransaction {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct TransactionConfirmations {
-    pub id: u32,
+    pub id: TaskId,
     pub block: Vec<u8>,
     pub confirmations: Option<u32>,
 }
@@ -238,7 +245,7 @@ pub struct TransactionConfirmations {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct TransactionBroadcasted {
-    pub id: u32,
+    pub id: TaskId,
     pub tx: Vec<u8>,
     pub error: Option<String>,
 }
@@ -246,7 +253,7 @@ pub struct TransactionBroadcasted {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct SweepSuccess {
-    pub id: u32,
+    pub id: TaskId,
     pub txids: Vec<Vec<u8>>,
 }
 
