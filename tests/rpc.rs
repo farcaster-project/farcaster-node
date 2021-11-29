@@ -45,19 +45,23 @@ fn spawn_swap() {
     cmd.args(data_dir_maker.clone());
     cmd.args(vec![
                 "make",
+                "--arb-addr",
                 "tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq",
+                "--acc-addr",
                 "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
-                "Testnet",
-                "ECDSA",
-                "Monero",
+                "--arb-amount",
                 "101 BTC",
+                "--acc-amount",
                 "100 XMR",
+                "-r",
                 "Alice",
+                "--cancel-timelock",
                 "10",
+                "--punish-timelock",
                 "30",
+                "--fee-strategy",
                 "1 satoshi/vByte",
-                "127.0.0.1",
-                "0.0.0.0",
+                "-p",
                 "9376",
             ]);
 
