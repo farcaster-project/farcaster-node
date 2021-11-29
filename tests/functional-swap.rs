@@ -83,31 +83,15 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
     let data_dir_maker = vec!["-d".to_string(), "tests/.farcaster_node_0".to_string()];
     let data_dir_taker = vec!["-d".to_string(), "tests/.farcaster_node_1".to_string()];
 
-    let server_args_maker = vec![
-        "-vvv",
-        "--electrum-server",
-        "localhost:50001",
-        "--monero-daemon",
-        "http://localhost:18081",
-        "--monero-rpc-wallet",
-        "http://localhost:18084",
-    ]
-    .iter()
-    .map(|i| i.to_string())
-    .collect();
+    let server_args_maker = vec!["-vvv", "--config", ".farcasterd_1"]
+        .iter()
+        .map(|i| i.to_string())
+        .collect();
 
-    let server_args_taker = vec![
-        "-vvv",
-        "--electrum-server",
-        "localhost:50001",
-        "--monero-daemon",
-        "http://localhost:18081",
-        "--monero-rpc-wallet",
-        "http://localhost:18085",
-    ]
-    .iter()
-    .map(|i| i.to_string())
-    .collect();
+    let server_args_taker = vec!["-vvv", "--config", ".farcasterd_2"]
+        .iter()
+        .map(|i| i.to_string())
+        .collect();
 
     let farcasterd_maker_args = farcasterd_args(data_dir_maker.clone(), server_args_maker);
     let farcasterd_taker_args = farcasterd_args(data_dir_taker.clone(), server_args_taker);
