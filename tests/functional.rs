@@ -405,6 +405,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     let txid_1 = bitcoin_rpc
         .send_to_address(&address_1, amount, None, None, None, None, None, None)
         .unwrap();
+
     std::thread::sleep(duration);
 
     tx.send(SyncerdTask {
@@ -446,6 +447,9 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     let block_hash = bitcoin_rpc.generate_to_address(1, &address_2).unwrap();
     let block = bitcoin_rpc.get_block(&block_hash[0]).unwrap();
     let address_txid = find_coinbase_transaction_id(block.txdata);
+
+    std::thread::sleep(duration);
+
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
             id: 1,
@@ -456,8 +460,6 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         source: SOURCE1.clone(),
     })
     .unwrap();
-
-    std::thread::sleep(duration);
 
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
