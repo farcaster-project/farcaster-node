@@ -157,6 +157,26 @@ _arguments "${_arguments_options[@]}" \
 ;;
 (make)
 _arguments "${_arguments_options[@]}" \
+'--arb-addr=[Bitcoin address used as destination or refund address]' \
+'--acc-addr=[Monero address used as destination or refund address]' \
+'-n+[Network to use to execute the swap between the chosen blockchains]: :(Testnet Mainnet Local)' \
+'--network=[Network to use to execute the swap between the chosen blockchains]: :(Testnet Mainnet Local)' \
+'--arb-blockchain=[The chosen arbitrating blockchain]: :(ECDSA)' \
+'--acc-blockchain=[The chosen accordant blockchain]: :(Monero)' \
+'--arb-amount=[Amount of arbitrating assets to exchanged]' \
+'--acc-amount=[Amount of accordant assets to exchanged]' \
+'-r+[The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones]: :(Alice Bob)' \
+'--maker-role=[The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones]: :(Alice Bob)' \
+'--cancel-timelock=[The cancel timelock parameter of the arbitrating blockchain]' \
+'--punish-timelock=[The punish timelock parameter of the arbitrating blockchain]' \
+'--fee-strategy=[The chosen fee strategy for the arbitrating transactions]' \
+'-I+[Public IPv4 or IPv6 address present in the public offer allowing taker to connect]' \
+'--public-ip-addr=[Public IPv4 or IPv6 address present in the public offer allowing taker to connect]' \
+'-b+[IPv4 or IPv6 address to bind to, listening for takers]' \
+'--bind-ip-addr=[IPv4 or IPv6 address to bind to, listening for takers]' \
+'-p+[Port to use; defaults to the native LN port]' \
+'--port=[Port to use; defaults to the native LN port]' \
+'--overlay=[Use overlay protocol (http, websocket etc)]' \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
 '-T+[Use Tor]: :_hosts' \
@@ -171,25 +191,14 @@ _arguments "${_arguments_options[@]}" \
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':arbitrating-addr -- Bitcoin address used as destination or refund address:' \
-':accordant-addr -- Monero address used as destination or refund address:' \
-'::network -- Network to use:(Testnet Mainnet Local)' \
-'::arbitrating-blockchain -- The chosen arbitrating blockchain:(ECDSA)' \
-'::accordant-blockchain -- The chosen accordant blockchain:(Monero)' \
-'::arbitrating-amount -- Amount of arbitrating assets to exchanged:' \
-'::accordant-amount -- Amount of accordant assets to exchanged:' \
-'::maker-role -- The future maker swap role:(Alice Bob)' \
-'::cancel-timelock -- The cancel timelock parameter of the arbitrating blockchain:' \
-'::punish-timelock -- The punish timelock parameter of the arbitrating blockchain:' \
-'::fee-strategy -- The chosen fee strategy for the arbitrating transactions:' \
-'::public-ip-addr -- public IPv4 or IPv6 address for public offer:' \
-'::bind-ip-addr -- IPv4 or IPv6 address to bind to:' \
-'::port -- Port to use; defaults to the native LN port:' \
-'::overlay -- Use overlay protocol (http, websocket etc):' \
 && ret=0
 ;;
 (take)
 _arguments "${_arguments_options[@]}" \
+'--arb-addr=[Bitcoin address used as destination or refund address]' \
+'--acc-addr=[Monero address used as destination or refund address]' \
+'-o+[An encoded public offer]' \
+'--offer=[An encoded public offer]' \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
 '-T+[Use Tor]: :_hosts' \
@@ -198,17 +207,14 @@ _arguments "${_arguments_options[@]}" \
 '--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-w[Accept Offer without validation]' \
-'--without-validation[Accept Offer without validation]' \
+'-w[Accept the public offer without validation]' \
+'--without-validation[Accept the public offer without validation]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':bitcoin-address -- bitcoin address used as destination or refund address:' \
-':monero-address -- monero address used as destination or refund address:' \
-':public-offer -- Hex encoded offer:' \
 && ret=0
 ;;
 (progress)
@@ -227,7 +233,7 @@ _arguments "${_arguments_options[@]}" \
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':swapid -- SwapId:' \
+':swapid -- The swap id requested:' \
 && ret=0
 ;;
 (help)
@@ -262,9 +268,9 @@ _swap-cli_commands() {
 'info:General information about the running node' \
 'peers:Lists existing peer connections' \
 'ls:Lists running swaps' \
-'make:Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt Testnet ECDSA Monero "0.00001350 BTC" "0.001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745`' \
-'take:Taker accepts offer and connects to Maker'\''s daemon' \
-'progress:Request Swap progress report' \
+'make:Maker creates offer and start listening for incoming connections. Command used to to print the resulting public offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer' \
+'take:Taker accepts offer and connects to maker'\''s daemon to start the trade' \
+'progress:Request swap progress report' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'swap-cli commands' commands "$@"

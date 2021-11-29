@@ -40,9 +40,9 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'General information about the running node')
             [CompletionResult]::new('peers', 'peers', [CompletionResultType]::ParameterValue, 'Lists existing peer connections')
             [CompletionResult]::new('ls', 'ls', [CompletionResultType]::ParameterValue, 'Lists running swaps')
-            [CompletionResult]::new('make', 'make', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt Testnet ECDSA Monero "0.00001350 BTC" "0.001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745`')
-            [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to Maker''s daemon')
-            [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request Swap progress report')
+            [CompletionResult]::new('make', 'make', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening for incoming connections. Command used to to print the resulting public offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer')
+            [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to maker''s daemon to start the trade')
+            [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request swap progress report')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -155,6 +155,26 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             break
         }
         'swap-cli;make' {
+            [CompletionResult]::new('--arb-addr', 'arb-addr', [CompletionResultType]::ParameterName, 'Bitcoin address used as destination or refund address')
+            [CompletionResult]::new('--acc-addr', 'acc-addr', [CompletionResultType]::ParameterName, 'Monero address used as destination or refund address')
+            [CompletionResult]::new('-n', 'n', [CompletionResultType]::ParameterName, 'Network to use to execute the swap between the chosen blockchains')
+            [CompletionResult]::new('--network', 'network', [CompletionResultType]::ParameterName, 'Network to use to execute the swap between the chosen blockchains')
+            [CompletionResult]::new('--arb-blockchain', 'arb-blockchain', [CompletionResultType]::ParameterName, 'The chosen arbitrating blockchain')
+            [CompletionResult]::new('--acc-blockchain', 'acc-blockchain', [CompletionResultType]::ParameterName, 'The chosen accordant blockchain')
+            [CompletionResult]::new('--arb-amount', 'arb-amount', [CompletionResultType]::ParameterName, 'Amount of arbitrating assets to exchanged')
+            [CompletionResult]::new('--acc-amount', 'acc-amount', [CompletionResultType]::ParameterName, 'Amount of accordant assets to exchanged')
+            [CompletionResult]::new('-r', 'r', [CompletionResultType]::ParameterName, 'The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones')
+            [CompletionResult]::new('--maker-role', 'maker-role', [CompletionResultType]::ParameterName, 'The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones')
+            [CompletionResult]::new('--cancel-timelock', 'cancel-timelock', [CompletionResultType]::ParameterName, 'The cancel timelock parameter of the arbitrating blockchain')
+            [CompletionResult]::new('--punish-timelock', 'punish-timelock', [CompletionResultType]::ParameterName, 'The punish timelock parameter of the arbitrating blockchain')
+            [CompletionResult]::new('--fee-strategy', 'fee-strategy', [CompletionResultType]::ParameterName, 'The chosen fee strategy for the arbitrating transactions')
+            [CompletionResult]::new('-I', 'I', [CompletionResultType]::ParameterName, 'Public IPv4 or IPv6 address present in the public offer allowing taker to connect')
+            [CompletionResult]::new('--public-ip-addr', 'public-ip-addr', [CompletionResultType]::ParameterName, 'Public IPv4 or IPv6 address present in the public offer allowing taker to connect')
+            [CompletionResult]::new('-b', 'b', [CompletionResultType]::ParameterName, 'IPv4 or IPv6 address to bind to, listening for takers')
+            [CompletionResult]::new('--bind-ip-addr', 'bind-ip-addr', [CompletionResultType]::ParameterName, 'IPv4 or IPv6 address to bind to, listening for takers')
+            [CompletionResult]::new('-p', 'p', [CompletionResultType]::ParameterName, 'Port to use; defaults to the native LN port')
+            [CompletionResult]::new('--port', 'port', [CompletionResultType]::ParameterName, 'Port to use; defaults to the native LN port')
+            [CompletionResult]::new('--overlay', 'overlay', [CompletionResultType]::ParameterName, 'Use overlay protocol (http, websocket etc)')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
@@ -172,6 +192,10 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             break
         }
         'swap-cli;take' {
+            [CompletionResult]::new('--arb-addr', 'arb-addr', [CompletionResultType]::ParameterName, 'Bitcoin address used as destination or refund address')
+            [CompletionResult]::new('--acc-addr', 'acc-addr', [CompletionResultType]::ParameterName, 'Monero address used as destination or refund address')
+            [CompletionResult]::new('-o', 'o', [CompletionResultType]::ParameterName, 'An encoded public offer')
+            [CompletionResult]::new('--offer', 'offer', [CompletionResultType]::ParameterName, 'An encoded public offer')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
@@ -180,8 +204,8 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--msg-socket', 'msg-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
             [CompletionResult]::new('-x', 'x', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
             [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('-w', 'w', [CompletionResultType]::ParameterName, 'Accept Offer without validation')
-            [CompletionResult]::new('--without-validation', 'without-validation', [CompletionResultType]::ParameterName, 'Accept Offer without validation')
+            [CompletionResult]::new('-w', 'w', [CompletionResultType]::ParameterName, 'Accept the public offer without validation')
+            [CompletionResult]::new('--without-validation', 'without-validation', [CompletionResultType]::ParameterName, 'Accept the public offer without validation')
             [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
             [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
             [CompletionResult]::new('-V', 'V', [CompletionResultType]::ParameterName, 'Print version information')
