@@ -457,6 +457,7 @@ impl SyncerState {
             tx,
         );
 
+        #[allow(clippy::too_many_arguments)]
         fn inner(
             transactions: &mut HashMap<InternalId, WatchedTransaction>,
             unseen_transactions: &mut HashSet<InternalId>,

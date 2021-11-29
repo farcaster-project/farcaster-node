@@ -427,7 +427,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
-            id: 1,
+            id: TaskId(1),
             lifetime: blocks + 5,
             hash: txid_1.to_vec(),
             confirmation_bound: 2,
