@@ -59,6 +59,7 @@ peerd -> m_swap : Msg RevealProof (taker is sender)
 m_swap -> m_wallet : if Alice, Msg RevealProof (taker is sender) 
 m_swap -> m_swap : if Bob, ADD PENDING Msg RevealProof
 peerd -> m_swap : Msg Reveal (taker is sender)
+m_swap -> m_farcasterd : if Bob, ask for funding
 m_swap -> m_swap : if Bob, ADD PENDING Msg Reveal
 m_swap -> m_wallet : if Alice, Msg Reveal (taker is sender)
 
@@ -76,6 +77,7 @@ peerd -> t_swap : Msg RevealProof (maker is sender)
 t_swap -> t_wallet : if Alice, Msg RevealProof (maker is sender)
 t_swap -> t_swap : if Bob, ADD PENDING Msg RevealProof
 peerd -> t_swap : Msg Reveal (maker is sender)
+t_swap -> t_farcasterd : if Bob, ask for funding
 t_swap -> t_swap : if Bob, ADD PENDING Msg Reveal
 t_swap -> t_wallet : if Alice, Msg Reveal (maker is sender)
 t_syncer -> t_swap:If Bob, Arbitrating Funding event
@@ -114,11 +116,11 @@ m_swap <- m_syncer : Arbitrating Lock final
 parallel off
 
 m_swap --> m_swap : Checkpoint Alice 0
-m_swap --> m_syncer : Watch Accordant Lock
-m_swap --> m_syncer : Broadcast Accordant Lock
+m_swap -> m_syncer : Watch Accordant Lock
+m_swap -> m_syncer : Broadcast Accordant Lock
 
 parallel
-m_swap <-- m_syncer : Accordant Lock final
+m_swap <- m_syncer : Accordant Lock final
 t_swap <- t_syncer : Accordant Lock final
 parallel off
 
@@ -136,7 +138,7 @@ m_swap <- m_syncer : Event: buy seen on mempool
 t_swap <- t_syncer : Event: buy seen on mempool
 parallel off
 t_wallet <- t_swap : Ctl Buy signature
-t_wallet --> t_wallet : recover accordant keys
+t_wallet -> t_wallet : recover accordant keys
 
 ==Cancel Init t > t0: Bob is left, Alice right, either have a fully signed and valid cancel tx, and can publish==
 parallel
@@ -155,7 +157,7 @@ t_syncer -> t_swap : Event: refund seen
 m_syncer -> m_swap : Event: refund seen
 parallel off
 m_swap -> m_wallet : Ctl Tx::Refund tx
-m_wallet --> m_wallet : recover accordant keys
+m_wallet -> m_wallet : recover accordant keys
 
 == Punish process t > t1 > t0 ==
 m_swap<-m_syncer:Ctl Event: punish valid
