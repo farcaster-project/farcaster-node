@@ -701,6 +701,7 @@ impl SyncerState {
         view_key: monero::PrivateKey,
         spend_key: monero::PrivateKey,
         address: monero::Address,
+        from_height: Option<u64>,
     ) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
@@ -710,15 +711,6 @@ impl SyncerState {
             spend_key,
             address,
         });
-        let from_height = match self.lock_tx_confs {
-            Some(Request::SyncerEvent(Event::TransactionConfirmations(
-                TransactionConfirmations {
-                    confirmations: Some(tx_confs),
-                    ..
-                },
-            ))) => Some(self.monero_height - tx_confs as u64),
-            _ => None,
-        };
         let sweep_task = SweepAddress {
             id,
             lifetime,
@@ -1234,7 +1226,10 @@ impl Runtime {
                 address,
                 ..
             }) if source == ServiceId::Wallet => {
-                let task = self.syncer_state.sweep_xmr(view_key, spend_key, address);
+                let from_height = Some(self.syncer_state.height(Coin::Monero));
+                let task = self
+                    .syncer_state
+                    .sweep_xmr(view_key, spend_key, address, from_height);
                 let request = Request::SyncerTask(task);
                 let dest = self.syncer_state.monero_syncer();
                 let pending_request = PendingRequest {
