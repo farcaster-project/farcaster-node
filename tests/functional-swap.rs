@@ -468,9 +468,13 @@ fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded
-    if let Err(_e) = bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
-        bitcoin_rpc.load_wallet("wallet").unwrap();
+    if bitcoin_rpc
+        .create_wallet("wallet", None, None, None, None)
+        .is_err()
+    {
+        let _ = bitcoin_rpc.load_wallet("wallet");
     }
+
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     bitcoin_rpc.generate_to_address(200, &address).unwrap();
     bitcoin_rpc
