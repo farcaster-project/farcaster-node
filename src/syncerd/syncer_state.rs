@@ -929,6 +929,7 @@ async fn syncer_state_sweep_addresses() {
     let sweep_task = SweepAddress {
         id: TaskId(0),
         lifetime: 11,
+        from_height: None,
         addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
             view_key: monero::PrivateKey::from_str(
                 "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",

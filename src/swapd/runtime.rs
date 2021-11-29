@@ -714,6 +714,7 @@ impl SyncerState {
             id,
             lifetime,
             addendum,
+            from_height: None,
         };
         Task::SweepAddress(sweep_task)
     }
@@ -1222,6 +1223,7 @@ impl Runtime {
                 view_key,
                 spend_key,
                 address,
+                ..
             }) if source == ServiceId::Wallet => {
                 let task = self.syncer_state.sweep_xmr(view_key, spend_key, address);
                 let request = Request::SyncerTask(task);
@@ -1497,9 +1499,13 @@ impl Runtime {
                             .expect("Checked above")
                             .pop()
                             .unwrap();
-                        if let (Request::SyncerTask(Task::SweepAddress(..)), ServiceBus::Ctl) =
-                            (&request, &bus_id)
+                        if let (Request::SyncerTask(Task::SweepAddress(mut task)), ServiceBus::Ctl) =
+                            (request.clone(), bus_id.clone())
                         {
+                            // safe cast
+                            task.from_height = Some(self.syncer_state.monero_height - *confirmations as u64);
+                            let request = Request::SyncerTask(Task::SweepAddress(task));
+
                             info!("sweeping monero");
                             senders.send_to(bus_id, self.identity(), dest, request)?;
                         } else {
@@ -1674,6 +1680,7 @@ impl Runtime {
                             TxLabel::Cancel => {
                                 self.syncer_state.cancel_tx_confs = Some(request.clone());
                             }
+
                             _ => {}
                         }
 
