@@ -34,7 +34,7 @@ use crate::opts::Opts;
 #[serde(crate = "serde_crate")]
 pub struct Config {
     /// Syncer configuration
-    pub syncers: Option<Syncers>,
+    pub syncers: Option<SyncersConfig>,
 }
 
 impl Config {
@@ -50,14 +50,14 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            syncers: Some(Syncers::default()),
+            syncers: Some(SyncersConfig::default()),
         }
     }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
-pub struct Syncers {
+pub struct SyncersConfig {
     /// Mainnet syncer configuration
     pub mainnet: Option<SyncerServers>,
 
@@ -78,9 +78,9 @@ pub struct SyncerServers {
     pub monero_rpc_wallet: String,
 }
 
-impl Default for Syncers {
+impl Default for SyncersConfig {
     fn default() -> Self {
-        Syncers {
+        SyncersConfig {
             mainnet: Some(SyncerServers {
                 electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
                 monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),

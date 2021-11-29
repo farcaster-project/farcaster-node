@@ -32,9 +32,9 @@ extern crate log;
 use clap::Clap;
 
 use farcaster_node::syncerd::{self, Opts};
-use farcaster_node::{Error, ServiceConfig};
+use farcaster_node::ServiceConfig;
 
-fn main() -> Result<(), Error> {
+fn main() {
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
     opts.process();
