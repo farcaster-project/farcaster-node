@@ -33,7 +33,7 @@ use crate::rpc::{
     request::{self, Msg},
     Request, ServiceBus,
 };
-use crate::{Config, CtlServer, Error, LogStyle, Senders, Service, ServiceId};
+use crate::{CtlServer, Error, LogStyle, Senders, Service, ServiceConfig, ServiceId};
 use bitcoin::{consensus::Encodable, secp256k1};
 use bitcoin::{
     hashes::{hex::FromHex, sha256, Hash, HashEngine},
@@ -82,9 +82,8 @@ use monero::{cryptonote::hash::keccak_256, PrivateKey, ViewPair};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 
 pub fn run(
-    config: Config,
+    config: ServiceConfig,
     swap_id: SwapId,
-    _chain: Chain,
     public_offer: PublicOffer<BtcXmr>,
     local_trade_role: TradeRole,
 ) -> Result<(), Error> {
@@ -527,13 +526,13 @@ impl State {
                 "Wrong state, not updating. Expected BuySig, found {}",
                 &*self
             );
-            return ();
+            return;
         } else if self.b_buy_tx_seen() {
             error!("Buy tx was previously seen, not updating state");
-            return ();
+            return;
         }
         match self {
-            State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) if &*buy_tx_seen == &false => {
+            State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) if !(*buy_tx_seen) => {
                 *buy_tx_seen = true
             }
             _ => unreachable!("checked state"),

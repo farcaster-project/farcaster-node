@@ -17,19 +17,12 @@ _swap-cli() {
     _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -55,19 +48,12 @@ _arguments "${_arguments_options[@]}" \
 '--overlay=[Use overlay protocol (http, websocket etc)]' \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -80,19 +66,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -106,19 +85,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -132,19 +104,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -158,19 +123,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -183,19 +141,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -208,19 +159,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -248,19 +192,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-w[Accept Offer without validation]' \
 '--without-validation[Accept Offer without validation]' \
 '-h[Print help information]' \
@@ -278,19 +215,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -304,19 +234,12 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
-'-c+[Path to the configuration file]: :_files' \
-'--config=[Path to the configuration file]: :_files' \
 '-T+[Use Tor]: :_hosts' \
 '--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming lightning messages]: :_files' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
 '-x+[ZMQ socket name/address for daemon control interface]: :_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-n+[Blockchain to use]' \
-'--chain=[Blockchain to use]' \
-'--electrum-server=[Electrum server to use]' \
-'--monero-daemon=[Monero daemon to use]' \
-'--monero-rpc-wallet=[Monero rpc wallet to use]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \

@@ -28,8 +28,8 @@ use strict_encoding::{StrictDecode, StrictEncode};
 
 use farcaster_core::{blockchain::Network, swap::SwapId};
 
+use crate::opts::Opts;
 use crate::rpc::{Request, ServiceBus};
-use crate::Config;
 use crate::Error;
 
 #[derive(
@@ -76,6 +76,25 @@ impl FromStr for ClientName {
             me.0[0..s.len()].copy_from_slice(s.as_bytes());
         }
         Ok(me)
+    }
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct ServiceConfig {
+    /// ZMQ socket for lightning peer network message bus
+    pub msg_endpoint: NodeAddr,
+
+    /// ZMQ socket for internal service control bus
+    pub ctl_endpoint: NodeAddr,
+}
+
+#[cfg(feature = "shell")]
+impl From<Opts> for ServiceConfig {
+    fn from(opts: Opts) -> Self {
+        ServiceConfig {
+            msg_endpoint: opts.msg_socket.into(),
+            ctl_endpoint: opts.ctl_socket.into(),
+        }
     }
 }
 
@@ -155,13 +174,13 @@ where
     esb::Error: From<Runtime::Error>,
 {
     #[cfg(feature = "node")]
-    pub fn run(config: Config, runtime: Runtime, broker: bool) -> Result<(), Error> {
+    pub fn run(config: ServiceConfig, runtime: Runtime, broker: bool) -> Result<(), Error> {
         let service = Self::with(config, runtime, broker)?;
         service.run_loop()?;
         unreachable!()
     }
 
-    fn with(config: Config, runtime: Runtime, broker: bool) -> Result<Self, esb::Error> {
+    fn with(config: ServiceConfig, runtime: Runtime, broker: bool) -> Result<Self, esb::Error> {
         let router = if !broker {
             Some(ServiceId::router())
         } else {
@@ -190,12 +209,12 @@ where
         Ok(Self { esb, broker })
     }
 
-    pub fn broker(config: Config, runtime: Runtime) -> Result<Self, esb::Error> {
+    pub fn broker(config: ServiceConfig, runtime: Runtime) -> Result<Self, esb::Error> {
         Self::with(config, runtime, true)
     }
 
     #[allow(clippy::self_named_constructors)]
-    pub fn service(config: Config, runtime: Runtime) -> Result<Self, esb::Error> {
+    pub fn service(config: ServiceConfig, runtime: Runtime) -> Result<Self, esb::Error> {
         Self::with(config, runtime, false)
     }
 

@@ -18,7 +18,7 @@ use farcaster_core::swap::SwapId;
 use farcaster_core::{negotiation::PublicOffer, role::TradeRole, swap::btcxmr::BtcXmr};
 use std::str::FromStr;
 
-/// Lightning peer network channel daemon; part of LNP Node
+/// Swap executor daemon; part of Farcaster Node
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
 /// description)
@@ -31,7 +31,7 @@ use std::str::FromStr;
     setting = AppSettings::ColoredHelp
 )]
 pub struct Opts {
-    /// Channel id
+    /// Swap id
     #[clap(parse(try_from_str = SwapId::from_str))]
     pub swap_id: SwapId,
 

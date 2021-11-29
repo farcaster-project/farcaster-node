@@ -2,9 +2,9 @@ use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
-use crate::syncerd::opts::Coin;
-use crate::syncerd::runtime::SyncerServers;
+use crate::syncerd::opts::{Coin, Opts};
 use crate::syncerd::runtime::SyncerdTask;
+use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
@@ -27,12 +27,12 @@ use electrum_client::Hex32Bytes;
 use electrum_client::{raw_client::ElectrumSslStream, HeaderNotification};
 use electrum_client::{raw_client::RawClient, GetHistoryRes};
 use electrum_client::{Client, ElectrumApi};
+use farcaster_core::blockchain::Network;
 use farcaster_core::consensus;
 use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
 use internet2::ZMQ_CONTEXT;
-use lnpbp::chain::Chain;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;
@@ -53,18 +53,6 @@ use hex;
 
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
-
-pub trait Synclet {
-    fn run(
-        &mut self,
-        rx: Receiver<SyncerdTask>,
-        tx: zmq::Socket,
-        syncer_address: Vec<u8>,
-        syncer_servers: SyncerServers,
-        chain: Chain,
-        polling: bool,
-    );
-}
 
 pub struct ElectrumRpc {
     client: Client,
@@ -259,7 +247,7 @@ impl ElectrumRpc {
         };
         drop(state_guard);
         for tx_id in txids.iter() {
-            let tx_id = bitcoin::Txid::from_slice(&tx_id).unwrap();
+            let tx_id = bitcoin::Txid::from_slice(tx_id).unwrap();
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
@@ -537,17 +525,17 @@ async fn run_syncerd_task_receiver(
 
 fn address_polling(
     state: Arc<Mutex<SyncerState>>,
-    syncer_servers: SyncerServers,
+    electrum_server: String,
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
-            let mut rpc = match ElectrumRpc::new(&syncer_servers.electrum_server, polling) {
+            let mut rpc = match ElectrumRpc::new(&electrum_server, polling) {
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client in address polling: {:?}",
-                        err
+                        "failed to spawn electrum rpc client ({}) t in address polling: {:?}",
+                        &electrum_server, err
                     );
                     // wait a bit before retrying the connection
                     tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
@@ -610,18 +598,18 @@ fn address_polling(
 
 fn height_polling(
     state: Arc<Mutex<SyncerState>>,
-    syncer_servers: SyncerServers,
+    electrum_server: String,
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         // outer loop ensures the polling restarts if there is an error
         loop {
-            let mut rpc = match ElectrumRpc::new(&syncer_servers.electrum_server, polling) {
+            let mut rpc = match ElectrumRpc::new(&electrum_server, polling) {
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client in height polling: {:?}",
-                        err
+                        "failed to spawn electrum rpc client ({}) in height polling: {:?}",
+                        &electrum_server, err
                     );
                     // wait a bit before retrying the connection
                     tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
@@ -675,18 +663,18 @@ fn height_polling(
 
 fn unseen_transaction_polling(
     state: Arc<Mutex<SyncerState>>,
-    syncer_servers: SyncerServers,
+    electrum_server: String,
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         // outer loop ensures the polling restarts if there is an error
         loop {
-            let rpc = match ElectrumRpc::new(&syncer_servers.electrum_server, polling) {
+            let rpc = match ElectrumRpc::new(&electrum_server, polling) {
                 Ok(client) => client,
                 Err(err) => {
                     error!(
-                        "failed to spawn electrum rpc client in transaction polling: {:?}",
-                        err
+                        "failed to spawn electrum rpc client ({}) in transaction polling: {:?}",
+                        &electrum_server, err
                     );
                     // wait a bit before retrying the connection
                     tokio::time::sleep(std::time::Duration::from_secs(RETRY_TIMEOUT)).await;
@@ -716,47 +704,54 @@ impl Synclet for BitcoinSyncer {
         receive_task_channel: Receiver<SyncerdTask>,
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
-        syncer_servers: SyncerServers,
-        _chain: Chain,
+        opts: &Opts,
+        _network: Network,
         polling: bool,
-    ) {
-        std::thread::spawn(move || {
-            use tokio::runtime::Builder;
-            let rt = Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async {
-                let (event_tx, event_rx): (
-                    TokioSender<SyncerdBridgeEvent>,
-                    TokioReceiver<SyncerdBridgeEvent>,
-                ) = tokio::sync::mpsc::channel(120);
-                let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
+    ) -> Result<(), Error> {
+        if let Some(electrum_server) = &opts.electrum_server {
+            let electrum_server = electrum_server.clone();
+            std::thread::spawn(move || {
+                use tokio::runtime::Builder;
+                let rt = Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
+                    let (event_tx, event_rx): (
+                        TokioSender<SyncerdBridgeEvent>,
+                        TokioReceiver<SyncerdBridgeEvent>,
+                    ) = tokio::sync::mpsc::channel(120);
+                    let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
 
-                run_syncerd_task_receiver(
-                    syncer_servers.electrum_server.clone(),
-                    receive_task_channel,
-                    Arc::clone(&state),
-                    event_tx.clone(),
-                )
-                .await;
-                run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
+                    run_syncerd_task_receiver(
+                        electrum_server.clone(),
+                        receive_task_channel,
+                        Arc::clone(&state),
+                        event_tx.clone(),
+                    )
+                    .await;
+                    run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
 
-                let address_handle =
-                    address_polling(Arc::clone(&state), syncer_servers.clone(), polling);
+                    let address_handle =
+                        address_polling(Arc::clone(&state), electrum_server.clone(), polling);
 
-                let height_handle =
-                    height_polling(Arc::clone(&state), syncer_servers.clone(), polling);
+                    let height_handle =
+                        height_polling(Arc::clone(&state), electrum_server.clone(), polling);
 
-                let unseen_transaction_handle =
-                    unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone(), polling);
+                    let unseen_transaction_handle =
+                        unseen_transaction_polling(Arc::clone(&state), electrum_server, polling);
 
-                let res =
-                    tokio::try_join!(address_handle, height_handle, unseen_transaction_handle);
-                debug!("exiting bitcoin synclet run routine with: {:?}", res);
+                    let res =
+                        tokio::try_join!(address_handle, height_handle, unseen_transaction_handle);
+                    debug!("exiting bitcoin synclet run routine with: {:?}", res);
+                });
             });
-        });
+            Ok(())
+        } else {
+            error!("Missing --electrum-server argument");
+            Err(SyncerError::InvalidConfig.into())
+        }
     }
 }
 

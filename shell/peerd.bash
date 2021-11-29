@@ -20,7 +20,7 @@ _peerd() {
 
     case "${cmd}" in
         peerd)
-            opts=" -h -V -L -C -p -o -d -c -v -T -m -x -n  --help --version --listen --connect --port --overlay --peer-secret-key --wallet-token --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  "
+            opts=" -h -V -L -C -p -o -d -v -T -m -x  --help --version --listen --connect --port --overlay --peer-secret-key --token --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -63,7 +63,7 @@ _peerd() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --wallet-token)
+                --token)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -72,14 +72,6 @@ _peerd() {
                     return 0
                     ;;
                 -d)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --config)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -c)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -104,26 +96,6 @@ _peerd() {
                     return 0
                     ;;
                 -x)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --chain)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -n)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --electrum-server)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --monero-daemon)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --monero-rpc-wallet)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

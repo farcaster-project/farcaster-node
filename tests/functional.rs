@@ -1,16 +1,15 @@
 use amplify::map;
-use bitcoin::BlockHash;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
+use clap::Clap;
 use farcaster_node::rpc::Request;
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
-use farcaster_node::syncerd::bitcoin_syncer::Synclet;
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
-use farcaster_node::syncerd::opts::Coin;
+use farcaster_node::syncerd::opts::{Coin, Opts};
 use farcaster_node::syncerd::runtime::SyncerdTask;
+use farcaster_node::syncerd::runtime::Synclet;
 use farcaster_node::syncerd::SweepAddress;
 use farcaster_node::syncerd::SweepAddressAddendum;
 use farcaster_node::syncerd::SweepXmrAddress;
-use farcaster_node::syncerd::SyncerServers;
 use farcaster_node::syncerd::TaskTarget;
 use farcaster_node::syncerd::XmrAddressAddendum;
 use farcaster_node::ServiceId;
@@ -19,13 +18,14 @@ use internet2::Decrypt;
 use internet2::PlainTranscoder;
 use internet2::RoutedFrame;
 use internet2::ZMQ_CONTEXT;
-use lnpbp::chain::Chain;
 use monero::Address;
 use monero_rpc::GetBlockHeaderSelector;
 use paste::paste;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+
+use ntest::timeout;
 
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
@@ -44,18 +44,23 @@ const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 These tests need to run serialy, otherwise we cannot verify events based on the
 state of electrum and bitcoin, for that we use `--test-threads=1` when running
 `cargo test`
+
+Timeout of 5 min max per test, otherwise test panic. This mitigate test that hangs
+because of syncers.
 */
 
 macro_rules! make_polling_test {
     ($name:ident) => {
         paste! {
             #[test]
+            #[timeout(300000)]
             #[ignore]
             fn [< $name _polling >] () {
                 $name(true);
             }
 
             #[test]
+            #[timeout(300000)]
             #[ignore]
             fn [< $name _no_polling >] () {
                 $name(false);
@@ -400,6 +405,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     let txid_1 = bitcoin_rpc
         .send_to_address(&address_1, amount, None, None, None, None, None, None)
         .unwrap();
+
     std::thread::sleep(duration);
 
     tx.send(SyncerdTask {
@@ -441,6 +447,9 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     let block_hash = bitcoin_rpc.generate_to_address(1, &address_2).unwrap();
     let block = bitcoin_rpc.get_block(&block_hash[0]).unwrap();
     let address_txid = find_coinbase_transaction_id(block.txdata);
+
+    std::thread::sleep(duration);
+
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
             id: 1,
@@ -451,8 +460,6 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         source: SOURCE1.clone(),
     })
     .unwrap();
-
-    std::thread::sleep(duration);
 
     println!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
@@ -585,6 +592,7 @@ We test for the following scenarios in the abort tests:
 - Submit two WatchTransaction tasks, abort them both and receive both their aborted id's.
 */
 #[test]
+#[timeout(300000)]
 #[ignore]
 fn bitcoin_syncer_abort_test() {
     let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
@@ -802,20 +810,24 @@ fn create_bitcoin_syncer(
     tx_event.connect(&addr).unwrap();
     rx_event.bind(&addr).unwrap();
     let mut syncer = BitcoinSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "tcp://localhost:50001".to_string(),
-        monero_daemon: "".to_string(),
-        monero_rpc_wallet: "".to_string(),
-    };
-    let dummy = BlockHash::from_slice(&[0; 32]).unwrap();
-    syncer.run(
-        rx,
-        tx_event,
-        SOURCE1.clone().into(),
-        syncer_servers,
-        Chain::Regtest(dummy),
-        polling,
-    );
+
+    let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
+        "--coin",
+        "Bitcoin",
+        "--electrum-server",
+        "tcp://localhost:50001",
+    ]));
+
+    syncer
+        .run(
+            rx,
+            tx_event,
+            SOURCE1.clone().into(),
+            &opts,
+            Network::Local,
+            polling,
+        )
+        .expect("Valid bitcoin syncer");
     (tx, rx_event)
 }
 
@@ -865,6 +877,7 @@ We test for the following scenarios in the block height tests:
 - Mine another block and receive two HeightChanged events
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_block_height_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -933,6 +946,7 @@ async fn monero_syncer_block_height_test() {
 }
 
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_sweep_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1004,6 +1018,7 @@ height
 
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_address_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1187,6 +1202,7 @@ the threshold confs are reached
 found confirmation event. Then relay and receive further events.
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_transaction_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1361,6 +1377,7 @@ We test for the following scenarios in the abort tests:
 - Submit two WatchTransaction tasks, abort them both and receive both their aborted id's.
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_abort_test() {
     let (tx, rx_event) = create_monero_syncer("abort");
@@ -1477,6 +1494,7 @@ async fn monero_syncer_abort_test() {
 Check that a monero BroadcastTransaction task generates an error
 */
 #[tokio::test]
+#[timeout(300000)]
 #[ignore]
 async fn monero_syncer_broadcast_tx_test() {
     let (regtest, wallet) = setup_monero().await;
@@ -1527,20 +1545,26 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
     tx_event.connect(&addr).unwrap();
     rx_event.bind(&addr).unwrap();
     let mut syncer = MoneroSyncer::new();
-    let syncer_servers = SyncerServers {
-        electrum_server: "".to_string(),
-        monero_daemon: "http://localhost:18081".to_string(),
-        monero_rpc_wallet: "http://localhost:18084".to_string(),
-    };
-    let dummy = BlockHash::from_slice(&[0; 32]).unwrap();
-    syncer.run(
-        rx,
-        tx_event,
-        SOURCE2.clone().into(),
-        syncer_servers,
-        Chain::Regtest(dummy),
-        true,
-    );
+
+    let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
+        "--coin",
+        "Monero",
+        "--monero-daemon",
+        "http://localhost:18081",
+        "--monero-rpc-wallet",
+        "http://localhost:18084",
+    ]));
+
+    syncer
+        .run(
+            rx,
+            tx_event,
+            SOURCE2.clone().into(),
+            &opts,
+            Network::Local,
+            true,
+        )
+        .expect("Valid monero syncer");
     (tx, rx_event)
 }
 

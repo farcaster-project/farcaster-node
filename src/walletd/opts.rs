@@ -12,10 +12,17 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::opts::FARCASTER_NODE_KEY_FILE;
+use crate::opts::FARCASTER_KEY_FILE;
 use clap::{AppSettings, Clap, ValueHint};
 use std::path::PathBuf;
 use std::{fs, io::Read};
+
+use crate::opts::TokenString;
+use bitcoin::secp256k1::{
+    rand::{rngs::ThreadRng, thread_rng},
+    PublicKey, Secp256k1, SecretKey,
+};
+use strict_encoding::{StrictDecode, StrictEncode};
 
 /// Walletd daemon; part of Farcaster Node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
@@ -33,7 +40,7 @@ pub struct Opts {
 
     /// Walletd token
     #[clap(flatten)]
-    pub token: WalletToken,
+    pub wallet_token: TokenString,
 
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
@@ -58,25 +65,12 @@ pub struct KeyOpts {
     #[clap(
         short,
         long,
-        env = "FARCASTER_NODE_KEY_FILE",
-        default_value = FARCASTER_NODE_KEY_FILE,
+        env = "FARCASTER_KEY_FILE",
+        default_value = FARCASTER_KEY_FILE,
         value_hint = ValueHint::FilePath
     )]
     pub key_file: String,
 }
-
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-pub struct WalletToken {
-    #[clap(short, long, env = "FARCASTER_WALLETD_TOKEN", default_value = "")]
-    pub wallet_token: String,
-}
-
-use bitcoin::secp256k1::{
-    rand::{rngs::ThreadRng, thread_rng},
-    PublicKey, Secp256k1, SecretKey,
-};
-use strict_encoding;
-use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(StrictEncode, StrictDecode, Clone, PartialEq, Eq, Debug)]
 pub struct Counter(pub u32);

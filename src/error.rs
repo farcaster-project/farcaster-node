@@ -36,6 +36,11 @@ pub enum Error {
 
     /// Wallet node errors: {0}
     Wallet(String),
+
+    /// Config errors: {0}
+    #[from(config::ConfigError)]
+    Config(config::ConfigError),
+
     /// I/O error: {0:?}
     #[from(io::Error)]
     Io(IoError),
@@ -83,6 +88,7 @@ pub enum Error {
 
     /// Syncer
     #[display(inner)]
+    #[from(SyncerError)]
     Syncer(SyncerError),
 
     /// BitcoinHashes
@@ -94,15 +100,20 @@ pub enum Error {
 pub enum SyncerError {
     #[display(inner)]
     Electrum(electrum_client::Error),
+
     #[display(inner)]
     NoTxsOnAddress,
+
     #[display(inner)]
     ScriptAlreadyRegistered,
+
     #[display("syncer creating error")]
     UnknownNetwork,
+
     #[display(inner)]
     MoneroRpc(anyhow::Error),
-    #[display(inner)]
+
+    #[display("Invalid configuration. Missing or malformed")]
     InvalidConfig,
     #[display("height did not increment")]
     NoIncrementToHeight,

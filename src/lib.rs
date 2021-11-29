@@ -51,7 +51,7 @@ extern crate serde_with;
 #[cfg(feature = "cli")]
 pub mod cli;
 #[cfg(feature = "_rpc")]
-mod config;
+pub mod config;
 pub mod error;
 #[cfg(feature = "shell")]
 pub mod opts;
@@ -72,7 +72,9 @@ pub mod syncerd;
 pub mod walletd;
 
 #[cfg(feature = "_rpc")]
-pub use config::Config;
+pub use crate::config::Config;
+#[cfg(feature = "_rpc")]
+pub use crate::service::ServiceConfig;
 pub use error::Error;
 #[cfg(feature = "_rpc")]
 pub use service::{CtlServer, LogStyle, Senders, Service, ServiceId, TryToServiceId};

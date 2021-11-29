@@ -17,23 +17,22 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use internet2::ZmqType;
-use lnpbp::chain::Chain;
 use microservices::esb;
 
 use crate::rpc::request::OptionDetails;
 use crate::rpc::{Request, ServiceBus};
-use crate::{Config, Error, LogStyle, ServiceId};
+use crate::service::ServiceConfig;
+use crate::{Error, LogStyle, ServiceId};
 
 #[repr(C)]
 pub struct Client {
     identity: ServiceId,
-    chain: Chain,
     response_queue: std::collections::VecDeque<Request>,
     esb: esb::Controller<ServiceBus, Request, Handler>,
 }
 
 impl Client {
-    pub fn with(config: Config, chain: Chain) -> Result<Self, Error> {
+    pub fn with(config: ServiceConfig) -> Result<Self, Error> {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
         let bus_config = esb::BusConfig::with_locator(
@@ -58,7 +57,6 @@ impl Client {
 
         Ok(Self {
             identity,
-            chain,
             response_queue: empty!(),
             esb,
         })
@@ -66,10 +64,6 @@ impl Client {
 
     pub fn identity(&self) -> ServiceId {
         self.identity.clone()
-    }
-
-    pub fn chain(&self) -> Chain {
-        self.chain.clone()
     }
 
     pub fn request(&mut self, daemon: ServiceId, req: Request) -> Result<(), Error> {

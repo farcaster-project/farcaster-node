@@ -24,6 +24,8 @@ use crate::{
     Senders,
 };
 use amplify::Wrapper;
+use clap::Clap;
+use clap::IntoApp;
 use request::{Commit, Params};
 use std::io;
 use std::net::SocketAddr;
@@ -56,9 +58,10 @@ use microservices::rpc::Failure;
 
 use farcaster_core::{blockchain::Network, negotiation::PublicOfferId, swap::SwapId};
 
+use crate::farcasterd::Opts;
 use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
-use crate::{Config, Error, LogStyle, Service, ServiceId};
+use crate::{Config, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 use farcaster_core::{
     blockchain::FeePriority,
@@ -77,8 +80,13 @@ use farcaster_core::{
 
 use std::str::FromStr;
 
-pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
-    let _walletd = launch("walletd", &["--wallet-token", &wallet_token.to_string()])?;
+pub fn run(
+    service_config: ServiceConfig,
+    config: Config,
+    _opts: Opts,
+    wallet_token: Token,
+) -> Result<(), Error> {
+    let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         listens: none!(),
@@ -99,10 +107,11 @@ pub fn run(config: Config, wallet_token: Token) -> Result<(), Error> {
         consumed_offers: none!(),
         progress: none!(),
         stats: none!(),
+        config,
     };
 
     let broker = true;
-    Service::run(config, runtime, broker)
+    Service::run(service_config, runtime, broker)
 }
 
 pub struct Runtime {
@@ -125,6 +134,7 @@ pub struct Runtime {
     syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
     stats: Stats,
+    config: Config,
 }
 
 struct Stats {
@@ -219,14 +229,17 @@ impl Runtime {
                 if !xs.is_empty() {
                     Some(((coin, network), xs))
                 } else {
-                    let service_id = ServiceId::Syncer(coin.clone(), network.clone());
+                    let service_id = ServiceId::Syncer(coin, network);
                     info!("Terminating syncer: {:?}", service_id);
-                    if let Ok(_) = senders.send_to(
-                        ServiceBus::Ctl,
-                        identity.clone(),
-                        service_id,
-                        Request::Terminate,
-                    ) {
+                    if senders
+                        .send_to(
+                            ServiceBus::Ctl,
+                            identity.clone(),
+                            service_id,
+                            Request::Terminate,
+                        )
+                        .is_ok()
+                    {
                         None
                     } else {
                         Some(((coin, network), xs))
@@ -392,10 +405,10 @@ impl Runtime {
                         }
                     }
                     ServiceId::Syncer(coin, network)
-                        if !self.syncer_services.contains_key(&(coin.clone(), *network)) =>
+                        if !self.syncer_services.contains_key(&(*coin, *network)) =>
                     {
                         self.syncer_services
-                            .insert((coin.clone(), *network), source.clone());
+                            .insert((*coin, *network), source.clone());
                     }
                     _ => {
                         // Ignoring the rest of daemon/client types
@@ -422,6 +435,7 @@ impl Runtime {
                         Coin::Bitcoin,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     syncers_up(
                         &self.syncer_services,
@@ -429,6 +443,7 @@ impl Runtime {
                         Coin::Monero,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
@@ -463,6 +478,7 @@ impl Runtime {
                         Coin::Bitcoin,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     syncers_up(
                         &self.syncer_services,
@@ -470,6 +486,7 @@ impl Runtime {
                         Coin::Monero,
                         *network,
                         swapid,
+                        &self.config,
                     )?;
                     // FIXME msgs should go to walletd?
                     senders.send_to(
@@ -553,8 +570,7 @@ impl Runtime {
                         .ok_or(internet2::presentation::Error::InvalidEndpoint)?
                         .into();
 
-                    self.consumed_offers
-                        .insert((public_offer.id(), swap_id.clone()));
+                    self.consumed_offers.insert((public_offer.id(), swap_id));
                     launch_swapd(
                         self,
                         peer,
@@ -969,7 +985,7 @@ impl Runtime {
                     &port.to_string(),
                     "--peer-secret-key",
                     &format!("{:x}", sk),
-                    "--wallet-token",
+                    "--token",
                     &self.wallet_token.clone().to_string(),
                 ],
             )?;
@@ -1005,8 +1021,8 @@ impl Runtime {
                 &node_addr.to_string(),
                 "--peer-secret-key",
                 &format!("{:x}", sk),
-                "--wallet-token",
-                &format!("{}", self.wallet_token.clone()),
+                "--token",
+                &self.wallet_token.clone().to_string(),
             ],
         );
 
@@ -1060,11 +1076,19 @@ fn syncers_up(
     coin: Coin,
     network: Network,
     swap_id: SwapId,
+    config: &Config,
 ) -> Result<(), Error> {
-    let k = (coin.clone(), network);
+    let k = (coin, network);
     if !services.contains_key(&k) {
-        launch("syncerd", &[coin.to_string(), network.to_string()])?;
-        clients.insert(k.clone(), none!());
+        let mut args = vec![
+            "--coin".to_string(),
+            coin.to_string(),
+            "--network".to_string(),
+            network.to_string(),
+        ];
+        args.append(&mut syncer_servers_args(config, coin, network)?);
+        launch("syncerd", args)?;
+        clients.insert(k, none!());
     }
     if let Some(xs) = clients.get_mut(&k) {
         xs.insert(swap_id);
@@ -1120,10 +1144,31 @@ fn launch_swapd(
     Ok(msg)
 }
 
+/// Return the list of needed arguments for a syncer given a config and a network.
+/// This function only register the minimal set of URLs needed for the blockchain to work.
+fn syncer_servers_args(config: &Config, coin: Coin, net: Network) -> Result<Vec<String>, Error> {
+    match config.get_syncer_servers(net) {
+        Some(servers) => match coin {
+            Coin::Bitcoin => Ok(vec![
+                "--electrum-server".to_string(),
+                servers.electrum_server,
+            ]),
+            Coin::Monero => Ok(vec![
+                "--monero-daemon".to_string(),
+                servers.monero_daemon,
+                "--monero-rpc-wallet".to_string(),
+                servers.monero_rpc_wallet,
+            ]),
+        },
+        None => Err(SyncerError::InvalidConfig.into()),
+    }
+}
+
 pub fn launch(
     name: &str,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> io::Result<process::Child> {
+    let app = Opts::into_app();
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
         err
@@ -1142,9 +1187,47 @@ pub fn launch(
 
     let mut cmd = process::Command::new(bin_path);
 
-    cmd.args(std::env::args().skip(1)).args(args);
+    // Forwarded shared options from farcasterd to launched microservices
+    // Cannot use value_of directly because of default values
+    let matches = app.get_matches();
 
-    trace!("Executing `{:?}`", cmd);
+    // Set verbosity to same level
+    let verbose = matches.occurrences_of("verbose");
+    if verbose > 0 {
+        cmd.args(&[&format!(
+            "-{}",
+            (0..verbose).map(|_| "v").collect::<String>()
+        )]);
+    }
+
+    if let Some(d) = &matches.value_of("data-dir") {
+        cmd.args(&["-d", d]);
+    }
+
+    if let Some(m) = &matches.value_of("msg-socket") {
+        cmd.args(&["-m", m]);
+    }
+
+    if let Some(x) = &matches.value_of("ctl-socket") {
+        cmd.args(&["-x", x]);
+    }
+
+    // Forward tor proxy argument
+    let parsed = Opts::parse();
+    match &parsed.shared.tor_proxy {
+        Some(None) => {
+            cmd.args(&["-T"]);
+        }
+        Some(Some(val)) => {
+            cmd.args(&["-T", &format!("{}", val)]);
+        }
+        _ => (),
+    }
+
+    // Given specialized args in launch
+    cmd.args(args);
+
+    debug!("Executing `{:?}`", cmd);
     cmd.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err

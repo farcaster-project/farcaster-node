@@ -13,9 +13,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
-use crate::syncerd::bitcoin_syncer::Synclet;
 use crate::syncerd::monero_syncer::MoneroSyncer;
-use crate::syncerd::opts::Coin;
+use crate::syncerd::opts::{Coin, Opts};
 use amplify::Wrapper;
 use farcaster_core::blockchain::Network;
 use std::collections::{HashMap, HashSet};
@@ -35,36 +34,39 @@ use internet2::{
     presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
 };
 use lnp::{message, Messages, TempChannelId as TempSwapId};
-use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
 use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::syncerd::*;
-use crate::{Config, Error, LogStyle, Service, ServiceId};
+use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
+
+pub trait Synclet {
+    fn run(
+        &mut self,
+        rx: Receiver<SyncerdTask>,
+        tx: zmq::Socket,
+        syncer_address: Vec<u8>,
+        opts: &Opts,
+        network: Network,
+        polling: bool,
+    ) -> Result<(), Error>;
+}
 
 pub struct SyncerdTask {
     pub task: Task,
     pub source: ServiceId,
 }
 
-#[derive(Debug, Clone, Hash)]
-pub struct SyncerServers {
-    pub electrum_server: String,
-    pub monero_daemon: String,
-    pub monero_rpc_wallet: String,
-}
+pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
+    let coin = opts.coin;
+    let network = opts.network;
 
-pub fn run(
-    config: Config,
-    coin: Coin,
-    network: farcaster_core::blockchain::Network,
-    syncer_servers: SyncerServers,
-) -> Result<(), Error> {
     info!(
-        "Creating new {} {}",
+        "Creating new {} ({}) {}",
         &coin.bright_green_bold(),
+        &network.bright_white_bold(),
         "syncer".bright_green_bold()
     );
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
@@ -91,10 +93,10 @@ pub fn run(
         rx,
         tx_event,
         runtime.identity().into(),
-        syncer_servers,
-        config.chain.clone(),
+        &opts,
+        network,
         polling,
-    );
+    )?;
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx_event)?;
     service.run_loop()?;

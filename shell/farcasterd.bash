@@ -20,7 +20,7 @@ _farcasterd() {
 
     case "${cmd}" in
         farcasterd)
-            opts=" -h -V -d -c -v -T -m -x -n  --help --version --data-dir --config --verbose --tor-proxy --msg-socket --ctl-socket --chain --electrum-server --monero-daemon --monero-rpc-wallet  "
+            opts=" -h -V -d -v -T -m -x -c  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket --config  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -32,14 +32,6 @@ _farcasterd() {
                     return 0
                     ;;
                 -d)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --config)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -c)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -67,23 +59,11 @@ _farcasterd() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --chain)
+                --config)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                -n)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --electrum-server)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --monero-daemon)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --monero-rpc-wallet)
+                -c)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

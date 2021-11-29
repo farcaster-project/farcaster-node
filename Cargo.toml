@@ -52,6 +52,7 @@ bech32 = { version = "0.7", optional = true }
 bitcoin = "0.27"
 bitcoincore-rpc = "0.14.0"
 chrono = "0.4"
+config = "0.11"
 clap = { version = "3.0.0-beta.4", optional = true }
 colored = { version = "2", optional = true }
 configure_me = { version = "0.4", optional = true }
@@ -126,6 +127,9 @@ electrum-client = "0.8.0"
 version = "0.5.0-alpha.1"
 default-features = false
 features = ['peer']
+
+[dev-dependencies]
+ntest = "0.7.3"
 
 [build-dependencies.microservices]
 # path = '../ext/rust-internet2'

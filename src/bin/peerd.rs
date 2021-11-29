@@ -103,7 +103,8 @@ use std::time::Duration;
 
 use bitcoin::secp256k1::PublicKey;
 use farcaster_node::peerd::{self, Opts};
-use farcaster_node::{Config, LogStyle};
+use farcaster_node::LogStyle;
+use farcaster_node::ServiceConfig;
 use internet2::{session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr};
 use microservices::peer::PeerConnection;
 
@@ -156,17 +157,15 @@ impl From<Opts> for PeerSocket {
 }
 
 fn main() {
-    println!("peerd: lightning peer network connection microservice");
-
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
     opts.process();
     trace!("Processed arguments: {:?}", &opts);
 
-    let config: Config = opts.shared.clone().into();
-    trace!("Daemon configuration: {:?}", &config);
-    debug!("MSG RPC socket {}", &config.msg_endpoint);
-    debug!("CTL RPC socket {}", &config.ctl_endpoint);
+    let service_config: ServiceConfig = opts.shared.clone().into();
+    trace!("Daemon configuration: {:#?}", &service_config);
+    debug!("MSG RPC socket {}", &service_config.msg_endpoint);
+    debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
     /*
     use self::internal::ResultExt;
@@ -256,7 +255,7 @@ fn main() {
 
     debug!("Starting runtime ...");
     peerd::run(
-        config,
+        service_config,
         connection,
         id,
         local_id,

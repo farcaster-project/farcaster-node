@@ -12,35 +12,102 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::Error;
+use farcaster_core::blockchain::Network;
 use internet2::NodeAddr;
-use lnpbp::chain::Chain;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+pub const FARCASTER_MAINNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
+pub const FARCASTER_MAINNET_MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
+pub const FARCASTER_MAINNET_MONERO_RPC_WALLET: &str = "http://localhost:18083";
+
+pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993";
+pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.melo.tools:38081";
+pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
 
 #[cfg(feature = "shell")]
 use crate::opts::Opts;
 
-/// Final configuration resulting from data contained in config file environment
-/// variables and command-line options. For security reasons node key is kept
-/// separately.
-#[derive(Clone, PartialEq, Eq, Debug, Display)]
-#[display(Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
 pub struct Config {
-    /// Bitcoin blockchain to use (mainnet, testnet, signet, liquid etc)
-    pub chain: Chain,
-
-    /// ZMQ socket for lightning peer network message bus
-    pub msg_endpoint: NodeAddr,
-
-    /// ZMQ socket for internal service control bus
-    pub ctl_endpoint: NodeAddr,
+    /// Syncer configuration
+    pub syncers: Option<SyncersConfig>,
 }
 
-#[cfg(feature = "shell")]
-impl From<Opts> for Config {
-    fn from(opts: Opts) -> Self {
-        Config {
-            chain: opts.chain,
-            msg_endpoint: opts.msg_socket.into(),
-            ctl_endpoint: opts.ctl_socket.into(),
+impl Config {
+    pub fn get_syncer_servers(&self, network: Network) -> Option<SyncerServers> {
+        match network {
+            Network::Mainnet => self.syncers.as_ref()?.mainnet.clone(),
+            Network::Testnet => self.syncers.as_ref()?.testnet.clone(),
+            Network::Local => self.syncers.as_ref()?.local.clone(),
         }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            syncers: Some(SyncersConfig::default()),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct SyncersConfig {
+    /// Mainnet syncer configuration
+    pub mainnet: Option<SyncerServers>,
+
+    /// Testnet syncer configuration
+    pub testnet: Option<SyncerServers>,
+
+    /// Local syncer configuration
+    pub local: Option<SyncerServers>,
+}
+
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct SyncerServers {
+    /// Electrum server to use
+    pub electrum_server: String,
+
+    /// Monero daemon to use
+    pub monero_daemon: String,
+
+    /// Monero rpc wallet to use
+    pub monero_rpc_wallet: String,
+}
+
+impl Default for SyncersConfig {
+    fn default() -> Self {
+        SyncersConfig {
+            mainnet: Some(SyncerServers {
+                electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
+                monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),
+                monero_rpc_wallet: FARCASTER_MAINNET_MONERO_RPC_WALLET.into(),
+            }),
+            testnet: Some(SyncerServers {
+                electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
+                monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
+                monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
+            }),
+            local: None,
+        }
+    }
+}
+
+pub fn parse_config(path: &str) -> Result<Config, config::ConfigError> {
+    if Path::new(path).exists() {
+        let config_file = path;
+        debug!("Loading config file at: {}", &config_file);
+        let mut settings = config::Config::default();
+        settings.merge(config::File::with_name(config_file).required(true))?;
+        settings.try_into::<Config>()
+    } else {
+        debug!("No configuration file found, generate default config");
+        Ok(Config::default())
     }
 }
