@@ -276,16 +276,11 @@ fn info_args(data_dir: Vec<String>) -> Vec<String> {
     data_dir
         .into_iter()
         .chain(vec!["info".to_string()])
-        .map(|i| i.to_string())
         .collect()
 }
 
 fn farcasterd_args(data_dir: Vec<String>, server_args: Vec<String>) -> Vec<String> {
-    data_dir
-        .into_iter()
-        .chain(server_args)
-        .map(|i| i.to_string())
-        .collect()
+    data_dir.into_iter().chain(server_args).collect()
 }
 
 fn make_offer_args(
@@ -313,7 +308,6 @@ fn make_offer_args(
             "0.0.0.0".to_string(),
             "9376".to_string(),
         ])
-        .map(|i| i.to_string())
         .collect()
 }
 
@@ -324,7 +318,6 @@ fn take_offer_args(
     offer: String,
 ) -> Vec<String> {
     data_dir
-        .clone()
         .into_iter()
         .chain(vec![
             "take".to_string(),
@@ -333,7 +326,6 @@ fn take_offer_args(
             offer,
             "--without-validation".to_string(),
         ])
-        .map(|i| i.to_string())
         .collect()
 }
 
@@ -341,7 +333,6 @@ fn progress_args(data_dir: Vec<String>, swap_id: String) -> Vec<String> {
     data_dir
         .into_iter()
         .chain(vec!["progress".to_string(), swap_id])
-        .map(|i| i.to_string())
         .collect()
 }
 
@@ -353,8 +344,7 @@ fn retry_until_offer(args: Vec<String>) -> Vec<String> {
             .filter_map(|element| {
                 if element.to_string().len() > 5 {
                     let pos = element.find("Offer");
-                    if pos.is_some() {
-                        let pos = pos.unwrap();
+                    if let Some(pos) = pos {
                         let len = element.to_string().len() - 1;
                         let offer = element[pos..len].to_string();
                         return Some(offer);
@@ -429,13 +419,12 @@ fn retry_until_monero_funding_address(args: Vec<String>) -> monero::Address {
         let monero_addresses: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    if element.find("Success: 4").is_some() {
-                        let monero_address = element[9..].to_string();
-                        return Some(monero_address);
-                    }
+                if element.to_string().len() > 5 && element.contains("Success: 4") {
+                    let monero_address = element[9..].to_string();
+                    Some(monero_address)
+                } else {
+                    None
                 }
-                None
             })
             .collect();
 
@@ -454,12 +443,11 @@ fn retry_until_finish_state_transition(args: Vec<String>, finish_state: String) 
         let alice_finish: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    if element.find(&finish_state).is_some() {
-                        return Some(element.to_string());
-                    }
+                if element.to_string().len() > 5 && element.contains(&finish_state) {
+                    Some(element.to_string())
+                } else {
+                    None
                 }
-                None
             })
             .collect();
 
@@ -480,11 +468,8 @@ fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded
-    match bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
-        Err(_e) => match bitcoin_rpc.load_wallet("wallet") {
-            _ => {}
-        },
-        _ => {}
+    if let Err(_e) = bitcoin_rpc.create_wallet("wallet", None, None, None, None) {
+        bitcoin_rpc.load_wallet("wallet").unwrap();
     }
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     bitcoin_rpc.generate_to_address(200, &address).unwrap();
@@ -497,14 +482,14 @@ async fn monero_setup() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
     let regtest = daemon.regtest();
     let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
     let wallet = wallet_client.wallet();
-    match wallet
-        .create_wallet("test".to_string(), None, "English".to_string())
-        .await
-    {
-        _ => {
-            wallet.open_wallet("test".to_string(), None).await.unwrap();
-        }
+    if let Err(_e) = wallet.open_wallet("test".to_string(), None).await {
+        wallet
+            .create_wallet("test".to_string(), None, "English".to_string())
+            .await
+            .unwrap();
+        wallet.open_wallet("test".to_string(), None).await.unwrap();
     }
+
     let address = wallet.get_address(0, None).await.unwrap();
     regtest.generate_blocks(200, address.address).await.unwrap();
     regtest
