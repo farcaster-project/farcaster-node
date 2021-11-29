@@ -42,7 +42,7 @@ impl Config {
         match network {
             Network::Mainnet => self.syncers.as_ref()?.mainnet.clone(),
             Network::Testnet => self.syncers.as_ref()?.testnet.clone(),
-            Network::Local => None,
+            Network::Local => self.syncers.as_ref()?.local.clone(),
         }
     }
 }
@@ -63,6 +63,9 @@ pub struct SyncersConfig {
 
     /// Testnet syncer configuration
     pub testnet: Option<SyncerServers>,
+
+    /// Local syncer configuration
+    pub local: Option<SyncerServers>,
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
@@ -91,6 +94,7 @@ impl Default for SyncersConfig {
                 monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
                 monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
             }),
+            local: None,
         }
     }
 }
