@@ -234,6 +234,13 @@ impl Runtime {
                 }
             })
             .collect();
+        let clients = &self.syncer_clients;
+        self.syncer_services = self
+            .syncer_services
+            .drain()
+            .filter(|(k, _)| clients.contains_key(k))
+            .collect();
+
         Ok(())
     }
 
