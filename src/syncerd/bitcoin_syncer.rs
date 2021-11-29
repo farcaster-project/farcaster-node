@@ -247,7 +247,7 @@ impl ElectrumRpc {
         };
         drop(state_guard);
         for tx_id in txids.iter() {
-            let tx_id = bitcoin::Txid::from_slice(&tx_id).unwrap();
+            let tx_id = bitcoin::Txid::from_slice(tx_id).unwrap();
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {

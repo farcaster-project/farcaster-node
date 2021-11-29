@@ -229,14 +229,17 @@ impl Runtime {
                 if !xs.is_empty() {
                     Some(((coin, network), xs))
                 } else {
-                    let service_id = ServiceId::Syncer(coin.clone(), network.clone());
+                    let service_id = ServiceId::Syncer(coin, network);
                     info!("Terminating syncer: {:?}", service_id);
-                    if let Ok(_) = senders.send_to(
-                        ServiceBus::Ctl,
-                        identity.clone(),
-                        service_id,
-                        Request::Terminate,
-                    ) {
+                    if senders
+                        .send_to(
+                            ServiceBus::Ctl,
+                            identity.clone(),
+                            service_id,
+                            Request::Terminate,
+                        )
+                        .is_ok()
+                    {
                         None
                     } else {
                         Some(((coin, network), xs))
