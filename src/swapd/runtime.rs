@@ -1500,7 +1500,7 @@ impl Runtime {
                             .pop()
                             .unwrap();
                         if let (Request::SyncerTask(Task::SweepAddress(mut task)), ServiceBus::Ctl) =
-                            (request.clone(), bus_id.clone())
+                            (request.clone(), bus_id)
                         {
                             // safe cast
                             task.from_height = Some(self.syncer_state.monero_height - *confirmations as u64);
