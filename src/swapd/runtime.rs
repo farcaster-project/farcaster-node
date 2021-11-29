@@ -710,6 +710,15 @@ impl SyncerState {
             spend_key,
             address,
         });
+        let from_height = match self.lock_tx_confs {
+            Some(Request::SyncerEvent(Event::TransactionConfirmations(
+                TransactionConfirmations {
+                    confirmations: Some(tx_confs),
+                    ..
+                },
+            ))) => Some(self.monero_height - tx_confs as u64),
+            _ => None,
+        };
         let sweep_task = SweepAddress {
             id,
             lifetime,
