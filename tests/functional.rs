@@ -976,6 +976,7 @@ async fn monero_syncer_sweep_test() {
         task: Task::SweepAddress(SweepAddress {
             id: TaskId(0),
             lifetime: blocks + 40,
+            from_height: None,
             addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
                 spend_key,
                 view_key,
