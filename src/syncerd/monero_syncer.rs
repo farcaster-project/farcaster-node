@@ -224,7 +224,7 @@ async fn sweep_address(
     spend: monero::PrivateKey,
     network: &monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
-    from_height: Option<u64>,
+    restore_height: Option<u64>,
 ) -> Result<Vec<Vec<u8>>, Error> {
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
@@ -232,10 +232,10 @@ async fn sweep_address(
     let wallet_filename = format!("sweep:{}", address);
 
     // add some extra leeway for the wallet restore height
-    let restore_height = match from_height {
-        Some(height) if height > 10 => Some(height - 10),
-        _ => None,
-    };
+    // let restore_height = match from_height {
+    //     Some(height) if height > 10 => Some(height - 10),
+    //     _ => None,
+    // };
 
     let wallet = wallet_mutex.lock().await;
     trace!("taking sweep wallet lock");
