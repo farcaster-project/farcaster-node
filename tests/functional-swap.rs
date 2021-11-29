@@ -83,12 +83,12 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
     let data_dir_maker = vec!["-d".to_string(), "tests/.farcaster_node_0".to_string()];
     let data_dir_taker = vec!["-d".to_string(), "tests/.farcaster_node_1".to_string()];
 
-    let server_args_maker = vec!["-vvv", "--config", ".farcasterd_1"]
+    let server_args_maker = vec!["-vvv", "--config", "tests/.farcasterd_1.toml"]
         .iter()
         .map(|i| i.to_string())
         .collect();
 
-    let server_args_taker = vec!["-vvv", "--config", ".farcasterd_2"]
+    let server_args_taker = vec!["-vvv", "--config", "tests/.farcasterd_2.toml"]
         .iter()
         .map(|i| i.to_string())
         .collect();
