@@ -31,7 +31,7 @@ swap info
 
 You should get a returned value from the node. You can use this stack to take a public offer or to make an offer. In the case you want to make an offer make sure the public address and the port will be reachable from external networks.
 
-:mega: The only port forwarded to the host is `9735`, make sure to use this one when making offers.
+:mega: The only port forwarded to the host is `9735`, make sure to use this one when making offers (by default port `9735` is used).
 
 To stop and remove the containers simply run in the project folder:
 
