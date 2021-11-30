@@ -342,15 +342,13 @@ fn retry_until_offer(args: Vec<String>) -> Vec<String> {
         let offers: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    let pos = element.find("Offer");
-                    if let Some(pos) = pos {
-                        let len = element.to_string().len() - 1;
-                        let offer = element[pos..len].to_string();
-                        return Some(offer);
-                    }
+                if let Some(pos) = element.find("Offer") {
+                    let len = element.to_string().len() - 1;
+                    let offer = element[pos..len].to_string();
+                    Some(offer)
+                } else {
+                    None
                 }
-                None
             })
             .collect();
         if !offers.is_empty() {
@@ -367,14 +365,13 @@ fn retry_until_swap_ids(args: Vec<String>) -> Vec<String> {
         let swap_ids: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    if let Some(pos) = element.find("\"0x") {
-                        let len = element.to_string().len() - 1;
-                        let swap_id = element[pos + 1..len].to_string();
-                        return Some(swap_id);
-                    }
+                if let Some(pos) = element.find("\"0x") {
+                    let len = element.to_string().len() - 1;
+                    let swap_id = element[pos + 1..len].to_string();
+                    Some(swap_id)
+                } else {
+                    None
                 }
-                None
             })
             .collect();
         if !swap_ids.is_empty() {
@@ -392,14 +389,13 @@ fn retry_until_bitcoin_funding_address(args: Vec<String>) -> bitcoin::Address {
         let bitcoin_address: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.to_string().len() > 5 {
-                    if let Some(pos) = element.find("bcr") {
-                        let len = element.to_string().len();
-                        let swap_id = element[pos..len].to_string();
-                        return Some(swap_id);
-                    }
+                if let Some(pos) = element.find("bcr") {
+                    let len = element.to_string().len();
+                    let swap_id = element[pos..len].to_string();
+                    Some(swap_id)
+                } else {
+                    None
                 }
-                None
             })
             .collect();
 
@@ -419,7 +415,7 @@ fn retry_until_monero_funding_address(args: Vec<String>) -> monero::Address {
         let monero_addresses: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.to_string().len() > 5 && element.contains("Success: 4") {
+                if element.contains("Success: 4") {
                     let monero_address = element[9..].to_string();
                     Some(monero_address)
                 } else {
@@ -443,7 +439,7 @@ fn retry_until_finish_state_transition(args: Vec<String>, finish_state: String) 
         let alice_finish: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.to_string().len() > 5 && element.contains(&finish_state) {
+                if element.contains(&finish_state) {
                     Some(element.to_string())
                 } else {
                     None
