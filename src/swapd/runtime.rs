@@ -783,7 +783,7 @@ impl SyncerState {
             id,
             lifetime,
             addendum,
-            from_height: None,
+            from_height,
         };
         Task::SweepAddress(sweep_task)
     }
@@ -1209,7 +1209,7 @@ impl Runtime {
                 address,
                 ..
             }) if source == ServiceId::Wallet => {
-                let from_height = Some(self.syncer_state.height(Coin::Monero));
+                let from_height = None; // will be set when sending out the request
                 let task = self
                     .syncer_state
                     .sweep_xmr(view_key, spend_key, address, from_height);
