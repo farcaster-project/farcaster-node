@@ -1160,8 +1160,6 @@ impl Runtime {
                     request => error!("request not supported {}", request),
                 }
             }
-            // let _ = self.report_progress_to(senders, &enquirer, msg);
-            // let _ = self.report_success_to(senders, &enquirer, Some(msg));
             _ => {
                 error!("MSG RPC can be only used for forwarding farcaster protocol messages");
                 return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
@@ -1699,7 +1697,7 @@ impl Runtime {
                                     self.report_success_to(
                                         senders,
                                         self.enquirer.clone(),
-                                        Some(msg.to_string()),
+                                        Some(msg),
                                     )?;
                                     let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                         spend,
