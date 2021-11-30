@@ -1,14 +1,32 @@
+# Syncers configuration
+# configures the Bitcoin and Monero syncers for the three
+# networks.
+
+# Mainnet daemons
 [syncers.mainnet]
+# Electrum Server used by the Bitcoin syncer
 electrum_server = "ssl://blockstream.info:700"
+# Monero daemon used by the Monero syncer
 monero_daemon = "http://node.monerooutreach.org:18081"
+# Monero Wallet RPC used by the Monero syncer
+# Point to local running wallet
 monero_rpc_wallet = "http://localhost:18083"
 
+# Testnet/stagenet daemons
 [syncers.testnet]
+# Electrum Server used by the Bitcoin syncer on testnet
 electrum_server = "ssl://blockstream.info:993"
+# Monero daemon used by the Monero syncer on stagenet
 monero_daemon = "http://stagenet.melo.tools:38081"
+# Monero Wallet RPC used by the Monero syncer on stagenet
+# Point to local running wallet
 monero_rpc_wallet = "http://localhost:38083"
 
+# Local development daemons, null by default
 [syncers.local]
+# Electrum Server used by the Bitcoin syncer on regtest
 electrum_server = "tcp://localhost:50001"
+# Monero daemon used by the Monero syncer on regtest
 monero_daemon = "http://localhost:18081"
+# Monero Wallet RPC used by the Monero syncer on regtest
 monero_rpc_wallet = "http://localhost:18083"

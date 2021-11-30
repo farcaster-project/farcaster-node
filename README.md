@@ -46,10 +46,16 @@ monero-wallet-rpc --stagenet --rpc-bind-port 38083\
 Then start the node with:
 
 ```
-farcasterd -vv\
-    --electrum-server tcp://localhost:60001\
-    --monero-daemon http://localhost:38081\
-    --monero-rpc-wallet http://localhost:38083
+farcasterd -vv -c farcasterd.toml
+```
+
+with `farcasterd.toml` configuration file:
+
+```toml
+[syncers.testnet]
+electrum_server = "tcp://localhost:60001"
+monero_daemon = "http://localhost:38081"
+monero_rpc_wallet = "http://localhost:38083"
 ```
 
 #### Connect a client
@@ -70,24 +76,43 @@ You can follow the documentation on [how to use `farcasterd` with Docker](./doc/
 
 Running `monero-wallet-rpc` is also possible with Docker, see [run `monero rpc wallet`](./doc/docker-stack.md#run-monero-rpc-wallet) for more details.
 
-### :bulb: Use public infrastructure
+### Configuration
+
+`farcasterd` can be configured through a toml file located by default at `~/.farcaster/farcasterd.toml`, if no file is found `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
+
+**Syncers**
+
+Configures daemon's URLs where to connect for the three possible networks: _mainnet_, _testnet_, _local_:
+
+```toml
+[syncers.{network}]
+electrum_server = ""
+monero_daemon = ""
+monero_rpc_wallet = ""
+```
+
+:mag_right: The default config for _local_ network is set to null.
+
+#### :bulb: Use public infrastructure
 
 To help quickly test and avoid running the entire infrastructure on your machine you can make use of public nodes. Following is a non-exhaustive list of public nodes.
 
+Only blockchain daemons and electrum servers are listed, you should always run your own `monero rpc wallet`.
+
 **Mainnet**
 
-| daemon              | value                                  |
-| ------------------- | -------------------------------------- |
-| `--electrum-server` | `ssl://blockstream.info:700`           |
-| `--monero-daemon`   | `http://node.melo.tools:18081`         |
-| `--monero-daemon`   | `http://node.monerooutreach.org:18081` |
+| daemon            | value                                                |
+| ----------------- | ---------------------------------------------------- |
+| `electrum server` | `ssl://blockstream.info:700` **(default)**           |
+| `monero daemon`   | `http://node.melo.tools:18081`                       |
+| `monero daemon`   | `http://node.monerooutreach.org:18081` **(default)** |
 
 **Testnet/Stagenet**
 
-| daemon              | value                              |
-| ------------------- | ---------------------------------- |
-| `--electrum-server` | `ssl://blockstream.info:993`       |
-| `--monero-daemon`   | `http://stagenet.melo.tools:38081` |
+| daemon            | value                                            |
+| ----------------- | ------------------------------------------------ |
+| `electrum server` | `ssl://blockstream.info:993` **(default)**       |
+| `monero daemon`   | `http://stagenet.melo.tools:38081` **(default)** |
 
 ## Usage
 
@@ -104,25 +129,22 @@ When listening for other peers to connect, e.g. for executing a swap, a `peerd` 
 To create an offer and spawn a listening `peerd` accepting incoming connections, run the following command:
 
 ```
-swap-cli make tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
-    54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
-    Testnet ECDSA Monero\
-    "0.00001350 BTC" "0.001 XMR"\
-    Alice 4 5 "1 satoshi/vByte"\
-    1.2.3.4\
-    0.0.0.0\
-    9735
+swap-cli make --arb-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
+    --acc-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
+    --arb-amount "0.0000135 BTC" --acc-amount "0.001 XMR"\
+    --maker-role Bob\
+    --public-ip-addr 1.2.3.4 --port 9735
 ```
 
-The first argument is the Bitcoin address used to get the bitcoins (as a refund or when the swap completes depending on the role).
+Network and assets by default are Bitcoin and Monero on testnet. The first arguments `--arb-addr` and `--acc-addr` are the Bitcoin and Monero addresses used to get the bitcoins and moneros as a refund or when the swap completes depending on the role. They are followed by the amounts exchanged.
 
-Then the network and assets are specified with the amounts. The `ECDSA` below is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms.
+The role for the maker is specified in the offer with `--maker-role`. `Alice` sells moneros for bitcoins, `Bob` sells bitcoins for moneros. Timelock parameters are set by default to **4** and **5** for cancel and punish and the transaction fee that must be applied is by default **1 satoshi per vByte**.
 
-The role for the maker is specified in the offer: `Alice`, sells moneros for bitcoins, or `Bob`, sells bitcoins for moneros, with the timelock parameters for cancel and punish and the transaction fee that must be applied. Here the maker will send moneros and will receive bitcoin in his `tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf` address if the swap is successful, 4 and 5 blocks are used for the timelocks and 1 satoshi per virtual byte must be used for the Bitcoin transaction fee.
+Here the maker will send bitcoins and will receive moneros in his `54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu` address if the swap is successful, 4 and 5 blocks are used for the timelocks and 1 satoshi per virtual byte must be used for the Bitcoin transaction fee (default values).
 
-Then the last three arguments in this example are: `public_ip_addr`, `bind_id_address` (default to `0.0.0.0`), and `port` (default to `9735`).
+Then the last two arguments in this example are: `--public-ip-addr` (default to `127.0.0.1`) and `--port` to be explicit in this example (default to `9735`). We don't specify `--bind-ip-addr` and leave its default to `0.0.0.0`,
 
-:mag_right: To be able for a taker to connect and take the offer the `public_ip_addr:port` must be accessible and answered by the `peerd` binded to `bind_id_address:port`.
+:mag_right: To be able for a taker to connect and take the offer the `public-ip-addr:port` must be accessible and answered by the `peerd` binded to `bind-id-address:port`.
 
 **The public offer result**
 
@@ -132,12 +154,12 @@ Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the sw
 
 ### :moneybag: Take the offer
 
-Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an encoded public offer, and a bitcoin address to receive bitcoins (again, as a refund or if the swap completes depending on your swap role).
+Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an encoded public offer, a Bitcoin address and a Monero address to receive assets, again as a refund or as a payment depending on your swap role and if the swap completes.
 
 ```
-swap-cli take tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
-    54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
-    {offer}
+swap-cli take --arb-addr tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
+    --acc-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
+    --offer {offer}
 ```
 
 The cli will ask you to validate the offer informations (amounts, assets, etc.), you can use the flag of interest `--without-validation` or `-w` for externally validated automated setups.
