@@ -443,7 +443,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::BroadcastTransaction(task) => {
                             // TODO: match error and emit event with fail code
-                            trace!("trying to broadcast tx: {:?}", task.tx.to_hex());
+                            debug!("trying to broadcast tx: {:?}", task.tx.to_hex());
                             match Client::new(&electrum_server).and_then(|broadcast_client| {
                                 broadcast_client.transaction_broadcast_raw(&task.tx.clone())
                             }) {

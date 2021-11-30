@@ -131,6 +131,9 @@ features = ['peer']
 [dev-dependencies]
 ntest = "0.7.3"
 
+# Test
+strip-ansi-escapes = "0.1.1"
+
 [build-dependencies.microservices]
 # path = '../ext/rust-internet2'
 version = "0.5.0-alpha.1"
