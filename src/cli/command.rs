@@ -134,6 +134,13 @@ impl Exec for Command {
                     );
                     return Ok(());
                 }
+                if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
+                    eprintln!(
+                        "Error: monero amount {} too low, require at least 0.001 XMR",
+                        accordant_amount
+                    );
+                    return Ok(());
+                }
                 let offer = farcaster_core::negotiation::Offer {
                     network,
                     arbitrating_blockchain,
