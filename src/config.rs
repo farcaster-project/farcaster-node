@@ -15,6 +15,8 @@
 use crate::Error;
 use farcaster_core::blockchain::Network;
 use internet2::NodeAddr;
+use std::fs::File;
+use std::io::prelude::*;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -99,15 +101,18 @@ impl Default for SyncersConfig {
     }
 }
 
-pub fn parse_config(path: &str) -> Result<Config, config::ConfigError> {
+pub fn parse_config(path: &str) -> Result<Config, Error> {
     if Path::new(path).exists() {
         let config_file = path;
-        debug!("Loading config file at: {}", &config_file);
+        info!("Loading config file at: {}", &config_file);
         let mut settings = config::Config::default();
         settings.merge(config::File::with_name(config_file).required(true))?;
-        settings.try_into::<Config>()
+        settings.try_into::<Config>().map_err(Into::into)
     } else {
-        debug!("No configuration file found, generate default config");
-        Ok(Config::default())
+        info!("No configuration file found, generate default config");
+        let config = Config::default();
+        let mut file = File::create(path)?;
+        file.write_all(toml::to_vec(&config).unwrap().as_ref())?;
+        Ok(config)
     }
 }

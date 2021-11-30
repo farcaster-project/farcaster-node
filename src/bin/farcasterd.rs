@@ -35,6 +35,7 @@ use bitcoin::secp256k1::rand::RngCore;
 
 use clap::Clap;
 
+use farcaster_node::Error;
 use farcaster_node::ServiceConfig;
 use farcaster_node::{
     config::parse_config,
@@ -42,7 +43,7 @@ use farcaster_node::{
     rpc::request::Token,
 };
 
-fn main() -> Result<(), config::ConfigError> {
+fn main() -> Result<(), Error> {
     let mut opts = Opts::parse();
     trace!("Command-line arguments: {:?}", &opts);
     opts.process();
