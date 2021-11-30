@@ -372,6 +372,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
 /*
 We test for the following scenarios in the transaction tests:
 
+- Submit a WatchTransaction task for a transaction in the mempool, but with a
+confirmation bound of 0. Receive a single confirmation event.
+
 - Submit a WatchTransaction task for a transaction in the mempool, receive confirmation events until
 the threshold confs are reached
 
@@ -405,6 +408,22 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         .unwrap();
 
     std::thread::sleep(duration);
+
+    tx.send(SyncerdTask {
+        task: Task::WatchTransaction(WatchTransaction {
+            id: TaskId(1),
+            lifetime: blocks + 5,
+            hash: txid_1.to_vec(),
+            confirmation_bound: 0,
+        }),
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    println!("awaiting confirmations");
+    let message = rx_event.recv_multipart(0).unwrap();
+    println!("received confirmation");
+    let request = get_request_from_message(message);
+    assert_transaction_confirmations(request, Some(0), vec![0]);
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {

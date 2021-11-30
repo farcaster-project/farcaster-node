@@ -1479,9 +1479,8 @@ impl Runtime {
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
-                        id: _,
-                        block: _,
                         confirmations: Some(confirmations),
+                        ..
                     }) if self.state.b_buy_sig()
                         && *confirmations
                             > self.temporal_safety.sweep_monero_thr.expect(
@@ -1550,8 +1549,8 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block: _,
                         confirmations,
+                        ..
                     }) if self.syncer_state.tasks.watched_txs.contains_key(id) => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }
@@ -1660,8 +1659,8 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block: _,
                         confirmations: Some(confirmations),
+                        ..
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
                         && self.syncer_state.tasks.watched_txs.get(id).is_some() =>
                     {
@@ -1832,8 +1831,8 @@ impl Runtime {
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
-                        block: _,
                         confirmations,
+                        ..
                     }) => {
                         self.syncer_state.handle_tx_confs(id, confirmations);
                     }

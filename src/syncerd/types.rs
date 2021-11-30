@@ -232,6 +232,7 @@ pub struct AddressTransaction {
     pub hash: Vec<u8>,
     pub amount: u64,
     pub block: Vec<u8>,
+    // for bitcoin with bitcoin::consensus encoding
     pub tx: Vec<u8>,
 }
 
@@ -241,6 +242,8 @@ pub struct TransactionConfirmations {
     pub id: TaskId,
     pub block: Vec<u8>,
     pub confirmations: Option<u32>,
+    // for bitcoin with bitcoin::consensus encoding
+    pub tx: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
