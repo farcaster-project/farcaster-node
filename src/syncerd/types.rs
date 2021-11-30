@@ -243,7 +243,7 @@ pub struct TransactionConfirmations {
     pub block: Vec<u8>,
     pub confirmations: Option<u32>,
     // for bitcoin with bitcoin::consensus encoding
-    pub tx: Option<Vec<u8>>,
+    pub tx: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

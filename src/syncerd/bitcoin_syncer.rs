@@ -268,7 +268,7 @@ impl ElectrumRpc {
                                     tx_id.to_vec(),
                                     None,
                                     Some(0),
-                                    Some(bitcoin::consensus::serialize(&tx)),
+                                    bitcoin::consensus::serialize(&tx),
                                 )
                                 .await;
                             drop(state_guard);
@@ -300,7 +300,7 @@ impl ElectrumRpc {
                                             tx_id.to_vec(),
                                             None,
                                             Some(0),
-                                            Some(bitcoin::consensus::serialize(&tx)),
+                                            bitcoin::consensus::serialize(&tx),
                                         )
                                         .await;
                                     drop(state_guard);
@@ -327,7 +327,7 @@ impl ElectrumRpc {
                                     tx_id.to_vec(),
                                     None,
                                     Some(0),
-                                    Some(bitcoin::consensus::serialize(&tx)),
+                                    bitcoin::consensus::serialize(&tx),
                                 )
                                 .await;
                             drop(state_guard);
@@ -347,7 +347,7 @@ impl ElectrumRpc {
                             tx.txid().to_vec(),
                             blockhash,
                             Some(confs),
-                            Some(bitcoin::consensus::serialize(&tx)),
+                            bitcoin::consensus::serialize(&tx),
                         )
                         .await;
                     drop(state_guard);
@@ -356,7 +356,7 @@ impl ElectrumRpc {
                     debug!("error getting transaction, treating as not found: {}", err);
                     let mut state_guard = state.lock().await;
                     state_guard
-                        .change_transaction(tx_id.to_vec(), None, None, None)
+                        .change_transaction(tx_id.to_vec(), None, None, vec![])
                         .await;
                     drop(state_guard);
                 }

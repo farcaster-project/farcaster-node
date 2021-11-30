@@ -308,7 +308,7 @@ impl SyncerState {
                     id: task.id,
                     block: none!(),
                     confirmations: None,
-                    tx: None,
+                    tx: vec![],
                 },
             },
         );
@@ -442,7 +442,7 @@ impl SyncerState {
         tx_id: Vec<u8>,
         block_hash: Option<Vec<u8>>,
         confirmations: Option<u32>,
-        tx: Option<Vec<u8>>,
+        tx: Vec<u8>,
     ) {
         self.drop_lifetimes();
         let mut events: Vec<(Event, ServiceId)> = Vec::new();
@@ -466,7 +466,7 @@ impl SyncerState {
             tx_id: Vec<u8>,
             block_hash: Option<Vec<u8>>,
             confirmations: Option<u32>,
-            tx: Option<Vec<u8>>,
+            tx: Vec<u8>,
         ) {
             let block = match block_hash {
                 Some(bh) => bh,
