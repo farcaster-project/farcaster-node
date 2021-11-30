@@ -513,6 +513,7 @@ impl Runtime {
                     self.spawning_services.remove(&source);
                 }
             }
+
             Request::SwapSuccess(success) => {
                 let swapid = get_swap_id(&source)?;
                 self.clean_up_after_swap(&swapid, senders)?;
@@ -526,6 +527,7 @@ impl Runtime {
                 self.stats.success_rate();
                 senders.send_to(ServiceBus::Ctl, self.identity(), source, request)?;
             }
+
             Request::LaunchSwap(LaunchSwap {
                 maker_node_id,
                 local_trade_role,
@@ -588,6 +590,7 @@ impl Runtime {
                     return Err(Error::Farcaster(msg));
                 }
             }
+
             Request::Keys(Keys(sk, pk, id)) if self.pending_requests.contains_key(&id) => {
                 trace!("received peerd keys");
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
@@ -612,6 +615,7 @@ impl Runtime {
                     error!("Received unexpected peer keys");
                 }
             }
+
             Request::GetInfo => {
                 senders.send_to(
                     ServiceBus::Ctl,
@@ -643,6 +647,7 @@ impl Runtime {
                     Request::PeerList(self.connections.iter().cloned().collect()),
                 )?;
             }
+
             Request::ListSwaps => {
                 senders.send_to(
                     ServiceBus::Ctl,
@@ -652,84 +657,6 @@ impl Runtime {
                 )?;
             }
 
-            // Request::Listen(addr) => {
-            //     let addr_str = addr.addr();
-            //     if self.listens.contains(&addr) {
-            //         let msg = format!("Listener on {} already exists, ignoring request", addr);
-            //         warn!("{}", msg.err());
-            //         report_to.push((
-            //             Some(source.clone()),
-            //             Request::Failure(Failure { code: 1, info: msg }),
-            //         ));
-            //     } else {
-            //         let (_, sk) = self.peerd_keys()?;
-            //         let resp = self.listen(&addr, sk);
-            //         self.listens.insert(addr);
-            //         info!(
-            //             "{} for incoming LN peer connections on {}",
-            //             "Starting listener".bright_blue_bold(),
-            //             addr_str
-            //         );
-            //         match resp {
-            //             Ok(_) => info!(
-            //                 "Connection daemon {} for incoming LN peer connections on {}",
-            //                 "listens".bright_green_bold(),
-            //                 addr_str
-            //             ),
-            //             Err(ref err) => error!("{}", err.err()),
-            //         }
-
-            //         senders.send_to(
-            //             ServiceBus::Ctl,
-            //             ServiceId::Farcasterd,
-            //             source.clone(),
-            //             resp.into_progress_or_failure(),
-            //         )?;
-            //         report_to.push((
-            //             Some(source.clone()),
-            //             Request::Success(OptionDetails::with(format!(
-            //                 "Node {} listens for connections on {}",
-            //                 self.node_ids()[0], // FIXME
-            //                 addr
-            //             ))),
-            //         ));
-            //     }
-            // }
-
-            // Request::ConnectPeer(addr) => {
-            //     info!(
-            //         "{} to remote peer {}",
-            //         "Connecting".bright_blue_bold(),
-            //         addr.bright_blue_italic()
-            //     );
-            //     let resp = self.connect_peer(source.clone(), &addr);
-            //     match resp {
-            //         Ok(_) => {}
-            //         Err(ref err) => error!("{}", err.err()),
-            //     }
-            //     report_to.push((Some(source.clone()), resp.into_progress_or_failure()));
-            // }
-
-            // Request::OpenSwapWith(request::CreateSwap {
-            //     swap_req,
-            //     peerd,
-            //     report_to,
-            // }) => {
-            //     info!(
-            //         "{} by request from {}",
-            //         "Creating channel".bright_blue_bold(),
-            //         source.bright_blue_italic()
-            //     );
-            //     let resp = self.create_swap(peerd, report_to, swap_req,
-            // false);     match resp {
-            //         Ok(_) => {}
-            //         Err(ref err) => error!("{}", err.err()),
-            //     }
-            //     notify_cli.push(Some((
-            //         Some(source.clone()),
-            //         resp.into_progress_or_failure(),
-            //     ));
-            // }
             Request::MakeOffer(request::ProtoPublicOffer {
                 offer,
                 public_addr,
@@ -916,6 +843,7 @@ impl Runtime {
                     }
                 }
             }
+
             Request::Progress(..) | Request::Success(..) | Request::Failure(..) => {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
@@ -923,6 +851,7 @@ impl Runtime {
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 queue.push_back(request);
             }
+
             Request::ReadProgress(swapid) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swapid)) {
                     let n = queue.len();

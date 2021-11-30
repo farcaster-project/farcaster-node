@@ -34,9 +34,6 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Print version information')
             [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
             [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            [CompletionResult]::new('listen', 'listen', [CompletionResultType]::ParameterValue, 'Bind to a socket and start listening for incoming LN peer connections, Maker''s action')
-            [CompletionResult]::new('connect', 'connect', [CompletionResultType]::ParameterValue, 'Connect to the remote lightning network peer')
-            [CompletionResult]::new('ping', 'ping', [CompletionResultType]::ParameterValue, 'Ping remote peer (must be already connected)')
             [CompletionResult]::new('info', 'info', [CompletionResultType]::ParameterValue, 'General information about the running node')
             [CompletionResult]::new('peers', 'peers', [CompletionResultType]::ParameterValue, 'Lists existing peer connections')
             [CompletionResult]::new('ls', 'ls', [CompletionResultType]::ParameterValue, 'Lists running swaps')
@@ -44,63 +41,6 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to maker''s daemon to start the trade')
             [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request swap progress report')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
-            break
-        }
-        'swap-cli;listen' {
-            [CompletionResult]::new('-i', 'i', [CompletionResultType]::ParameterName, 'IPv4 or IPv6 address to bind to')
-            [CompletionResult]::new('--ip', 'ip', [CompletionResultType]::ParameterName, 'IPv4 or IPv6 address to bind to')
-            [CompletionResult]::new('-p', 'p', [CompletionResultType]::ParameterName, 'Port to use; defaults to the native LN port')
-            [CompletionResult]::new('--port', 'port', [CompletionResultType]::ParameterName, 'Port to use; defaults to the native LN port')
-            [CompletionResult]::new('-o', 'o', [CompletionResultType]::ParameterName, 'Use overlay protocol (http, websocket etc)')
-            [CompletionResult]::new('--overlay', 'overlay', [CompletionResultType]::ParameterName, 'Use overlay protocol (http, websocket etc)')
-            [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('--tor-proxy', 'tor-proxy', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('-m', 'm', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('--msg-socket', 'msg-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('-x', 'x', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('-V', 'V', [CompletionResultType]::ParameterName, 'Print version information')
-            [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Print version information')
-            [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            break
-        }
-        'swap-cli;connect' {
-            [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('--tor-proxy', 'tor-proxy', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('-m', 'm', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('--msg-socket', 'msg-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('-x', 'x', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('-V', 'V', [CompletionResultType]::ParameterName, 'Print version information')
-            [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Print version information')
-            [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            break
-        }
-        'swap-cli;ping' {
-            [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('--tor-proxy', 'tor-proxy', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('-m', 'm', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('--msg-socket', 'msg-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('-x', 'x', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('-V', 'V', [CompletionResultType]::ParameterName, 'Print version information')
-            [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Print version information')
-            [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
             break
         }
         'swap-cli;info' {

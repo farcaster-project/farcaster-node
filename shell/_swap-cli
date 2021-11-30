@@ -38,69 +38,7 @@ _swap-cli() {
         (( CURRENT += 1 ))
         curcontext="${curcontext%:*:*}:swap-cli-command-$line[1]:"
         case $line[1] in
-            (listen)
-_arguments "${_arguments_options[@]}" \
-'-i+[IPv4 or IPv6 address to bind to]' \
-'--ip=[IPv4 or IPv6 address to bind to]' \
-'-p+[Port to use; defaults to the native LN port]' \
-'--port=[Port to use; defaults to the native LN port]' \
-'-o+[Use overlay protocol (http, websocket etc)]' \
-'--overlay=[Use overlay protocol (http, websocket etc)]' \
-'-d+[Data directory path]: :_files -/' \
-'--data-dir=[Data directory path]: :_files -/' \
-'-T+[Use Tor]: :_hosts' \
-'--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
-'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-h[Print help information]' \
-'--help[Print help information]' \
-'-V[Print version information]' \
-'--version[Print version information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
-&& ret=0
-;;
-(connect)
-_arguments "${_arguments_options[@]}" \
-'-d+[Data directory path]: :_files -/' \
-'--data-dir=[Data directory path]: :_files -/' \
-'-T+[Use Tor]: :_hosts' \
-'--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
-'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-h[Print help information]' \
-'--help[Print help information]' \
-'-V[Print version information]' \
-'--version[Print version information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
-':peer -- Address of the remote node, in '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>\[\:<port>\]' format:' \
-&& ret=0
-;;
-(ping)
-_arguments "${_arguments_options[@]}" \
-'-d+[Data directory path]: :_files -/' \
-'--data-dir=[Data directory path]: :_files -/' \
-'-T+[Use Tor]: :_hosts' \
-'--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
-'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-h[Print help information]' \
-'--help[Print help information]' \
-'-V[Print version information]' \
-'--version[Print version information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
-':peer -- Address of the remote node, in '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>\[\:<port>\]' format:' \
-&& ret=0
-;;
-(info)
+            (info)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
 '--data-dir=[Data directory path]: :_files -/' \
@@ -262,9 +200,6 @@ esac
 (( $+functions[_swap-cli_commands] )) ||
 _swap-cli_commands() {
     local commands; commands=(
-'listen:Bind to a socket and start listening for incoming LN peer connections, Maker'\''s action' \
-'connect:Connect to the remote lightning network peer' \
-'ping:Ping remote peer (must be already connected)' \
 'info:General information about the running node' \
 'peers:Lists existing peer connections' \
 'ls:Lists running swaps' \
@@ -275,11 +210,6 @@ _swap-cli_commands() {
     )
     _describe -t commands 'swap-cli commands' commands "$@"
 }
-(( $+functions[_swap-cli__connect_commands] )) ||
-_swap-cli__connect_commands() {
-    local commands; commands=()
-    _describe -t commands 'swap-cli connect commands' commands "$@"
-}
 (( $+functions[_swap-cli__help_commands] )) ||
 _swap-cli__help_commands() {
     local commands; commands=()
@@ -289,11 +219,6 @@ _swap-cli__help_commands() {
 _swap-cli__info_commands() {
     local commands; commands=()
     _describe -t commands 'swap-cli info commands' commands "$@"
-}
-(( $+functions[_swap-cli__listen_commands] )) ||
-_swap-cli__listen_commands() {
-    local commands; commands=()
-    _describe -t commands 'swap-cli listen commands' commands "$@"
 }
 (( $+functions[_swap-cli__ls_commands] )) ||
 _swap-cli__ls_commands() {
@@ -309,11 +234,6 @@ _swap-cli__make_commands() {
 _swap-cli__peers_commands() {
     local commands; commands=()
     _describe -t commands 'swap-cli peers commands' commands "$@"
-}
-(( $+functions[_swap-cli__ping_commands] )) ||
-_swap-cli__ping_commands() {
-    local commands; commands=()
-    _describe -t commands 'swap-cli ping commands' commands "$@"
 }
 (( $+functions[_swap-cli__progress_commands] )) ||
 _swap-cli__progress_commands() {

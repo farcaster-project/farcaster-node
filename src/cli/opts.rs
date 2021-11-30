@@ -18,7 +18,7 @@ use monero::Address as XmrAddress;
 use std::net::IpAddr;
 use std::str::FromStr;
 
-use internet2::{FramingProtocol, PartialNodeAddr};
+use internet2::FramingProtocol;
 
 use farcaster_core::{
     bitcoin::{fee::SatPerVByte, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin},
@@ -58,41 +58,8 @@ impl Opts {
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
-    /// Bind to a socket and start listening for incoming LN peer connections,
-    /// Maker's action
-    #[display("listen<{overlay}://{ip_addr}:{port}>")]
-    #[clap(setting = AppSettings::ColoredHelp)]
-    Listen {
-        /// IPv4 or IPv6 address to bind to
-        #[clap(short, long = "ip", default_value = "0.0.0.0")]
-        ip_addr: IpAddr,
-
-        /// Port to use; defaults to the native LN port.
-        #[clap(short, long, default_value = "9735")]
-        port: u16,
-
-        /// Use overlay protocol (http, websocket etc)
-        #[clap(short, long, default_value = "tcp")]
-        overlay: FramingProtocol,
-    },
-
-    /// Connect to the remote lightning network peer
-    #[clap(setting = AppSettings::ColoredHelp)]
-    Connect {
-        /// Address of the remote node, in
-        /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
-        peer: PartialNodeAddr,
-    },
-
-    /// Ping remote peer (must be already connected)
-    #[clap(setting = AppSettings::ColoredHelp)]
-    Ping {
-        /// Address of the remote node, in
-        /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
-        peer: PartialNodeAddr,
-    },
-
     /// General information about the running node
+    #[display("info<{subject:?}>")]
     #[clap(setting = AppSettings::ColoredHelp)]
     Info {
         /// Remote peer address or temporary/permanent/short channel id. If
@@ -208,6 +175,7 @@ pub enum Command {
     },
 
     /// Request swap progress report.
+    #[display("progress<{swapid}>")]
     #[clap(setting = AppSettings::ColoredHelp)]
     Progress {
         /// The swap id requested.
