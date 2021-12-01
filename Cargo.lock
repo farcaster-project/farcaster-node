@@ -970,6 +970,7 @@ dependencies = [
  "nix",
  "ntest",
  "paste",
+ "rand 0.8.4",
  "regex",
  "serde 1.0.127",
  "serde_json",
