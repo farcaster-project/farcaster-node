@@ -947,12 +947,8 @@ impl Runtime {
                 }
             }
             Request::ReadProgress(swapid) => {
-                let info = if self
-                    .making_swaps
-                    .contains_key(&ServiceId::Swap(swapid.clone()))
-                    || self
-                        .taking_swaps
-                        .contains_key(&ServiceId::Swap(swapid.clone()))
+                let info = if self.making_swaps.contains_key(&ServiceId::Swap(swapid))
+                    || self.taking_swaps.contains_key(&ServiceId::Swap(swapid))
                 {
                     s!("No progress made yet on this swap")
                 } else {
