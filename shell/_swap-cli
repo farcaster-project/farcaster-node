@@ -174,6 +174,25 @@ _arguments "${_arguments_options[@]}" \
 ':swapid -- The swap id requested:' \
 && ret=0
 ;;
+(needs-funding)
+_arguments "${_arguments_options[@]}" \
+'-d+[Data directory path]: :_files -/' \
+'--data-dir=[Data directory path]: :_files -/' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
+'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
+'*-v[Set verbosity level]' \
+'*--verbose[Set verbosity level]' \
+':coin:' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
@@ -206,6 +225,7 @@ _swap-cli_commands() {
 'make:Maker creates offer and start listening for incoming connections. Command used to to print the resulting public offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer' \
 'take:Taker accepts offer and connects to maker'\''s daemon to start the trade' \
 'progress:Request swap progress report' \
+'needs-funding:' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'swap-cli commands' commands "$@"
@@ -229,6 +249,11 @@ _swap-cli__ls_commands() {
 _swap-cli__make_commands() {
     local commands; commands=()
     _describe -t commands 'swap-cli make commands' commands "$@"
+}
+(( $+functions[_swap-cli__needs-funding_commands] )) ||
+_swap-cli__needs-funding_commands() {
+    local commands; commands=()
+    _describe -t commands 'swap-cli needs-funding commands' commands "$@"
 }
 (( $+functions[_swap-cli__peers_commands] )) ||
 _swap-cli__peers_commands() {

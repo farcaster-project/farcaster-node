@@ -33,7 +33,10 @@ use farcaster_core::{
 use strict_encoding::ReadExt;
 
 use super::Command;
-use crate::rpc::{request, Client, Request};
+use crate::{
+    rpc::{request, Client, Request},
+    syncerd::Coin,
+};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
@@ -192,6 +195,11 @@ impl Exec for Command {
             Command::Progress { swapid } => {
                 runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
                 runtime.report_progress()?;
+            }
+
+            Command::NeedsFunding { coin } => {
+                runtime.request(ServiceId::Farcasterd, Request::ReadFunding(coin))?;
+                runtime.report_response()?;
             }
         }
 
