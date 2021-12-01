@@ -360,7 +360,7 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
-                    "{} daemon is {}",
+                    "Service {} daemon is now {}",
                     source.bright_green_bold(),
                     "connected".bright_green_bold()
                 );
@@ -521,7 +521,7 @@ impl Runtime {
                     info!("Success on swap {}", &swapid);
                     self.stats.incr_success();
                 } else {
-                    info!("Failure on swap {}", &swapid);
+                    warn!("Failure on swap {}", &swapid);
                     self.stats.incr_failure();
                 }
                 self.stats.success_rate();
@@ -673,7 +673,7 @@ impl Runtime {
                     (false, Some(sk)) => {
                         self.listens.insert(bind_addr);
                         info!(
-                            "{} for incoming LN peer connections on {}",
+                            "{} for incoming peer connections on {}",
                             "Starting listener".bright_blue_bold(),
                             bind_addr.bright_blue_bold()
                         );
@@ -687,7 +687,7 @@ impl Runtime {
                 };
                 match resp {
                     Ok(_) => info!(
-                        "Connection daemon {} for incoming LN peer connections on {}",
+                        "Connection daemon {} for incoming peer connections on {}",
                         "listens".bright_green_bold(),
                         bind_addr
                     ),
@@ -721,8 +721,8 @@ impl Runtime {
                         serialized_offer.bright_yellow_bold()
                     );
                     info!(
-                        "Maker: {} {}",
-                        "Public offer registered".bright_blue_bold(),
+                        "{} {}",
+                        "Public offer registered:".bright_blue_bold(),
                         pub_offer_id.bright_yellow_bold()
                     );
                     report_to.push((
@@ -929,7 +929,7 @@ impl Runtime {
                 ],
             )?;
             let msg = format!("New instance of peerd launched with PID {}", child.id());
-            info!("{}", msg);
+            debug!("{}", msg);
             Ok(msg)
         } else {
             Err(Error::Other(s!(
@@ -976,7 +976,7 @@ impl Runtime {
         }
 
         let msg = format!("New instance of peerd launched with PID {}", child.id());
-        info!("{}", msg);
+        debug!("{}", msg);
 
         self.spawning_services
             .insert(ServiceId::Peer(node_addr.clone()), source);
@@ -1057,7 +1057,7 @@ fn launch_swapd(
         ],
     )?;
     let msg = format!("New instance of swapd launched with PID {}", child.id());
-    info!("{}", msg);
+    debug!("{}", msg);
 
     let list = match local_trade_role {
         TradeRole::Taker => &mut runtime.taking_swaps,

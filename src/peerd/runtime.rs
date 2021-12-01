@@ -280,7 +280,7 @@ impl Runtime {
                 // 2. Forward to the remote peer
                 debug!("Message type: {}", message.get_type());
                 debug!(
-                    "Forwarding LN peer message to the remote peer, request: {}",
+                    "Forwarding peer message to the remote peer, request: {}",
                     &request.get_type()
                 );
                 self.messages_sent += 1;

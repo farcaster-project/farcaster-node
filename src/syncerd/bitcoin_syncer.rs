@@ -88,7 +88,7 @@ impl ElectrumRpc {
     fn new(electrum_server: &str, polling: bool) -> Result<Self, electrum_client::Error> {
         let client = Client::new(electrum_server)?;
         let header = client.block_headers_subscribe()?;
-        info!("New ElectrumRpc at height {:?}", header.height);
+        debug!("New ElectrumRpc at height {:?}", header.height);
 
         Ok(Self {
             client,
@@ -125,7 +125,7 @@ impl ElectrumRpc {
             .is_some()
         {
         } else {
-            info!(
+            debug!(
                 "registering address {:?} with script_status {:?}",
                 &address_addendum, &script_status
             );
@@ -197,12 +197,12 @@ impl ElectrumRpc {
                             .insert(address.clone(), Some(script_status))
                             .is_some()
                         {
-                            info!(
+                            debug!(
                                 "updated address {:?} with script_status {:?}",
                                 &address, &script_status
                             );
                         } else {
-                            info!(
+                            debug!(
                                 "registering address {:?} with script_status {:?}",
                                 &address, &script_status
                             );
@@ -212,17 +212,17 @@ impl ElectrumRpc {
                             script_pubkey.clone(),
                             address.from_height,
                         ) {
-                            info!("creating AddressNotif");
+                            debug!("creating AddressNotif");
                             logging(&txs, &address);
                             let new_notif = AddressNotif {
                                 address: address.clone(),
                                 txs,
                             };
-                            info!("creating address notifications");
+                            debug!("creating address notifications");
                             notifs.push(new_notif);
                         }
                     } else {
-                        info!("state did not change for given address");
+                        debug!("state did not change for given address");
                     }
                 }
             }
@@ -481,7 +481,7 @@ async fn run_syncerd_task_receiver(
                                         })
                                         .await
                                         .expect("error sending transaction broadcast event");
-                                    info!("successfully broadcasted tx {}", txid.addr());
+                                    info!("Successfully broadcasted: {}", txid.addr());
                                 }
                                 Err(e) => {
                                     tx_event

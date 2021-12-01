@@ -244,7 +244,7 @@ where
         }
 
         let identity = self.esb.handler().identity();
-        info!("{} started", identity);
+        info!("New service {} started", identity.bright_white_bold());
 
         self.esb.run_or_panic(&identity.to_string());
 

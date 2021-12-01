@@ -172,7 +172,7 @@ impl Runtime {
             (Request::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
-                    "{} daemon is {}",
+                    "Service {} daemon is now {}",
                     source.bright_green_bold(),
                     "connected".bright_green_bold()
                 );

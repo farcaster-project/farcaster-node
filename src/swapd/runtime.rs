@@ -668,7 +668,7 @@ impl SyncerState {
             Coin::Monero => &mut self.monero_height,
         };
         if &new_height > height {
-            info!("{:?} new height {}", coin, &new_height);
+            debug!("{} new height {}", coin, &new_height);
             *height = new_height;
         } else {
             warn!("block height did not increment, maybe syncer sends multiple events");
@@ -678,7 +678,7 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
-            "Watching tx {} {}",
+            "Watching {} BTC transaction ({})",
             tx_label.bright_green_bold(),
             txid.addr()
         );
@@ -694,7 +694,7 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
-            "Watching tx {} {} with id {}",
+            "Watching {} XMR transaction ({} with id {})",
             tx_label.bright_green_bold(),
             hex::encode(&hash).addr(),
             id
@@ -711,7 +711,7 @@ impl SyncerState {
         let from_height = self.height(Coin::Bitcoin);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
-            "Watching {} address with {}",
+            "Watching {} transaction with scriptPubkey: {}",
             tx_label.bright_green_bold(),
             script_pubkey
         );
@@ -734,8 +734,8 @@ impl SyncerState {
         view: monero::PrivateKey,
         tx_label: TxLabel,
     ) -> Task {
-        info!("XMR view key: {}", view);
-        info!("XMR spend key: {}", spend);
+        info!("XMR secret view key: {}", view);
+        info!("XMR public spend key: {}", spend);
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
 
@@ -751,7 +751,7 @@ impl SyncerState {
         self.tasks.watched_addrs.insert(id, tx_label);
 
         info!(
-            "Watching address {} {}",
+            "Watching {} on address {}",
             tx_label.bright_green_bold(),
             address.addr()
         );
@@ -798,20 +798,20 @@ impl SyncerState {
         if let Some(txlabel) = self.tasks.watched_txs.get(id) {
             match confirmations {
                 Some(0) => {
-                    info!(
+                    debug!(
                         "tx {} on mempool but hasn't been mined",
                         txlabel.bright_green_bold()
                     );
                 }
                 Some(confs) => {
-                    info!(
+                    debug!(
                         "tx {} mined with {} confirmations",
                         txlabel.bright_green_bold(),
                         confs.bright_green_bold(),
                     )
                 }
                 None => {
-                    info!("tx {} not on the mempool", txlabel.bright_green_bold());
+                    debug!("tx {} not on the mempool", txlabel.bright_green_bold());
                 }
             }
         } else {
@@ -867,7 +867,7 @@ impl Runtime {
         }));
 
         info!(
-            "Broadcasting {} tx {}",
+            "Broadcasting {} tx ({})",
             tx_label.bright_green_bold(),
             tx.txid().addr()
         );
@@ -983,7 +983,7 @@ impl Runtime {
                                 }
                             }
                             SwapRole::Alice => {
-                                info!("Alice: forwarding reveal");
+                                debug!("Alice: forwarding reveal");
                                 trace!(
                                     "sending request {} to {} on bus {}",
                                     &request,
@@ -1009,7 +1009,7 @@ impl Runtime {
                         if let Ok(remote_params_candidate) =
                             remote_params_candidate(reveal, remote_commit)
                         {
-                            info!("{:?} sets remote_params", self.state.swap_role());
+                            debug!("{:?} sets remote_params", self.state.swap_role());
                             self.remote_params = Some(remote_params_candidate)
                         }
 
@@ -1177,7 +1177,11 @@ impl Runtime {
         match (&request, &source) {
 
             (Request::Hello, _) => {
-                info!("Source: {} is connected", source);
+                info!(
+                    "Service {} daemon is now {}",
+                    source.bright_green_bold(),
+                    "connected".bright_green_bold()
+                );
             }
             (_, ServiceId::Syncer(..)) if source == self.syncer_state.bitcoin_syncer || source == self.syncer_state.monero_syncer => {
             }
@@ -1421,7 +1425,7 @@ impl Runtime {
                         block,
                         tx,
                     }) if self.state.swap_role() == SwapRole::Alice => {
-                        info!(
+                        trace!(
                             "Event details: {} {:?} {} {:?} {:?}",
                             id, hash, amount, block, tx
                         );
@@ -1487,7 +1491,7 @@ impl Runtime {
                             task.from_height = Some(self.syncer_state.monero_height - *confirmations as u64);
                             let request = Request::SyncerTask(Task::SweepAddress(task));
 
-                            info!("sweeping monero");
+                            info!("Monero are spendable now, sweeping ephemeral wallet");
                             senders.send_to(bus_id, self.identity(), dest, request)?;
                         } else {
                             error!(
@@ -1519,7 +1523,7 @@ impl Runtime {
                             (&request, &bus_id)
                         {
                             senders.send_to(bus_id, self.identity(), dest, request)?;
-                            info!("sent buyproceduresignature at state {}", &self.state);
+                            debug!("sent buyproceduresignature at state {}", &self.state);
                             let next_state = State::Bob(BobState::BuySigB(BuySigB{buy_tx_seen: false}));
                             self.state_update(senders, next_state)?;
                         } else {
@@ -1649,8 +1653,8 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id).unwrap();
                         info!(
-                            "tx {} final: {} confirmations",
-                            txlabel.bright_green_bold(),
+                            "{} transaction is now considered final with {} confirmations",
+                            txlabel.bright_white_bold(),
                             confirmations.bright_green_bold()
                         );
                         // saving requests of interest for later replaying latest event
@@ -1820,7 +1824,7 @@ impl Runtime {
                         debug!("{}", event)
                     }
                     Event::TaskAborted(event) => {
-                        info!("{}", event)
+                        debug!("{}", event)
                     }
                     Event::SweepSuccess(event) => {
                         debug!("{}", event)
@@ -1856,7 +1860,7 @@ impl Runtime {
             }
 
             Request::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
-                info!("received {}", TxLabel::Lock);
+                info!("{} transaction received", TxLabel::Lock.bright_white_bold());
                 self.broadcast(btc_lock, TxLabel::Lock, senders)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
                     (&self.local_params, &self.remote_params)
@@ -2103,14 +2107,18 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
 
 fn log_tx_seen(txlabel: &TxLabel, txid: &Txid) {
     info!(
-        "{} tx in mempool or blockchain, sending it to wallet: {}",
+        "{} transaction ({}) in mempool or blockchain, sending it to walletd",
         txlabel,
         txid.addr(),
     );
 }
 
 fn log_tx_received(txlabel: TxLabel) {
-    info!("received tx {} from {}", txlabel, ServiceId::Wallet);
+    info!(
+        "{} transaction received from {}",
+        txlabel.bright_white_bold(),
+        ServiceId::Wallet
+    );
 }
 
 fn aggregate_xmr_spend_view(
