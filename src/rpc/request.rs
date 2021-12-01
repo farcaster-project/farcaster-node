@@ -444,6 +444,9 @@ pub enum Request {
 
     // Responses to CLI
     // ----------------
+    #[api(type = 1004)]
+    #[display("{0}")]
+    String(String),
     #[api(type = 1002)]
     #[display("progress({0})")]
     Progress(String),
@@ -500,6 +503,19 @@ pub enum Request {
     #[from]
     TaskList(List<u64>), // FIXME
 
+    #[api(type = 1106)]
+    #[display("funding_info({0})", alt = "{0:#}")]
+    #[from]
+    FundingInfo(FundingInfo),
+
+    #[api(type = 1107)]
+    #[display("read_funding")]
+    ReadFunding(crate::syncerd::Coin),
+
+    #[api(type = 1108)]
+    #[display("read_funding")]
+    WriteText(List<String>),
+
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]
     // #[from]
@@ -527,6 +543,14 @@ pub enum Request {
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     SweepXmrAddress(SweepXmrAddress),
+}
+
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("funding_info")]
+pub enum FundingInfo {
+    Bitcoin(SwapId, bitcoin::Address, bitcoin::Amount),
+    Monero(SwapId, String, u64),
 }
 
 impl rpc_connection::Request for Request {}

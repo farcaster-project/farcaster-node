@@ -4,9 +4,9 @@ monero_daemon = "http://node.monerooutreach.org:18081"
 monero_rpc_wallet = "http://localhost:18083"
 
 [syncers.testnet]
-electrum_server = "ssl://blockstream.info:993"
-monero_daemon = "http://stagenet.melo.tools:38081"
-monero_rpc_wallet = "http://localhost:38083"
+electrum_server = "tcp://localhost:60001"
+monero_daemon = "http://localhost:38081"
+monero_rpc_wallet = "http://localhost:18083"
 
 [syncers.local]
 electrum_server = "tcp://localhost:50001"

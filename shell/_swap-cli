@@ -230,6 +230,25 @@ _arguments "${_arguments_options[@]}" \
 ':swapid -- SwapId:' \
 && ret=0
 ;;
+(needs-funding)
+_arguments "${_arguments_options[@]}" \
+'-d+[Data directory path]: :_files -/' \
+'--data-dir=[Data directory path]: :_files -/' \
+'-T+[Use Tor]: :_hosts' \
+'--tor-proxy=[Use Tor]: :_hosts' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
+'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
+'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
+'*-v[Set verbosity level]' \
+'*--verbose[Set verbosity level]' \
+':coin:' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
@@ -264,7 +283,8 @@ _swap-cli_commands() {
 'ls:Lists running swaps' \
 'make:Maker creates offer and start listening. Command used to to print a hex representation of the offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer. Example usage: `make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt Testnet ECDSA Monero "0.00001350 BTC" "0.001 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9745`' \
 'take:Taker accepts offer and connects to Maker'\''s daemon' \
-'progress:Request Swap progress report' \
+'progress:Swap progress report' \
+'needs-funding:' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'swap-cli commands' commands "$@"
@@ -298,6 +318,11 @@ _swap-cli__ls_commands() {
 _swap-cli__make_commands() {
     local commands; commands=()
     _describe -t commands 'swap-cli make commands' commands "$@"
+}
+(( $+functions[_swap-cli__needs-funding_commands] )) ||
+_swap-cli__needs-funding_commands() {
+    local commands; commands=()
+    _describe -t commands 'swap-cli needs-funding commands' commands "$@"
 }
 (( $+functions[_swap-cli__peers_commands] )) ||
 _swap-cli__peers_commands() {

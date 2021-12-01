@@ -29,6 +29,8 @@ use farcaster_core::{
     swap::{btcxmr::BtcXmr, SwapId},
 };
 
+use crate::syncerd::Coin;
+
 /// Command-line tool for working with Farcaster node
 #[derive(Clap, Clone, PartialEq, Eq, Debug)]
 #[clap(
@@ -54,6 +56,7 @@ impl Opts {
         self.shared.process();
     }
 }
+
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
@@ -185,10 +188,14 @@ pub enum Command {
         without_validation: bool,
     },
 
-    /// Request Swap progress report
+    /// Swap progress report
     Progress {
         /// SwapId
         swapid: SwapId,
+    },
+
+    NeedsFunding {
+        coin: Coin
     },
 }
 

@@ -22,6 +22,6 @@ pub mod opts;
 pub mod runtime;
 
 #[cfg(feature = "shell")]
-pub use opts::Opts;
+pub use opts::{Coin, Opts};
 pub use runtime::run;
 pub use types::*;
