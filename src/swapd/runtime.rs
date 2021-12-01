@@ -15,6 +15,7 @@
 
 use crate::{
     rpc::request::Outcome,
+    rpc::request::FundingInfo,
     syncerd::{
         opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
@@ -96,6 +97,7 @@ pub fn run(
         maker_role, // SwapRole of maker (Alice or Bob)
         network,
         accordant_amount: monero_amount,
+        arbitrating_amount: bitcoin_amount,
         ..
     } = public_offer.offer;
     // alice or bob
@@ -150,6 +152,7 @@ pub fn run(
         bitcoin_syncer: ServiceId::Syncer(Coin::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Coin::Monero, network),
         monero_amount,
+        bitcoin_amount,
     };
 
     let runtime = Runtime {
@@ -287,6 +290,7 @@ struct SyncerState {
     bitcoin_syncer: ServiceId,
     monero_syncer: ServiceId,
     monero_amount: monero::Amount,
+    bitcoin_amount: bitcoin::Amount,
 }
 
 #[derive(Display, Clone)]
@@ -1139,13 +1143,31 @@ impl Runtime {
                                 pending_requests.push(pending_request);
 
                                 if let Some(addr) = self.state.b_address().cloned() {
+                                    // let msg = format!(
+                                    //     "{} {}",
+                                    //     "Funding address:".bright_white_bold(),
+                                    //     addr.bright_yellow_bold()
+                                    // );
                                     let msg = format!(
                                         "{} {}",
                                         "Funding address:".bright_white_bold(),
                                         addr.bright_yellow_bold()
                                     );
-                                    let enquirer = self.enquirer.clone();
-                                    let _ = self.report_progress_to(senders, &enquirer, msg);
+                                    let fees = bitcoin::Amount::from_sat(150); // FIXME
+                                    let req = Request::FundingInfo(FundingInfo::Bitcoin(
+                                        self.swap_id(),
+                                        addr,
+                                        self.syncer_state.bitcoin_amount + fees,
+                                    ));
+                                    if let Some(enquirer) = self.enquirer.clone() {
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            enquirer,
+                                            req,
+                                        )?
+                                    }
+                                    // let _ = self.report_progress_to(senders, &enquirer, msg);
                                 }
                             }
                         }
@@ -1856,6 +1878,21 @@ impl Runtime {
                                         self.enquirer.clone(),
                                         Some(msg),
                                     )?;
+                                    let funding_request =
+                                        Request::FundingInfo(FundingInfo::Monero(
+                                            self.swap_id(),
+                                            address.to_string(),
+                                            self.syncer_state.monero_amount.as_pico(),
+                                        ));
+                                    if let Some(enquirer) = self.enquirer.clone() {
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            enquirer,
+                                            funding_request,
+                                        )?
+                                    }
+
                                     let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                         spend,
                                         view,

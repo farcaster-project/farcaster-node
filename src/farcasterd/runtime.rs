@@ -16,7 +16,7 @@
 use crate::{
     error::SyncerError,
     rpc::request::{
-        BitcoinAddress, Keys, LaunchSwap, MoneroAddress, Outcome, PubOffer, RequestId, Reveal,
+        BitcoinAddress, FundingInfo, Keys, LaunchSwap, MoneroAddress, PubOffer, RequestId, Reveal, Outcome,
         Token,
     },
     swapd::get_swap_id,
@@ -108,6 +108,8 @@ pub fn run(
         consumed_offers: none!(),
         progress: none!(),
         stats: none!(),
+        funding_xmr: none!(),
+        funding_btc: none!(),
         config,
     };
 
@@ -134,6 +136,8 @@ pub struct Runtime {
     syncer_services: HashMap<(Coin, Network), ServiceId>,
     syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
+    funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount)>,
+    funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount)>,
     stats: Stats,
     config: Config,
 }
@@ -905,6 +909,90 @@ impl Runtime {
                     )?;
                 }
             }
+            Request::FundingInfo(info) => match info {
+                FundingInfo::Bitcoin(swapid, addr, amount) => {
+                    self.funding_btc.insert(swapid, (addr, amount));
+                }
+                FundingInfo::Monero(swapid, addr, amount) => {
+                    if let Ok(addr) = monero::Address::from_str(&addr) {
+                        let amount = monero::Amount::from_pico(amount);
+                        self.funding_xmr.insert(swapid, (addr, amount));
+                    } else {
+                        error!("Monero address not invalid");
+                    };
+                }
+            },
+
+            Request::ReadFunding(Coin::Monero) if !self.funding_xmr.is_empty() => {
+                use tokio::runtime::Builder;
+                let rt = Builder::new_multi_thread()
+                    .worker_threads(1)
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
+                    let wallet_client =
+                        monero_rpc::RpcClient::new("http://localhost:18083".to_string());
+                    let wallet = wallet_client.wallet();
+                    // let _ = wallet
+                    //     .create_wallet("test".to_string(), None, "English".to_string())
+                    //     .await;
+                    wallet
+                        .open_wallet("~/.monero_wallets/stagenet".to_string(), None)
+                        .await
+                        .expect("The wallet exists, created the line before");
+
+                    let options = monero_rpc::TransferOptions::default();
+                    for (i, (swapid, (addr, amount))) in self.funding_xmr.drain().enumerate() {
+                        let mut destination = HashMap::new();
+                        destination.insert(addr, amount.as_pico());
+                        let transaction = wallet
+                            .transfer(
+                                destination.clone(),
+                                monero_rpc::TransferPriority::Default,
+                                options.clone(),
+                            )
+                            .await
+                            .unwrap();
+                    }
+                });
+            }
+            Request::ReadFunding(Coin::Bitcoin) if !self.funding_btc.is_empty() => {
+                // let mut res: String = s!("");
+                let len = self.funding_btc.len();
+                let prefix = s!("bitcoin-cli -testnet sendtoaddress ");
+                let res = self
+                    .funding_btc
+                    .drain()
+                    .enumerate()
+                    .map(|(i, (swapid, (addr, amount)))| {
+                        let mut res = prefix.clone();
+                        res.push_str(&addr.to_string());
+                        res.push(' ');
+                        res.push_str(&amount.as_btc().to_string());
+                        if i < len - 1 {
+                            res.push('\n');
+                        }
+                        res
+                    })
+                    .collect();
+
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source,
+                    Request::String(res),
+                )?;
+            }
+            Request::ReadFunding(_) => {
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source,
+                    Request::String(s!("")),
+                )?;
+            }
+
             req => {
                 error!("Ignoring unsupported request: {}", req.err());
             }
