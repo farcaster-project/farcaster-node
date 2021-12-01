@@ -130,6 +130,7 @@ features = ['peer']
 
 [dev-dependencies]
 ntest = "0.7.3"
+rand = "0.8.4"
 
 # Test
 strip-ansi-escapes = "0.1.1"
