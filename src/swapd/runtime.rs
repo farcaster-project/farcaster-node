@@ -1691,13 +1691,14 @@ impl Runtime {
                                         &viewpair,
                                     );
                                     let msg = format!(
-                                        "Alice, please send {} to {}",
+                                        "Send {} to {}",
                                         self.syncer_state
                                             .monero_amount
                                             .to_string()
                                             .bright_green_bold(),
                                         address.addr(),
                                     );
+                                    info!("{}", msg);
                                     self.report_success_to(
                                         senders,
                                         self.enquirer.clone(),
