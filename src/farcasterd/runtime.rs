@@ -923,7 +923,7 @@ impl Runtime {
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 queue.push_back(request);
             }
-            Request::ReadProgress(swapid) => {
+            Request::ReadProgress(swapid) if self.running_swaps.contains(&swapid) => {
                 let id = &ServiceId::Swap(swapid);
                 if let Some(queue) = self.progress.get_mut(id) {
                     let n = queue.len();
@@ -946,7 +946,24 @@ impl Runtime {
                     }
                 }
             }
-
+            Request::ReadProgress(swapid)
+                if self
+                    .making_swaps
+                    .contains_key(&ServiceId::Swap(swapid.clone()))
+                    || self
+                        .taking_swaps
+                        .contains_key(&ServiceId::Swap(swapid.clone())) =>
+            {
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source,
+                    Request::Failure(Failure {
+                        code: 1,
+                        info: s!("Nothing progress made yet on this swap"),
+                    }),
+                )?;
+            }
             req => {
                 error!("Ignoring unsupported request: {}", req.err());
             }
