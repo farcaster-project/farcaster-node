@@ -946,22 +946,23 @@ impl Runtime {
                     }
                 }
             }
-            Request::ReadProgress(swapid)
-                if self
+            Request::ReadProgress(swapid) => {
+                let info = if self
                     .making_swaps
                     .contains_key(&ServiceId::Swap(swapid.clone()))
                     || self
                         .taking_swaps
-                        .contains_key(&ServiceId::Swap(swapid.clone())) =>
-            {
+                        .contains_key(&ServiceId::Swap(swapid.clone()))
+                {
+                    s!("No progress made yet on this swap")
+                } else {
+                    s!("Unknown swapd")
+                };
                 senders.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     source,
-                    Request::Failure(Failure {
-                        code: 1,
-                        info: s!("Nothing progress made yet on this swap"),
-                    }),
+                    Request::Failure(Failure { code: 1, info }),
                 )?;
             }
             req => {
