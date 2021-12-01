@@ -1762,6 +1762,8 @@ impl Runtime {
                                     self.txs.remove_entry(&TxLabel::Cancel)
                                 {
                                     self.broadcast(cancel_tx, tx_label, senders)?
+                                } else {
+                                    error!("Cancel not available, debug...");
                                 }
                             }
                             TxLabel::Lock

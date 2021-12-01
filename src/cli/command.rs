@@ -223,7 +223,7 @@ impl Exec for Command {
             }
 
             Command::NeedsFunding { coin } => {
-                runtime.request(ServiceId::Farcasterd, Request::ReadFunding(coin))?;
+                runtime.request(ServiceId::Farcasterd, Request::NeedsFunding(coin))?;
                 runtime.report_response()?;
             }
         }
