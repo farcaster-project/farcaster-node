@@ -168,10 +168,6 @@ async fn run_swap(
     // run until bob has the btc funding address
     let address = retry_until_bitcoin_funding_address(cli_bob_progress_args.clone());
 
-    // this seems to improve reliability, probably there is a race condition somewhere with the address being funded too early
-    // FIXME: change this once https://github.com/farcaster-project/farcaster-node/issues/225 is fixed
-    thread::sleep(time::Duration::from_secs(10));
-
     // fund the bitcoin address
     let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
@@ -415,8 +411,8 @@ fn retry_until_monero_funding_address(args: Vec<String>) -> monero::Address {
         let monero_addresses: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                if element.contains("Success: 4") {
-                    let monero_address = element[9..].to_string();
+                if let Some(pos) = element.find("XMR to 4") {
+                    let monero_address = element[pos + 7..].to_string();
                     Some(monero_address)
                 } else {
                     None
