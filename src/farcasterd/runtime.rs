@@ -923,7 +923,7 @@ impl Runtime {
                 }
             },
 
-            Request::ReadFunding(Coin::Monero) if !self.funding_xmr.is_empty() => {
+            Request::NeedsFunding(Coin::Monero) if !self.funding_xmr.is_empty() => {
                 use tokio::runtime::Builder;
                 let rt = Builder::new_multi_thread()
                     .worker_threads(1)
@@ -938,7 +938,7 @@ impl Runtime {
                     //     .create_wallet("test".to_string(), None, "English".to_string())
                     //     .await;
                     wallet
-                        .open_wallet("~/.monero_wallets/stagenet".to_string(), None)
+                        .open_wallet("stagenet".to_string(), None)
                         .await
                         .expect("The wallet exists, created the line before");
 
@@ -957,7 +957,7 @@ impl Runtime {
                     }
                 });
             }
-            Request::ReadFunding(Coin::Bitcoin) if !self.funding_btc.is_empty() => {
+            Request::NeedsFunding(Coin::Bitcoin) if !self.funding_btc.is_empty() => {
                 // let mut res: String = s!("");
                 let len = self.funding_btc.len();
                 let prefix = s!("bitcoin-cli -testnet sendtoaddress ");
@@ -984,7 +984,7 @@ impl Runtime {
                     Request::String(res),
                 )?;
             }
-            Request::ReadFunding(_) => {
+            Request::NeedsFunding(_) => {
                 senders.send_to(
                     ServiceBus::Ctl,
                     self.identity(),

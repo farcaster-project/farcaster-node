@@ -532,7 +532,7 @@ pub enum Request {
 
     #[api(type = 1107)]
     #[display("read_funding")]
-    ReadFunding(crate::syncerd::Coin),
+    NeedsFunding(crate::syncerd::Coin),
 
     #[api(type = 1108)]
     #[display("read_funding")]
