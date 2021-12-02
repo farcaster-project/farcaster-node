@@ -134,6 +134,7 @@ rand = "0.8.4"
 
 # Test
 strip-ansi-escapes = "0.1.1"
+futures = "0.3.18"
 
 [build-dependencies.microservices]
 # path = '../ext/rust-internet2'
