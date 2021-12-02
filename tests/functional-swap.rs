@@ -2,6 +2,7 @@
 extern crate log;
 
 use bitcoincore_rpc::{Auth, Client, RpcApi};
+use farcaster_node::rpc::request::NodeInfo;
 use futures::future::join_all;
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -494,19 +495,13 @@ fn progress_args(data_dir: Vec<String>, swap_id: String) -> Vec<String> {
 
 async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
     for _ in 0..ALLOWED_RETRIES {
-        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-        let offers: Vec<String> = stdout
-            .iter()
-            .filter_map(|element| {
-                if let Some(pos) = element.find("Offer") {
-                    let len = element.to_string().len() - 1;
-                    let offer = element[pos..len].to_string();
-                    Some(offer)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let (mut stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let info_str = stdout
+            .iter_mut()
+            .map(|line| format!("{}{}", line, "\n"))
+            .collect::<String>();
+        let info = serde_yaml::from_str::<NodeInfo>(&info_str).unwrap();
+        let offers: Vec<String> = info.offers.iter().map(|offer| offer.to_string()).collect();
         if !offers.is_empty() {
             return offers;
         }
