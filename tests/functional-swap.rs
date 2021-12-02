@@ -512,18 +512,17 @@ async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
 
 async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<String>) -> String {
     for _ in 0..ALLOWED_RETRIES {
-        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-        let new_swap_ids: HashSet<String> = stdout
+        // let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let (mut stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let info_str = stdout
+            .iter_mut()
+            .map(|line| format!("{}{}", line, "\n"))
+            .collect::<String>();
+        let info = serde_yaml::from_str::<NodeInfo>(&info_str).unwrap();
+        let new_swap_ids: HashSet<String> = info
+            .swaps
             .iter()
-            .filter_map(|element| {
-                if let Some(pos) = element.find("\"0x") {
-                    let len = element.to_string().len() - 1;
-                    let swap_id = element[pos + 1..len].to_string();
-                    Some(swap_id)
-                } else {
-                    None
-                }
-            })
+            .map(|swap_id| format!("{:#x}", swap_id))
             .collect();
         if let Some(swap_id) = new_swap_ids.difference(&previous_swap_ids).next() {
             return swap_id.to_string();
