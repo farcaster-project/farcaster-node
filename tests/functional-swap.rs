@@ -94,7 +94,7 @@ async fn swap_test_alice_maker() {
 
 #[tokio::test]
 #[ignore]
-async fn parallel_swap() {
+async fn swap_test_parallel() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
