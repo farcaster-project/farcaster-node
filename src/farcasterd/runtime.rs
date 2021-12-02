@@ -923,9 +923,8 @@ impl Runtime {
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 queue.push_back(request);
             }
-            Request::ReadProgress(swapid) if self.running_swaps.contains(&swapid) => {
-                let id = &ServiceId::Swap(swapid);
-                if let Some(queue) = self.progress.get_mut(id) {
+            Request::ReadProgress(swapid) => {
+                if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swapid)) {
                     let n = queue.len();
 
                     for (i, req) in queue.iter().enumerate() {
@@ -941,25 +940,22 @@ impl Runtime {
                             Request::Success(OptionDetails(Some(x.clone())))
                         };
                         report_to.push((Some(source.clone()), req));
-                        // senders.send_to(ServiceBus::Ctl, identify.clone(),
-                        // source.clone(), req)?;
                     }
-                }
-            }
-            Request::ReadProgress(swapid) => {
-                let info = if self.making_swaps.contains_key(&ServiceId::Swap(swapid))
-                    || self.taking_swaps.contains_key(&ServiceId::Swap(swapid))
-                {
-                    s!("No progress made yet on this swap")
                 } else {
-                    s!("Unknown swapd")
-                };
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source,
-                    Request::Failure(Failure { code: 1, info }),
-                )?;
+                    let info = if self.making_swaps.contains_key(&ServiceId::Swap(swapid))
+                        || self.taking_swaps.contains_key(&ServiceId::Swap(swapid))
+                    {
+                        s!("No progress made yet on this swap")
+                    } else {
+                        s!("Unknown swapd")
+                    };
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        Request::Failure(Failure { code: 1, info }),
+                    )?;
+                }
             }
             req => {
                 error!("Ignoring unsupported request: {}", req.err());
