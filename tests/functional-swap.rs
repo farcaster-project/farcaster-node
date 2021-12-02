@@ -647,10 +647,12 @@ async fn monero_setup() -> (
     let wallet = wallet_client.wallet();
 
     if wallet.open_wallet("test".to_string(), None).await.is_err() {
-        wallet
+        // TODO: investigate this error in monero-rpc-rs
+        if wallet
             .create_wallet("test".to_string(), None, "English".to_string())
             .await
-            .unwrap();
+            .is_err()
+        {};
         wallet.open_wallet("test".to_string(), None).await.unwrap();
     }
 
