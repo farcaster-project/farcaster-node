@@ -769,6 +769,7 @@ impl Runtime {
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
+                let my_id = self.identity();
                 if let Some(Wallet::Alice(AliceState {
                     alice,
                     local_params,
@@ -813,7 +814,25 @@ impl Runtime {
                         signed_adaptor_refund,
                     ));
                     *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
-
+                    {
+                        // cancel
+                        let tx = core_arb_setup.as_ref().unwrap().cancel.clone();
+                        let mut cancel_tx = CancelTx::from_partial(tx);
+                        cancel_tx
+                            .add_witness(local_params.cancel, alice_cancel_signature.unwrap())?;
+                        cancel_tx.add_witness(
+                            bob_parameters.cancel,
+                            core_arb_setup.as_ref().unwrap().cancel_sig,
+                        )?;
+                        let finalized_cancel_tx =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            my_id.clone(),
+                            source.clone(), // destination swapd
+                            Request::Tx(Tx::Cancel(finalized_cancel_tx)),
+                        )?;
+                    }
                     {
                         let FullySignedPunish { punish, punish_sig } = alice.fully_sign_punish(
                             key_manager,
@@ -829,7 +848,7 @@ impl Runtime {
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut punish_tx)?;
                         senders.send_to(
                             ServiceBus::Ctl,
-                            self.identity(),
+                            my_id.clone(),
                             source.clone(),
                             Request::Tx(Tx::Punish(tx)),
                         )?;
@@ -840,7 +859,7 @@ impl Runtime {
 
                     senders.send_to(
                         ServiceBus::Ctl,
-                        self.identity(),
+                        my_id,
                         source,
                         Request::Protocol(refund_proc_signatures),
                     )?
