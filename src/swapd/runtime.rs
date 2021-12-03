@@ -109,7 +109,11 @@ pub fn run(
         SwapRole::Bob => Some(10),
         SwapRole::Alice => None,
     };
-    info!("Initial state: {}", init_state.bright_white_bold());
+    info!(
+        "{} | Initial state: {}",
+        swap_id.bright_blue_italic(),
+        init_state.bright_white_bold()
+    );
 
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
@@ -128,6 +132,7 @@ pub fn run(
         sweeping_addr: none!(),
     };
     let syncer_state = SyncerState {
+        swap_id,
         tasks,
         monero_height: 0,
         bitcoin_height: 0,
@@ -141,6 +146,7 @@ pub fn run(
     };
 
     let runtime = Runtime {
+        swap_id,
         identity: ServiceId::Swap(swap_id),
         peer_service: ServiceId::Loopback,
         state: init_state,
@@ -167,6 +173,7 @@ pub fn run(
 // FIXME: State enum should carry over the data that is accumulated over time,
 // and corresponding lines should be removed from Runtime
 pub struct Runtime {
+    swap_id: SwapId,
     identity: ServiceId,
     peer_service: ServiceId,
     state: State,
@@ -259,6 +266,7 @@ impl SyncerTasks {
 }
 
 struct SyncerState {
+    swap_id: SwapId,
     tasks: SyncerTasks,
     bitcoin_height: u64,
     monero_height: u64,
@@ -678,7 +686,8 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
-            "Watching {} transaction ({})",
+            "{} | Watching {} transaction ({})",
+            self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             txid.bright_yellow_italic()
         );
@@ -694,7 +703,8 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
-            "Watching {} transaction ({})",
+            "{} | Watching {} transaction ({})",
+            self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             hex::encode(&hash).bright_yellow_italic(),
         );
@@ -711,7 +721,8 @@ impl SyncerState {
         let from_height = self.height(Coin::Bitcoin);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
-            "Watching {} transaction with scriptPubkey: {}",
+            "{} | Watching {} transaction with scriptPubkey: {}",
+            self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             script_pubkey.asm().bright_blue_italic()
         );
@@ -735,12 +746,14 @@ impl SyncerState {
         tx_label: TxLabel,
     ) -> Task {
         info!(
-            "Address's secret view key for {}: {}",
+            "{} | Address's secret view key for {}: {}",
+            self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             view.bright_white_italic()
         );
         info!(
-            "Address's public spend key for {}: {}",
+            "{} | Address's public spend key for {}: {}",
+            self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             spend.bright_white_italic()
         );
@@ -759,7 +772,8 @@ impl SyncerState {
         self.tasks.watched_addrs.insert(id, tx_label);
 
         info!(
-            "Watching {} on address {}",
+            "{} | Watching {} on address {}",
+            self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             address
         );
@@ -858,7 +872,7 @@ impl Runtime {
             self.state.bright_white_bold(),
             next_state.bright_white_bold()
         );
-        info!("{}", &msg);
+        info!("{} | {}", self.swap_id.bright_blue_italic(), &msg);
         self.state = next_state;
         self.report_success_to(senders, self.enquirer.clone(), Some(msg))?;
         Ok(())
@@ -876,7 +890,8 @@ impl Runtime {
         }));
 
         info!(
-            "Broadcasting {} tx ({})",
+            "{} | Broadcasting {} tx ({})",
+            self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             tx.txid().bright_yellow_italic()
         );
@@ -1187,7 +1202,8 @@ impl Runtime {
 
             (Request::Hello, _) => {
                 info!(
-                    "Service {} daemon is now {}",
+                    "{} | Service {} daemon is now {}",
+                    self.swap_id.bright_blue_italic(),
                     source.bright_green_bold(),
                     "connected".bright_green_bold()
                 );
@@ -1209,7 +1225,8 @@ impl Runtime {
         match request {
             Request::SwapSuccess(success) if source == ServiceId::Farcasterd => {
                 info!(
-                    "{}",
+                    "{} | {}",
+                    self.swap_id.bright_blue_italic(),
                     format!("Terminating {}", self.identity()).bright_white_bold()
                 );
                 std::process::exit(match success {
@@ -1503,7 +1520,11 @@ impl Runtime {
                             task.from_height = Some(self.syncer_state.monero_height - *confirmations as u64);
                             let request = Request::SyncerTask(Task::SweepAddress(task));
 
-                            info!("Monero are spendable now (height {}), sweeping ephemeral wallet", self.syncer_state.monero_height.bright_white_bold());
+                            info!(
+                                "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
+                                self.swap_id.bright_blue_italic(),
+                                self.syncer_state.monero_height.bright_white_bold()
+                            );
                             senders.send_to(bus_id, self.identity(), dest, request)?;
                         } else {
                             error!(
@@ -1612,12 +1633,12 @@ impl Runtime {
                         let txlabel = self.syncer_state.tasks.watched_addrs.get(id).unwrap();
                         match txlabel {
                             TxLabel::Funding => {
-                                log_tx_seen(txlabel, &tx.txid());
+                                log_tx_seen(self.swap_id, txlabel, &tx.txid());
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
                             TxLabel::Buy if self.state.b_buy_sig() => {
-                                log_tx_seen(txlabel, &tx.txid());
+                                log_tx_seen(self.swap_id, txlabel, &tx.txid());
                                 self.state.b_sup_buysig_buy_tx_seen();
                                 let req = Request::Tx(Tx::Buy(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
@@ -1636,7 +1657,7 @@ impl Runtime {
                                     && self.state.a_xmr_locked()
                                     && !self.state.a_buy_published() =>
                             {
-                                log_tx_seen(txlabel, &tx.txid());
+                                log_tx_seen(self.swap_id, txlabel, &tx.txid());
                                 let req = Request::Tx(Tx::Refund(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
                             }
@@ -1665,7 +1686,8 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id).unwrap();
                         info!(
-                            "{} transaction is now considered {} with {} {}",
+                            "{} | {} transaction is now considered {} with {} {}",
+                            self.swap_id.bright_blue_italic(),
                             txlabel.bright_white_bold(),
                             "final".bright_green_bold(),
                             confirmations.bright_blue_bold(),
@@ -1712,7 +1734,7 @@ impl Runtime {
                                             .bright_green_bold(),
                                         address.addr(),
                                     );
-                                    info!("{}", msg);
+                                    info!("{} | {}", self.swap_id.bright_blue_italic(), msg);
                                     self.report_success_to(
                                         senders,
                                         self.enquirer.clone(),
@@ -1875,7 +1897,7 @@ impl Runtime {
             }
 
             Request::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
-                info!("{} transaction received", TxLabel::Lock.bright_white_bold());
+                log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, senders)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
                     (&self.local_params, &self.remote_params)
@@ -1898,19 +1920,19 @@ impl Runtime {
                 // update state
                 match transaction.clone() {
                     Tx::Cancel(tx) => {
-                        log_tx_received(TxLabel::Cancel);
+                        log_tx_received(self.swap_id, TxLabel::Cancel);
                         self.txs.insert(TxLabel::Cancel, tx);
                     }
                     Tx::Refund(tx) => {
-                        log_tx_received(TxLabel::Refund);
+                        log_tx_received(self.swap_id, TxLabel::Refund);
                         self.txs.insert(TxLabel::Refund, tx);
                     }
                     Tx::Punish(tx) => {
-                        log_tx_received(TxLabel::Punish);
+                        log_tx_received(self.swap_id, TxLabel::Punish);
                         self.txs.insert(TxLabel::Punish, tx);
                     }
                     Tx::Buy(tx) => {
-                        log_tx_received(TxLabel::Buy);
+                        log_tx_received(self.swap_id, TxLabel::Buy);
                         self.txs.insert(TxLabel::Buy, tx);
                     }
                     Tx::Funding(_) => unreachable!("not handled in swapd"),
@@ -2051,7 +2073,7 @@ impl Runtime {
             "Proposing to take swap".bright_white_bold(),
             self.swap_id().bright_blue_italic()
         );
-        info!("{}", &msg);
+        info!("{} | {}", self.swap_id.bright_blue_italic(), &msg);
         let engine = CommitmentEngine;
         let commitment = match params {
             Params::Bob(params) => request::Commit::BobParameters(
@@ -2082,7 +2104,7 @@ impl Runtime {
             swap_id.bright_blue_italic(),
             peerd.bright_blue_italic()
         );
-        info!("{}", msg);
+        info!("{} | {}", self.swap_id.bright_blue_italic(), msg);
 
         // Ignoring possible reporting errors here and after: do not want to
         // halt the channel just because the client disconnected
@@ -2118,17 +2140,19 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
     }
 }
 
-fn log_tx_seen(txlabel: &TxLabel, txid: &Txid) {
+fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
     info!(
-        "{} transaction ({}) in mempool or blockchain, forward to walletd",
-        txlabel,
+        "{} | {} transaction ({}) in mempool or blockchain, forward to walletd",
+        swap_id.bright_blue_italic(),
+        txlabel.bright_white_bold(),
         txid.bright_yellow_italic(),
     );
 }
 
-fn log_tx_received(txlabel: TxLabel) {
+fn log_tx_received(swap_id: SwapId, txlabel: TxLabel) {
     info!(
-        "{} transaction received from {}",
+        "{} | {} transaction received from {}",
+        swap_id.bright_blue_italic(),
         txlabel.bright_white_bold(),
         ServiceId::Wallet
     );
