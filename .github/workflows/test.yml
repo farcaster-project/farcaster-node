@@ -47,8 +47,8 @@ jobs:
           file: ${{ steps.coverage.outputs.report }}
           directory: ./coverage/reports/
 
-  functional-test:
-    name: Functional tests
+  functional-syncer-test:
+    name: Functional syncer tests
     strategy:
       matrix:
         test: [
@@ -82,3 +82,31 @@ jobs:
         with:
           command: test
           args: ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
+
+  functional-swap-test:
+    name: Functional swap tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: sudo apt-get install -y cmake libzmq3-dev docker-compose
+
+      - name: Compose docker services
+        run: cd tests && docker-compose up -d
+
+      - name: Install Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Correct permissions
+        run: sudo chown -R $USER tests
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v1.3.0
+
+      - name: Cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: swap_test --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
