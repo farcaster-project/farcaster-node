@@ -78,7 +78,7 @@ Running `monero-wallet-rpc` is also possible with Docker, see [run `monero rpc w
 
 ### Configuration
 
-`farcasterd` can be configured through a toml file located by default at `~/.farcaster/farcasterd.toml`, if no file is found `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
+`farcasterd` can be configured through a toml file located by default at `~/.farcaster/farcasterd.toml` (Linux and BSD, see [here](./src/opts.rs) for more platforms specific), if no file is found `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
 
 **Syncers**
 
