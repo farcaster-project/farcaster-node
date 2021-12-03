@@ -1794,25 +1794,23 @@ impl Runtime {
                             TxLabel::Cancel
                                 if self.temporal_safety.valid_punish(*confirmations)
                                     && self.state.a_refundsig()
-                                    && self.state.a_xmr_locked() =>
+                                    && self.state.a_xmr_locked()
+                                    && self.txs.contains_key(&TxLabel::Punish) =>
                             {
                                 trace!("Alice publishes punish tx");
-                                if let Some((tx_label, punish_tx)) =
-                                    self.txs.remove_entry(&TxLabel::Punish)
-                                {
-                                    self.broadcast(punish_tx, tx_label, senders)?
-                                }
+                                let (tx_label, punish_tx) =
+                                    self.txs.remove_entry(&TxLabel::Punish).unwrap();
+                                self.broadcast(punish_tx, tx_label, senders)?
                             }
                             TxLabel::Cancel
                                 if self.temporal_safety.safe_refund(*confirmations)
-                                    && (self.state.b_buy_sig() || self.state.b_core_arb()) =>
+                                    && (self.state.b_buy_sig() || self.state.b_core_arb())
+                                    && self.txs.contains_key(&TxLabel::Refund) =>
                             {
                                 trace!("here Bob publishes refund tx");
-                                if let Some((tx_label, refund_tx)) =
-                                    self.txs.remove_entry(&TxLabel::Refund)
-                                {
-                                    self.broadcast(refund_tx, tx_label, senders)?;
-                                }
+                                let (tx_label, refund_tx) =
+                                    self.txs.remove_entry(&TxLabel::Refund).unwrap();
+                                self.broadcast(refund_tx, tx_label, senders)?;
                             }
                             TxLabel::Buy
                                 if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
