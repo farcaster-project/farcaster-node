@@ -303,8 +303,8 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             let funding = create_funding(&mut key_manager, offer.network)?;
                             let funding_addr = funding.get_address()?;
-                            let funding_fee = 150;
-                            let funding_amount = offer.arbitrating_amount.as_sat() + funding_fee;
+                            let funding_fee = bitcoin::Amount::from_sat(150);
+                            let funding_amount = offer.arbitrating_amount + funding_fee;
                             info!(
                                 "Send {} to {}",
                                 funding_amount.bright_green_bold(),
