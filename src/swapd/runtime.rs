@@ -321,6 +321,7 @@ pub struct RefundSigA {
     xmr_locked: bool,
     #[display("buy_published({0})")]
     buy_published: bool,
+    cancel_seen: bool,
     /* #[display("local_view_share({0})")]
      * local_params: Params */
 }
@@ -338,7 +339,7 @@ pub enum BobState {
     RevealB(Params, Commit, bitcoin::Address, TradeRole), // local, remote, local
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
-    CorearbB(CoreArbitratingSetup<BtcXmr>), // lock (not signed)
+    CorearbB(CoreArbitratingSetup<BtcXmr>, bool), // lock (not signed), cancel_seen
     #[display("BuyProcSig")]
     BuySigB(BuySigB),
     #[display("Finish")]
@@ -382,6 +383,25 @@ impl State {
             *buy_published
         } else {
             false
+        }
+    }
+    fn cancel_seen(&self) -> bool {
+        if let State::Bob(BobState::CorearbB(_, cancel_seen))
+        | State::Alice(AliceState::RefundSigA(RefundSigA { cancel_seen, .. })) = self
+        {
+            *cancel_seen
+        } else {
+            false
+        }
+    }
+    fn sup_cancel_seen(&mut self) -> bool {
+        match self {
+            State::Alice(AliceState::RefundSigA(RefundSigA { cancel_seen, .. }))
+            | State::Bob(BobState::CorearbB(_, cancel_seen)) => {
+                *cancel_seen = true;
+                true
+            }
+            _ => false,
         }
     }
     fn b_core_arb(&self) -> bool {
@@ -467,8 +487,12 @@ impl State {
             return false;
         }
         match self.swap_role() {
-            SwapRole::Alice => self.a_refundsig() && !self.a_buy_published(),
-            SwapRole::Bob => (self.b_core_arb() || self.b_buy_sig()) && !self.b_buy_tx_seen(),
+            SwapRole::Alice => self.a_refundsig() && !self.a_buy_published() && !self.cancel_seen(),
+            SwapRole::Bob => {
+                (self.b_core_arb() || self.b_buy_sig())
+                    && !self.b_buy_tx_seen()
+                    && !self.cancel_seen()
+            }
         }
     }
     fn start(&self) -> bool {
@@ -1545,6 +1569,7 @@ impl Runtime {
                         ..
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.b_core_arb()
+                        && !self.state.cancel_seen()
                         && self.pending_requests.contains_key(&source)
                         && self.pending_requests.get(&source).map(|reqs| reqs.len() == 1).unwrap()
                         => {
@@ -1707,6 +1732,7 @@ impl Runtime {
                             }
                             TxLabel::Cancel => {
                                 self.syncer_state.cancel_tx_confs = Some(request.clone());
+                                self.state.sup_cancel_seen();
                             }
 
                             _ => {}
@@ -1776,6 +1802,7 @@ impl Runtime {
                                     && self.state.swap_role() == SwapRole::Alice
                                     && self.state.a_refundsig()
                                     && !self.state.a_buy_published()
+                                    && !self.state.cancel_seen()
                                     && self.txs.contains_key(&TxLabel::Buy) =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
@@ -1786,6 +1813,7 @@ impl Runtime {
                                     self.state = State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: true,
                                         xmr_locked,
+                                        cancel_seen: false,
                                         // local_params,
                                     }));
                                 } else {
@@ -1944,7 +1972,7 @@ impl Runtime {
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
-                let next_state = State::Bob(BobState::CorearbB(core_arb_setup));
+                let next_state = State::Bob(BobState::CorearbB(core_arb_setup, false));
                 self.state_update(senders, next_state)?;
             }
 
@@ -2016,6 +2044,7 @@ impl Runtime {
                 let next_state = State::Alice(AliceState::RefundSigA(RefundSigA {
                     xmr_locked: false,
                     buy_published: false,
+                    cancel_seen: false,
                 }));
                 self.state_update(senders, next_state)?;
             }
