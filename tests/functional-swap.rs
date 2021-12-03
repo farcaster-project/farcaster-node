@@ -17,9 +17,12 @@ use std::collections::HashMap;
 use std::str;
 use std::str::FromStr;
 
+use ntest::timeout;
+
 const ALLOWED_RETRIES: u32 = 120;
 
 #[tokio::test]
+#[timeout(600000)]
 #[ignore]
 async fn swap_test_bob_maker() {
     let execution_mutex = Arc::new(Mutex::new(0));
@@ -57,6 +60,7 @@ async fn swap_test_bob_maker() {
 }
 
 #[tokio::test]
+#[timeout(600000)]
 #[ignore]
 async fn swap_test_alice_maker() {
     let execution_mutex = Arc::new(Mutex::new(0));
@@ -94,6 +98,7 @@ async fn swap_test_alice_maker() {
 }
 
 #[tokio::test]
+#[timeout(600000)]
 #[ignore]
 async fn swap_test_parallel() {
     let execution_mutex = Arc::new(Mutex::new(0));
