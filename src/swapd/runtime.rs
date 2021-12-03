@@ -465,8 +465,8 @@ impl State {
             return false;
         }
         match self.swap_role() {
-            SwapRole::Alice => !self.a_buy_published(),
-            SwapRole::Bob => !self.b_buy_tx_seen(),
+            SwapRole::Alice => self.a_refundsig() && !self.a_buy_published(),
+            SwapRole::Bob => (self.b_core_arb() || self.b_buy_sig()) && !self.b_buy_tx_seen(),
         }
     }
     fn start(&self) -> bool {
