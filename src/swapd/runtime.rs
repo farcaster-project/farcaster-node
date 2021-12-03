@@ -135,6 +135,7 @@ pub fn run(
         watched_addrs: none!(),
         watched_txs: none!(),
         sweeping_addr: none!(),
+        script_pubkey: none!(),
     };
     let syncer_state = SyncerState {
         swap_id,
@@ -243,12 +244,12 @@ impl TemporalSafety {
     /// lock must be final, but buy shall not be raced with cancel
     fn safe_buy(&self, lock_confirmations: u32) -> bool {
         self.final_tx(lock_confirmations, Coin::Bitcoin)
-            && lock_confirmations < (self.cancel_timelock - self.race_thr)
+            && lock_confirmations <= (self.cancel_timelock - self.race_thr)
     }
     /// cancel must be final, but refund shall not be raced with punish
     fn safe_refund(&self, cancel_confirmations: u32) -> bool {
         self.final_tx(cancel_confirmations, Coin::Bitcoin)
-            && cancel_confirmations < (self.punish_timelock - self.race_thr)
+            && cancel_confirmations <= (self.punish_timelock - self.race_thr)
     }
     fn valid_punish(&self, cancel_confirmations: u32) -> bool {
         self.final_tx(cancel_confirmations, Coin::Bitcoin)
@@ -261,6 +262,7 @@ struct SyncerTasks {
     watched_txs: HashMap<TaskId, TxLabel>,
     watched_addrs: HashMap<TaskId, TxLabel>,
     sweeping_addr: Option<TaskId>,
+    script_pubkey: Option<Script>,
 }
 
 impl SyncerTasks {
@@ -1773,11 +1775,14 @@ impl Runtime {
                                 if self.temporal_safety.safe_buy(*confirmations)
                                     && self.state.swap_role() == SwapRole::Alice
                                     && self.state.a_refundsig()
-                                    && !self.state.a_buy_published() =>
+                                    && !self.state.a_buy_published()
+                                    && self.txs.contains_key(&TxLabel::Buy) =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
-                                if let Some(buy_tx) = self.txs.remove(&TxLabel::Buy) {
-                                    self.broadcast(buy_tx, TxLabel::Buy, senders)?;
+                                if let Some((txlabel, buy_tx)) =
+                                    self.txs.remove_entry(&TxLabel::Buy)
+                                {
+                                    self.broadcast(buy_tx, txlabel, senders)?;
                                     self.state = State::Alice(AliceState::RefundSigA(RefundSigA {
                                         buy_published: true,
                                         xmr_locked,
@@ -1798,10 +1803,14 @@ impl Runtime {
                                     && self.txs.contains_key(&TxLabel::Punish) =>
                             {
                                 trace!("Alice publishes punish tx");
+                                // syncer task
+
                                 let (tx_label, punish_tx) =
                                     self.txs.remove_entry(&TxLabel::Punish).unwrap();
-                                self.broadcast(punish_tx, tx_label, senders)?
+                                self.broadcast(punish_tx, tx_label, senders)?;
+                                self.state_update(senders, State::Alice(AliceState::FinishA))?;
                             }
+
                             TxLabel::Cancel
                                 if self.temporal_safety.safe_refund(*confirmations)
                                     && (self.state.b_buy_sig() || self.state.b_core_arb())
@@ -1845,6 +1854,47 @@ impl Runtime {
                                 self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
+                            }
+                            TxLabel::Buy
+                                if self.state.swap_role() == SwapRole::Bob
+                                    && self.syncer_state.tasks.script_pubkey.is_some() =>
+                            {
+                                debug!("subscribe Buy address task");
+                                let script = self
+                                    .syncer_state
+                                    .tasks
+                                    .script_pubkey
+                                    .as_ref()
+                                    .cloned()
+                                    .unwrap();
+                                let task = self.syncer_state.watch_addr_btc(script, TxLabel::Buy);
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(task),
+                                )?;
+                            }
+                            TxLabel::Refund
+                                if self.state.swap_role() == SwapRole::Alice
+                                    && self.syncer_state.tasks.script_pubkey.is_some() =>
+                            {
+                                debug!("subscribe Buy address task");
+                                let script = self
+                                    .syncer_state
+                                    .tasks
+                                    .script_pubkey
+                                    .as_ref()
+                                    .cloned()
+                                    .unwrap();
+                                let task =
+                                    self.syncer_state.watch_addr_btc(script, TxLabel::Refund);
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(task),
+                                )?;
                             }
                             tx_label => warn!(
                                 "tx label {} with {} confs evokes no response in state {}",
@@ -1971,7 +2021,7 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig))
-                if self.state.b_core_arb() =>
+                if self.state.b_core_arb() && self.syncer_state.tasks.script_pubkey.is_none() =>
             {
                 debug!("subscribing with syncer for receiving raw buy tx ");
 
@@ -1992,16 +2042,7 @@ impl Runtime {
                     error!("more than one output");
                     return Ok(());
                 };
-                debug!("subscribe Buy address task");
-                let task = self
-                    .syncer_state
-                    .watch_addr_btc(script_pubkey, TxLabel::Buy);
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    Request::SyncerTask(task),
-                )?;
+                self.syncer_state.tasks.script_pubkey = Some(script_pubkey);
 
                 let pending_request = PendingRequest {
                     request,
