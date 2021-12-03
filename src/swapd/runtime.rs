@@ -1425,7 +1425,7 @@ impl Runtime {
                         block,
                         tx,
                     }) if self.state.swap_role() == SwapRole::Alice => {
-                        trace!(
+                        debug!(
                             "Event details: {} {:?} {} {:?} {:?}",
                             id, hash, amount, block, tx
                         );
