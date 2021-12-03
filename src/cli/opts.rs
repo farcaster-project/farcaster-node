@@ -81,17 +81,17 @@ pub enum Command {
     ///
     /// Example usage:
     ///
-    /// make --arb-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq --acc-addr
+    /// make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq --xmr-addr
     /// 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt
-    /// --arb-amount "0.0000135 BTC" --acc-amount "0.001 XMR"
+    /// --btc-amount "0.0000135 BTC" --xmr-amount "0.001 XMR"
     #[clap(setting = AppSettings::ColoredHelp)]
     Make {
         /// Bitcoin address used as destination or refund address.
-        #[clap(long = "arb-addr")]
+        #[clap(long = "btc-addr")]
         arbitrating_addr: BtcAddress,
 
         /// Monero address used as destination or refund address.
-        #[clap(long = "acc-addr")]
+        #[clap(long = "xmr-addr")]
         accordant_addr: XmrAddress,
 
         /// Network to use to execute the swap between the chosen blockchains.
@@ -112,11 +112,11 @@ pub enum Command {
         accordant_blockchain: Monero,
 
         /// Amount of arbitrating assets to exchanged.
-        #[clap(long = "arb-amount")]
+        #[clap(long = "btc-amount")]
         arbitrating_amount: bitcoin::Amount,
 
         /// Amount of accordant assets to exchanged.
-        #[clap(long = "acc-amount")]
+        #[clap(long = "xmr-amount")]
         accordant_amount: monero::Amount,
 
         /// The future maker swap role, either Alice of Bob. This will dictate with asset will be
@@ -158,11 +158,11 @@ pub enum Command {
     #[clap(setting = AppSettings::ColoredHelp)]
     Take {
         /// Bitcoin address used as destination or refund address.
-        #[clap(long = "arb-addr")]
+        #[clap(long = "btc-addr")]
         bitcoin_address: BtcAddress,
 
         /// Monero address used as destination or refund address.
-        #[clap(long = "acc-addr")]
+        #[clap(long = "xmr-addr")]
         monero_address: XmrAddress,
 
         /// An encoded public offer.

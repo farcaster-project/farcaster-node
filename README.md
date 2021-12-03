@@ -129,15 +129,15 @@ When listening for other peers to connect, e.g. for executing a swap, a `peerd` 
 To create an offer and spawn a listening `peerd` accepting incoming connections, run the following command:
 
 ```
-swap-cli make --arb-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
-    --acc-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
-    --arb-amount "0.0000135 BTC" --acc-amount "0.001 XMR"\
+swap-cli make --btc-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
+    --xmr-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
+    --btc-amount "0.0000135 BTC" --xmr-amount "0.001 XMR"\
     --network Testnet --arb-blockchain ECDSA --acc-blockchain Monero\
     --maker-role Bob --cancel-timelock 4 --punish-timelock 5 --fee-strategy "1 satoshi/vByte"\
     --public-ip-addr 1.2.3.4 --bind-ip-addr 0.0.0.0 --port 9735 --overlay tcp
 ```
 
-Network and assets by default are Bitcoin and Monero on testnet. The first arguments `--arb-addr` and `--acc-addr` are the Bitcoin and Monero addresses used to get the bitcoins and moneros as a refund or when the swap completes depending on the role. They are followed by the amounts exchanged.
+Network and assets by default are Bitcoin and Monero on testnet. The first arguments `--btc-addr` and `--xmr-addr` are the Bitcoin and Monero addresses used to get the bitcoins and moneros as a refund or when the swap completes depending on the role. They are followed by the amounts exchanged.
 
 :mag_right: Default value `ECDSA` for `--arb-blockchain` is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms.
 
@@ -160,8 +160,8 @@ Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the sw
 Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an encoded public offer, a Bitcoin address and a Monero address to receive assets, again as a refund or as a payment depending on your swap role and if the swap completes.
 
 ```
-swap-cli take --arb-addr tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
-    --acc-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
+swap-cli take --btc-addr tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
+    --xmr-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
     --offer {offer}
 ```
 

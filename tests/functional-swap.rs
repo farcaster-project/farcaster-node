@@ -455,9 +455,9 @@ fn make_offer_args(
         .into_iter()
         .chain(vec![
             "make".to_string(),
-            "--arb-addr".to_string(),
+            "--btc-addr".to_string(),
             btc_addr,
-            "--acc-addr".to_string(),
+            "--xmr-addr".to_string(),
             xmr_addr,
             "--network".to_string(),
             "Local".to_string(),
@@ -465,9 +465,9 @@ fn make_offer_args(
             "ECDSA".to_string(),
             "--acc-blockchain".to_string(),
             "Monero".to_string(),
-            "--arb-amount".to_string(),
+            "--btc-amount".to_string(),
             btc_amount,
-            "--acc-amount".to_string(),
+            "--xmr-amount".to_string(),
             xmr_amount,
             "--maker-role".to_string(),
             role,
@@ -497,9 +497,9 @@ fn take_offer_args(
         .into_iter()
         .chain(vec![
             "take".to_string(),
-            "--arb-addr".to_string(),
+            "--btc-addr".to_string(),
             btc_addr,
-            "--acc-addr".to_string(),
+            "--xmr-addr".to_string(),
             xmr_addr,
             "--offer".to_string(),
             offer,

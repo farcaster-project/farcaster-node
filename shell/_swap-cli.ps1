@@ -95,14 +95,14 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             break
         }
         'swap-cli;make' {
-            [CompletionResult]::new('--arb-addr', 'arb-addr', [CompletionResultType]::ParameterName, 'Bitcoin address used as destination or refund address')
-            [CompletionResult]::new('--acc-addr', 'acc-addr', [CompletionResultType]::ParameterName, 'Monero address used as destination or refund address')
+            [CompletionResult]::new('--btc-addr', 'btc-addr', [CompletionResultType]::ParameterName, 'Bitcoin address used as destination or refund address')
+            [CompletionResult]::new('--xmr-addr', 'xmr-addr', [CompletionResultType]::ParameterName, 'Monero address used as destination or refund address')
             [CompletionResult]::new('-n', 'n', [CompletionResultType]::ParameterName, 'Network to use to execute the swap between the chosen blockchains')
             [CompletionResult]::new('--network', 'network', [CompletionResultType]::ParameterName, 'Network to use to execute the swap between the chosen blockchains')
             [CompletionResult]::new('--arb-blockchain', 'arb-blockchain', [CompletionResultType]::ParameterName, 'The chosen arbitrating blockchain')
             [CompletionResult]::new('--acc-blockchain', 'acc-blockchain', [CompletionResultType]::ParameterName, 'The chosen accordant blockchain')
-            [CompletionResult]::new('--arb-amount', 'arb-amount', [CompletionResultType]::ParameterName, 'Amount of arbitrating assets to exchanged')
-            [CompletionResult]::new('--acc-amount', 'acc-amount', [CompletionResultType]::ParameterName, 'Amount of accordant assets to exchanged')
+            [CompletionResult]::new('--btc-amount', 'btc-amount', [CompletionResultType]::ParameterName, 'Amount of arbitrating assets to exchanged')
+            [CompletionResult]::new('--xmr-amount', 'xmr-amount', [CompletionResultType]::ParameterName, 'Amount of accordant assets to exchanged')
             [CompletionResult]::new('-r', 'r', [CompletionResultType]::ParameterName, 'The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones')
             [CompletionResult]::new('--maker-role', 'maker-role', [CompletionResultType]::ParameterName, 'The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones')
             [CompletionResult]::new('--cancel-timelock', 'cancel-timelock', [CompletionResultType]::ParameterName, 'The cancel timelock parameter of the arbitrating blockchain')
@@ -132,8 +132,8 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             break
         }
         'swap-cli;take' {
-            [CompletionResult]::new('--arb-addr', 'arb-addr', [CompletionResultType]::ParameterName, 'Bitcoin address used as destination or refund address')
-            [CompletionResult]::new('--acc-addr', 'acc-addr', [CompletionResultType]::ParameterName, 'Monero address used as destination or refund address')
+            [CompletionResult]::new('--btc-addr', 'btc-addr', [CompletionResultType]::ParameterName, 'Bitcoin address used as destination or refund address')
+            [CompletionResult]::new('--xmr-addr', 'xmr-addr', [CompletionResultType]::ParameterName, 'Monero address used as destination or refund address')
             [CompletionResult]::new('-o', 'o', [CompletionResultType]::ParameterName, 'An encoded public offer')
             [CompletionResult]::new('--offer', 'offer', [CompletionResultType]::ParameterName, 'An encoded public offer')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')

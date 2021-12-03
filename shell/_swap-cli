@@ -95,14 +95,14 @@ _arguments "${_arguments_options[@]}" \
 ;;
 (make)
 _arguments "${_arguments_options[@]}" \
-'--arb-addr=[Bitcoin address used as destination or refund address]' \
-'--acc-addr=[Monero address used as destination or refund address]' \
+'--btc-addr=[Bitcoin address used as destination or refund address]' \
+'--xmr-addr=[Monero address used as destination or refund address]' \
 '-n+[Network to use to execute the swap between the chosen blockchains]: :(Testnet Mainnet Local)' \
 '--network=[Network to use to execute the swap between the chosen blockchains]: :(Testnet Mainnet Local)' \
 '--arb-blockchain=[The chosen arbitrating blockchain]: :(ECDSA)' \
 '--acc-blockchain=[The chosen accordant blockchain]: :(Monero)' \
-'--arb-amount=[Amount of arbitrating assets to exchanged]' \
-'--acc-amount=[Amount of accordant assets to exchanged]' \
+'--btc-amount=[Amount of arbitrating assets to exchanged]' \
+'--xmr-amount=[Amount of accordant assets to exchanged]' \
 '-r+[The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones]: :(Alice Bob)' \
 '--maker-role=[The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones]: :(Alice Bob)' \
 '--cancel-timelock=[The cancel timelock parameter of the arbitrating blockchain]' \
@@ -133,8 +133,8 @@ _arguments "${_arguments_options[@]}" \
 ;;
 (take)
 _arguments "${_arguments_options[@]}" \
-'--arb-addr=[Bitcoin address used as destination or refund address]' \
-'--acc-addr=[Monero address used as destination or refund address]' \
+'--btc-addr=[Bitcoin address used as destination or refund address]' \
+'--xmr-addr=[Monero address used as destination or refund address]' \
 '-o+[An encoded public offer]' \
 '--offer=[An encoded public offer]' \
 '-d+[Data directory path]: :_files -/' \

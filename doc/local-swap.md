@@ -70,10 +70,10 @@ You need to have access to Bitcoin (testnet) and Monero (stagenet) test coins, u
 Maker creates offer and start listening. Command used to print a serialized representation of the offer that shall be shared with taker. Additionally it spins up the listener awaiting for connection related to this offer (binded on `0.0.0.0:9735` by default with an offer public address of `127.0.0.1:9735` by default).
 
 ```
-swap1-cli make --arb-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
-    --acc-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
-    --arb-amount "0.0000135 BTC"\
-    --acc-amount "0.001 XMR"
+swap1-cli make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
+    --xmr-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
+    --btc-amount "0.0000135 BTC"\
+    --xmr-amount "0.001 XMR"
 ```
 
 :mag_right: Default value `ECDSA` for `--arb-blockchain` is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms.
@@ -91,12 +91,12 @@ Taker accepts offer and connects to maker's daemon node with the following comma
 Example of taking the offer above produced by maker:
 
 ```
-swap2-cli take --arb-addr tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j\
-    --acc-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
+swap2-cli take --btc-addr tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j\
+    --xmr-addr 54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu\
     --offer Offer:...
 ```
 
-The `--arb-addr` argument is the Bitcoin destination address in case the bitcoins needs to be refunded or if the swap completes (depending on the swap role), the `--acc-addr` for Monero, and finally the offer with `--offer` or `-o`.
+The `--btc-addr` argument is the Bitcoin destination address in case the bitcoins needs to be refunded or if the swap completes (depending on the swap role), the `--xmr-addr` for Monero, and finally the offer with `--offer` or `-o`.
 
 Upon taking the public offer is printed and user is asked for validation with `y` or `n`.
 

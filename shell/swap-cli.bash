@@ -230,18 +230,18 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__make)
-            opts=" -n -r -I -b -p -h -V -d -v -T -m -x  --arb-addr --acc-addr --network --arb-blockchain --acc-blockchain --arb-amount --acc-amount --maker-role --cancel-timelock --punish-timelock --fee-strategy --public-ip-addr --bind-ip-addr --port --overlay --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
+            opts=" -n -r -I -b -p -h -V -d -v -T -m -x  --btc-addr --xmr-addr --network --arb-blockchain --acc-blockchain --btc-amount --xmr-amount --maker-role --cancel-timelock --punish-timelock --fee-strategy --public-ip-addr --bind-ip-addr --port --overlay --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 
-                --arb-addr)
+                --btc-addr)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --acc-addr)
+                --xmr-addr)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -261,11 +261,11 @@ _swap-cli() {
                     COMPREPLY=($(compgen -W "Monero" -- "${cur}"))
                     return 0
                     ;;
-                --arb-amount)
+                --btc-amount)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --acc-amount)
+                --xmr-amount)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -451,18 +451,18 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__take)
-            opts=" -o -w -h -V -d -v -T -m -x  --arb-addr --acc-addr --offer --without-validation --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
+            opts=" -o -w -h -V -d -v -T -m -x  --btc-addr --xmr-addr --offer --without-validation --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 
-                --arb-addr)
+                --btc-addr)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --acc-addr)
+                --xmr-addr)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
