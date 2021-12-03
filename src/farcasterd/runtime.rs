@@ -152,11 +152,12 @@ impl Stats {
     fn success_rate(&self) -> f64 {
         let Stats { success, failure } = self;
         let total = success + failure;
-        let rate = *success as f64 / (total as f64);
+        let rate = *success as f64 / (total as f64) * 100f64;
         info!(
-            "Swap success rate: Success({}) / Total({})  = {}",
-            success,
-            total,
+            "{}: Success({}) / Total({}) = {:>4.3}%",
+            "Swap success rate".bright_blue_bold(),
+            success.bright_white_bold(),
+            total.bright_white_bold(),
             rate.bright_yellow_bold()
         );
         rate
@@ -230,7 +231,7 @@ impl Runtime {
                     Some(((coin, network), xs))
                 } else {
                     let service_id = ServiceId::Syncer(coin, network);
-                    info!("Terminating syncer: {:?}", service_id);
+                    info!("Terminating {}", service_id);
                     if senders
                         .send_to(
                             ServiceBus::Ctl,
@@ -360,8 +361,8 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
-                    "Service {} daemon is now {}",
-                    source.bright_green_bold(),
+                    "Service {} is now {}",
+                    source.bright_white_bold(),
                     "connected".bright_green_bold()
                 );
 
@@ -375,31 +376,27 @@ impl Runtime {
                     ServiceId::Peer(connection_id) => {
                         if self.connections.insert(connection_id.clone()) {
                             info!(
-                                "Connection {} is registered; total {} \
-                                 connections are known",
-                                connection_id,
-                                self.connections.len()
+                                "Connection {} is registered; total {} connections are known",
+                                connection_id.bright_blue_italic(),
+                                self.connections.len().bright_blue_bold()
                             );
                         } else {
                             warn!(
-                                "Connection {} was already registered; the \
-                                 service probably was relaunched",
-                                connection_id
+                                "Connection {} was already registered; the service probably was relaunched",
+                                connection_id.bright_blue_italic()
                             );
                         }
                     }
                     ServiceId::Swap(swap_id) => {
                         if self.running_swaps.insert(*swap_id) {
                             info!(
-                                "Swap {} is registered; total {} \
-                                 swaps are known",
-                                swap_id,
-                                self.running_swaps.len()
+                                "Swap {} is registered; total {} swaps are known",
+                                swap_id.bright_blue_italic(),
+                                self.running_swaps.len().bright_blue_bold()
                             );
                         } else {
                             warn!(
-                                "Swap {} was already registered; the \
-                                 service probably was relaunched",
+                                "Swap {} was already registered; the service probably was relaunched",
                                 swap_id
                             );
                         }
@@ -518,7 +515,7 @@ impl Runtime {
                 let swapid = get_swap_id(&source)?;
                 self.clean_up_after_swap(&swapid, senders)?;
                 if success {
-                    info!("Success on swap {}", &swapid);
+                    debug!("Success on swap {}", &swapid);
                     self.stats.incr_success();
                 } else {
                     warn!("Failure on swap {}", &swapid);

@@ -111,7 +111,7 @@ pub enum ServiceId {
     #[from]
     Peer(NodeAddr),
 
-    #[display("swap<{0:#x}>")]
+    #[display("swap<{0}>")]
     #[from]
     // #[from(TempSwapId)]
     Swap(SwapId),
@@ -119,7 +119,7 @@ pub enum ServiceId {
     #[display("client<{0}>")]
     Client(u64),
 
-    #[display("syncer<{0:?}>")]
+    #[display("{0} ({1}) syncer")]
     Syncer(Coin, Network),
 
     #[display("walletd")]
@@ -244,7 +244,7 @@ where
         }
 
         let identity = self.esb.handler().identity();
-        info!("New service {} started", identity.bright_white_bold());
+        info!("New service {} started", identity);
 
         self.esb.run_or_panic(&identity.to_string());
 
@@ -384,8 +384,16 @@ pub trait LogStyle: ToString {
         self.to_string().italic().bright_green()
     }
 
+    fn bright_yellow_italic(&self) -> colored::ColoredString {
+        self.to_string().italic().bright_yellow()
+    }
+
     fn bright_yellow_bold(&self) -> colored::ColoredString {
         self.to_string().bold().bright_yellow()
+    }
+
+    fn bright_white_italic(&self) -> colored::ColoredString {
+        self.to_string().italic().bright_white()
     }
 
     fn bright_white_bold(&self) -> colored::ColoredString {

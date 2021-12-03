@@ -63,12 +63,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     let coin = opts.coin;
     let network = opts.network;
 
-    info!(
-        "Creating new {} ({}) {}",
-        &coin.bright_green_bold(),
-        &network.bright_white_bold(),
-        "syncer".bright_green_bold()
-    );
+    info!("Creating new {} ({}) syncer", &coin, &network);
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
 
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
@@ -218,7 +213,7 @@ impl Runtime {
 
             (Request::Terminate, _) => {
                 // terminate all runtimes
-                info!("Received terminate on syncer {:?}", self.identity());
+                info!("Received terminate on {}", self.identity());
                 std::process::exit(0);
             }
 

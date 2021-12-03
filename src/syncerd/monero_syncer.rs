@@ -270,8 +270,9 @@ async fn sweep_address(
     // only sweep once all the balance is unlocked
     if balance.unlocked_balance != 0 {
         info!(
-            "Sweeping address with unlocked balance: {}",
-            balance.unlocked_balance
+            "Sweeping address {} with unlocked balance: {}",
+            dest_address.addr(),
+            monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold()
         );
         let sweep_args = monero_rpc::SweepAllArgs {
             address: dest_address,
@@ -293,7 +294,10 @@ async fn sweep_address(
             .iter()
             .filter_map(|hash| {
                 let hash_str = hash.to_string();
-                info!("Sweep transaction hash {}", hash_str.bright_white_bold());
+                info!(
+                    "Sweep transaction hash: {}",
+                    hash_str.bright_yellow_italic()
+                );
                 hex::decode(hash_str).ok()
             })
             .collect();
@@ -336,7 +340,7 @@ async fn run_syncerd_task_receiver(
                         Task::SweepAddress(task) => match task.addendum.clone() {
                             SweepAddressAddendum::Monero(sweep) => {
                                 let addr = sweep.address;
-                                info!("Sweeping to address: {}", addr.addr());
+                                debug!("Sweeping address: {}", addr.addr());
                                 let mut state_guard = state.lock().await;
                                 state_guard.sweep_address(task, syncerd_task.source);
                             }

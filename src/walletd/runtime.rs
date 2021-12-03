@@ -306,7 +306,7 @@ impl Runtime {
                             let funding_fee = 150;
                             let funding_amount = offer.arbitrating_amount.as_sat() + funding_fee;
                             info!(
-                                "Send {} to address: {}",
+                                "Send {} to {}",
                                 funding_amount.bright_green_bold(),
                                 funding_addr.addr(),
                             );
@@ -977,7 +977,7 @@ impl Runtime {
                         let funding_fee = bitcoin::Amount::from_sat(150);
                         let funding_amount = offer.arbitrating_amount + funding_fee;
                         info!(
-                            "Send {} to address: {}",
+                            "Send {} to {}",
                             funding_amount.to_string().bright_green_bold(),
                             funding_addr.addr(),
                         );
@@ -1098,7 +1098,7 @@ impl Runtime {
                         .expect("Valid Monero Private Key");
                     info!(
                         "Extracted monero key from Buy tx: {}",
-                        sk_a.bright_white_bold()
+                        sk_a.bright_white_italic()
                     );
                     let sk_b = key_manager.get_or_derive_monero_spend_key()?;
                     let spend_private = sk_a + sk_b;
@@ -1127,7 +1127,7 @@ impl Runtime {
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
-                    info!("Corresponding address: {}", address.addr());
+                    info!("Corresponding address: {}", address);
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend_private,
@@ -1163,7 +1163,7 @@ impl Runtime {
                         .expect("Valid Monero Private Key");
                     info!(
                         "Extracted monero key from Refund tx: {}",
-                        sk_b.bright_white_bold()
+                        sk_b.bright_white_italic()
                     );
 
                     let sk_c = key_manager.get_or_derive_monero_spend_key()?;
@@ -1224,7 +1224,11 @@ impl Runtime {
                     "Failure".err()
                 };
 
-                info!("{} in swap {}, cleaning up data", &success, &swapid.addr(),);
+                info!(
+                    "{} in swap {}, cleaning up data",
+                    &success,
+                    &swapid.bright_blue_italic(),
+                );
                 self.clean_up_after_swap(&swapid);
             }
 

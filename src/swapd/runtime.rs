@@ -678,9 +678,9 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
-            "Watching {} BTC transaction ({})",
-            tx_label.bright_green_bold(),
-            txid.addr()
+            "Watching {} transaction ({})",
+            tx_label.bright_white_bold(),
+            txid.bright_yellow_italic()
         );
         Task::WatchTransaction(WatchTransaction {
             id,
@@ -694,11 +694,11 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
         info!(
-            "Watching {} XMR transaction ({} with id {})",
-            tx_label.bright_green_bold(),
-            hex::encode(&hash).addr(),
-            id
+            "Watching {} transaction ({})",
+            tx_label.bright_white_bold(),
+            hex::encode(&hash).bright_yellow_italic(),
         );
+        debug!("Watching transaction {} with {}", hex::encode(&hash), id);
         Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Coin::Monero),
@@ -712,8 +712,8 @@ impl SyncerState {
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
             "Watching {} transaction with scriptPubkey: {}",
-            tx_label.bright_green_bold(),
-            script_pubkey
+            tx_label.bright_white_bold(),
+            script_pubkey.asm().bright_blue_italic()
         );
         let addendum = BtcAddressAddendum {
             address: None,
@@ -734,8 +734,16 @@ impl SyncerState {
         view: monero::PrivateKey,
         tx_label: TxLabel,
     ) -> Task {
-        info!("XMR secret view key: {}", view);
-        info!("XMR public spend key: {}", spend);
+        info!(
+            "Address's secret view key for {}: {}",
+            tx_label.bright_white_bold(),
+            view.bright_white_italic()
+        );
+        info!(
+            "Address's public spend key for {}: {}",
+            tx_label.bright_white_bold(),
+            spend.bright_white_italic()
+        );
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
 
@@ -752,8 +760,8 @@ impl SyncerState {
 
         info!(
             "Watching {} on address {}",
-            tx_label.bright_green_bold(),
-            address.addr()
+            tx_label.bright_white_bold(),
+            address
         );
 
         let watch_addr = WatchAddress {
@@ -805,9 +813,10 @@ impl SyncerState {
                 }
                 Some(confs) => {
                     debug!(
-                        "tx {} mined with {} confirmations",
+                        "tx {} mined with {} {}",
                         txlabel.bright_green_bold(),
                         confs.bright_green_bold(),
+                        "confirmations".bright_green_bold(),
                     )
                 }
                 None => {
@@ -868,8 +877,8 @@ impl Runtime {
 
         info!(
             "Broadcasting {} tx ({})",
-            tx_label.bright_green_bold(),
-            tx.txid().addr()
+            tx_label.bright_white_bold(),
+            tx.txid().bright_yellow_italic()
         );
         Ok(senders.send_to(
             ServiceBus::Ctl,
@@ -1199,7 +1208,10 @@ impl Runtime {
 
         match request {
             Request::SwapSuccess(success) if source == ServiceId::Farcasterd => {
-                info!("Terminating {}", self.identity());
+                info!(
+                    "{}",
+                    format!("Terminating {}", self.identity()).bright_white_bold()
+                );
                 std::process::exit(match success {
                     true => 0,
                     false => 1,
@@ -1491,7 +1503,7 @@ impl Runtime {
                             task.from_height = Some(self.syncer_state.monero_height - *confirmations as u64);
                             let request = Request::SyncerTask(Task::SweepAddress(task));
 
-                            info!("Monero are spendable now, sweeping ephemeral wallet");
+                            info!("Monero are spendable now (height {}), sweeping ephemeral wallet", self.syncer_state.monero_height.bright_white_bold());
                             senders.send_to(bus_id, self.identity(), dest, request)?;
                         } else {
                             error!(
@@ -1653,9 +1665,11 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id).unwrap();
                         info!(
-                            "{} transaction is now considered final with {} confirmations",
+                            "{} transaction is now considered {} with {} {}",
                             txlabel.bright_white_bold(),
-                            confirmations.bright_green_bold()
+                            "final".bright_green_bold(),
+                            confirmations.bright_blue_bold(),
+                            "confirmations".bright_blue_bold()
                         );
                         // saving requests of interest for later replaying latest event
                         match &txlabel {
@@ -1746,7 +1760,7 @@ impl Runtime {
                                 } else {
                                     warn!(
                                         "Alice doesn't have the buy tx, probably didnt receive \
-                                             the BuySig yet: {}",
+                                             the buy signature yet: {}",
                                         self.state
                                     );
                                 }
@@ -2033,9 +2047,8 @@ impl Runtime {
         params: Params,
     ) -> Result<request::Commit, Error> {
         let msg = format!(
-            "{} {} with id {:#}",
-            "Proposing to the Maker".bright_white_bold(),
-            "that I take the swap offer".bright_white_bold(),
+            "{} {} to Maker remote peer",
+            "Proposing to take swap".bright_white_bold(),
             self.swap_id().bright_blue_italic()
         );
         info!("{}", &msg);
@@ -2064,7 +2077,7 @@ impl Runtime {
         params: &Params,
     ) -> Result<request::Commit, Error> {
         let msg = format!(
-            "{} as Maker with swap id {:#} from Taker remote peer {}",
+            "{} {} as Maker from Taker remote peer {}",
             "Accepting swap".bright_white_bold(),
             swap_id.bright_blue_italic(),
             peerd.bright_blue_italic()
@@ -2092,7 +2105,6 @@ impl Runtime {
             swap_id.bright_green_italic(),
             peerd.bright_green_italic()
         );
-        info!("{}", msg);
         let _ = self.report_success_to(senders, &enquirer, Some(msg));
         Ok(commitment)
     }
@@ -2108,9 +2120,9 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
 
 fn log_tx_seen(txlabel: &TxLabel, txid: &Txid) {
     info!(
-        "{} transaction ({}) in mempool or blockchain, sending it to walletd",
+        "{} transaction ({}) in mempool or blockchain, forward to walletd",
         txlabel,
-        txid.addr(),
+        txid.bright_yellow_italic(),
     );
 }
 

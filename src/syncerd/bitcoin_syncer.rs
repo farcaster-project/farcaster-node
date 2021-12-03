@@ -481,7 +481,10 @@ async fn run_syncerd_task_receiver(
                                         })
                                         .await
                                         .expect("error sending transaction broadcast event");
-                                    info!("Successfully broadcasted: {}", txid.addr());
+                                    info!(
+                                        "Successfully broadcasted: {}",
+                                        txid.bright_yellow_italic()
+                                    );
                                 }
                                 Err(e) => {
                                     tx_event
