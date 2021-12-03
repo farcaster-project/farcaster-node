@@ -660,7 +660,7 @@ fn bitcoin_syncer_abort_test() {
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
-        Some("abort failed, task from source syncer<Bitcoin> not found".to_string()),
+        Some("abort failed, task from source Bitcoin (Local) syncer not found".to_string()),
         vec![],
     );
 
@@ -722,7 +722,7 @@ fn bitcoin_syncer_abort_test() {
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
-        Some("abort failed, task from source syncer<Bitcoin> not found".to_string()),
+        Some("abort failed, task from source Bitcoin (Local) syncer not found".to_string()),
         vec![],
     );
 }
@@ -1445,7 +1445,7 @@ async fn monero_syncer_abort_test() {
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
-        Some("abort failed, task from source syncer<Monero> not found".to_string()),
+        Some("abort failed, task from source Monero (Local) syncer not found".to_string()),
         vec![],
     );
 
@@ -1503,7 +1503,7 @@ async fn monero_syncer_abort_test() {
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
-        Some("abort failed, task from source syncer<Monero> not found".to_string()),
+        Some("abort failed, task from source Monero (Local) syncer not found".to_string()),
         vec![],
     );
 }
