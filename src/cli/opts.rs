@@ -12,13 +12,13 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use bitcoin::Address;
+use bitcoin::Address as BtcAddress;
 use clap::{AppSettings, Clap};
 use monero::Address as XmrAddress;
 use std::net::IpAddr;
 use std::str::FromStr;
 
-use internet2::{FramingProtocol, PartialNodeAddr};
+use internet2::FramingProtocol;
 
 use farcaster_core::{
     bitcoin::{fee::SatPerVByte, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin},
@@ -54,41 +54,13 @@ impl Opts {
         self.shared.process();
     }
 }
+
 /// Command-line commands:
 #[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
-    /// Bind to a socket and start listening for incoming LN peer connections,
-    /// Maker's action
-    #[display("listen<{overlay}://{ip_addr}:{port}>")]
-    Listen {
-        /// IPv4 or IPv6 address to bind to
-        #[clap(short, long = "ip", default_value = "0.0.0.0")]
-        ip_addr: IpAddr,
-
-        /// Port to use; defaults to the native LN port.
-        #[clap(short, long, default_value = "9735")]
-        port: u16,
-
-        /// Use overlay protocol (http, websocket etc)
-        #[clap(short, long, default_value = "tcp")]
-        overlay: FramingProtocol,
-    },
-
-    /// Connect to the remote lightning network peer
-    Connect {
-        /// Address of the remote node, in
-        /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
-        peer: PartialNodeAddr,
-    },
-
-    /// Ping remote peer (must be already connected)
-    Ping {
-        /// Address of the remote node, in
-        /// '<public_key>@<ipv4>|<ipv6>|<onionv2>|<onionv3>[:<port>]' format
-        peer: PartialNodeAddr,
-    },
-
     /// General information about the running node
+    #[display("info<{subject:?}>")]
+    #[clap(setting = AppSettings::ColoredHelp)]
     Info {
         /// Remote peer address or temporary/permanent/short channel id. If
         /// absent, returns information about the node itself
@@ -96,98 +68,117 @@ pub enum Command {
     },
 
     /// Lists existing peer connections
+    #[clap(setting = AppSettings::ColoredHelp)]
     Peers,
 
     /// Lists running swaps
+    #[clap(setting = AppSettings::ColoredHelp)]
     Ls,
 
-    /// Maker creates offer and start listening. Command used to to print a hex
-    /// representation of the offer that shall be shared with Taker.
-    /// Additionally it spins up the listener awaiting for connection related to
-    /// this offer. Example usage:
-    /// `make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq
+    /// Maker creates offer and start listening for incoming connections. Command used to to print
+    /// the resulting public offer that shall be shared with Taker. Additionally it spins up the
+    /// listener awaiting for connection related to this offer.
+    ///
+    /// Example usage:
+    ///
+    /// make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq --xmr-addr
     /// 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt
-    /// Testnet ECDSA Monero
-    /// "0.00001350 BTC" "0.001 XMR" Alice 10 30 "1 satoshi/vByte"
-    /// "127.0.0.1" "0.0.0.0" 9745`
+    /// --btc-amount "0.0000135 BTC" --xmr-amount "0.001 XMR"
+    #[clap(setting = AppSettings::ColoredHelp)]
     Make {
-        /// Bitcoin address used as destination or refund address
-        arbitrating_addr: Address,
+        /// Bitcoin address used as destination or refund address.
+        #[clap(long = "btc-addr")]
+        arbitrating_addr: BtcAddress,
 
-        /// Monero address used as destination or refund address
+        /// Monero address used as destination or refund address.
+        #[clap(long = "xmr-addr")]
         accordant_addr: XmrAddress,
 
-        /// Network to use
-        #[clap(default_value = "Testnet", possible_values = &["Testnet", "Mainnet", "Local"])]
+        /// Network to use to execute the swap between the chosen blockchains.
+        #[clap(
+            short,
+            long,
+            default_value = "Testnet",
+            possible_values = &["Testnet", "Mainnet", "Local"]
+        )]
         network: Network,
 
-        /// The chosen arbitrating blockchain
-        #[clap(default_value = "ECDSA", possible_values = &["ECDSA"])]
+        /// The chosen arbitrating blockchain.
+        #[clap(long = "arb-blockchain", default_value = "ECDSA", possible_values = &["ECDSA"])]
         arbitrating_blockchain: Bitcoin<SegwitV0>,
 
-        /// The chosen accordant blockchain
-        #[clap(default_value = "Monero", possible_values = &["Monero"])]
+        /// The chosen accordant blockchain.
+        #[clap(long = "acc-blockchain", default_value = "Monero", possible_values = &["Monero"])]
         accordant_blockchain: Monero,
 
-        /// Amount of arbitrating assets to exchanged
-        #[clap(default_value = "0.00001350 BTC")]
+        /// Amount of arbitrating assets to exchanged.
+        #[clap(long = "btc-amount")]
         arbitrating_amount: bitcoin::Amount,
 
-        /// Amount of accordant assets to exchanged
-        #[clap(default_value = "0.001 XMR")]
+        /// Amount of accordant assets to exchanged.
+        #[clap(long = "xmr-amount")]
         accordant_amount: monero::Amount,
 
-        /// The future maker swap role
-        #[clap(default_value = "Bob", possible_values = &["Alice", "Bob"])]
+        /// The future maker swap role, either Alice of Bob. This will dictate with asset will be
+        /// exchanged for which asset. Alice will sell accordant assets for arbitrating ones and
+        /// Bob the inverse, sell arbitrating assets for accordant ones.
+        #[clap(short = 'r', long, default_value = "Bob", possible_values = &["Alice", "Bob"])]
         maker_role: SwapRole,
 
-        /// The cancel timelock parameter of the arbitrating blockchain
-        #[clap(default_value = "16")]
+        /// The cancel timelock parameter of the arbitrating blockchain.
+        #[clap(long, default_value = "4")]
         cancel_timelock: CSVTimelock,
 
-        /// The punish timelock parameter of the arbitrating blockchain
-        #[clap(default_value = "64")]
+        /// The punish timelock parameter of the arbitrating blockchain.
+        #[clap(long, default_value = "5")]
         punish_timelock: CSVTimelock,
 
-        /// The chosen fee strategy for the arbitrating transactions
-        #[clap(default_value = "2 satoshi/vByte")]
+        /// The chosen fee strategy for the arbitrating transactions.
+        #[clap(long, default_value = "1 satoshi/vByte")]
         fee_strategy: FeeStrategy<SatPerVByte>,
 
-        /// public IPv4 or IPv6 address for public offer
-        #[clap(default_value = "127.0.0.1")]
+        /// Public IPv4 or IPv6 address present in the public offer allowing taker to connect.
+        #[clap(short = 'I', long, default_value = "127.0.0.1")]
         public_ip_addr: IpAddr,
 
-        /// IPv4 or IPv6 address to bind to
-        #[clap(default_value = "0.0.0.0")]
+        /// IPv4 or IPv6 address to bind to, listening for takers.
+        #[clap(short, long, default_value = "0.0.0.0")]
         bind_ip_addr: IpAddr,
 
         /// Port to use; defaults to the native LN port.
-        #[clap(default_value = "9735")]
+        #[clap(short, long, default_value = "9735")]
         port: u16,
 
-        /// Use overlay protocol (http, websocket etc)
-        #[clap(default_value = "tcp")]
+        /// Use overlay protocol (http, websocket etc).
+        #[clap(long, default_value = "tcp")]
         overlay: FramingProtocol,
     },
-    /// Taker accepts offer and connects to Maker's daemon.
-    Take {
-        /// bitcoin address used as destination or refund address
-        bitcoin_address: Address,
 
-        /// monero address used as destination or refund address
+    /// Taker accepts offer and connects to maker's daemon to start the trade.
+    #[clap(setting = AppSettings::ColoredHelp)]
+    Take {
+        /// Bitcoin address used as destination or refund address.
+        #[clap(long = "btc-addr")]
+        bitcoin_address: BtcAddress,
+
+        /// Monero address used as destination or refund address.
+        #[clap(long = "xmr-addr")]
         monero_address: XmrAddress,
 
-        /// Hex encoded offer
+        /// An encoded public offer.
+        #[clap(short = 'o', long = "offer")]
         public_offer: PublicOffer<BtcXmr>,
-        /// Accept Offer without validation
 
+        /// Accept the public offer without validation.
         #[clap(short, long)]
         without_validation: bool,
     },
 
-    /// Request Swap progress report
+    /// Request swap progress report.
+    #[display("progress<{swapid}>")]
+    #[clap(setting = AppSettings::ColoredHelp)]
     Progress {
-        /// SwapId
+        /// The swap id requested.
         swapid: SwapId,
     },
 }

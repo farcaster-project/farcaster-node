@@ -31,7 +31,7 @@ swap info
 
 You should get a returned value from the node. You can use this stack to take a public offer or to make an offer. In the case you want to make an offer make sure the public address and the port will be reachable from external networks.
 
-:mega: The only port forwarded to the host is `9735`, make sure to use this one when making offers.
+:mega: The only port forwarded to the host is `9735`, make sure to use this one when making offers (by default port `9735` is used).
 
 To stop and remove the containers simply run in the project folder:
 
@@ -50,23 +50,24 @@ Images used in the docker compose are produced by the `farcaster-project` direct
 
 ## Docker image
 
-You can use the docker image produced directly by the GitHub CI with:
+You can use the docker image directly with:
 
 ```
-docker run --rm -t -p 9735:9735 -p 9981:9981\
+docker run --rm --init -t -p 9735:9735 -p 9981:9981\
+    --mount type=bind,source=<config folder>,destination=/etc/farcaster\
     --name farcaster_node\
     ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
-    -vv\
-    --electrum-server ssl://blockstream.info:993\
-    --monero-daemon http://stagenet.melo.tools:38081\
-    --monero-rpc-wallet http://localhost:38083
+    -vvv -c /etc/farcaster/farcasterd.toml
 ```
+
+If you don't use the default values for syncers daemons don't forget to mount your config inside the container (here at `/etc/farcaster`) and pass the config file with `-c /etc/farcaster/farcasterd.toml`.
 
 or build the node image and start a container by running inside the project folder:
 
 ```
 docker build --no-cache -t farcasterd:latest .
 docker run --rm -t --init -p 9735:9735 -p 9981:9981\
+    --mount type=bind,source=<config folder>,destination=/etc/farcaster\
     --name farcaster_node\
     farcasterd:latest\
     {farcasterd args...}
@@ -94,12 +95,12 @@ docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-walle
     --confirm-external-bind
 ```
 
-Then use the following values when launching `farcasterd`:
+Then use the following values in `farcasterd` configuration file:
 
-| `--monero-rpc-wallet` | value                    |
-| --------------------- | ------------------------ |
-| mainnet               | `http://localhost:18083` |
-| stagenet              | `http://localhost:38083` |
+| `monero_rpc_wallet` | value                    |
+| ------------------- | ------------------------ |
+| mainnet             | `http://localhost:18083` |
+| stagenet            | `http://localhost:38083` |
 
 Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](../README.md#bulb-use-public-infrastructure) for public mainnet daemon hosts.
 

@@ -13,17 +13,11 @@ _swap-cli() {
                 cmd="swap__cli"
                 ;;
             
-            connect)
-                cmd+="__connect"
-                ;;
             help)
                 cmd+="__help"
                 ;;
             info)
                 cmd+="__info"
-                ;;
-            listen)
-                cmd+="__listen"
                 ;;
             ls)
                 cmd+="__ls"
@@ -33,9 +27,6 @@ _swap-cli() {
                 ;;
             peers)
                 cmd+="__peers"
-                ;;
-            ping)
-                cmd+="__ping"
                 ;;
             progress)
                 cmd+="__progress"
@@ -50,7 +41,7 @@ _swap-cli() {
 
     case "${cmd}" in
         swap__cli)
-            opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  listen connect ping info peers ls make take progress help"
+            opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  info peers ls make take progress help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -97,53 +88,6 @@ _swap-cli() {
             return 0
             ;;
         
-        swap__cli__connect)
-            opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  <PEER> "
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                
-                --data-dir)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -d)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --tor-proxy)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -T)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --msg-socket)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -m)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --ctl-socket)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -x)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         swap__cli__help)
             opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -238,77 +182,6 @@ _swap-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        swap__cli__listen)
-            opts=" -i -p -o -h -V -d -v -T -m -x  --ip --port --overlay --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                
-                --ip)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -i)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --port)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -p)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --overlay)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -o)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --data-dir)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -d)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --tor-proxy)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -T)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --msg-socket)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -m)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --ctl-socket)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -x)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         swap__cli__ls)
             opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -357,13 +230,93 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__make)
-            opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  <ARBITRATING_ADDR> <ACCORDANT_ADDR> <NETWORK> <ARBITRATING_BLOCKCHAIN> <ACCORDANT_BLOCKCHAIN> <ARBITRATING_AMOUNT> <ACCORDANT_AMOUNT> <MAKER_ROLE> <CANCEL_TIMELOCK> <PUNISH_TIMELOCK> <FEE_STRATEGY> <PUBLIC_IP_ADDR> <BIND_IP_ADDR> <PORT> <OVERLAY> "
+            opts=" -n -r -I -b -p -h -V -d -v -T -m -x  --btc-addr --xmr-addr --network --arb-blockchain --acc-blockchain --btc-amount --xmr-amount --maker-role --cancel-timelock --punish-timelock --fee-strategy --public-ip-addr --bind-ip-addr --port --overlay --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 
+                --btc-addr)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --xmr-addr)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --network)
+                    COMPREPLY=($(compgen -W "Testnet Mainnet Local" -- "${cur}"))
+                    return 0
+                    ;;
+                -n)
+                    COMPREPLY=($(compgen -W "Testnet Mainnet Local" -- "${cur}"))
+                    return 0
+                    ;;
+                --arb-blockchain)
+                    COMPREPLY=($(compgen -W "ECDSA" -- "${cur}"))
+                    return 0
+                    ;;
+                --acc-blockchain)
+                    COMPREPLY=($(compgen -W "Monero" -- "${cur}"))
+                    return 0
+                    ;;
+                --btc-amount)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --xmr-amount)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --maker-role)
+                    COMPREPLY=($(compgen -W "Alice Bob" -- "${cur}"))
+                    return 0
+                    ;;
+                -r)
+                    COMPREPLY=($(compgen -W "Alice Bob" -- "${cur}"))
+                    return 0
+                    ;;
+                --cancel-timelock)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --punish-timelock)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --fee-strategy)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --public-ip-addr)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -I)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --bind-ip-addr)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -b)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --port)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -p)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --overlay)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --data-dir)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
@@ -405,53 +358,6 @@ _swap-cli() {
             ;;
         swap__cli__peers)
             opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                
-                --data-dir)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -d)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --tor-proxy)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -T)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --msg-socket)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -m)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --ctl-socket)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -x)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        swap__cli__ping)
-            opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  <PEER> "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -545,13 +451,29 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__take)
-            opts=" -w -h -V -d -v -T -m -x  --without-validation --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  <BITCOIN_ADDRESS> <MONERO_ADDRESS> <PUBLIC_OFFER> "
+            opts=" -o -w -h -V -d -v -T -m -x  --btc-addr --xmr-addr --offer --without-validation --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 
+                --btc-addr)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --xmr-addr)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --offer)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -o)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --data-dir)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

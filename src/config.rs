@@ -109,7 +109,7 @@ pub fn parse_config(path: &str) -> Result<Config, Error> {
         settings.merge(config::File::with_name(config_file).required(true))?;
         settings.try_into::<Config>().map_err(Into::into)
     } else {
-        info!("No configuration file found, generate default config");
+        info!("No configuration file found, generating default config");
         let config = Config::default();
         let mut file = File::create(path)?;
         file.write_all(toml::to_vec(&config).unwrap().as_ref())?;

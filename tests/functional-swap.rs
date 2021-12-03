@@ -455,19 +455,33 @@ fn make_offer_args(
         .into_iter()
         .chain(vec![
             "make".to_string(),
+            "--btc-addr".to_string(),
             btc_addr,
+            "--xmr-addr".to_string(),
             xmr_addr,
+            "--network".to_string(),
             "Local".to_string(),
+            "--arb-blockchain".to_string(),
             "ECDSA".to_string(),
+            "--acc-blockchain".to_string(),
             "Monero".to_string(),
+            "--btc-amount".to_string(),
             btc_amount,
+            "--xmr-amount".to_string(),
             xmr_amount,
+            "--maker-role".to_string(),
             role,
+            "--cancel-timelock".to_string(),
             "10".to_string(),
+            "--punish-timelock".to_string(),
             "30".to_string(),
+            "--fee-strategy".to_string(),
             "1 satoshi/vByte".to_string(),
+            "--public-ip-addr".to_string(),
             "127.0.0.1".to_string(),
+            "--bind-ip-addr".to_string(),
             "0.0.0.0".to_string(),
+            "--port".to_string(),
             "9376".to_string(),
         ])
         .collect()
@@ -483,8 +497,11 @@ fn take_offer_args(
         .into_iter()
         .chain(vec![
             "take".to_string(),
+            "--btc-addr".to_string(),
             btc_addr,
+            "--xmr-addr".to_string(),
             xmr_addr,
+            "--offer".to_string(),
             offer,
             "--without-validation".to_string(),
         ])

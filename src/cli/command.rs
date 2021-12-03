@@ -84,32 +84,6 @@ impl Exec for Command {
                 runtime.report_response()?;
             }
 
-            Command::Listen {
-                ip_addr,
-                port,
-                overlay,
-            } => {
-                let socket = RemoteSocketAddr::with_ip_addr(overlay, ip_addr, port);
-                runtime.request(ServiceId::Farcasterd, Request::Listen(socket))?;
-                runtime.report_progress()?;
-            }
-
-            Command::Connect { peer: node_locator } => {
-                let peer = node_locator
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
-
-                runtime.request(ServiceId::Farcasterd, Request::ConnectPeer(peer))?;
-                runtime.report_progress()?;
-            }
-
-            Command::Ping { peer } => {
-                let node_addr = peer
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
-
-                runtime.request(ServiceId::Peer(node_addr), Request::PingPeer)?;
-            }
             Command::Make {
                 network,
                 arbitrating_blockchain,
@@ -214,11 +188,13 @@ impl Exec for Command {
                     runtime.report_progress()?;
                 }
             }
+
             Command::Progress { swapid } => {
                 runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
                 runtime.report_progress()?;
             }
         }
+
         Ok(())
     }
 }
