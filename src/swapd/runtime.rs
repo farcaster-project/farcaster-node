@@ -1762,13 +1762,12 @@ impl Runtime {
                             }
                             TxLabel::Lock
                                 if self.temporal_safety.valid_cancel(*confirmations)
-                                    && self.state.safe_cancel() =>
+                                    && self.state.safe_cancel()
+                                    && self.txs.contains_key(&TxLabel::Cancel) =>
                             {
-                                if let Some((tx_label, cancel_tx)) =
-                                    self.txs.remove_entry(&TxLabel::Cancel)
-                                {
-                                    self.broadcast(cancel_tx, tx_label, senders)?
-                                }
+                                let (tx_label, cancel_tx) =
+                                    self.txs.remove_entry(&TxLabel::Cancel).unwrap();
+                                self.broadcast(cancel_tx, tx_label, senders)?
                             }
                             TxLabel::Lock
                                 if self.temporal_safety.safe_buy(*confirmations)
@@ -1849,7 +1848,7 @@ impl Runtime {
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
                             }
-                            tx_label => debug!(
+                            tx_label => warn!(
                                 "tx label {} with {} confs evokes no response in state {}",
                                 tx_label, confirmations, &self.state
                             ),
