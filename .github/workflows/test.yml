@@ -72,9 +72,6 @@ jobs:
           FALLBACKFEE: "0.00001"
         volumes:
           - bitcoind-data:/data
-        ports:
-          - 18443:18443
-          - 18444:18444
       electrs:
         image: ghcr.io/farcaster-project/containers/electrs:0.8.11
         env:
@@ -83,8 +80,6 @@ jobs:
           ELECTRUM_RPC_PORT: 50001
         volumes:
           - bitcoind-data:/data
-        ports:
-          - 50001:50001
       monerod:
         image: ghcr.io/farcaster-project/containers/monerod:0.17.2.3
         env:
@@ -92,26 +87,21 @@ jobs:
           MONEROD_RPC_PORT: 18081
           OFFLINE: --offline
           DIFFICULTY: 1
-        ports:
-          - 18081:18081
       monero-wallet-rpc-1:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         env:
           MONEROD_ADDRESS: monerod:18081
-        ports:
-          - 18083:18083
+          WALLET_RPC_PORT: 18083
       monero-wallet-rpc-2:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         env:
           MONEROD_ADDRESS: monerod:18081
-        ports:
-          - 18084:18083
+          WALLET_RPC_PORT: 18084
       monero-wallet-rpc-3:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         env:
           MONEROD_ADDRESS: monerod:18081
-        ports:
-          - 18085:18083
+          WALLET_RPC_PORT: 18085
 
     steps:
       - uses: actions/checkout@v2
