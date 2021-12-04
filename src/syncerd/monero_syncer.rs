@@ -4,6 +4,7 @@ use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
+use crate::service::LogStyle;
 use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::runtime::Synclet;
@@ -268,7 +269,11 @@ async fn sweep_address(
     let balance = wallet.get_balance(account, addrs).await?;
     // only sweep once all the balance is unlocked
     if balance.unlocked_balance != 0 {
-        info!("sweeping address with balance: {:?}", balance);
+        info!(
+            "Sweeping address {} with unlocked balance: {}",
+            dest_address.addr(),
+            monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold()
+        );
         let sweep_args = monero_rpc::SweepAllArgs {
             address: dest_address,
             account_index: 0,
@@ -289,14 +294,17 @@ async fn sweep_address(
             .iter()
             .filter_map(|hash| {
                 let hash_str = hash.to_string();
-                info!("sweep transaction hash {}", hash_str);
+                info!(
+                    "Sweep transaction hash: {}",
+                    hash_str.bright_yellow_italic()
+                );
                 hex::decode(hash_str).ok()
             })
             .collect();
 
         Ok(tx_ids)
     } else {
-        info!(
+        debug!(
             "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}",
             balance.unlocked_balance, balance.balance
         );
@@ -330,8 +338,9 @@ async fn run_syncerd_task_receiver(
                 Ok(syncerd_task) => {
                     match syncerd_task.task {
                         Task::SweepAddress(task) => match task.addendum.clone() {
-                            SweepAddressAddendum::Monero(_) => {
-                                info!("sweeping to address: {}", task);
+                            SweepAddressAddendum::Monero(sweep) => {
+                                let addr = sweep.address;
+                                debug!("Sweeping address: {}", addr.addr());
                                 let mut state_guard = state.lock().await;
                                 state_guard.sweep_address(task, syncerd_task.source);
                             }

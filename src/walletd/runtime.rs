@@ -303,14 +303,14 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             let funding = create_funding(&mut key_manager, offer.network)?;
                             let funding_addr = funding.get_address()?;
-                            let funding_fee = 150;
-                            let funding_amount = offer.arbitrating_amount.as_sat() + funding_fee;
+                            let funding_fee = bitcoin::Amount::from_sat(150);
+                            let funding_amount = offer.arbitrating_amount + funding_fee;
                             info!(
-                                "Send {} sats to address: {}",
+                                "Send {} to {}",
                                 funding_amount.bright_green_bold(),
                                 funding_addr.addr(),
                             );
-                            info!("Loading {}", "Wallet::Bob".bright_yellow());
+                            debug!("Loading {}", "Wallet::Bob".bright_yellow());
                             if let request::Commit::AliceParameters(remote_commit) =
                                 remote_commit.clone()
                             {
@@ -355,7 +355,7 @@ impl Runtime {
                         let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &pub_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            info!("Loading {}", "Wallet::Alice".bright_yellow());
+                            debug!("Loading {}", "Wallet::Alice".bright_yellow());
                             if let request::Commit::BobParameters(bob_commit) =
                                 remote_commit.clone()
                             {
@@ -977,11 +977,11 @@ impl Runtime {
                         let funding_fee = bitcoin::Amount::from_sat(150);
                         let funding_amount = offer.arbitrating_amount + funding_fee;
                         info!(
-                            "Send {} to address: {}",
+                            "Send {} to {}",
                             funding_amount.to_string().bright_green_bold(),
                             funding_addr.addr(),
                         );
-                        info!("Loading {}", "Wallet::Bob".bright_yellow());
+                        debug!("Loading {}", "Wallet::Bob".bright_yellow());
                         if self.wallets.get(&swap_id).is_none() {
                             let local_wallet = BobState::new(
                                 bob,
@@ -1023,7 +1023,7 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
                             // requests and store the state in there directly
-                            info!("Loading Alice Taker's Wallet");
+                            debug!("Loading Alice Taker's Wallet");
                             let wallet = AliceState::new(
                                 alice,
                                 local_params.clone(),
@@ -1065,7 +1065,7 @@ impl Runtime {
                         return Ok(());
                     }
                     funding_update(funding, tx)?;
-                    info!("bob's wallet informs swapd that funding was successfully updated");
+                    debug!("bob's wallet informs swapd that funding was successfully updated");
                     senders.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
@@ -1096,12 +1096,16 @@ impl Runtime {
                     sk_a_btc_buf.reverse();
                     let sk_a = monero::PrivateKey::from_slice(sk_a_btc_buf.as_ref())
                         .expect("Valid Monero Private Key");
-                    info!("Extracted alice's monero key from Buy tx: {}", sk_a);
+                    info!(
+                        "Extracted monero key from Buy tx: {}",
+                        sk_a.bright_white_italic()
+                    );
                     let sk_b = key_manager.get_or_derive_monero_spend_key()?;
                     let spend_private = sk_a + sk_b;
-                    let spend = monero::PublicKey::from_private_key(&spend_private);
-                    info!("Full secret monero spending key: {}", spend_private);
-
+                    info!(
+                        "Full secret monero spending key: {}",
+                        spend_private.bright_green_bold()
+                    );
                     let view_key_alice = *alice_params
                         .accordant_shared_keys
                         .clone()
@@ -1118,20 +1122,12 @@ impl Runtime {
                         .unwrap()
                         .elem();
                     let view = view_key_alice + view_key_bob;
-                    // let view_key_bob = params.
-                    info!("Full aggregated secret monero view key: {}", view);
-
-                    let viewpair = monero::ViewPair { spend, view };
-                    // let address = (swapd.monero_address)(&viewpair);
-                    let address =
-                        monero::Address::from_viewpair(monero::Network::Stagenet, &viewpair);
-
-                    info!("Corresponding address: {}", address.addr());
-
+                    info!("Full secret monero view key: {}", view.bright_green_bold());
                     let address = self
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
+                    info!("Corresponding address: {}", address);
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend_private,
@@ -1165,11 +1161,17 @@ impl Runtime {
                     sk_b_btc_buf.reverse();
                     let sk_b = monero::PrivateKey::from_slice(sk_b_btc_buf.as_ref())
                         .expect("Valid Monero Private Key");
-                    info!("Extracted alice's monero key from Buy tx: {}", sk_b);
+                    info!(
+                        "Extracted monero key from Refund tx: {}",
+                        sk_b.bright_white_italic()
+                    );
 
                     let sk_c = key_manager.get_or_derive_monero_spend_key()?;
                     let spend_key = sk_b + sk_c;
-                    info!("Full secret monero spending key: {}", spend_key);
+                    info!(
+                        "Full secret monero spending key: {}",
+                        spend_key.bright_green_bold()
+                    );
 
                     let view_key = *bob_params
                         .accordant_shared_keys
@@ -1178,11 +1180,15 @@ impl Runtime {
                         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
                         .unwrap()
                         .elem();
-                    info!("Full secret monero view key: {}", view_key);
+                    info!(
+                        "Full secret monero view key: {}",
+                        view_key.bright_green_bold()
+                    );
                     let address = self
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
+                    info!("Corresponding address: {}", address.addr());
                     let sweep_keys = SweepXmrAddress {
                         view_key,
                         spend_key,
@@ -1219,9 +1225,9 @@ impl Runtime {
                 };
 
                 info!(
-                    "{} in swap {}, cleaning up data related to it",
+                    "{} in swap {}, cleaning up data",
                     &success,
-                    &swapid.addr(),
+                    &swapid.bright_blue_italic(),
                 );
                 self.clean_up_after_swap(&swapid);
             }
