@@ -47,66 +47,89 @@ jobs:
           file: ${{ steps.coverage.outputs.report }}
           directory: ./coverage/reports/
 
-  functional-syncer-test:
-    name: Functional syncer tests
+  functional-test:
+    name: Functional tests
+    timeout-minutes: 45
     strategy:
+      fail-fast: false
       matrix:
-        test: [
-          bitcoin,
-          monero,
-        ]
+        test: [bitcoin, monero, swap]
+        include:
+          - test: swap
+            logs: true
     runs-on: ubuntu-latest
+    container:
+      image: rust:slim-buster
+      volumes:
+        - bitcoind-data:/data
+
+    services:
+      bitcoin-core:
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:0.21.1
+        env:
+          NETWORK: regtest
+          RPC_PORT: 18443
+          FALLBACKFEE: "0.00001"
+        volumes:
+          - bitcoind-data:/data
+      electrs:
+        image: ghcr.io/farcaster-project/containers/electrs:0.8.11
+        env:
+          NETWORK: regtest
+          DAEMON_RPC_ADDR: bitcoin-core:18443
+          ELECTRUM_RPC_PORT: 50001
+        volumes:
+          - bitcoind-data:/data
+      monerod:
+        image: ghcr.io/farcaster-project/containers/monerod:0.17.2.3
+        env:
+          NETWORK: regtest
+          MONEROD_RPC_PORT: 18081
+          OFFLINE: --offline
+          DIFFICULTY: 1
+      monero-wallet-rpc-1:
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        env:
+          MONEROD_ADDRESS: monerod:18081
+          WALLET_RPC_PORT: 18083
+      monero-wallet-rpc-2:
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        env:
+          MONEROD_ADDRESS: monerod:18081
+          WALLET_RPC_PORT: 18084
+      monero-wallet-rpc-3:
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        env:
+          MONEROD_ADDRESS: monerod:18081
+          WALLET_RPC_PORT: 18085
+
     steps:
       - uses: actions/checkout@v2
+
+      - name: Refresh cache and add apt-utils
+        run: apt-get update -y && apt-get install -y --no-install-recommends apt-utils
       - name: Install dependencies
-        run: sudo apt-get install -y cmake libzmq3-dev docker-compose
-
-      - name: Compose docker services
-        run: cd tests && docker-compose up -d
-
-      - name: Install Rust stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Correct permissions
-        run: sudo chown -R $USER tests
+        run: DEBIAN_FRONTEND=noninteractive apt-get install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config build-essential cmake
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v1.3.0
         with:
           key: test-${{ matrix.test }}
 
-      - name: Cargo test
-        uses: actions-rs/cargo@v1
+      - name: Cargo functional test
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
+        env:
+          BITCOIN_COOKIE: /data/regtest/.cookie
+          BITCOIN_HOST: bitcoin-core
+          ELECTRS_HOST: electrs
+          MONERO_DAEMON_HOST: monerod
+          MONERO_WALLET_HOST_1: monero-wallet-rpc-1
+          MONERO_WALLET_HOST_2: monero-wallet-rpc-2
+
+      - name: Archive farcasterd logs
+        uses: actions/upload-artifact@v2
+        if: ${{ matrix.logs }}
         with:
-          command: test
-          args: ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
-
-  functional-swap-test:
-    name: Functional swap tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install dependencies
-        run: sudo apt-get install -y cmake libzmq3-dev docker-compose
-
-      - name: Compose docker services
-        run: cd tests && docker-compose up -d
-
-      - name: Install Rust stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Correct permissions
-        run: sudo chown -R $USER tests
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v1.3.0
-
-      - name: Cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: swap_test --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
+          name: faracsterd-logs
+          path: |
+            tests/*.log

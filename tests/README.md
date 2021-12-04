@@ -1,11 +1,28 @@
 # Running functional tests
 
-Run the tests with:
+Start needed containers for supporting the tests with:
 
 ```
 docker-compose up -d
 sudo chown -R $USER data_dir
-cargo test --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+```
+
+Run `bitcoin` tests:
+
+```
+cargo test bitcoin --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+```
+
+Run `monero` tests:
+
+```
+cargo test monero --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+```
+
+Run `swap` tests:
+
+```
+cargo test swap --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
 ```
 
 ## Steps

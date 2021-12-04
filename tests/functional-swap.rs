@@ -14,6 +14,8 @@ use sysinfo::{ProcessExt, System, SystemExt};
 use tokio::sync::Mutex;
 
 use std::collections::HashMap;
+use std::env;
+use std::path::PathBuf;
 use std::str;
 use std::str::FromStr;
 
@@ -24,7 +26,7 @@ const ALLOWED_RETRIES: u32 = 120;
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_test_bob_maker() {
+async fn swap_bob_maker() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
@@ -62,7 +64,7 @@ async fn swap_test_bob_maker() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_test_alice_maker() {
+async fn swap_alice_maker() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
@@ -100,7 +102,7 @@ async fn swap_test_alice_maker() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_test_parallel() {
+async fn swap_parallel() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
@@ -207,21 +209,23 @@ async fn swap_test_parallel() {
 
 async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
     // data directories
-    let data_dir_maker = vec!["-d".to_string(), "tests/.farcaster_node_0".to_string()];
-    let data_dir_taker = vec!["-d".to_string(), "tests/.farcaster_node_1".to_string()];
+    let data_dir_maker = vec!["-d".to_string(), "tests/.farcaster_1".to_string()];
+    let data_dir_taker = vec!["-d".to_string(), "tests/.farcaster_2".to_string()];
 
-    let server_args_maker = vec!["-vv", "--config", "tests/.farcasterd_1.toml"]
-        .iter()
-        .map(|i| i.to_string())
-        .collect();
+    // If we are in CI we use .ci.toml files, otherwise .toml
+    let ctx = env::var("CI").unwrap_or("false".into());
+    let ext = if ctx == "false" { ".toml" } else { ".ci.toml" };
 
-    let server_args_taker = vec!["-vv", "--config", "tests/.farcasterd_2.toml"]
-        .iter()
-        .map(|i| i.to_string())
-        .collect();
-
-    let farcasterd_maker_args = farcasterd_args(data_dir_maker.clone(), server_args_maker);
-    let farcasterd_taker_args = farcasterd_args(data_dir_taker.clone(), server_args_taker);
+    let farcasterd_maker_args = farcasterd_args(
+        data_dir_maker.clone(),
+        vec!["-vv", "--config", &format!("tests/.farcasterd_1{}", ext)],
+        vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_1.log"],
+    );
+    let farcasterd_taker_args = farcasterd_args(
+        data_dir_taker.clone(),
+        vec!["-vv", "--config", &format!("tests/.farcasterd_2{}", ext)],
+        vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_2.log"],
+    );
 
     let farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
     let farcasterd_taker = launch("../farcasterd", farcasterd_taker_args).unwrap();
@@ -439,8 +443,12 @@ fn info_args(data_dir: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-fn farcasterd_args(data_dir: Vec<String>, server_args: Vec<String>) -> Vec<String> {
-    data_dir.into_iter().chain(server_args).collect()
+fn farcasterd_args(data_dir: Vec<String>, server_args: Vec<&str>, extra: Vec<&str>) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(server_args.into_iter().map(|s| s.into()))
+        .chain(extra.into_iter().map(|s| s.into()))
+        .collect()
 }
 
 fn make_offer_args(
@@ -636,8 +644,11 @@ async fn retry_until_finish_state_transition(
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
-    let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
+    let cookie = env::var("BITCOIN_COOKIE").unwrap_or("tests/data_dir/regtest/.cookie".into());
+    let path = PathBuf::from_str(&cookie).unwrap();
+    let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
+    let bitcoin_rpc =
+        Client::new(&format!("http://{}:18443", host), Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -656,10 +667,12 @@ async fn monero_setup() -> (
     monero_rpc::RegtestDaemonClient,
     Arc<Mutex<monero_rpc::WalletClient>>,
 ) {
-    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
+    let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
+    let daemon_client = monero_rpc::RpcClient::new(format!("http://{}:18081", dhost));
     let daemon = daemon_client.daemon();
     let regtest = daemon.regtest();
-    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
+    let whost = env::var("MONERO_WALLET_HOST_1").unwrap_or("localhost".into());
+    let wallet_client = monero_rpc::RpcClient::new(format!("http://{}:18083", whost));
     let wallet = wallet_client.wallet();
 
     if wallet.open_wallet("test".to_string(), None).await.is_err() {
@@ -755,32 +768,30 @@ pub fn run(
     Ok((stdout, stderr))
 }
 
-pub fn launch(
-    name: &str,
-    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-) -> io::Result<process::Child> {
+pub fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<process::Child> {
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
         err
     })?;
     bin_path.pop();
-
     bin_path.push(name);
-    #[cfg(target_os = "windows")]
-    bin_path.set_extension("exe");
 
-    debug!(
+    println!(
         "Launching {} as a separate process using `{}` as binary",
         name,
         bin_path.to_string_lossy()
     );
 
-    let mut cmd = process::Command::new(bin_path);
+    let cmdargs = args.into_iter().collect::<Vec<String>>().join(" ");
+    println!("Command arguments: \"{}\"", cmdargs);
 
-    cmd.args(args);
+    let mut shell = process::Command::new("sh");
+    shell
+        .arg("-c")
+        .arg(format!("{} {}", bin_path.to_string_lossy(), cmdargs));
 
-    trace!("Executing `{:?}`", cmd);
-    cmd.spawn().map_err(|err| {
+    println!("Executing `{:?}`", shell);
+    shell.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err
     })
