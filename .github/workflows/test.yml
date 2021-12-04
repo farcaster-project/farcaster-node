@@ -116,7 +116,7 @@ jobs:
         with:
           key: test-${{ matrix.test }}
 
-      - name: Cargo swap test
+      - name: Cargo functional test
         run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
         env:
           BITCOIN_COOKIE: /data/regtest/.cookie
