@@ -14,5 +14,7 @@
 
 # Functional tests: generated folders
 /tests/data_dir
-/tests/.farcaster_node_0
-/tests/.farcaster_node_1
+/tests/.farcaster_1
+/tests/farcasterd_1.log
+/tests/.farcaster_2
+/tests/farcasterd_2.log

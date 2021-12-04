@@ -27,6 +27,8 @@ use ntest::timeout;
 
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
+use std::env;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use farcaster_core::blockchain::Network;
@@ -869,7 +871,8 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let path = std::path::PathBuf::from_str("tests/data_dir/regtest/.cookie").unwrap();
+    let cookie = env::var("BITCOIN_DATA_DIR").unwrap_or("tests/data_dir/regtest/.cookie".into());
+    let path = PathBuf::from_str(&cookie).unwrap();
     let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded

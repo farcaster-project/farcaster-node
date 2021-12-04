@@ -13,7 +13,10 @@ services:
             - 18444:18444
     electrs:
         image: ghcr.io/farcaster-project/containers/electrs:0.8.11
-        command: "/usr/bin/electrs -vv --network regtest --daemon-dir /data --daemon-rpc-addr bitcoin-core:18443 --electrum-rpc-addr 0.0.0.0:50001 --txid-limit 100000"
+        environment:
+            NETWORK: regtest
+            DAEMON_RPC_ADDR: bitcoin-core:18443
+            ELECTRUM_RPC_PORT: 50001
         depends_on:
             - "bitcoin-core"
         volumes:
