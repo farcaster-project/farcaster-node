@@ -130,7 +130,7 @@ jobs:
         run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
         env:
           BITCOIN_COOKIE: /data/regtest/.cookie
-          BITCOIN_HOST: bitcoind
+          BITCOIN_HOST: bitcoin-core
           ELECTRS_HOST: electrs
           MONERO_DAEMON_HOST: monerod
           MONERO_WALLET_HOST_1: monero-wallet-rpc-1
