@@ -262,6 +262,7 @@ struct SyncerTasks {
     watched_txs: HashMap<TaskId, TxLabel>,
     watched_addrs: HashMap<TaskId, TxLabel>,
     sweeping_addr: Option<TaskId>,
+    // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
     script_pubkey: Option<Script>,
 }
 
@@ -1173,7 +1174,8 @@ impl Runtime {
                             TxLabel::Cancel,
                             TxLabel::Refund,
                         ]) {
-                            let txid = tx.clone().extract_tx().txid();
+                            let tx = tx.clone().extract_tx();
+                            let txid = tx.txid();
                             let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                             senders.send_to(
                                 ServiceBus::Ctl,
@@ -1181,6 +1183,15 @@ impl Runtime {
                                 self.syncer_state.bitcoin_syncer(),
                                 Request::SyncerTask(task),
                             )?;
+                            if tx_label == TxLabel::Refund {
+                                let script_pubkey = if tx.output.len() == 1 {
+                                    tx.output[0].script_pubkey.clone()
+                                } else {
+                                    error!("more than one output");
+                                    return Ok(());
+                                };
+                                self.syncer_state.tasks.script_pubkey = Some(script_pubkey);
+                            }
                         }
                         self.send_wallet(msg_bus, senders, request)?;
                     }
@@ -1907,7 +1918,7 @@ impl Runtime {
                                 if self.state.swap_role() == SwapRole::Alice
                                     && self.syncer_state.tasks.script_pubkey.is_some() =>
                             {
-                                debug!("subscribe Buy address task");
+                                debug!("subscribe Refund address task");
                                 let script = self
                                     .syncer_state
                                     .tasks
@@ -2071,6 +2082,7 @@ impl Runtime {
                     error!("more than one output");
                     return Ok(());
                 };
+                // set external address: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.script_pubkey = Some(script_pubkey);
 
                 let pending_request = PendingRequest {
