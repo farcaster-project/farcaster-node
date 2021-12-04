@@ -129,7 +129,7 @@ jobs:
       - name: Cargo swap test
         run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
         env:
-          BITCOIN_DATA_DIR: /data/regtests/.cookie
+          BITCOIN_COOKIE: /data/regtest/.cookie
 
       - name: Archive farcasterd logs
         uses: actions/upload-artifact@v2

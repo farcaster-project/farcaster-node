@@ -640,7 +640,7 @@ async fn retry_until_finish_state_transition(
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let cookie = env::var("BITCOIN_DATA_DIR").unwrap_or("tests/data_dir/regtest/.cookie".into());
+    let cookie = env::var("BITCOIN_COOKIE").unwrap_or("tests/data_dir/regtest/.cookie".into());
     let path = PathBuf::from_str(&cookie).unwrap();
     let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
 
