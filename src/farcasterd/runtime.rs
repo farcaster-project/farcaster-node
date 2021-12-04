@@ -152,9 +152,9 @@ impl Stats {
     fn success_rate(&self) -> f64 {
         let Stats { success, failure } = self;
         let total = success + failure;
-        let rate = *success as f64 / (total as f64) * 100f64;
+        let rate = *success as f64 / (total as f64);
         info!(
-            "{}: Success({}) / Total({}) = {:>4.3}%",
+            "{}: Success({}) / Total({}) = {:>4.3}",
             "Swap success rate".bright_blue_bold(),
             success.bright_white_bold(),
             total.bright_white_bold(),
