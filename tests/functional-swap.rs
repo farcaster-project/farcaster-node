@@ -807,6 +807,7 @@ async fn send_monero(
         .open_wallet("test".to_string(), None)
         .await
         .unwrap();
+    wallet_lock.refresh(Some(1)).await.unwrap();
     let transaction = wallet_lock
         .transfer(
             destination.clone(),
