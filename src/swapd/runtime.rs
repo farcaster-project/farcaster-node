@@ -105,10 +105,7 @@ pub fn run(
         SwapRole::Alice => State::Alice(AliceState::StartA(local_trade_role, public_offer)),
         SwapRole::Bob => State::Bob(BobState::StartB(local_trade_role, public_offer)),
     };
-    let sweep_monero_thr = match local_swap_role {
-        SwapRole::Bob => Some(10),
-        SwapRole::Alice => None,
-    };
+    let sweep_monero_thr = 10;
     info!(
         "{}: {}",
         "Starting swap".to_string().bright_green_bold(),
@@ -202,7 +199,7 @@ struct TemporalSafety {
     race_thr: BlockHeight,
     btc_finality_thr: BlockHeight,
     xmr_finality_thr: BlockHeight,
-    sweep_monero_thr: Option<BlockHeight>,
+    sweep_monero_thr: BlockHeight,
 }
 
 type BlockHeight = u32;
@@ -483,7 +480,7 @@ impl State {
         // buy_tx_seen
     }
     fn safe_cancel(&self) -> bool {
-        if self.finish() {
+        if self.finish() || self.cancel_seen() {
             error!("swap already finished, must not cancel");
             return false;
         }
@@ -1539,10 +1536,8 @@ impl Runtime {
                         confirmations: Some(confirmations),
                         ..
                     }) if self.state.b_buy_sig()
-                        && *confirmations
-                            >= self.temporal_safety.sweep_monero_thr.expect(
-                                "buysig is bob's state, and bob sets his sweep_monero_thr at launch",
-                            )
+                        | (self.state.a_refundsig() && self.state.a_xmr_locked())
+                        && *confirmations >= self.temporal_safety.sweep_monero_thr
                         && self.pending_requests.contains_key(&source) =>
                     {
                         let PendingRequest {
