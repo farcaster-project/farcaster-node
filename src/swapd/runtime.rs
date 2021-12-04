@@ -110,6 +110,11 @@ pub fn run(
         SwapRole::Alice => None,
     };
     info!(
+        "{}: {}",
+        "Starting swap".to_string().bright_green_bold(),
+        format!("{:#x}", swap_id).addr()
+    );
+    info!(
         "{} | Initial state: {}",
         swap_id.bright_blue_italic(),
         init_state.bright_white_bold()
