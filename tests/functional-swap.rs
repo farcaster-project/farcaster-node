@@ -212,14 +212,18 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
     let data_dir_maker = vec!["-d".to_string(), "tests/.farcaster_1".to_string()];
     let data_dir_taker = vec!["-d".to_string(), "tests/.farcaster_2".to_string()];
 
+    // If we are in CI we use .ci.toml files, otherwise .toml
+    let ctx = env::var("CI").unwrap_or("false".into());
+    let ext = if ctx == "false" { ".toml" } else { ".ci.toml" };
+
     let farcasterd_maker_args = farcasterd_args(
         data_dir_maker.clone(),
-        vec!["-vv", "--config", "tests/.farcasterd_1.toml"],
+        vec!["-vv", "--config", &format!("tests/.farcasterd_1{}", ext)],
         vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_1.log"],
     );
     let farcasterd_taker_args = farcasterd_args(
         data_dir_taker.clone(),
-        vec!["-vv", "--config", "tests/.farcasterd_2.toml"],
+        vec!["-vv", "--config", &format!("tests/.farcasterd_2{}", ext)],
         vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_2.log"],
     );
 
@@ -642,7 +646,9 @@ async fn retry_until_finish_state_transition(
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let cookie = env::var("BITCOIN_COOKIE").unwrap_or("tests/data_dir/regtest/.cookie".into());
     let path = PathBuf::from_str(&cookie).unwrap();
-    let bitcoin_rpc = Client::new("http://localhost:18443", Auth::CookieFile(path)).unwrap();
+    let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
+    let bitcoin_rpc =
+        Client::new(&format!("http://{}:18443", host), Auth::CookieFile(path)).unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -661,10 +667,12 @@ async fn monero_setup() -> (
     monero_rpc::RegtestDaemonClient,
     Arc<Mutex<monero_rpc::WalletClient>>,
 ) {
-    let daemon_client = monero_rpc::RpcClient::new("http://localhost:18081".to_string());
+    let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
+    let daemon_client = monero_rpc::RpcClient::new(format!("http://{}:18081", dhost));
     let daemon = daemon_client.daemon();
     let regtest = daemon.regtest();
-    let wallet_client = monero_rpc::RpcClient::new("http://localhost:18083".to_string());
+    let whost = env::var("MONERO_WALLET_HOST_1").unwrap_or("localhost".into());
+    let wallet_client = monero_rpc::RpcClient::new(format!("http://{}:18083", whost));
     let wallet = wallet_client.wallet();
 
     if wallet.open_wallet("test".to_string(), None).await.is_err() {
