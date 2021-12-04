@@ -463,12 +463,9 @@ impl State {
             State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) => *buy_tx_seen,
             _ => unreachable!("conditional early return"),
         }
-        // let State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) = self.try_into().unwrap_or(false);
-        // buy_tx_seen
     }
     fn safe_cancel(&self) -> bool {
         if self.finish() || self.cancel_seen() {
-            error!("swap already finished, must not cancel");
             return false;
         }
         match self.swap_role() {
@@ -1512,11 +1509,14 @@ impl Runtime {
                             .expect("Checked above")
                             .pop()
                             .unwrap();
-                        if let (Request::SyncerTask(Task::SweepAddress(mut task)), ServiceBus::Ctl) =
-                            (request.clone(), bus_id)
+                        if let (
+                            Request::SyncerTask(Task::SweepAddress(mut task)),
+                            ServiceBus::Ctl,
+                        ) = (request.clone(), bus_id)
                         {
                             // safe cast
-                            task.from_height = Some(self.syncer_state.monero_height - *confirmations as u64);
+                            task.from_height =
+                                Some(self.syncer_state.monero_height - *confirmations as u64);
                             let request = Request::SyncerTask(Task::SweepAddress(task));
 
                             info!("sweeping monero");
@@ -1535,8 +1535,12 @@ impl Runtime {
                         && self.state.b_core_arb()
                         && !self.state.cancel_seen()
                         && self.pending_requests.contains_key(&source)
-                        && self.pending_requests.get(&source).map(|reqs| reqs.len() == 1).unwrap()
-                        => {
+                        && self
+                            .pending_requests
+                            .get(&source)
+                            .map(|reqs| reqs.len() == 1)
+                            .unwrap() =>
+                    {
                         // error!("not checking tx rcvd is accordant lock");
                         let PendingRequest {
                             request,
@@ -1553,7 +1557,8 @@ impl Runtime {
                         {
                             senders.send_to(bus_id, self.identity(), dest, request)?;
                             info!("sent buyproceduresignature at state {}", &self.state);
-                            let next_state = State::Bob(BobState::BuySigB(BuySigB{buy_tx_seen: false}));
+                            let next_state =
+                                State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen: false }));
                             self.state_update(senders, next_state)?;
                         } else {
                             error!(
@@ -1593,11 +1598,7 @@ impl Runtime {
                             Request::SyncerTask(abort_all),
                         )?;
                         let swap_success_req = Request::SwapSuccess(true);
-                        self.send_ctl(
-                            senders,
-                            ServiceId::Wallet,
-                            swap_success_req.clone(),
-                        )?;
+                        self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
                         self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                         // remove txs to invalidate outdated states
                         self.txs.remove(&TxLabel::Cancel);
