@@ -1575,12 +1575,13 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
     rx_event.bind(&addr).unwrap();
     let mut syncer = MoneroSyncer::new();
 
+    let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
     let whost = env::var("MONERO_WALLET_HOST_2").unwrap_or("localhost".into());
     let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
         "--coin",
         "Monero",
         "--monero-daemon",
-        "http://localhost:18081",
+        &format!("http://{}:18081", dhost),
         "--monero-rpc-wallet",
         &format!("http://{}:18084", whost),
     ]));
