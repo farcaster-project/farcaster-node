@@ -270,9 +270,10 @@ async fn sweep_address(
     // only sweep once all the balance is unlocked
     if balance.unlocked_balance != 0 {
         info!(
-            "Sweeping address {} with unlocked balance: {}",
+            "Sweeping address {} with unlocked balance {} into {}",
             address.addr(),
-            monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold()
+            monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold(),
+            dest_address.addr(),
         );
         let sweep_args = monero_rpc::SweepAllArgs {
             address: dest_address,
