@@ -364,7 +364,7 @@ pub enum Request {
 
     #[api(type = 46)]
     #[display("swap_success()")]
-    SwapSuccess(bool),
+    SwapOutcome(Outcome),
 
     #[api(type = 5)]
     #[display("send_message({0})")]
@@ -527,6 +527,16 @@ pub enum Request {
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     SweepXmrAddress(SweepXmrAddress),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+pub enum Outcome {
+    #[display("Success(Swapped)")]
+    Buy,
+    #[display("Failure(Refunded)")]
+    Refund,
+    #[display("Failure(Punished)")]
+    Punish,
 }
 
 impl rpc_connection::Request for Request {}

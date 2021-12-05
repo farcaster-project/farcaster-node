@@ -1250,14 +1250,12 @@ impl Runtime {
                     )),
                 )?
             }
-            Request::SwapSuccess(success) => {
+            Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
-                let success = if success {
-                    "Success".bright_green_bold()
-                } else {
-                    "Failure".err()
+                let success = match success {
+                    request::Outcome::Buy => success.bright_green_bold(),
+                    _ => success.err(),
                 };
-
                 info!(
                     "{} in swap {}, cleaning up data",
                     &success,
