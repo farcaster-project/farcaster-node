@@ -271,7 +271,7 @@ async fn sweep_address(
     if balance.unlocked_balance != 0 {
         info!(
             "Sweeping address {} with unlocked balance: {}",
-            dest_address.addr(),
+            address.addr(),
             monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold()
         );
         let sweep_args = monero_rpc::SweepAllArgs {
