@@ -1144,6 +1144,7 @@ impl Runtime {
             Request::Tx(Tx::Refund(refund_tx)) => {
                 if let Some(Wallet::Alice(AliceState {
                     alice,
+                    local_params,
                     key_manager,
                     remote_params: Some(bob_params), //remote
                     remote_proof: Some(_),
@@ -1166,20 +1167,29 @@ impl Runtime {
                         sk_b.bright_white_italic()
                     );
 
-                    let sk_c = key_manager.get_or_derive_monero_spend_key()?;
-                    let spend_key = sk_b + sk_c;
+                    let sk_a = key_manager.get_or_derive_monero_spend_key()?;
+                    let spend_key = sk_a + sk_b;
                     info!(
                         "Full secret monero spending key: {}",
                         spend_key.bright_green_bold()
                     );
 
-                    let view_key = *bob_params
+                    let view_key_bob = *bob_params
                         .accordant_shared_keys
                         .clone()
                         .into_iter()
                         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
                         .unwrap()
                         .elem();
+
+                    let view_key_alice = *local_params
+                        .accordant_shared_keys
+                        .clone()
+                        .into_iter()
+                        .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
+                        .unwrap()
+                        .elem();
+                    let view_key = view_key_alice + view_key_bob;
                     info!(
                         "Full secret monero view key: {}",
                         view_key.bright_green_bold()
