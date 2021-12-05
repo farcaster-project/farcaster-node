@@ -1756,7 +1756,7 @@ impl Runtime {
                         self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id).unwrap();
                         info!(
-                            "{} | {} transaction is now considered {} with {} {}",
+                            "{} | {} transaction {} with {} {}",
                             self.swap_id.bright_blue_italic(),
                             txlabel.bright_white_bold(),
                             "final".bright_green_bold(),
@@ -2019,7 +2019,7 @@ impl Runtime {
                                 self.txs.remove(&TxLabel::Punish);
                             }
                             tx_label => warn!(
-                                "{} | {} transaction with {} confirmations evokes no response in state {}",
+                                "{} | Be patient! {} transaction with {} confirmations evokes no response in state {}",
                                 self.swap_id.bright_blue_italic(),
                                 tx_label,
                                 confirmations,
