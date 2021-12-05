@@ -306,11 +306,16 @@ impl Runtime {
                             let funding_fee = bitcoin::Amount::from_sat(150);
                             let funding_amount = offer.arbitrating_amount + funding_fee;
                             info!(
-                                "Send {} to {}",
+                                "{} | Send {} to {}",
+                                swap_id.bright_blue_italic(),
                                 funding_amount.bright_green_bold(),
                                 funding_addr.addr(),
                             );
-                            debug!("Loading {}", "Wallet::Bob".bright_yellow());
+                            debug!(
+                                "{} | Loading {}",
+                                swap_id.bright_blue_italic(),
+                                "Wallet::Bob".bright_yellow()
+                            );
                             if let request::Commit::AliceParameters(remote_commit) =
                                 remote_commit.clone()
                             {
@@ -355,7 +360,11 @@ impl Runtime {
                         let (local_params, local_proof) =
                             alice.generate_parameters(&mut key_manager, &pub_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
-                            debug!("Loading {}", "Wallet::Alice".bright_yellow());
+                            debug!(
+                                "{} | Loading {}",
+                                swap_id.bright_blue_italic(),
+                                "Wallet::Alice".bright_yellow()
+                            );
                             if let request::Commit::BobParameters(bob_commit) =
                                 remote_commit.clone()
                             {
@@ -996,11 +1005,16 @@ impl Runtime {
                         let funding_fee = bitcoin::Amount::from_sat(150);
                         let funding_amount = offer.arbitrating_amount + funding_fee;
                         info!(
-                            "Send {} to {}",
+                            "{} | Send {} to {}",
+                            swap_id.bright_blue_italic(),
                             funding_amount.to_string().bright_green_bold(),
                             funding_addr.addr(),
                         );
-                        debug!("Loading {}", "Wallet::Bob".bright_yellow());
+                        debug!(
+                            "{} | Loading {}",
+                            swap_id.bright_blue_italic(),
+                            "Wallet::Bob".bright_yellow()
+                        );
                         if self.wallets.get(&swap_id).is_none() {
                             let local_wallet = BobState::new(
                                 bob,
@@ -1042,7 +1056,10 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
                             // requests and store the state in there directly
-                            debug!("Loading Alice Taker's Wallet");
+                            debug!(
+                                "{} | Loading Alice Taker's Wallet",
+                                swap_id.bright_blue_italic()
+                            );
                             let wallet = AliceState::new(
                                 alice,
                                 local_params.clone(),
@@ -1074,17 +1091,21 @@ impl Runtime {
                 };
             }
             Request::Tx(Tx::Funding(tx)) => {
+                let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState {
                     funding_tx: Some(funding),
                     ..
-                })) = self.wallets.get_mut(&get_swap_id(&source)?)
+                })) = self.wallets.get_mut(&swap_id)
                 {
                     if funding.was_seen() {
                         warn!("funding was previously updated, ignoring");
                         return Ok(());
                     }
                     funding_update(funding, tx)?;
-                    debug!("bob's wallet informs swapd that funding was successfully updated");
+                    debug!(
+                        "{} | bob's wallet informs swapd that funding was successfully updated",
+                        swap_id.bright_blue_italic(),
+                    );
                     senders.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
@@ -1095,6 +1116,7 @@ impl Runtime {
                 }
             }
             Request::Tx(Tx::Buy(buy_tx)) => {
+                let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState {
                     bob,
                     local_params,
@@ -1104,7 +1126,7 @@ impl Runtime {
                     adaptor_buy: Some(adaptor_buy),
                     pub_offer,
                     ..
-                })) = self.wallets.get_mut(&get_swap_id(&source)?)
+                })) = self.wallets.get_mut(&swap_id)
                 {
                     let sk_a_btc = bob.recover_accordant_key(
                         key_manager,
@@ -1117,13 +1139,15 @@ impl Runtime {
                     let sk_a = monero::PrivateKey::from_slice(sk_a_btc_buf.as_ref())
                         .expect("Valid Monero Private Key");
                     info!(
-                        "Extracted monero key from Buy tx: {}",
+                        "{} | Extracted monero key from Buy tx: {}",
+                        swap_id.bright_blue_italic(),
                         sk_a.bright_white_italic()
                     );
                     let sk_b = key_manager.get_or_derive_monero_spend_key()?;
                     let spend = sk_a + sk_b;
                     info!(
-                        "Full secret monero spending key: {}",
+                        "{} | Full secret monero spending key: {}",
+                        swap_id.bright_blue_italic(),
                         spend.bright_green_bold()
                     );
                     let view_key_alice = *alice_params
@@ -1142,11 +1166,19 @@ impl Runtime {
                         .unwrap()
                         .elem();
                     let view = view_key_alice + view_key_bob;
-                    info!("Full secret monero view key: {}", view.bright_green_bold());
+                    info!(
+                        "{} | Full secret monero view key: {}",
+                        swap_id.bright_blue_italic(),
+                        view.bright_green_bold()
+                    );
                     let network = pub_offer.offer.network.into();
                     let keypair = monero::KeyPair { view, spend };
                     let corresponding_address = monero::Address::from_keypair(network, &keypair);
-                    info!("Corresponding address: {}", corresponding_address);
+                    info!(
+                        "{} | Corresponding address: {}",
+                        swap_id.bright_blue_italic(),
+                        corresponding_address
+                    );
                     let address = self
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
@@ -1165,6 +1197,7 @@ impl Runtime {
                 }
             }
             Request::Tx(Tx::Refund(refund_tx)) => {
+                let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Alice(AliceState {
                     alice,
                     local_params,
@@ -1187,14 +1220,16 @@ impl Runtime {
                     let sk_b = monero::PrivateKey::from_slice(sk_b_btc_buf.as_ref())
                         .expect("Valid Monero Private Key");
                     info!(
-                        "Extracted monero key from Refund tx: {}",
+                        "{} | Extracted monero key from Refund tx: {}",
+                        swap_id.bright_blue_italic(),
                         sk_b.bright_white_italic()
                     );
 
                     let sk_a = key_manager.get_or_derive_monero_spend_key()?;
                     let spend = sk_a + sk_b;
                     info!(
-                        "Full secret monero spending key: {}",
+                        "{} | Full secret monero spending key: {}",
+                        swap_id.bright_blue_italic(),
                         spend.bright_green_bold()
                     );
 
@@ -1214,11 +1249,19 @@ impl Runtime {
                         .unwrap()
                         .elem();
                     let view = view_key_alice + view_key_bob;
-                    info!("Full secret monero view key: {}", view.bright_green_bold());
+                    info!(
+                        "{} | Full secret monero view key: {}",
+                        swap_id.bright_blue_italic(),
+                        view.bright_green_bold()
+                    );
                     let network = pub_offer.offer.network.into();
                     let keypair = monero::KeyPair { view, spend };
                     let corresponding_address = monero::Address::from_keypair(network, &keypair);
-                    info!("Corresponding address: {}", corresponding_address);
+                    info!(
+                        "{} | Corresponding address: {}",
+                        swap_id.bright_blue_italic(),
+                        corresponding_address
+                    );
                     let address = self
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
@@ -1251,7 +1294,7 @@ impl Runtime {
                 )?
             }
             Request::SwapOutcome(success) => {
-                let swapid = get_swap_id(&source)?;
+                let swap_id = get_swap_id(&source)?;
                 let success = match success {
                     request::Outcome::Buy => success.bright_green_bold(),
                     _ => success.err(),
@@ -1259,9 +1302,9 @@ impl Runtime {
                 info!(
                     "{} in swap {}, cleaning up data",
                     &success,
-                    &swapid.bright_blue_italic(),
+                    &swap_id.bright_blue_italic(),
                 );
-                self.clean_up_after_swap(&swapid);
+                self.clean_up_after_swap(&swap_id);
             }
 
             _ => {
