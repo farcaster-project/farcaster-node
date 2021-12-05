@@ -1645,7 +1645,6 @@ impl Runtime {
                             && self.syncer_state.tasks.sweeping_addr.is_some()
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
                     {
-                        self.state_update(senders, State::Bob(BobState::FinishB))?;
                         let abort_all = Task::Abort(Abort {
                             task_target: TaskTarget::AllTasks,
                             respond: Boolean::False,
@@ -1875,7 +1874,6 @@ impl Runtime {
                                 let (tx_label, punish_tx) =
                                     self.txs.remove_entry(&TxLabel::Punish).unwrap();
                                 self.broadcast(punish_tx, tx_label, senders)?;
-                                self.state_update(senders, State::Alice(AliceState::FinishA))?;
                             }
 
                             TxLabel::Cancel
@@ -1927,13 +1925,11 @@ impl Runtime {
                                     && self.syncer_state.tasks.script_pubkey.is_some() =>
                             {
                                 debug!("subscribe Buy address task");
-                                let mut script = self
+                                let script = self
                                     .syncer_state
                                     .tasks
-                                    .script_pubkey.as_mut();
-                                let script_pubkey = script.cloned().unwrap();
-                                script = None;
-                                let task = self.syncer_state.watch_addr_btc(script_pubkey, TxLabel::Buy);
+                                    .script_pubkey.as_mut().cloned().unwrap();
+                                let task = self.syncer_state.watch_addr_btc(script, TxLabel::Buy);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
@@ -1948,20 +1944,79 @@ impl Runtime {
                             {
                                 debug!("subscribe Refund address task");
                                 self.state.a_sup_refundsig_refund_seen();
-                                let mut script = self
+                                let script = self
                                     .syncer_state
                                     .tasks
-                                    .script_pubkey.as_mut();
-                                let script_pubkey = script.cloned().unwrap();
-                                script = None;
+                                    .script_pubkey.as_mut().cloned().unwrap();
                                 let task =
-                                    self.syncer_state.watch_addr_btc(script_pubkey, TxLabel::Refund);
+                                    self.syncer_state.watch_addr_btc(script, TxLabel::Refund);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(task),
                                 )?;
+                            }
+
+                            TxLabel::Refund if self.state.swap_role() == SwapRole::Bob => {
+                                let abort_all = Task::Abort(Abort {
+                                    task_target: TaskTarget::AllTasks,
+                                    respond: Boolean::False,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.monero_syncer(),
+                                    Request::SyncerTask(abort_all.clone()),
+                                )?;
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(abort_all),
+                                )?;
+                                self.state_update(senders, State::Bob(BobState::FinishB))?;
+                                let swap_success_req = Request::SwapSuccess(false);
+                                self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
+                                self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
+                                // remove txs to invalidate outdated states
+                                self.txs.remove(&TxLabel::Cancel);
+                                self.txs.remove(&TxLabel::Refund);
+                                self.txs.remove(&TxLabel::Buy);
+                                self.txs.remove(&TxLabel::Punish);
+                            }
+                            TxLabel::Punish => {
+                                let abort_all = Task::Abort(Abort {
+                                    task_target: TaskTarget::AllTasks,
+                                    respond: Boolean::False,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.monero_syncer(),
+                                    Request::SyncerTask(abort_all.clone()),
+                                )?;
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(abort_all),
+                                )?;
+                                match self.state.swap_role() {
+                                    SwapRole::Alice => self.state_update(senders, State::Alice(AliceState::FinishA))?,
+                                    SwapRole::Bob => {
+                                        warn!("Bob was punished!");
+                                        self.state_update(senders, State::Bob(BobState::FinishB))?
+                                    },
+                                }
+                                let swap_success_req = Request::SwapSuccess(false);
+                                self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
+                                self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
+                                // remove txs to invalidate outdated states
+                                self.txs.remove(&TxLabel::Cancel);
+                                self.txs.remove(&TxLabel::Refund);
+                                self.txs.remove(&TxLabel::Buy);
+                                self.txs.remove(&TxLabel::Punish);
                             }
                             tx_label => warn!(
                                 "{} | {} transaction with {} confirmations evokes no response in state {}",
