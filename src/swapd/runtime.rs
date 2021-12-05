@@ -1618,7 +1618,7 @@ impl Runtime {
                     }
                     Event::TaskAborted(_) => {}
                     Event::SweepSuccess(SweepSuccess { id, .. })
-                        if self.state.b_buy_sig()
+                        if (self.state.b_buy_sig() || self.state.a_xmr_locked())
                             && self.syncer_state.tasks.sweeping_addr.is_some()
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
                     {
@@ -1639,12 +1639,21 @@ impl Runtime {
                             self.syncer_state.bitcoin_syncer(),
                             Request::SyncerTask(abort_all),
                         )?;
-                        let swap_success_req = Request::SwapSuccess(true);
+                        let success = if self.state.b_buy_sig() {
+                            self.state_update(senders, State::Bob(BobState::FinishB))?;
+                            true
+                        } else {
+                            self.state_update(senders, State::Alice(AliceState::FinishA))?;
+                            false
+                        };
+                        let swap_success_req = Request::SwapSuccess(success);
                         self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
                         self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                         // remove txs to invalidate outdated states
                         self.txs.remove(&TxLabel::Cancel);
                         self.txs.remove(&TxLabel::Refund);
+                        self.txs.remove(&TxLabel::Buy);
+                        self.txs.remove(&TxLabel::Punish);
                     }
                     event => {
                         error!("event not handled {}", event)
