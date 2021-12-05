@@ -1896,6 +1896,35 @@ impl Runtime {
                                     self.txs.remove_entry(&TxLabel::Refund).unwrap();
                                 self.broadcast(refund_tx, tx_label, senders)?;
                             }
+                            TxLabel::Cancel if !self.state.a_xmr_locked() => {
+                                self.state_update(senders, State::Alice(AliceState::FinishA(Outcome::Refund)))?;
+                                let abort_all = Task::Abort(Abort {
+                                    task_target: TaskTarget::AllTasks,
+                                    respond: Boolean::False,
+                                });
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.monero_syncer(),
+                                    Request::SyncerTask(abort_all.clone()),
+                                )?;
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(abort_all),
+                                )?;
+                                let swap_success_req = Request::SwapOutcome(Outcome::Refund);
+                                self.send_wallet(
+                                    ServiceBus::Ctl,
+                                    senders,
+                                    swap_success_req.clone(),
+                                )?;
+                                self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
+                                self.txs.remove(&TxLabel::Buy);
+                                self.txs.remove(&TxLabel::Cancel);
+                                self.txs.remove(&TxLabel::Punish);
+                            }
                             TxLabel::Buy
                                 if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
                                     && self.state.a_refundsig()
