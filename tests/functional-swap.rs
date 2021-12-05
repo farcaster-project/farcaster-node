@@ -259,17 +259,10 @@ async fn make_and_take_offer(
     let xmr_addr = xmr_address.to_string();
 
     let (stdout, _stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
-    let previous_swap_ids: HashSet<String> = stdout
+    let previous_swap_ids: HashSet<String> = cli_output_to_node_info(stdout)
+        .swaps
         .iter()
-        .filter_map(|element| {
-            if let Some(pos) = element.find("\"0x") {
-                let len = element.to_string().len() - 1;
-                let swap_id = element[pos + 1..len].to_string();
-                Some(swap_id)
-            } else {
-                None
-            }
-        })
+        .map(|swap_id| format!("{:#x}", swap_id))
         .collect();
 
     let cli_make_args = make_offer_args(
@@ -523,15 +516,24 @@ fn progress_args(data_dir: Vec<String>, swap_id: String) -> Vec<String> {
         .collect()
 }
 
+fn cli_output_to_node_info(stdout: Vec<String>) -> NodeInfo {
+    serde_yaml::from_str(
+        &stdout
+            .iter()
+            .map(|line| format!("{}{}", line, "\n"))
+            .collect::<String>(),
+    )
+    .unwrap()
+}
+
 async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
     for _ in 0..ALLOWED_RETRIES {
-        let (mut stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-        let info_str = stdout
-            .iter_mut()
-            .map(|line| format!("{}{}", line, "\n"))
-            .collect::<String>();
-        let info = serde_yaml::from_str::<NodeInfo>(&info_str).unwrap();
-        let offers: Vec<String> = info.offers.iter().map(|offer| offer.to_string()).collect();
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let offers: Vec<String> = cli_output_to_node_info(stdout)
+            .offers
+            .iter()
+            .map(|offer| offer.to_string())
+            .collect();
         if !offers.is_empty() {
             return offers;
         }
@@ -542,14 +544,8 @@ async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
 
 async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<String>) -> String {
     for _ in 0..ALLOWED_RETRIES {
-        // let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-        let (mut stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-        let info_str = stdout
-            .iter_mut()
-            .map(|line| format!("{}{}", line, "\n"))
-            .collect::<String>();
-        let info = serde_yaml::from_str::<NodeInfo>(&info_str).unwrap();
-        let new_swap_ids: HashSet<String> = info
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let new_swap_ids: HashSet<String> = cli_output_to_node_info(stdout)
             .swaps
             .iter()
             .map(|swap_id| format!("{:#x}", swap_id))
