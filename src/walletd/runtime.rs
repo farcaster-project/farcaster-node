@@ -1098,7 +1098,10 @@ impl Runtime {
                 })) = self.wallets.get_mut(&swap_id)
                 {
                     if funding.was_seen() {
-                        warn!("funding was previously updated, ignoring");
+                        warn!(
+                            "{} | funding was previously updated, ignoring",
+                            swap_id.bright_blue_italic(),
+                        );
                         return Ok(());
                     }
                     funding_update(funding, tx)?;
