@@ -330,7 +330,7 @@ impl Runtime {
                                 );
                                 self.wallets.insert(swap_id, Wallet::Bob(bob_wallet));
                             } else {
-                                error!("Not Commit::Alice");
+                                error!("{} | Not Commit::Alice", swap_id.bright_blue_italic());
                                 return Ok(());
                             }
                             let launch_swap = LaunchSwap {
@@ -349,7 +349,7 @@ impl Runtime {
                                 Request::LaunchSwap(launch_swap),
                             )?;
                         } else {
-                            error!("Wallet already existed");
+                            error!("{} | Wallet already existed", swap_id.bright_blue_italic());
                         }
                     }
                     SwapRole::Alice => {
@@ -394,10 +394,10 @@ impl Runtime {
                                     Request::LaunchSwap(launch_swap),
                                 )?;
                             } else {
-                                error!("Not Commit::Bob");
+                                error!("{} | Not Commit::Bob", swap_id.bright_blue_italic());
                             }
                         } else {
-                            error!("Wallet already existed");
+                            error!("{} | Wallet already existed", swap_id.bright_blue_italic());
                         }
                     }
                 }
@@ -412,13 +412,19 @@ impl Runtime {
                         })) = self.wallets.get_mut(&swap_id)
                         {
                             if remote_commit.is_some() {
-                                error!("Bob commit (remote) already set");
+                                error!(
+                                    "{} | Bob commit (remote) already set",
+                                    swap_id.bright_blue_italic(),
+                                );
                             } else if let Commit::BobParameters(commit) = commit {
                                 trace!("Setting bob commit");
                                 *remote_commit = Some(commit);
                             }
                         } else {
-                            error!("Wallet not found or not on correct state");
+                            error!(
+                                "{} | Wallet not found or not on correct state",
+                                swap_id.bright_blue_italic(),
+                            );
                             return Ok(());
                         }
                     }
@@ -429,13 +435,19 @@ impl Runtime {
                         })) = self.wallets.get_mut(&swap_id)
                         {
                             if remote_commit_params.is_some() {
-                                error!("Alice commit (remote) already set");
+                                error!(
+                                    "{} | Alice commit (remote) already set",
+                                    swap_id.bright_blue_italic(),
+                                );
                             } else if let Commit::AliceParameters(commit) = commit {
                                 trace!("Setting alice commit");
                                 *remote_commit_params = Some(commit);
                             }
                         } else {
-                            error!("Wallet not found or not on correct state");
+                            error!(
+                                "{} | Wallet not found or not on correct state",
+                                swap_id.bright_blue_italic(),
+                            );
                             return Ok(());
                         }
                     }
@@ -453,7 +465,8 @@ impl Runtime {
                 )?;
             }
             Request::Protocol(Msg::Reveal(Reveal::Proof(proof))) => {
-                let wallet = self.wallets.get_mut(&get_swap_id(&source)?);
+                let swap_id = get_swap_id(&source)?;
+                let wallet = self.wallets.get_mut(&swap_id);
                 match wallet {
                     Some(Wallet::Alice(AliceState { remote_proof, .. })) => {
                         *remote_proof = Some(Proof { proof: proof.proof })
@@ -470,7 +483,10 @@ impl Runtime {
                         remote_proof,
                         ..
                     })) => *remote_proof = Some(Proof { proof: proof.proof }),
-                    None => error!("wallet for specified swap does not exist"),
+                    None => error!(
+                        "{} | wallet for specified swap does not exist",
+                        swap_id.bright_blue_italic(),
+                    ),
                 }
             }
             Request::Protocol(Msg::Reveal(reveal)) => {
@@ -489,7 +505,11 @@ impl Runtime {
                         })) = self.wallets.get_mut(&swap_id)
                         {
                             if let Some(remote_params) = remote_params {
-                                error!("bob_params were previously set to: {}", remote_params);
+                                error!(
+                                    "{} | bob_params were previously set to: {}",
+                                    swap_id.bright_blue_italic(),
+                                    remote_params
+                                );
                             } else {
                                 trace!("Setting bob params: {}", reveal);
                                 bob_commit.verify_with_reveal(&CommitmentEngine, reveal.clone())?;
@@ -502,7 +522,7 @@ impl Runtime {
                                 );
 
                                 if proof_verification.is_err() {
-                                    error!("DLEQ proof invalid");
+                                    error!("{} | DLEQ proof invalid", swap_id.bright_blue_italic());
                                     return Ok(());
                                 }
                                 *remote_params = Some(remote_params_candidate);
@@ -523,7 +543,10 @@ impl Runtime {
                                 // CoreArbitratingSetup to proceed
                             }
                         } else {
-                            error!("only Some(Wallet::Alice)");
+                            error!(
+                                "{} | only Some(Wallet::Alice)",
+                                swap_id.bright_blue_italic(),
+                            );
                         }
                         return Ok(());
                     }
@@ -545,7 +568,10 @@ impl Runtime {
                         {
                             // set wallet params
                             if remote_params.is_some() {
-                                error!("Alice params already set");
+                                error!(
+                                    "{} | Alice params already set",
+                                    swap_id.bright_blue_italic(),
+                                );
                                 return Ok(());
                             }
 
@@ -558,7 +584,7 @@ impl Runtime {
                             );
 
                             if proof_verification.is_err() {
-                                error!("DLEQ proof invalid");
+                                error!("{} | DLEQ proof invalid", swap_id.bright_blue_italic());
                                 return Ok(());
                             }
                             *remote_params = Some(remote_params_candidate);
@@ -579,11 +605,14 @@ impl Runtime {
 
                             // set wallet core_arb_txs
                             if core_arb_setup.is_some() {
-                                error!("Core Arb Txs already set");
+                                error!(
+                                    "{} | Core Arb Txs already set",
+                                    swap_id.bright_blue_italic(),
+                                );
                                 return Ok(());
                             }
                             if !funding_tx.was_seen() {
-                                error!("Funding not yet seen");
+                                error!("{} | Funding not yet seen", swap_id.bright_blue_italic());
                                 return Ok(());
                             }
                             // FIXME should be set before
@@ -604,7 +633,7 @@ impl Runtime {
                                 Msg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
                             self.send_ctl(senders, source, Request::Protocol(core_arb_setup_msg))?;
                         } else {
-                            error!("only Some(Wallet::Bob)");
+                            error!("{} | only Some(Wallet::Bob)", swap_id.bright_blue_italic());
                         }
                     }
                     Reveal::Proof(reveal) => {
@@ -641,19 +670,28 @@ impl Runtime {
                                                 proof: reveal.proof,
                                             });
                                         } else {
-                                            error!("DLEQ proof invalid")
+                                            error!(
+                                                "{} | DLEQ proof invalid",
+                                                swap_id.bright_blue_italic(),
+                                            )
                                         }
                                     }
                                     (None, Some(_)) => {
-                                        error!("already set DLEQ proof")
+                                        error!(
+                                            "{} | already set DLEQ proof",
+                                            swap_id.bright_blue_italic(),
+                                        )
                                     }
                                     (Some(_), Some(_)) => {
-                                        error!("already set DLEQ proof and parameters")
+                                        error!(
+                                            "{} | already set DLEQ proof and parameters",
+                                            swap_id.bright_blue_italic(),
+                                        )
                                     }
                                 };
                             }
                             None => {
-                                error!("only Some(Wallet::_)");
+                                error!("{} | only Some(Wallet::_)", swap_id.bright_blue_italic());
                             }
                         }
                     }
@@ -710,7 +748,7 @@ impl Runtime {
 
                     {
                         if adaptor_buy.is_some() {
-                            error!("adaptor_buy already set");
+                            error!("{} | adaptor_buy already set", swap_id.bright_blue_italic());
                             return Ok(());
                         }
                         *adaptor_buy = Some(bob.sign_adaptor_buy(
@@ -773,7 +811,11 @@ impl Runtime {
                         )?;
                     }
                 } else {
-                    error!("Unknown wallet and swap_id");
+                    error!(
+                        "{} | Unknown wallet and swap_id {:#?}",
+                        swap_id.bright_blue_italic(),
+                        swap_id.bright_white_bold(),
+                    );
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
@@ -792,11 +834,17 @@ impl Runtime {
                 })) = self.wallets.get_mut(&swap_id)
                 {
                     if core_arb_setup.is_some() {
-                        error!("core_arb_txs already set for alice");
+                        error!(
+                            "{} | core_arb_txs already set for alice",
+                            swap_id.bright_blue_italic(),
+                        );
                         return Ok(());
                     }
                     if alice_cancel_signature.is_some() {
-                        error!("alice_cancel_sig already set for alice");
+                        error!(
+                            "{} | alice_cancel_sig already set for alice",
+                            swap_id.bright_blue_italic(),
+                        );
                         return Ok(());
                     }
                     *core_arb_setup = Some(core_arbitrating_setup.clone());
@@ -873,7 +921,10 @@ impl Runtime {
                         Request::Protocol(refund_proc_signatures),
                     )?
                 } else {
-                    error!("only Some(Wallet::Alice)");
+                    error!(
+                        "{} | only Some(Wallet::Alice)",
+                        swap_id.bright_blue_italic(),
+                    );
                 }
             }
             Request::Protocol(Msg::BuyProcedureSignature(BuyProcedureSignature {
@@ -943,7 +994,10 @@ impl Runtime {
 
                     // buy_adaptor_sig
                 } else {
-                    error!("could not get alice's wallet")
+                    error!(
+                        "{} | could not get alice's wallet",
+                        swap_id.bright_blue_italic(),
+                    )
                 }
             }
             req => {
@@ -1027,7 +1081,7 @@ impl Runtime {
                             );
                             self.wallets.insert(swap_id, Wallet::Bob(local_wallet));
                         } else {
-                            error!("Wallet already exists");
+                            error!("{} | Wallet already exists", swap_id.bright_blue_italic());
                             return Ok(());
                         }
                         let launch_swap = LaunchSwap {
@@ -1070,7 +1124,7 @@ impl Runtime {
                             );
                             self.wallets.insert(swap_id, Wallet::Alice(wallet));
                         } else {
-                            error!("Wallet already exists");
+                            error!("{} | Wallet already exists", swap_id.bright_blue_italic());
                         }
                         let launch_swap = LaunchSwap {
                             maker_node_id: node_id,
