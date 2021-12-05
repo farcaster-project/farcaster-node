@@ -320,6 +320,7 @@ pub struct RefundSigA {
     #[display("buy_published({0})")]
     buy_published: bool,
     cancel_seen: bool,
+    refund_seen: bool,
     /* #[display("local_view_share({0})")]
      * local_params: Params */
 }
@@ -379,6 +380,13 @@ impl State {
     fn a_buy_published(&self) -> bool {
         if let State::Alice(AliceState::RefundSigA(RefundSigA { buy_published, .. })) = self {
             *buy_published
+        } else {
+            false
+        }
+    }
+    fn a_refund_seen(&self) -> bool {
+        if let State::Alice(AliceState::RefundSigA(RefundSigA { refund_seen, .. })) = self {
+            *refund_seen
         } else {
             false
         }
@@ -478,7 +486,7 @@ impl State {
         }
     }
     fn safe_cancel(&self) -> bool {
-        if self.finish() || self.cancel_seen() {
+        if self.finish() || self.cancel_seen() || self.a_refund_seen() {
             return false;
         }
         match self.swap_role() {
@@ -633,6 +641,21 @@ impl State {
                 true
             } else {
                 error!("xmr_locked was already set to true");
+                false
+            }
+        } else {
+            error!("Not on RefundSig state");
+            false
+        }
+    }
+    fn a_sup_refundsig_refund_seen(&mut self) -> bool {
+        if let State::Alice(AliceState::RefundSigA(RefundSigA { refund_seen, .. })) = self {
+            if !*refund_seen {
+                trace!("setting refund_seen");
+                *refund_seen = true;
+                true
+            } else {
+                error!("refund_seen was already set to true");
                 false
             }
         } else {
@@ -1830,7 +1853,7 @@ impl Runtime {
                                         buy_published: true,
                                         xmr_locked,
                                         cancel_seen: false,
-                                        // local_params,
+                                        refund_seen: false,
                                     }));
                                 } else {
                                     warn!(
@@ -1840,11 +1863,11 @@ impl Runtime {
                                     );
                                 }
                             }
-                            TxLabel::Cancel
-                                if self.temporal_safety.valid_punish(*confirmations)
-                                    && self.state.a_refundsig()
-                                    && self.state.a_xmr_locked()
-                                    && self.txs.contains_key(&TxLabel::Punish) =>
+                            TxLabel::Cancel if self.temporal_safety.valid_punish(*confirmations)
+                                && self.state.a_refundsig()
+                                && self.state.a_xmr_locked()
+                                && self.txs.contains_key(&TxLabel::Punish)
+                                && !self.state.a_refund_seen() =>
                             {
                                 trace!("Alice publishes punish tx");
                                 // syncer task
@@ -1904,14 +1927,13 @@ impl Runtime {
                                     && self.syncer_state.tasks.script_pubkey.is_some() =>
                             {
                                 debug!("subscribe Buy address task");
-                                let script = self
+                                let mut script = self
                                     .syncer_state
                                     .tasks
-                                    .script_pubkey
-                                    .as_ref()
-                                    .cloned()
-                                    .unwrap();
-                                let task = self.syncer_state.watch_addr_btc(script, TxLabel::Buy);
+                                    .script_pubkey.as_mut();
+                                let script_pubkey = script.cloned().unwrap();
+                                script = None;
+                                let task = self.syncer_state.watch_addr_btc(script_pubkey, TxLabel::Buy);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
@@ -1921,18 +1943,19 @@ impl Runtime {
                             }
                             TxLabel::Refund
                                 if self.state.swap_role() == SwapRole::Alice
+                                    && !self.state.a_refund_seen()
                                     && self.syncer_state.tasks.script_pubkey.is_some() =>
                             {
                                 debug!("subscribe Refund address task");
-                                let script = self
+                                self.state.a_sup_refundsig_refund_seen();
+                                let mut script = self
                                     .syncer_state
                                     .tasks
-                                    .script_pubkey
-                                    .as_ref()
-                                    .cloned()
-                                    .unwrap();
+                                    .script_pubkey.as_mut();
+                                let script_pubkey = script.cloned().unwrap();
+                                script = None;
                                 let task =
-                                    self.syncer_state.watch_addr_btc(script, TxLabel::Refund);
+                                    self.syncer_state.watch_addr_btc(script_pubkey, TxLabel::Refund);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
@@ -2064,6 +2087,7 @@ impl Runtime {
                     xmr_locked: false,
                     buy_published: false,
                     cancel_seen: false,
+                    refund_seen: false,
                 }));
                 self.state_update(senders, next_state)?;
             }
