@@ -98,17 +98,25 @@ pub enum Command {
         #[clap(
             short,
             long,
-            default_value = "Testnet",
-            possible_values = &["Testnet", "Mainnet", "Local"]
+            default_value = "testnet",
+            possible_values = &["Testnet", "testnet", "Mainnet", "mainnet", "Local", "local"]
         )]
         network: Network,
 
         /// The chosen arbitrating blockchain.
-        #[clap(long = "arb-blockchain", default_value = "ECDSA", possible_values = &["ECDSA"])]
+        #[clap(
+            long = "arb-blockchain",
+            default_value = "bitcoin",
+            possible_values = &["Bitcoin", "bitcoin", "ECDSA"])
+        ]
         arbitrating_blockchain: Bitcoin<SegwitV0>,
 
         /// The chosen accordant blockchain.
-        #[clap(long = "acc-blockchain", default_value = "Monero", possible_values = &["Monero"])]
+        #[clap(
+            long = "acc-blockchain",
+            default_value = "monero",
+            possible_values = &["Monero", "monero"])
+        ]
         accordant_blockchain: Monero,
 
         /// Amount of arbitrating assets to exchanged.
