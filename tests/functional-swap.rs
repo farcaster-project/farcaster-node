@@ -337,7 +337,7 @@ async fn run_swap(
     // run until the AliceState(Finish) is received
     retry_until_finish_state_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish)".to_string(),
+        "AliceState(Finish".to_string(),
     )
     .await;
 
@@ -373,7 +373,7 @@ async fn run_swap(
     // run until the BobState(Finish) is received
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish)".to_string(),
+        "BobState(Finish".to_string(),
     )
     .await;
 

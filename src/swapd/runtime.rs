@@ -301,7 +301,7 @@ pub enum AliceState {
     // #[display("RefundProcSigs: {0}")]
     #[display("RefundProcSigs")]
     RefundSigA(RefundSigA),
-    #[display("{0}")]
+    #[display("Finish({0})")]
     FinishA(Outcome),
 }
 
@@ -344,7 +344,7 @@ pub enum BobState {
     CorearbB(CoreArbitratingSetup<BtcXmr>, bool), // lock (not signed), cancel_seen
     #[display("BuyProcSig")]
     BuySigB(BuySigB),
-    #[display("Finish")]
+    #[display("Finish({0})")]
     FinishB(Outcome),
 }
 
