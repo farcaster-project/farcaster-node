@@ -13,9 +13,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::syncerd::{
-    opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
-    SweepXmrAddress, TaskId, TaskTarget, WatchHeight, XmrAddressAddendum,
+use crate::{
+    rpc::request::Outcome,
+    syncerd::{
+        opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
+        SweepXmrAddress, TaskId, TaskTarget, WatchHeight, XmrAddressAddendum,
+    },
 };
 use std::{
     any::Any,
@@ -298,8 +301,8 @@ pub enum AliceState {
     // #[display("RefundProcSigs: {0}")]
     #[display("RefundProcSigs")]
     RefundSigA(RefundSigA),
-    #[display("Finish")]
-    FinishA,
+    #[display("{0}")]
+    FinishA(Outcome),
 }
 
 /// Content of Commit state Common to Bob and Alice
@@ -342,7 +345,7 @@ pub enum BobState {
     #[display("BuyProcSig")]
     BuySigB(BuySigB),
     #[display("Finish")]
-    FinishB,
+    FinishB(Outcome),
 }
 
 #[derive(Display, Clone)]
@@ -507,7 +510,7 @@ impl State {
     fn finish(&self) -> bool {
         matches!(
             self,
-            State::Alice(AliceState::FinishA) | State::Bob(BobState::FinishB)
+            State::Alice(AliceState::FinishA(..)) | State::Bob(BobState::FinishB(..))
         )
     }
     fn trade_role(&self) -> Option<TradeRole> {
@@ -1282,15 +1285,15 @@ impl Runtime {
         };
 
         match request {
-            Request::SwapSuccess(success) if source == ServiceId::Farcasterd => {
+            Request::SwapOutcome(success) if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
                     self.swap_id.bright_blue_italic(),
                     format!("Terminating {}", self.identity()).bright_white_bold()
                 );
                 std::process::exit(match success {
-                    true => 0,
-                    false => 1,
+                    request::Outcome::Buy => 0,
+                    _ => 1,
                 });
             }
             Request::SweepXmrAddress(SweepXmrAddress {
@@ -1662,13 +1665,19 @@ impl Runtime {
                             Request::SyncerTask(abort_all),
                         )?;
                         let success = if self.state.b_buy_sig() {
-                            self.state_update(senders, State::Bob(BobState::FinishB))?;
-                            true
+                            self.state_update(
+                                senders,
+                                State::Bob(BobState::FinishB(Outcome::Buy)),
+                            )?;
+                            Outcome::Buy
                         } else {
-                            self.state_update(senders, State::Alice(AliceState::FinishA))?;
-                            false
+                            self.state_update(
+                                senders,
+                                State::Alice(AliceState::FinishA(Outcome::Refund)),
+                            )?;
+                            Outcome::Refund
                         };
-                        let swap_success_req = Request::SwapSuccess(success);
+                        let swap_success_req = Request::SwapOutcome(success);
                         self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
                         self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                         // remove txs to invalidate outdated states
@@ -1725,7 +1734,8 @@ impl Runtime {
                             TxLabel::Refund
                                 if self.state.a_refundsig()
                                     && self.state.a_xmr_locked()
-                                    && !self.state.a_buy_published() =>
+                                // && !self.state.a_buy_published()
+                                =>
                             {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
                                 let req = Request::Tx(Tx::Refund(tx));
@@ -1893,7 +1903,7 @@ impl Runtime {
                             {
                                 // FIXME: swap ends here for alice
                                 // wallet + farcaster
-                                self.state_update(senders, State::Alice(AliceState::FinishA))?;
+                                self.state_update(senders, State::Alice(AliceState::FinishA(Outcome::Buy)))?;
                                 let abort_all = Task::Abort(Abort {
                                     task_target: TaskTarget::AllTasks,
                                     respond: Boolean::False,
@@ -1910,7 +1920,7 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(abort_all),
                                 )?;
-                                let swap_success_req = Request::SwapSuccess(true);
+                                let swap_success_req = Request::SwapOutcome(Outcome::Buy);
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     senders,
@@ -1975,8 +1985,8 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(abort_all),
                                 )?;
-                                self.state_update(senders, State::Bob(BobState::FinishB))?;
-                                let swap_success_req = Request::SwapSuccess(false);
+                                self.state_update(senders, State::Bob(BobState::FinishB(Outcome::Refund)))?;
+                                let swap_success_req = Request::SwapOutcome(Outcome::Refund);
                                 self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
                                 self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                                 // remove txs to invalidate outdated states
@@ -2003,13 +2013,16 @@ impl Runtime {
                                     Request::SyncerTask(abort_all),
                                 )?;
                                 match self.state.swap_role() {
-                                    SwapRole::Alice => self.state_update(senders, State::Alice(AliceState::FinishA))?,
+                                    SwapRole::Alice => self.state_update(
+                                        senders,
+                                        State::Alice(AliceState::FinishA(Outcome::Punish))
+                                    )?,
                                     SwapRole::Bob => {
-                                        warn!("Bob was punished!");
-                                        self.state_update(senders, State::Bob(BobState::FinishB))?
+                                        warn!("{}", "You were punished!".err());
+                                        self.state_update(senders, State::Bob(BobState::FinishB(Outcome::Punish)))?
                                     },
                                 }
-                                let swap_success_req = Request::SwapSuccess(false);
+                                let swap_success_req = Request::SwapOutcome(Outcome::Punish);
                                 self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
                                 self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                                 // remove txs to invalidate outdated states
