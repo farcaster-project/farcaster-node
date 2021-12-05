@@ -174,7 +174,7 @@ impl Exec for Command {
                         }
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
-                    println!("{:#?}\n", offer);
+                    println!("{}\n", offer);
                 }
                 if without_validation || take_offer() {
                     // pass offer to farcasterd to initiate the swap
