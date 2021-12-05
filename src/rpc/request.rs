@@ -20,7 +20,7 @@ use crate::syncerd::{
 };
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable};
+use farcaster_core::{consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable}, negotiation::PublicOfferId};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
 use internet2::addr::InetSocketAddr;
@@ -389,6 +389,10 @@ pub enum Request {
     #[display("list_tasks()")]
     ListTasks,
 
+    #[api(type = 104)]
+    #[display("list_offers()")]
+    ListOffers,
+
     // Can be issued from `cli` to `lnpd`
     #[api(type = 200)]
     #[display("listen({0})")]
@@ -499,6 +503,11 @@ pub enum Request {
     #[display("task_list({0})", alt = "{0:#}")]
     #[from]
     TaskList(List<u64>), // FIXME
+
+    #[api(type = 1106)]
+    #[display("offer_list({0})", alt = "{0:#}")]
+    #[from]
+    OfferList(List<PublicOfferId>),
 
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]

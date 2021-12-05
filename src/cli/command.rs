@@ -79,8 +79,13 @@ impl Exec for Command {
                 runtime.report_response()?;
             }
 
-            Command::Ls => {
+            Command::ListSwaps => {
                 runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
+                runtime.report_response()?;
+            }
+
+            Command::ListOffers => {
+                runtime.request(ServiceId::Farcasterd, Request::ListOffers)?;
                 runtime.report_response()?;
             }
 

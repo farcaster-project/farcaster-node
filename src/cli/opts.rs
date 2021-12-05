@@ -73,7 +73,11 @@ pub enum Command {
 
     /// Lists running swaps
     #[clap(setting = AppSettings::ColoredHelp)]
-    Ls,
+    ListSwaps,
+
+    /// Lists public offers created by daemon
+    #[clap(setting = AppSettings::ColoredHelp)]
+    ListOffers,
 
     /// Maker creates offer and start listening for incoming connections. Command used to to print
     /// the resulting public offer that shall be shared with Taker. Additionally it spins up the

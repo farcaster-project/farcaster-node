@@ -654,6 +654,15 @@ impl Runtime {
                 )?;
             }
 
+            Request::ListOffers => {
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
+                    Request::OfferList(self.public_offers.iter().map(|x| x.id()).collect()),
+                )?;
+            }
+
             Request::MakeOffer(request::ProtoPublicOffer {
                 offer,
                 public_addr,
