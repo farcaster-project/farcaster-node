@@ -1102,10 +1102,10 @@ impl Runtime {
                         sk_a.bright_white_italic()
                     );
                     let sk_b = key_manager.get_or_derive_monero_spend_key()?;
-                    let spend_private = sk_a + sk_b;
+                    let spend = sk_a + sk_b;
                     info!(
                         "Full secret monero spending key: {}",
-                        spend_private.bright_green_bold()
+                        spend.bright_green_bold()
                     );
                     let view_key_alice = *alice_params
                         .accordant_shared_keys
@@ -1125,10 +1125,7 @@ impl Runtime {
                     let view = view_key_alice + view_key_bob;
                     info!("Full secret monero view key: {}", view.bright_green_bold());
                     let network = pub_offer.offer.network.into();
-                    let keypair = monero::KeyPair {
-                        view,
-                        spend: spend_private,
-                    };
+                    let keypair = monero::KeyPair { view, spend };
                     let corresponding_address = monero::Address::from_keypair(network, &keypair);
                     info!("Corresponding address: {}", corresponding_address);
                     let address = self
@@ -1137,7 +1134,7 @@ impl Runtime {
                         .expect("checked at the start of a swap");
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
-                        spend_key: spend_private,
+                        spend_key: spend,
                         address,
                     };
                     senders.send_to(
@@ -1176,10 +1173,10 @@ impl Runtime {
                     );
 
                     let sk_a = key_manager.get_or_derive_monero_spend_key()?;
-                    let spend_key = sk_a + sk_b;
+                    let spend = sk_a + sk_b;
                     info!(
                         "Full secret monero spending key: {}",
-                        spend_key.bright_green_bold()
+                        spend.bright_green_bold()
                     );
 
                     let view_key_bob = *bob_params
@@ -1197,16 +1194,10 @@ impl Runtime {
                         .find(|vk| vk.tag() == &SharedKeyId::new(SHARED_VIEW_KEY_ID))
                         .unwrap()
                         .elem();
-                    let view_key = view_key_alice + view_key_bob;
-                    info!(
-                        "Full secret monero view key: {}",
-                        view_key.bright_green_bold()
-                    );
+                    let view = view_key_alice + view_key_bob;
+                    info!("Full secret monero view key: {}", view.bright_green_bold());
                     let network = pub_offer.offer.network.into();
-                    let keypair = monero::KeyPair {
-                        view: view_key,
-                        spend: spend_key,
-                    };
+                    let keypair = monero::KeyPair { view, spend };
                     let corresponding_address = monero::Address::from_keypair(network, &keypair);
                     info!("Corresponding address: {}", corresponding_address);
                     let address = self
@@ -1214,8 +1205,8 @@ impl Runtime {
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
                     let sweep_keys = SweepXmrAddress {
-                        view_key,
-                        spend_key,
+                        view_key: view,
+                        spend_key: spend,
                         address,
                     };
                     senders.send_to(
