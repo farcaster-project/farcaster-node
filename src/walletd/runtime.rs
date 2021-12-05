@@ -1357,7 +1357,8 @@ impl Runtime {
                     _ => success.err(),
                 };
                 info!(
-                    "{} in swap {}, cleaning up data",
+                    "{} | {} in swap {}, cleaning up data",
+                    swap_id.bright_blue_italic(),
                     &success,
                     &swap_id.bright_blue_italic(),
                 );
