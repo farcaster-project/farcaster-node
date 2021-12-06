@@ -654,12 +654,21 @@ impl Runtime {
                 )?;
             }
 
+            Request::ListOfferIds => {
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
+                    Request::OfferIdList(self.public_offers.iter().map(|public_offer| public_offer.id()).collect()),
+                )?;
+            }
+
             Request::ListOffers => {
                 senders.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
-                    Request::OfferList(self.public_offers.iter().map(|x| x.id()).collect()),
+                    Request::OfferList(self.public_offers.iter().cloned().collect()),
                 )?;
             }
 

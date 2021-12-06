@@ -89,6 +89,11 @@ impl Exec for Command {
                 runtime.report_response()?;
             }
 
+            Command::ListOfferIds => {
+                runtime.request(ServiceId::Farcasterd, Request::ListOfferIds)?;
+                runtime.report_response()?;
+            }
+
             Command::Make {
                 network,
                 arbitrating_blockchain,

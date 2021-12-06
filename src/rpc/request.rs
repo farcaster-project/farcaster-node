@@ -390,6 +390,10 @@ pub enum Request {
     ListTasks,
 
     #[api(type = 104)]
+    #[display("list_offer_ids()")]
+    ListOfferIds,
+
+    #[api(type = 105)]
     #[display("list_offers()")]
     ListOffers,
 
@@ -507,7 +511,12 @@ pub enum Request {
     #[api(type = 1106)]
     #[display("offer_list({0})", alt = "{0:#}")]
     #[from]
-    OfferList(List<PublicOfferId>),
+    OfferIdList(List<PublicOfferId>),
+
+    #[api(type = 1107)]
+    #[display("offer_list({0})", alt = "{0:#}")]
+    #[from]
+    OfferList(List<PublicOffer<BtcXmr>>),
 
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]

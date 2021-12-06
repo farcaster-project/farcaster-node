@@ -75,6 +75,10 @@ pub enum Command {
     #[clap(setting = AppSettings::ColoredHelp)]
     ListSwaps,
 
+    /// Lists IDs of public offers created by daemon
+    #[clap(setting = AppSettings::ColoredHelp)]
+    ListOfferIds,
+
     /// Lists public offers created by daemon
     #[clap(setting = AppSettings::ColoredHelp)]
     ListOffers,
