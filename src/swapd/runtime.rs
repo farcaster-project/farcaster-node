@@ -1879,10 +1879,21 @@ impl Runtime {
                                 && !self.state.a_refund_seen() =>
                             {
                                 trace!("Alice publishes punish tx");
-                                // syncer task
 
                                 let (tx_label, punish_tx) =
                                     self.txs.remove_entry(&TxLabel::Punish).unwrap();
+                                // syncer's watch punish tx task
+                                {
+                                    let txid = punish_tx.clone().txid();
+                                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        self.syncer_state.bitcoin_syncer(),
+                                        Request::SyncerTask(task),
+                                    )?;
+                                }
+
                                 self.broadcast(punish_tx, tx_label, senders)?;
                             }
 
