@@ -36,6 +36,10 @@ use tokio::sync::Mutex;
 
 use hex;
 
+fn info(p: String) -> impl Fn(String) {
+    move |s| info!("{} {}", p.bright_white_bold(), s)
+}
+
 #[derive(Debug, Clone)]
 pub struct MoneroRpc {
     height: u64,
@@ -471,7 +475,7 @@ fn height_polling(
             if let Some(block_notif) = block_notif {
                 let mut state_guard = state.lock().await;
                 state_guard
-                    .change_height(block_notif.height, block_notif.block_hash)
+                    .change_height(block_notif.height, block_notif.block_hash, info("Monero".to_string()))
                     .await;
                 let mut transactions = state_guard.transactions.clone();
                 drop(state_guard);

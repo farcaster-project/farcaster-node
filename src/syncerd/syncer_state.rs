@@ -327,7 +327,7 @@ impl SyncerState {
         self.tasks_sources.insert(self.task_count.into(), source);
     }
 
-    pub async fn change_height(&mut self, height: u64, block: Vec<u8>) -> bool {
+    pub async fn change_height(&mut self, height: u64, block: Vec<u8>, log: impl Fn(String)) -> bool {
         if self.block_height != height || self.block_hash != block {
             self.block_height = height;
             self.block_hash = block.clone();
@@ -336,6 +336,7 @@ impl SyncerState {
 
             // Emit a height_changed event
             for (id, task) in self.watch_height.iter() {
+                log(format!("new height: {}", self.block_height));
                 send_event(
                     &self.tx_event,
                     &mut vec![(

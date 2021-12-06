@@ -54,6 +54,10 @@ use hex;
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
 
+fn info(p: String) -> impl Fn(String) {
+    move |s| info!("{} {}", p.bright_white_bold(), s)
+}
+
 pub struct ElectrumRpc {
     client: Client,
     height: u64,
@@ -642,7 +646,7 @@ fn height_polling(
 
             let mut state_guard = state.lock().await;
             state_guard
-                .change_height(rpc.height, rpc.block_hash.to_vec())
+                .change_height(rpc.height, rpc.block_hash.to_vec(), info("Bitcoin".to_string()))
                 .await;
             drop(state_guard);
             // inner loop actually polls
@@ -666,7 +670,7 @@ fn height_polling(
                 let mut block_change = false;
                 for block_notif in blocks.drain(..) {
                     block_change = state_guard
-                        .change_height(block_notif.height, block_notif.block_hash.to_vec())
+                        .change_height(block_notif.height, block_notif.block_hash.to_vec(), info("Bitcoin".to_string()))
                         .await;
                 }
                 drop(state_guard);
