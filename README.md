@@ -8,7 +8,15 @@
 
 :warning: **THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET**
 
-This project is called the **Farcaster Node**, it is _a collection of microservices for running cross-chain atomic swaps_. Currently the node is focused on Bitcoin-Monero atomic swaps, but is designed to be flexible and integrate new crypto-pairs in the future.
+The **Farcaster Node** is _a collection of microservices for running cross-chain atomic swaps_. Currently the node is focused on Bitcoin-Monero atomic swaps, but is designed to be flexible and integrate new crypto-pairs in the future.
+
+Microservices currently implemented:
+  * farcasterd (1 instance): the swap manager, it is aware of every initiated swap and interconnects all the other microservices, launches and kills other microservices, exposes an API for the swap-cli client
+  * swapd (1 instance per swap): control centre for an individual swap -- keeps track of the swap's state as it runs the protocol's state machine, and orchestrates the swap with peerd for communicating with swap counterparty, walletd for signing, and syncers for blockchain interactions.
+  * walletd (1 instance): where secret keys live, where transactions are signed, coordinates with swapd
+  * swap-cli: stateless terminal client (=executes a single command and terminates) that commands farcasterd, for taking or making offers, for example
+  * peerd (1 instance per peer connection): handles the connection to an individual peer,
+  * syncerd (1 instance per blockchain, i.e. one for monero and one for bitcoin): interface for getting updates of the blockchain and for broadcasting transactions
 
 Farcaster Node is build on atomic swap primitives described in the [RFCs](https://github.com/farcaster-project/RFCs) and implemented in [Farcaster Core](https://github.com/farcaster-project/farcaster-core).
 
