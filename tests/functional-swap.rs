@@ -240,7 +240,7 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
 async fn make_and_take_offer(
     data_dir_maker: Vec<String>,
     data_dir_taker: Vec<String>,
-    role: String,
+    maker_role: String,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     btc_amount: String,
@@ -267,7 +267,7 @@ async fn make_and_take_offer(
 
     let cli_make_args = make_offer_args(
         data_dir_maker.clone(),
-        role,
+        maker_role,
         btc_addr.clone(),
         btc_amount,
         xmr_addr.clone(),
