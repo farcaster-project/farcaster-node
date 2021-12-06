@@ -84,16 +84,16 @@ impl Exec for Command {
                 runtime.report_response()?;
             }
 
+            // TODO: only list offers matching list of OfferIds
             Command::ListOffers => {
                 runtime.request(ServiceId::Farcasterd, Request::ListOffers)?;
                 runtime.report_response()?;
             }
 
-            Command::ListOfferIds => {
-                runtime.request(ServiceId::Farcasterd, Request::ListOfferIds)?;
-                runtime.report_response()?;
-            }
-
+            // Command::ListOfferIds => {
+            //     runtime.request(ServiceId::Farcasterd, Request::ListOfferIds)?;
+            //     runtime.report_response()?;
+            // }
             Command::Make {
                 network,
                 arbitrating_blockchain,

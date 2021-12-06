@@ -93,24 +93,6 @@ _arguments "${_arguments_options[@]}" \
 '*--verbose[Set verbosity level]' \
 && ret=0
 ;;
-(list-offer-ids)
-_arguments "${_arguments_options[@]}" \
-'-d+[Data directory path]: :_files -/' \
-'--data-dir=[Data directory path]: :_files -/' \
-'-T+[Use Tor]: :_hosts' \
-'--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
-'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
-'-h[Print help information]' \
-'--help[Print help information]' \
-'-V[Print version information]' \
-'--version[Print version information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
-&& ret=0
-;;
 (list-offers)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]: :_files -/' \
@@ -239,7 +221,6 @@ _swap-cli_commands() {
 'info:General information about the running node' \
 'peers:Lists existing peer connections' \
 'list-swaps:Lists running swaps' \
-'list-offer-ids:Lists IDs of public offers created by daemon' \
 'list-offers:Lists public offers created by daemon' \
 'make:Maker creates offer and start listening for incoming connections. Command used to to print the resulting public offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer' \
 'take:Taker accepts offer and connects to maker'\''s daemon to start the trade' \
@@ -257,11 +238,6 @@ _swap-cli__help_commands() {
 _swap-cli__info_commands() {
     local commands; commands=()
     _describe -t commands 'swap-cli info commands' commands "$@"
-}
-(( $+functions[_swap-cli__list-offer-ids_commands] )) ||
-_swap-cli__list-offer-ids_commands() {
-    local commands; commands=()
-    _describe -t commands 'swap-cli list-offer-ids commands' commands "$@"
 }
 (( $+functions[_swap-cli__list-offers_commands] )) ||
 _swap-cli__list-offers_commands() {
