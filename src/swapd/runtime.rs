@@ -262,7 +262,7 @@ struct SyncerTasks {
     counter: u32,
     watched_txs: HashMap<TaskId, TxLabel>,
     watched_addrs: HashMap<TaskId, TxLabel>,
-    retrieving_txs: HashMap<TaskId, TxLabel>,
+    retrieving_txs: HashMap<TaskId, (TxLabel, Task)>,
     sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
     txids: HashMap<TxLabel, Txid>,
@@ -772,11 +772,14 @@ impl SyncerState {
     }
     fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        self.tasks.retrieving_txs.insert(id, tx_label);
-        Task::GetTx(GetTx {
+        let task = Task::GetTx(GetTx {
             id,
             hash: txid.to_vec(),
-        })
+        });
+        self.tasks
+            .retrieving_txs
+            .insert(id, (tx_label, task.clone()));
+        task
     }
     fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
@@ -1738,10 +1741,11 @@ impl Runtime {
                     Event::TransactionRetrieved(TransactionRetrieved { id, tx: Some(tx) })
                         if self.syncer_state.tasks.retrieving_txs.contains_key(id) =>
                     {
-                        let txlabel = self.syncer_state.tasks.retrieving_txs.get(id).unwrap();
+                        let (txlabel, _) =
+                            self.syncer_state.tasks.retrieving_txs.remove(id).unwrap();
                         match txlabel {
                             TxLabel::Buy if self.state.b_buy_sig() => {
-                                log_tx_seen(self.swap_id, txlabel, &tx.txid());
+                                log_tx_seen(self.swap_id, &txlabel, &tx.txid());
                                 self.state.b_sup_buysig_buy_tx_seen();
                                 let req = Request::Tx(Tx::Buy(tx.clone()));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
@@ -1761,7 +1765,7 @@ impl Runtime {
                                 // && !self.state.a_buy_published()
                                 =>
                             {
-                                log_tx_seen(self.swap_id, txlabel, &tx.txid());
+                                log_tx_seen(self.swap_id, &txlabel, &tx.txid());
                                 let req = Request::Tx(Tx::Refund(tx.clone()));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
                             }
@@ -1772,6 +1776,20 @@ impl Runtime {
                                 )
                             }
                         }
+                    }
+
+                    Event::TransactionRetrieved(TransactionRetrieved { id, tx: None })
+                        if self.syncer_state.tasks.retrieving_txs.contains_key(id) =>
+                    {
+                        let (txlabel, task) =
+                            self.syncer_state.tasks.retrieving_txs.get(id).unwrap();
+                        std::thread::sleep(core::time::Duration::from_millis(500));
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task.clone()),
+                        )?;
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
