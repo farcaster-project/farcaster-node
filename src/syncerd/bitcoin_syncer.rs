@@ -449,44 +449,31 @@ async fn run_syncerd_task_receiver(
                 Ok(syncerd_task) => {
                     match syncerd_task.task {
                         Task::GetTx(task) => {
-                            match Client::new(&electrum_server).and_then(|transaction_client| {
-                                transaction_client.transaction_get(
-                                    &bitcoin::Txid::from_slice(&task.hash).unwrap(),
-                                )
-                            }) {
-                                Ok(tx) => {
-                                    tx_event
-                                        .send(SyncerdBridgeEvent {
-                                            event: Event::TransactionRetrieved(
-                                                TransactionRetrieved {
-                                                    id: task.id,
-                                                    tx: Some(tx),
-                                                },
-                                            ),
-                                            source: syncerd_task.source,
-                                        })
-                                        .await
-                                        .expect("error sending transaction retrieved event");
-                                    info!(
-                                        "successfully retrieved tx: {:?}",
-                                        hex::encode(task.hash)
-                                    );
-                                }
-                                Err(e) => {
-                                    tx_event
-                                        .send(SyncerdBridgeEvent {
-                                            event: Event::TransactionRetrieved(
-                                                TransactionRetrieved {
-                                                    id: task.id,
-                                                    tx: None,
-                                                },
-                                            ),
-                                            source: syncerd_task.source,
-                                        })
-                                        .await
-                                        .expect("error sending transaction retrieved event");
-                                    info!("failed to retrieved tx: {:?}", e);
-                                }
+                            let txid = &bitcoin::Txid::from_slice(&task.hash).unwrap();
+                            // hangs here till tx is available on electrum
+                            while let Err(e) =
+                                Client::new(&electrum_server).and_then(|transaction_client| {
+                                    transaction_client.transaction_get(txid)
+                                })
+                            {
+                                info!("failed to retrieved tx: {:?}", e);
+                            }
+                            if let Ok(tx) =
+                                Client::new(&electrum_server).and_then(|transaction_client| {
+                                    transaction_client.transaction_get(txid)
+                                })
+                            {
+                                tx_event
+                                    .send(SyncerdBridgeEvent {
+                                        event: Event::TransactionRetrieved(TransactionRetrieved {
+                                            id: task.id,
+                                            tx: Some(tx),
+                                        }),
+                                        source: syncerd_task.source,
+                                    })
+                                    .await
+                                    .expect("error sending transaction retrieved event");
+                                info!("successfully retrieved tx: {:?}", hex::encode(task.hash));
                             }
                         }
                         Task::SweepAddress(_) => {
