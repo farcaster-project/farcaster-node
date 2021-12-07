@@ -337,7 +337,7 @@ async fn run_swap(
     // run until the AliceState(Finish) is received
     retry_until_finish_state_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish".to_string(),
+        "AliceState(Finish(Success(Swapped)))".to_string(),
     )
     .await;
 
@@ -372,14 +372,15 @@ async fn run_swap(
 
     // generate some blocks on monero's side
     monero_regtest
-        .generate_blocks(11, reusable_xmr_address())
+        .generate_blocks(10, reusable_xmr_address())
         .await
         .unwrap();
 
     // run until the BobState(Finish) is received
-    retry_until_finish_state_transition(
+    retry_until_bob_finish_state_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish".to_string(),
+        "BobState(Finish(Success(Swapped)))".to_string(),
+        monero_regtest.clone(),
     )
     .await;
 
@@ -613,6 +614,43 @@ async fn retry_until_monero_funding_address(args: Vec<String>) -> monero::Addres
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
     panic!("timeout before any monero funding address could be retrieved");
+}
+
+async fn retry_until_bob_finish_state_transition(
+    args: Vec<String>,
+    finish_state: String,
+    monero_regtest: monero_rpc::RegtestDaemonClient,
+) -> Vec<String> {
+    for _ in 0..ALLOWED_RETRIES {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+
+        let bob_finish: Vec<String> = stdout
+            .iter()
+            .filter_map(|element| {
+                println!("element: {:?}", element);
+                if element.contains(&finish_state) {
+                    Some(element.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !bob_finish.is_empty() {
+            return bob_finish;
+        }
+
+        monero_regtest
+            .generate_blocks(1, reusable_xmr_address())
+            .await
+            .unwrap();
+
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
+    panic!(
+        "timeout before finish state {:?} could be retrieved",
+        finish_state
+    );
 }
 
 async fn retry_until_finish_state_transition(
