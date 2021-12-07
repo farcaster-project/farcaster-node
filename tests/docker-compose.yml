@@ -36,6 +36,7 @@ services:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         environment:
             MONEROD_ADDRESS: monerod:18081
+            WALLET_RPC_PORT: 18083
         depends_on:
             - "monerod"
         ports:
@@ -44,6 +45,7 @@ services:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         environment:
             MONEROD_ADDRESS: monerod:18081
+            WALLET_RPC_PORT: 18083
         depends_on:
             - "monerod"
         ports:
@@ -52,6 +54,7 @@ services:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
         environment:
             MONEROD_ADDRESS: monerod:18081
+            WALLET_RPC_PORT: 18083
         depends_on:
             - "monerod"
         ports:
