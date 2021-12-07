@@ -312,15 +312,34 @@ async fn run_refund_swap_kill_bob_before_monero_funding(
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
-    bob_farcasterd.kill().expect("Couldn't kill farcasterd");
-    let _procs: Vec<_> = System::new_all()
+    let sys = System::new_all();
+    let procs: Vec<_> = sys
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["swapd", "walletd", "syncerd"].contains(&process.name())
+            ["farcasterd"].contains(&process.name())
                 && [bob_farcasterd.id()].contains(&(process.parent().unwrap() as u32))
         })
+        // .map(|(pid, _process)| {
+        // println!("process: {:?}", pid);
+        // nix::sys::signal::kill(
+        // nix::unistd::Pid::from_raw(*pid as i32),
+        // nix::sys::signal::Signal::SIGINT,
+        // )
+        // .expect("Sending CTRL-C failed")
+        // })
+        .collect();
+    println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
+
+    let _procs: Vec<_> = sys
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| {
+            ["walletd", "syncerd", "peerd", "swapd"].contains(&process.name())
+                && procs[0].0 == &(process.parent().unwrap())
+        })
         .map(|(pid, _process)| {
+            println!("process: {:?}", pid);
             nix::sys::signal::kill(
                 nix::unistd::Pid::from_raw(*pid as i32),
                 nix::sys::signal::Signal::SIGINT,
@@ -328,6 +347,16 @@ async fn run_refund_swap_kill_bob_before_monero_funding(
             .expect("Sending CTRL-C failed")
         })
         .collect();
+
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(*procs[0].0),
+        nix::sys::signal::Signal::SIGINT,
+    )
+    .expect("Sending CTRL-C failed");
+
+    bob_farcasterd.kill().expect("Couldn't kill farcasterd");
+
+    tokio::time::sleep(time::Duration::from_secs(200)).await;
 
     // run until the alice has the monero funding address
     let monero_address = retry_until_monero_funding_address(cli_alice_progress_args.clone()).await;
@@ -605,7 +634,8 @@ fn cleanup_processes(
 ) {
     // clean up processes
     if farcasterd_maker.is_some() {
-        farcasterd_maker.unwrap()
+        farcasterd_maker
+            .unwrap()
             .kill()
             .expect("Couldn't kill farcasterd maker")
     };
