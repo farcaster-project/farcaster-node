@@ -1871,6 +1871,9 @@ impl Runtime {
                     Event::SweepSuccess(event) => {
                         debug!("{}", event)
                     }
+                    Event::TransactionRetrieved(event) => {
+                        debug!("{}", event)
+                    }
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) if self.state.reveal() => {

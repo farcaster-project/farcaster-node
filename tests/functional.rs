@@ -33,7 +33,7 @@ use std::str::FromStr;
 
 use farcaster_core::blockchain::Network;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, Task,
+    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, GetTx, Task,
     WatchAddress, WatchHeight, WatchTransaction,
 };
 
@@ -73,6 +73,60 @@ make_polling_test!(bitcoin_syncer_block_height_test);
 make_polling_test!(bitcoin_syncer_address_test);
 make_polling_test!(bitcoin_syncer_transaction_test);
 make_polling_test!(bitcoin_syncer_broadcast_tx_test);
+
+#[test]
+#[timeout(300000)]
+#[ignore]
+fn bicoin_syncer_retrieve_transaction_test() {
+    let bitcoin_rpc = bitcoin_setup();
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
+
+    let (tx, rx_event) = create_bitcoin_syncer(true, "transaction");
+
+    let txid = bitcoin_rpc
+        .send_to_address(
+            &address,
+            bitcoin::Amount::from_sat(500),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+    let duration = std::time::Duration::from_secs(30);
+    std::thread::sleep(duration);
+
+    let task = SyncerdTask {
+        task: Task::GetTx(GetTx {
+            id: TaskId(1),
+            hash: txid.to_vec(),
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    println!("received request: {:?}", request);
+}
+
+fn assert_transaction_received(request: Request, expected_txid: bitcoin::Txid) {
+    match request {
+        Request::SyncerdBridgeEvent(event) => match event.event {
+            Event::TransactionRetrieved(transaction) => {
+                assert_eq!(transaction.tx.unwrap().txid(), expected_txid);
+            }
+            _ => {
+                panic!("expected height changed event");
+            }
+        },
+        _ => {
+            panic!("expected syncerd bridge event");
+        }
+    }
+}
 
 /*
 We test for the following scenarios in the block height tests:

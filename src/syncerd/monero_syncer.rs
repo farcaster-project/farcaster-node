@@ -338,6 +338,9 @@ async fn run_syncerd_task_receiver(
             match syncerd_task {
                 Ok(syncerd_task) => {
                     match syncerd_task.task {
+                        Task::GetTx(_) => {
+                            error!("get tx not implemented for monero syncer");
+                        }
                         Task::SweepAddress(task) => match task.addendum.clone() {
                             SweepAddressAddendum::Monero(sweep) => {
                                 let addr = sweep.address;
