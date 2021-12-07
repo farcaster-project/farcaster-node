@@ -16,8 +16,8 @@
 use crate::{
     rpc::request::Outcome,
     syncerd::{
-        opts::Coin, Abort, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
-        SweepXmrAddress, TaskId, TaskTarget, WatchHeight, XmrAddressAddendum,
+        opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
+        SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
     },
 };
 use std::{
@@ -134,8 +134,9 @@ pub fn run(
         counter: 0,
         watched_addrs: none!(),
         watched_txs: none!(),
+        retrieving_txs: none!(),
         sweeping_addr: none!(),
-        script_pubkey: none!(),
+        txids: none!(),
     };
     let syncer_state = SyncerState {
         swap_id,
@@ -261,9 +262,10 @@ struct SyncerTasks {
     counter: u32,
     watched_txs: HashMap<TaskId, TxLabel>,
     watched_addrs: HashMap<TaskId, TxLabel>,
+    retrieving_txs: HashMap<TaskId, TxLabel>,
     sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
-    script_pubkey: Option<Script>,
+    txids: HashMap<TxLabel, Txid>,
 }
 
 impl SyncerTasks {
@@ -768,6 +770,14 @@ impl SyncerState {
             confirmation_bound: self.confirmation_bound,
         })
     }
+    fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
+        let id = self.tasks.new_taskid();
+        self.tasks.retrieving_txs.insert(id, tx_label);
+        Task::GetTx(GetTx {
+            id,
+            hash: txid.to_vec(),
+        })
+    }
     fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         let from_height = self.height(Coin::Bitcoin);
@@ -1204,13 +1214,7 @@ impl Runtime {
                                 Request::SyncerTask(task),
                             )?;
                             if tx_label == TxLabel::Refund {
-                                let script_pubkey = if tx.output.len() == 1 {
-                                    tx.output[0].script_pubkey.clone()
-                                } else {
-                                    error!("more than one output");
-                                    return Ok(());
-                                };
-                                self.syncer_state.tasks.script_pubkey = Some(script_pubkey);
+                                self.syncer_state.tasks.txids.insert(TxLabel::Refund, txid);
                             }
                         }
                         self.send_wallet(msg_bus, senders, request)?;
@@ -1716,10 +1720,30 @@ impl Runtime {
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
+                            txlabel => {
+                                error!(
+                                    "address transaction event not supported for tx {} at state {}",
+                                    txlabel, &self.state
+                                )
+                            }
+                        }
+                    }
+                    Event::AddressTransaction(AddressTransaction { tx, .. }) => {
+                        let tx = bitcoin::Transaction::deserialize(tx)?;
+                        warn!(
+                            "unknown address transaction with txid {}",
+                            &tx.txid().addr()
+                        )
+                    }
+                    Event::TransactionRetrieved(TransactionRetrieved { id, tx: Some(tx) })
+                        if self.syncer_state.tasks.retrieving_txs.contains_key(id) =>
+                    {
+                        let txlabel = self.syncer_state.tasks.retrieving_txs.get(id).unwrap();
+                        match txlabel {
                             TxLabel::Buy if self.state.b_buy_sig() => {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
                                 self.state.b_sup_buysig_buy_tx_seen();
-                                let req = Request::Tx(Tx::Buy(tx));
+                                let req = Request::Tx(Tx::Buy(tx.clone()));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
                             }
                             TxLabel::Buy => {
@@ -1738,23 +1762,16 @@ impl Runtime {
                                 =>
                             {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
-                                let req = Request::Tx(Tx::Refund(tx));
+                                let req = Request::Tx(Tx::Refund(tx.clone()));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?
                             }
                             txlabel => {
                                 error!(
-                                    "address transaction event not supported for tx {} at state {}",
+                                    "Transaction retrieved event not supported for tx {} at state {}",
                                     txlabel, &self.state
                                 )
                             }
                         }
-                    }
-                    Event::AddressTransaction(AddressTransaction { tx, .. }) => {
-                        let tx = bitcoin::Transaction::deserialize(tx)?;
-                        warn!(
-                            "unknown address transaction with txid {}",
-                            &tx.txid().addr()
-                        )
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
                         id,
@@ -1972,14 +1989,14 @@ impl Runtime {
                             }
                             TxLabel::Buy
                                 if self.state.swap_role() == SwapRole::Bob
-                                    && self.syncer_state.tasks.script_pubkey.is_some() =>
+                                    && self.syncer_state.tasks.txids.contains_key(txlabel) =>
                             {
-                                debug!("subscribe Buy address task");
-                                let script = self
+                                debug!("request Buy tx task");
+                                let (txlabel, txid) = self
                                     .syncer_state
                                     .tasks
-                                    .script_pubkey.as_mut().cloned().unwrap();
-                                let task = self.syncer_state.watch_addr_btc(script, TxLabel::Buy);
+                                    .txids.remove_entry(txlabel).unwrap();
+                                let task = self.syncer_state.retrieve_tx_btc(txid, txlabel);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
@@ -1990,16 +2007,16 @@ impl Runtime {
                             TxLabel::Refund
                                 if self.state.swap_role() == SwapRole::Alice
                                     && !self.state.a_refund_seen()
-                                    && self.syncer_state.tasks.script_pubkey.is_some() =>
+                                    && self.syncer_state.tasks.txids.contains_key(txlabel) =>
                             {
                                 debug!("subscribe Refund address task");
                                 self.state.a_sup_refundsig_refund_seen();
-                                let script = self
+                                let (txlabel, txid) = self
                                     .syncer_state
                                     .tasks
-                                    .script_pubkey.as_mut().cloned().unwrap();
+                                    .txids.remove_entry(txlabel).unwrap();
                                 let task =
-                                    self.syncer_state.watch_addr_btc(script, TxLabel::Refund);
+                                    self.syncer_state.retrieve_tx_btc(txid, txlabel);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
@@ -2204,7 +2221,8 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig))
-                if self.state.b_core_arb() && self.syncer_state.tasks.script_pubkey.is_none() =>
+                if self.state.b_core_arb()
+                    && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
             {
                 debug!("subscribing with syncer for receiving raw buy tx ");
 
@@ -2218,15 +2236,8 @@ impl Runtime {
                     self.syncer_state.bitcoin_syncer(),
                     Request::SyncerTask(task),
                 )?;
-
-                let script_pubkey = if buy_tx.output.len() == 1 {
-                    buy_tx.output[0].script_pubkey.clone()
-                } else {
-                    error!("more than one output");
-                    return Ok(());
-                };
                 // set external address: needed to subscribe for buy tx (bob) or refund (alice)
-                self.syncer_state.tasks.script_pubkey = Some(script_pubkey);
+                self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
 
                 let pending_request = PendingRequest {
                     request,
