@@ -246,19 +246,19 @@ _swap-cli() {
                     return 0
                     ;;
                 --network)
-                    COMPREPLY=($(compgen -W "Testnet Mainnet Local" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "Testnet testnet Mainnet mainnet Local local" -- "${cur}"))
                     return 0
                     ;;
                 -n)
-                    COMPREPLY=($(compgen -W "Testnet Mainnet Local" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "Testnet testnet Mainnet mainnet Local local" -- "${cur}"))
                     return 0
                     ;;
                 --arb-blockchain)
-                    COMPREPLY=($(compgen -W "ECDSA" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "Bitcoin bitcoin ECDSA" -- "${cur}"))
                     return 0
                     ;;
                 --acc-blockchain)
-                    COMPREPLY=($(compgen -W "Monero" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "Monero monero" -- "${cur}"))
                     return 0
                     ;;
                 --btc-amount)

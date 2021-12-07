@@ -76,8 +76,6 @@ swap1-cli make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
     --xmr-amount "0.001 XMR"
 ```
 
-:mag_right: Default value `ECDSA` for `--arb-blockchain` is a temporary hack, but it represents `Bitcoin<ECDSA>`, as Bitcoin can take many forms.
-
 The command will create a public offer based on the chosen parameters, spin up a listening `peerd` (in that case `0.0.0.0:9735`), and return the encoded offer (starting with `Offer:...`).
 
 This public offer should be shared by maker with taker. It also contains information on how to connect to maker (in that case `127.0.0.1:9735`). Additionally, it adds the public offers to the set of public offers in `farcasterd` that will be later used to initiate the swap upon takers requests.

@@ -97,10 +97,10 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 '--btc-addr=[Bitcoin address used as destination or refund address]' \
 '--xmr-addr=[Monero address used as destination or refund address]' \
-'-n+[Network to use to execute the swap between the chosen blockchains]: :(Testnet Mainnet Local)' \
-'--network=[Network to use to execute the swap between the chosen blockchains]: :(Testnet Mainnet Local)' \
-'--arb-blockchain=[The chosen arbitrating blockchain]: :(ECDSA)' \
-'--acc-blockchain=[The chosen accordant blockchain]: :(Monero)' \
+'-n+[Network to use to execute the swap between the chosen blockchains]: :(Testnet testnet Mainnet mainnet Local local)' \
+'--network=[Network to use to execute the swap between the chosen blockchains]: :(Testnet testnet Mainnet mainnet Local local)' \
+'--arb-blockchain=[The chosen arbitrating blockchain]: :(Bitcoin bitcoin ECDSA)' \
+'--acc-blockchain=[The chosen accordant blockchain]: :(Monero monero)' \
 '--btc-amount=[Amount of arbitrating assets to exchanged]' \
 '--xmr-amount=[Amount of accordant assets to exchanged]' \
 '-r+[The future maker swap role, either Alice of Bob. This will dictate with asset will be exchanged for which asset. Alice will sell accordant assets for arbitrating ones and Bob the inverse, sell arbitrating assets for accordant ones]: :(Alice Bob)' \
