@@ -72,12 +72,12 @@ pub enum Command {
     Peers,
 
     /// Lists running swaps
-    #[clap(setting = AppSettings::ColoredHelp)]
+    #[clap(aliases = &["ls", "ls-swaps"], setting = AppSettings::ColoredHelp)]
     ListSwaps,
 
     // TODO: only list offers matching list of OfferIds
     /// Lists public offers created by daemon
-    #[clap(setting = AppSettings::ColoredHelp)]
+    #[clap(aliases = &["ls-offers"], setting = AppSettings::ColoredHelp)]
     ListOffers,
 
     // /// Lists IDs of public offers created by daemon
