@@ -97,7 +97,7 @@ async fn swap_bob_maker_refund() {
     )
     .await;
 
-    // cleanup_processes(None, farcasterd_taker);
+    cleanup_processes(None, farcasterd_taker);
 }
 
 #[tokio::test]
