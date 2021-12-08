@@ -11,12 +11,13 @@
 The **Farcaster Node** is _a collection of microservices for running cross-chain atomic swaps_. Currently the node is focused on Bitcoin-Monero atomic swaps, but is designed to be flexible and integrate new crypto-pairs in the future.
 
 Microservices currently implemented:
-  * farcasterd (1 instance): the swap manager, it is aware of every initiated swap and interconnects all the other microservices, launches and kills other microservices, exposes an API for the swap-cli client
-  * swapd (1 instance per swap): control centre for an individual swap -- keeps track of the swap's state as it runs the protocol's state machine, and orchestrates the swap with peerd for communicating with swap counterparty, walletd for signing, and syncers for blockchain interactions.
-  * walletd (1 instance): where secret keys live, where transactions are signed, coordinates with swapd
-  * swap-cli: stateless terminal client (=executes a single command and terminates) that commands farcasterd, for taking or making offers, for example
-  * peerd (1 instance per peer connection): handles the connection to an individual peer,
-  * syncerd (1 instance per blockchain, i.e. one for monero and one for bitcoin): interface for getting updates of the blockchain and for broadcasting transactions
+
+- farcasterd (1 instance): the swap manager, it is aware of every initiated swap and interconnects all the other microservices, launches and kills other microservices, exposes an API for the swap-cli client
+- swapd (1 instance per swap): control centre for an individual swap -- keeps track of the swap's state as it runs the protocol's state machine, and orchestrates the swap with peerd for communicating with swap counterparty, walletd for signing, and syncers for blockchain interactions.
+- walletd (1 instance): where secret keys live, where transactions are signed, coordinates with swapd
+- swap-cli: stateless terminal client (=executes a single command and terminates) that commands farcasterd, for taking or making offers, for example
+- peerd (1 instance per peer connection): handles the connection to an individual peer,
+- syncerd (1 instance per blockchain, i.e. one for monero and one for bitcoin): interface for getting updates of the blockchain and for broadcasting transactions
 
 Farcaster Node is build on atomic swap primitives described in the [RFCs](https://github.com/farcaster-project/RFCs) and implemented in [Farcaster Core](https://github.com/farcaster-project/farcaster-core).
 
@@ -24,9 +25,9 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 
 ## Build and run
 
-Follow the instruction for [`installing the node`](./doc/install-guide.md) on your machine by compiling sources or using containers.
+Follow the instruction for [`installing the node`](./doc/install-guide.md) on your machine by compiling sources or using containers and then follow the instructions below to launch the node.
 
-### From sources
+### Built from sources
 
 If you installed the node on your machine from sources (i.e. not using Docker) you can now launch the services needed to swap.
 
@@ -64,76 +65,6 @@ farcasterd -vv
 
 :mag_right: You can find more details about the [configuration](#configuration) below.
 
-In another terminal you can now interact with the node with the cli.
-
-```
-swap-cli info
-```
-
-Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` give the state of a given swap.
-
-With those commands and farcasterd logs you should be able to follow your swaps.
-
-Checkout the documentaion on [how to use the node](#usage) for more details.
-
-### With docker
-
-If you did use Docker you are already all setup, the node and the wallet are running and you can interact with `farcasterd` container (when in the same folder as the `docker-compose.yml`) using the cli
-
-```
-docker-compose exec farcasterd swap-cli info
-```
-
-Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` give the state of a given swap.
-
-With those commands and farcasterd logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`) you should be able to follow your swaps.
-
-Checkout the documentaion on [how to use the node](#usage) for more details.
-
----
-
-The following section explain how to build and run Farcaster node locally or within containers through Docker and Docker compose.
-
-### Locally
-
-To compile the node please install [Rust](https://www.rust-lang.org/tools/install) then run the following commands:
-
-```bash
-sudo apt install -y apt-utils git libssl-dev pkg-config build-essential cmake
-git clone https://github.com/farcaster-project/farcaster-node.git && cd farcaster-node
-cargo install --path . --bins --all-features --locked
-```
-
-Farcaster needs to connect to tree services to do actions on-chain and track on-chain events. Needed services are: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
-
-You can launch all the needed services locally by running the following commands:
-
-```sh
-bitcoind -server -testnet
-electrs --network testnet
-monerod --stagenet
-monero-wallet-rpc --stagenet --rpc-bind-port 38083\
-    --disable-rpc-login\
-    --trusted-daemon\
-    --password "pw"\
-    --wallet-dir ~/.fc_monero_wallets
-```
-
-Then start the node with:
-
-```
-farcasterd -vv -c farcasterd.toml
-```
-
-with `farcasterd.toml` configuration file:
-
-```toml
-[syncers.testnet]
-electrum_server = "tcp://localhost:60001"
-monero_daemon = "http://localhost:38081"
-monero_rpc_wallet = "http://localhost:38083"
-```
-
 #### Connect a client
 
 Once `farcasterd` is up & running you can issue commands to control its actions with a client. For the time being, only one client is provided within this repo: `swap-cli`.
@@ -146,11 +77,25 @@ swap-cli info
 
 Run `help` command for more details about available commands.
 
-### With docker
+Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` give the state of a given swap.
 
-You can follow the documentation on [how to use `farcasterd` with Docker](./doc/docker-stack.md) and [how to connect a remote client to `farcasterd`](./doc/docker-stack.md#connect-a-client).
+With those commands and farcasterd logs you should be able to follow your swaps.
 
-Running `monero-wallet-rpc` is also possible with Docker, see [run `monero rpc wallet`](./doc/docker-stack.md#run-monero-rpc-wallet) for more details.
+Checkout the documentaion on [how to use the node](#usage) for more details.
+
+### Run with docker
+
+If you did use Docker you are already all setup, the node and the wallet are running and you can interact with `farcasterd` container (when in the same folder as the `docker-compose.yml`) using the cli
+
+```
+docker-compose exec farcasterd swap-cli info
+```
+
+Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` give the state of a given swap.
+
+With those commands and farcasterd logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`) you should be able to follow your swaps.
+
+Checkout the documentaion on [how to use the node](#usage) for more details.
 
 ### Configuration
 
