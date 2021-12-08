@@ -320,14 +320,6 @@ async fn run_refund_swap_kill_bob_before_monero_funding(
             ["farcasterd"].contains(&process.name())
                 && [bob_farcasterd.id()].contains(&(process.parent().unwrap() as u32))
         })
-        // .map(|(pid, _process)| {
-        // println!("process: {:?}", pid);
-        // nix::sys::signal::kill(
-        // nix::unistd::Pid::from_raw(*pid as i32),
-        // nix::sys::signal::Signal::SIGINT,
-        // )
-        // .expect("Sending CTRL-C failed")
-        // })
         .collect();
     println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
 
