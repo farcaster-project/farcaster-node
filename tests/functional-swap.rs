@@ -666,17 +666,13 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         })
         .collect();
 
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(*procs[0].0),
-        nix::sys::signal::Signal::SIGINT,
-    )
-    .expect("Sending CTRL-C failed");
-
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(*procs[1].0),
-        nix::sys::signal::Signal::SIGINT,
-    )
-    .expect("Sending CTRL-C failed");
+    procs.iter().for_each(|daemon| {
+        nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(*daemon.0),
+            nix::sys::signal::Signal::SIGINT,
+        )
+        .expect("Sending CTRL-C failed")
+    });
 
     farcasterds
         .iter_mut()
