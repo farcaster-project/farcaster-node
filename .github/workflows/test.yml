@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
-        run: sudo apt-get install -y cmake libzmq3-dev
+        run: sudo apt-get install -y cmake
 
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
@@ -109,7 +109,7 @@ jobs:
       - name: Refresh cache and add apt-utils
         run: apt-get update -y && apt-get install -y --no-install-recommends apt-utils
       - name: Install dependencies
-        run: DEBIAN_FRONTEND=noninteractive apt-get install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config build-essential cmake
+        run: DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev pkg-config build-essential cmake
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v1.3.0
