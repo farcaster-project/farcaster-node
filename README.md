@@ -24,21 +24,29 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 
 ## Build and run
 
-The following section explain how to build and run Farcaster node locally or within containers through Docker and Docker compopse.
+Follow the instruction for [`installing the node`](./doc/install-guide.md).
+
+```
+docker-compose exec farcasterd swap-cli -d /var/lib/farcaster -x "lnpz://0.0.0.0:9981/?api=esb" info
+```
+
+
+
+The following section explain how to build and run Farcaster node locally or within containers through Docker and Docker compose.
 
 ### Locally
 
-To compile the node, please install [cargo](https://doc.rust-lang.org/cargo/) (the Rust _package manager_), then run the following commands:
+To compile the node please install [Rust](https://www.rust-lang.org/tools/install) then run the following commands:
 
 ```bash
-sudo apt install -y libsqlite3-dev libssl-dev libzmq3-dev pkg-config build-essential cmake
+sudo apt install -y apt-utils git libssl-dev pkg-config build-essential cmake
 git clone https://github.com/farcaster-project/farcaster-node.git && cd farcaster-node
 cargo install --path . --bins --all-features --locked
 ```
 
 Farcaster needs to connect to tree services to do actions on-chain and track on-chain events. Needed services are: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
 
-You can install and launch all the needed services locally by running the following commands:
+You can launch all the needed services locally by running the following commands:
 
 ```sh
 bitcoind -server -testnet
