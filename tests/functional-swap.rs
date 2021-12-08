@@ -633,6 +633,41 @@ fn cleanup_processes(
     mut farcasterd_taker: process::Child,
 ) {
     // clean up processes
+    let sys = System::new_all();
+    let procs: Vec<_> = sys
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| {
+            ["farcasterd"].contains(&process.name())
+                && [farcasterd_taker.id()].contains(&(process.parent().unwrap() as u32))
+        })
+        .collect();
+    println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
+
+    let _procs: Vec<_> = sys
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| {
+            ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
+            && [procs[0].0]
+            .contains(&&(process.parent().unwrap()))
+        })
+        .map(|(pid, _process)| {
+            nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(*pid as i32),
+                nix::sys::signal::Signal::SIGINT,
+            )
+            .expect("Sending CTRL-C failed")
+        })
+        .collect();
+
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(*procs[0].0),
+        nix::sys::signal::Signal::SIGINT,
+    )
+        .expect("Sending CTRL-C failed");
+
+
     if farcasterd_maker.is_some() {
         farcasterd_maker
             .unwrap()
@@ -643,22 +678,6 @@ fn cleanup_processes(
         .kill()
         .expect("Couldn't kill farcasterd taker");
 
-    let _procs: Vec<_> = System::new_all()
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
-            // && [farcasterd_maker.id(), farcasterd_taker.id()]
-            // .contains(&(process.parent().unwrap() as u32))
-        })
-        .map(|(pid, _process)| {
-            nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(*pid as i32),
-                nix::sys::signal::Signal::SIGINT,
-            )
-            .expect("Sending CTRL-C failed")
-        })
-        .collect();
 }
 
 fn reusable_btc_address() -> bitcoin::Address {
