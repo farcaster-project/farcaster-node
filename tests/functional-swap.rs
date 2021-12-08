@@ -608,7 +608,11 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .iter()
         .filter(|(_pid, process)| {
             ["swapd", "walletd", "syncerd"].contains(&process.name())
-                && [procs[0].0, procs[1].0].contains(&&(process.parent().unwrap()))
+                && procs
+                    .iter()
+                    .map(|proc| proc.0)
+                    .collect::<Vec<_>>()
+                    .contains(&&(process.parent().unwrap()))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
