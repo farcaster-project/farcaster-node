@@ -1942,7 +1942,7 @@ impl Runtime {
                                     self.txs.remove_entry(&TxLabel::Refund).unwrap();
                                 self.broadcast(refund_tx, tx_label, senders)?;
                             }
-                            TxLabel::Cancel if !self.state.a_xmr_locked() => {
+                            TxLabel::Cancel if (self.state.swap_role() == SwapRole::Alice && !self.state.a_xmr_locked()) => {
                                 self.state_update(senders, State::Alice(AliceState::FinishA(Outcome::Refund)))?;
                                 let abort_all = Task::Abort(Abort {
                                     task_target: TaskTarget::AllTasks,
