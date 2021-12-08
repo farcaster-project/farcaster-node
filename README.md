@@ -25,7 +25,7 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 
 ## Build and run
 
-Follow the instruction for [`installing the node`](./doc/install-guide.md) on your machine by compiling sources or using containers and then follow the instructions below to launch the node.
+Follow the instruction for [installing the node](./doc/install-guide.md) on your machine by compiling sources or using containers and then follow the instructions below to launch the node.
 
 ### Built from sources
 
@@ -63,13 +63,13 @@ Now that you have a working Monero RPC wallet to connect you can launch the node
 farcasterd -vv
 ```
 
-:mag_right: You can find more details about the [configuration](#configuration) below.
+:mag_right: You can find more details below about the [configuration](#configuration) if you need to customize some values.
 
 #### Connect a client
 
 Once `farcasterd` is up & running you can issue commands to control its actions with a client. For the time being, only one client is provided within this repo: `swap-cli`.
 
-If you launched `farcasterd` with the default paramters (the `--data-dir` argument or `-d`), `swap-cli` will be able to connect to `farcasterd` without further configuration. You can get informations about the node with (this require `swap-cli` to be installed on your host):
+If you launched `farcasterd` with the default paramters (the `--data-dir` argument or `-d`), `swap-cli` will be able to connect to `farcasterd` without further configuration. You can get informations about the node with
 
 ```
 swap-cli info
@@ -81,11 +81,11 @@ Commands you should know: `swap-cli info` gives a genaral overview of the node, 
 
 With those commands and farcasterd logs you should be able to follow your swaps.
 
-Checkout the documentaion on [how to use the node](#usage) for more details.
+Checkout the documentaion on [how to use the node](#usage) to see how to make and take offers.
 
 ### Run with docker
 
-If you did use Docker you are already all setup, the node and the wallet are running and you can interact with `farcasterd` container (when in the same folder as the `docker-compose.yml`) using the cli
+If you did use Docker you are already all setup. If you didn't run `docker-compose up -d` yet you can do it, the node and the wallet are now running and you can interact with `farcasterd` container using the cli with
 
 ```
 docker-compose exec farcasterd swap-cli info
@@ -95,11 +95,11 @@ Commands you should know: `swap-cli info` gives a genaral overview of the node, 
 
 With those commands and farcasterd logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`) you should be able to follow your swaps.
 
-Checkout the documentaion on [how to use the node](#usage) for more details.
+Checkout the documentaion on [how to use the node](#usage) to see how to make and take offers.
 
 ### Configuration
 
-`farcasterd` can be configured through a toml file located by default at `~/.farcaster/farcasterd.toml` (Linux and BSD, see [here](./src/opts.rs) for more platforms specific), if no file is found `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
+`farcasterd` can be configured through a toml file located by default at `~/.farcaster/farcasterd.toml` (for Linux and BSD, macOS will use `/Users/{user}/Library/Application Support/Farcaster/` and see [here](./src/opts.rs) for more platforms specific), if no file is found `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
 
 **Syncers**
 
