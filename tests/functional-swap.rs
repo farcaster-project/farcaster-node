@@ -621,9 +621,10 @@ async fn run_swap(
 }
 
 fn cleanup_processes(
-    mut farcasterd_maker: Option<process::Child>,
+    farcasterd_maker: Option<process::Child>,
     mut farcasterd_taker: process::Child,
 ) {
+    let mut farcasterd_maker_unwrapped = farcasterd_maker.unwrap();
     // clean up processes
     let sys = System::new_all();
     let procs: Vec<_> = sys
@@ -631,7 +632,7 @@ fn cleanup_processes(
         .iter()
         .filter(|(_pid, process)| {
             ["farcasterd"].contains(&process.name())
-                && [farcasterd_taker.id()].contains(&(process.parent().unwrap() as u32))
+                && [farcasterd_taker.id(), farcasterd_maker_unwrapped.id()].contains(&(process.parent().unwrap() as u32))
         })
         .collect();
     println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
@@ -641,7 +642,7 @@ fn cleanup_processes(
         .iter()
         .filter(|(_pid, process)| {
             ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
-            && [procs[0].0]
+            && [procs[0].0, procs[1].0]
             .contains(&&(process.parent().unwrap()))
         })
         .map(|(pid, _process)| {
@@ -659,13 +660,15 @@ fn cleanup_processes(
     )
         .expect("Sending CTRL-C failed");
 
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(*procs[1].0),
+        nix::sys::signal::Signal::SIGINT,
+    )
+        .expect("Sending CTRL-C failed");
 
-    if farcasterd_maker.is_some() {
-        farcasterd_maker
-            .unwrap()
-            .kill()
-            .expect("Couldn't kill farcasterd maker")
-    };
+    farcasterd_maker_unwrapped
+        .kill()
+        .expect("Couldn't kill farcasterd maker");
     farcasterd_taker
         .kill()
         .expect("Couldn't kill farcasterd taker");
