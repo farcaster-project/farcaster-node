@@ -603,11 +603,25 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .collect();
     println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
 
+    let procs_peerd: Vec<_> = sys
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| {
+            ["peerd"].contains(&process.name())
+                && farcasterds
+                    .iter()
+                    .map(|daemon| daemon.id())
+                    .collect::<Vec<_>>()
+                    .contains(&(process.parent().unwrap() as u32))
+        })
+        .collect();
+    println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
+
     let _procs: Vec<_> = sys
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["swapd", "walletd", "syncerd"].contains(&process.name())
+            ["swapd", "walletd", "syncerd", "peerd"].contains(&process.name())
                 && procs
                     .iter()
                     .map(|proc| proc.0)
@@ -626,7 +640,14 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
     let _procs: Vec<_> = sys
         .get_processes()
         .iter()
-        .filter(|(_pid, process)| ["peerd"].contains(&process.name()))
+        .filter(|(_pid, process)| {
+            ["peerd"].contains(&process.name())
+                && procs_peerd
+                    .iter()
+                    .map(|proc| proc.0)
+                    .collect::<Vec<_>>()
+                    .contains(&&(process.parent().unwrap()))
+        })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
                 nix::unistd::Pid::from_raw(*pid as i32),
