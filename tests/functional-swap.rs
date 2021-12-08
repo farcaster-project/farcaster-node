@@ -641,7 +641,7 @@ fn cleanup_processes(
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["peerd", "swapd", "walletd", "syncerd"].contains(&process.name())
+            ["swapd", "walletd", "syncerd"].contains(&process.name())
             && [procs[0].0, procs[1].0]
             .contains(&&(process.parent().unwrap()))
         })
@@ -651,6 +651,21 @@ fn cleanup_processes(
                 nix::sys::signal::Signal::SIGINT,
             )
             .expect("Sending CTRL-C failed")
+        })
+        .collect();
+
+    let _procs: Vec<_> = sys
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| {
+            ["peerd"].contains(&process.name())
+        })
+        .map(|(pid, _process)| {
+            nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(*pid as i32),
+                nix::sys::signal::Signal::SIGINT,
+            )
+                .expect("Sending CTRL-C failed")
         })
         .collect();
 
