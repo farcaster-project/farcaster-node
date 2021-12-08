@@ -620,10 +620,7 @@ async fn run_swap(
     assert!(delta_balance > 999660000000);
 }
 
-fn cleanup_processes(
-    mut farcasterds: Vec<process::Child>
-) {
-    let farcasterd_ids: Vec<_> = farcasterds.iter().map(|daemon| daemon.id()).collect();
+fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
     // clean up processes
     let sys = System::new_all();
     let procs: Vec<_> = sys
@@ -631,7 +628,11 @@ fn cleanup_processes(
         .iter()
         .filter(|(_pid, process)| {
             ["farcasterd"].contains(&process.name())
-                && farcasterd_ids.contains(&(process.parent().unwrap() as u32))
+                && farcasterds
+                    .iter()
+                    .map(|daemon| daemon.id())
+                    .collect::<Vec<_>>()
+                    .contains(&(process.parent().unwrap() as u32))
         })
         .collect();
     println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
@@ -641,8 +642,7 @@ fn cleanup_processes(
         .iter()
         .filter(|(_pid, process)| {
             ["swapd", "walletd", "syncerd"].contains(&process.name())
-            && [procs[0].0, procs[1].0]
-            .contains(&&(process.parent().unwrap()))
+                && [procs[0].0, procs[1].0].contains(&&(process.parent().unwrap()))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
@@ -656,15 +656,13 @@ fn cleanup_processes(
     let _procs: Vec<_> = sys
         .get_processes()
         .iter()
-        .filter(|(_pid, process)| {
-            ["peerd"].contains(&process.name())
-        })
+        .filter(|(_pid, process)| ["peerd"].contains(&process.name()))
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
                 nix::unistd::Pid::from_raw(*pid as i32),
                 nix::sys::signal::Signal::SIGINT,
             )
-                .expect("Sending CTRL-C failed")
+            .expect("Sending CTRL-C failed")
         })
         .collect();
 
@@ -672,15 +670,17 @@ fn cleanup_processes(
         nix::unistd::Pid::from_raw(*procs[0].0),
         nix::sys::signal::Signal::SIGINT,
     )
-        .expect("Sending CTRL-C failed");
+    .expect("Sending CTRL-C failed");
 
     nix::sys::signal::kill(
         nix::unistd::Pid::from_raw(*procs[1].0),
         nix::sys::signal::Signal::SIGINT,
     )
-        .expect("Sending CTRL-C failed");
+    .expect("Sending CTRL-C failed");
 
-    farcasterds.iter_mut().for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
+    farcasterds
+        .iter_mut()
+        .for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
 }
 
 fn reusable_btc_address() -> bitcoin::Address {
