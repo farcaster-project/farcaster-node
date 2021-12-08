@@ -144,7 +144,7 @@ async fn swap_bob_maker_punish_kill_bob() {
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
         setup_farcaster_clients().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -163,7 +163,6 @@ async fn swap_bob_maker_punish_kill_bob() {
         bitcoin_address,
         monero_regtest,
         Arc::clone(&monero_wallet),
-        xmr_dest_wallet_name,
         execution_mutex,
         farcasterd_maker,
     )
@@ -401,9 +400,7 @@ async fn run_refund_swap_kill_alice_after_funding(
     // run until the BobState(Finish(Failure(Refunded))) is received
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
-        // "BobState(Finish(Failure(Refunded)))".to_string(),
-        // FIXME!
-        "AliceState(Finish(Failure(Refunded)))".to_string(),
+        "BobState(Finish(Failure(Refunded)))".to_string(),
     )
     .await;
 
@@ -472,9 +469,7 @@ async fn run_refund_swap_alice_does_not_fund(
     // run until the BobState(Finish(Failure(Refunded))) is received
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
-        // "BobState(Finish(Failure(Refunded)))".to_string(),
-        // FIXME!
-        "AliceState(Finish(Failure(Refunded)))".to_string(),
+        "BobState(Finish(Failure(Refunded)))".to_string(),
     )
     .await;
 
@@ -502,7 +497,6 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     funding_btc_address: bitcoin::Address,
     monero_regtest: monero_rpc::RegtestDaemonClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
-    monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
     bob_farcasterd: std::process::Child,
 ) {
@@ -543,7 +537,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
         .generate_to_address(20, &reusable_btc_address())
         .unwrap();
 
-    println!("\n\n generated 20 blocks \n\n");
+    println!("generated 20 bitcoin blocks");
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
@@ -551,7 +545,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     bitcoin_rpc
         .generate_to_address(20, &reusable_btc_address())
         .unwrap();
-    println!("\n\n generated 20 blocks \n\n");
+    println!("generated 20 bitcoin blocks");
 
     monero_regtest
         .generate_blocks(20, reusable_xmr_address())
@@ -564,19 +558,19 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     bitcoin_rpc
         .generate_to_address(20, &reusable_btc_address())
         .unwrap();
-    println!("\n\n generated 20 blocks \n\n");
-
-    // generate some blocks on bitcoin's side
-    bitcoin_rpc
-        .generate_to_address(1, &reusable_btc_address())
-        .unwrap();
+    println!("generated 20 bitcoin blocks");
 
     // run until the AliceState(Finish) is received
     retry_until_finish_state_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Failure(Refunded)))".to_string(),
+        "AliceState(Finish(Failure(Punished)))".to_string(),
     )
     .await;
+
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+    println!("generated 20 bitcoin blocks");
 
     // check that btc was received in the destination address
     let balance = bitcoin_rpc
@@ -765,7 +759,6 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
                     .contains(&(process.parent().unwrap() as u32))
         })
         .collect();
-    println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
 
     let procs_peerd: Vec<_> = sys
         .get_processes()
@@ -779,7 +772,6 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
                     .contains(&&(process.parent().unwrap()))
         })
         .collect();
-    println!("\n\n\n peerd processes: {:?}\n\n\n", procs_peerd);
 
     let _procs: Vec<_> = sys
         .get_processes()
@@ -1033,7 +1025,6 @@ async fn retry_until_bob_finish_state_transition(
         let bob_finish: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                println!("element: {:?}", element);
                 if element.contains(&finish_state) {
                     Some(element.to_string())
                 } else {
@@ -1069,7 +1060,6 @@ async fn retry_until_finish_state_transition(
         let alice_finish: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
-                println!("element: {:?}", element);
                 if element.contains(&finish_state) {
                     Some(element.to_string())
                 } else {
