@@ -20,9 +20,12 @@ use crate::syncerd::{
 };
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
+use farcaster_core::{
+    consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable},
+    negotiation::PublicOfferId,
+};
 use internet2::addr::InetSocketAddr;
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
@@ -389,6 +392,15 @@ pub enum Request {
     #[display("list_tasks()")]
     ListTasks,
 
+    // TODO: only list offers matching list of OfferIds
+    #[api(type = 104)]
+    #[display("list_offers()")]
+    ListOffers,
+
+    // #[api(type = 105)]
+    // #[display("list_offer_ids()")]
+    // ListOfferIds,
+
     // Can be issued from `cli` to `lnpd`
     #[api(type = 200)]
     #[display("listen({0})")]
@@ -499,6 +511,17 @@ pub enum Request {
     #[display("task_list({0})", alt = "{0:#}")]
     #[from]
     TaskList(List<u64>), // FIXME
+
+    // TODO: only list offers matching list of OfferIds
+    #[api(type = 1106)]
+    #[display("offer_list({0})", alt = "{0:#}")]
+    #[from]
+    OfferList(List<PublicOffer<BtcXmr>>),
+
+    // #[api(type = 1107)]
+    // #[display("offer_list({0})", alt = "{0:#}")]
+    // #[from]
+    // OfferIdList(List<PublicOfferId>),
 
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]

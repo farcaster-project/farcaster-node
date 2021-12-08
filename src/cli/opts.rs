@@ -72,9 +72,17 @@ pub enum Command {
     Peers,
 
     /// Lists running swaps
-    #[clap(setting = AppSettings::ColoredHelp)]
-    Ls,
+    #[clap(aliases = &["ls"], setting = AppSettings::ColoredHelp)]
+    ListSwaps,
 
+    // TODO: only list offers matching list of OfferIds
+    /// Lists public offers created by daemon
+    #[clap(aliases = &["lo"], setting = AppSettings::ColoredHelp)]
+    ListOffers,
+
+    // /// Lists IDs of public offers created by daemon
+    // #[clap(setting = AppSettings::ColoredHelp)]
+    // ListOfferIds,
     /// Maker creates offer and start listening for incoming connections. Command used to to print
     /// the resulting public offer that shall be shared with Taker. Additionally it spins up the
     /// listener awaiting for connection related to this offer.
