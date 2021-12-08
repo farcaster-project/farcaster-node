@@ -615,27 +615,7 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
                     .contains(&(process.parent().unwrap() as u32))
         })
         .collect();
-    println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
-
-    let _procs: Vec<_> = sys
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["swapd", "walletd", "syncerd", "peerd"].contains(&process.name())
-                && procs
-                    .iter()
-                    .map(|proc| proc.0)
-                    .collect::<Vec<_>>()
-                    .contains(&&(process.parent().unwrap()))
-        })
-        .map(|(pid, _process)| {
-            nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(*pid as i32),
-                nix::sys::signal::Signal::SIGINT,
-            )
-            .expect("Sending CTRL-C failed")
-        })
-        .collect();
+    println!("\n\n\n peerd processes: {:?}\n\n\n", procs);
 
     let _procs: Vec<_> = sys
         .get_processes()
@@ -643,6 +623,26 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .filter(|(_pid, process)| {
             ["peerd"].contains(&process.name())
                 && procs_peerd
+                .iter()
+                .map(|proc| proc.0)
+                .collect::<Vec<_>>()
+                .contains(&&(process.parent().unwrap()))
+        })
+        .map(|(pid, _process)| {
+            nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(*pid as i32),
+                nix::sys::signal::Signal::SIGINT,
+            )
+                .expect("Sending CTRL-C failed")
+        })
+        .collect();
+
+    let _procs: Vec<_> = sys
+        .get_processes()
+        .iter()
+        .filter(|(_pid, process)| {
+            ["swapd", "walletd", "syncerd", "peerd"].contains(&process.name())
+                && procs
                     .iter()
                     .map(|proc| proc.0)
                     .collect::<Vec<_>>()
