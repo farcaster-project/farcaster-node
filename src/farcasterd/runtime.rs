@@ -16,7 +16,8 @@
 use crate::{
     error::SyncerError,
     rpc::request::{
-        BitcoinAddress, Keys, LaunchSwap, MoneroAddress, PubOffer, RequestId, Reveal, Token,
+        BitcoinAddress, Keys, LaunchSwap, MoneroAddress, Outcome, PubOffer, RequestId, Reveal,
+        Token,
     },
     swapd::get_swap_id,
     syncerd::opts::Coin,
@@ -511,15 +512,18 @@ impl Runtime {
                 }
             }
 
-            Request::SwapSuccess(success) => {
+            Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
                 self.clean_up_after_swap(&swapid, senders)?;
-                if success {
-                    debug!("Success on swap {}", &swapid);
-                    self.stats.incr_success();
-                } else {
-                    warn!("Failure on swap {}", &swapid);
-                    self.stats.incr_failure();
+                match success {
+                    Outcome::Buy => {
+                        debug!("Success on swap {}", &swapid);
+                        self.stats.incr_success();
+                    }
+                    _ => {
+                        warn!("Failure on swap {}", &swapid);
+                        self.stats.incr_failure();
+                    }
                 }
                 self.stats.success_rate();
                 senders.send_to(ServiceBus::Ctl, self.identity(), source, request)?;
