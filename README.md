@@ -33,7 +33,7 @@ Depending on the chosen installation method:
 
 They provide instructions on how to launch the swap node, codenamed `farcasterd`.
 
-### Built from sources
+### Build from sources
 
 If you installed the node on your machine from sources (i.e. not using Docker) you can now launch the services needed for the swap.
 
@@ -87,29 +87,29 @@ Commands you should know: `swap-cli info` gives a genaral overview of the node, 
 
 With those commands and farcasterd logs you should be able to follow your swaps.
 
-Checkout the documentaion on [how to use the node](#usage) to see how to make and take offers.
+Checkout the documentaion on [how to use the node](#usage) to learn how to make and take offers.
 
 ### Run with docker
 
-If you did use Docker you are already all setup. If you didn't run `docker-compose up -d` yet you can do it, the node and the wallet are now running and you can interact with `farcasterd` container using the cli with
+If you did use Docker you are already all set up. Run `docker-compose up -d` if you haven't yet, and the node and the wallet will start running. You can interact with `farcasterd` container using the cli via
 
 ```
 docker-compose exec farcasterd swap-cli info
 ```
 
-Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` give the state of a given swap.
+Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` gives the state of a given swap.
 
-With those commands and farcasterd logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`) you should be able to follow your swaps.
+With those commands and farcasterd logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`), you should be able to follow your swaps.
 
-Checkout the documentaion on [how to use the node](#usage) to see how to make and take offers.
+Check out the documentaion on [how to use the node](#usage) to learn how to make and take offers.
 
 ### Configuration
 
-`farcasterd` can be configured through a toml file located by default at `~/.farcaster/farcasterd.toml` (for Linux and BSD, macOS will use `/Users/{user}/Library/Application Support/Farcaster/` and see [here](./src/opts.rs) for more platforms specific), if no file is found `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
+`farcasterd` can be configured through a `.toml` file located by default at `~/.farcaster/farcasterd.toml` (for Linux and BSD, macOS will use `/Users/{user}/Library/Application Support/Farcaster/` and see [here](./src/opts.rs) for more platforms specific). If no file is found, `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
 
 **Syncers**
 
-Configures daemon's URLs where to connect for the three possible networks: _mainnet_, _testnet_, _local_:
+This entry configures the daemons' connection URLs for the three possible networks: _mainnet_, _testnet_, _local_:
 
 ```toml
 [syncers.{network}]
@@ -118,11 +118,11 @@ monero_daemon = ""
 monero_rpc_wallet = ""
 ```
 
-:mag_right: The default config for _local_ network is set to null.
+:mag_right: The default config for _local_ network is set to `null`.
 
 #### :bulb: Use public infrastructure
 
-To help quickly test and avoid running the entire infrastructure on your machine you can make use of public nodes. Following is a non-exhaustive list of public nodes.
+To help quickly test and avoid running the entire infrastructure on your machine, you can make use of public nodes. Following is a non-exhaustive list of public nodes.
 
 Only blockchain daemons and electrum servers are listed, you should always run your own `monero rpc wallet`.
 
@@ -149,11 +149,11 @@ When `farcasterd` is up & running and `swap-cli` is configured to connect and co
 
 ### :hammer: Make an offer
 
-When making an offer, the maker starts listening for other peers to connect and take that offer -- and hopefully succesfully execute a swap. 
+After making an offer, the maker starts listening for other peers to connect and take that offer -- and hopefully execute a swap successfully. 
 
-A `peerd` instance is spawned by the maker and binds to the specified `address:port`. The takers `farcasterd` then launches its own `peerd` that connects to the makers `peerd`, the communication is then established between two nodes, and they can swap.
+A `peerd` instance is spawned by the maker and binds to the specified `address:port`. The taker's `farcasterd` then launches its own `peerd` that connects to the makers `peerd`. The communication is then established between two nodes, and they can swap.
 
-:mag_right: This requires for the time being some notions about the network topology the maker node is running in, this requirement will be lifted off later when integrating Tor by default.
+:mag_right: This requires for the time being some notions about the network topology the maker node is running in; this requirement will be removed once we're integrating Tor by default.
 
 If you are the maker, to make an offer and spawn a listener awaiting for takers to take that offer, run the following command:
 
@@ -166,15 +166,15 @@ swap-cli make --btc-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
     --public-ip-addr 1.2.3.4 --bind-ip-addr 0.0.0.0 --port 9735 --overlay tcp
 ```
 
-Network and assets by default are Bitcoin and Monero on testnet. The first arguments `--btc-addr` and `--xmr-addr` are the Bitcoin and Monero addresses used to get the bitcoins and moneros as a refund or when the swap completes depending on the role. They are followed by the amounts exchanged.
+Network and assets by default are Bitcoin and Monero on testnet. The first two arguments `--btc-addr` and `--xmr-addr` are the Bitcoin and Monero addresses used to get the bitcoins and moneroj as a refund or when the swap completes depending on the role. They are followed by the amounts exchanged.
 
-The role for the maker is specified in the offer with `--maker-role`. `Alice` sells moneros for bitcoins, `Bob` sells bitcoins for moneros. Timelock parameters are set to **4** and **5** for cancel and punish and the transaction fee that must be applied is **1 satoshi per vByte**.
+The role for the maker is specified in the offer with `--maker-role`. `Alice` sells moneroj for bitcoins, `Bob` sells bitcoins for moneroj. Timelock parameters are set to **4** and **5** for cancel and punish and the transaction fee that must be applied is **1 satoshi per vByte**.
 
 Here the maker will send bitcoins and will receive moneros in his `54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu` address if the swap is successful.
 
-`--public-ip-addr` (default to `127.0.0.1`) and `--port` (default to `9735`) are used in the public offer for the taker to connect. `--bind-ip-addr` allow to bind the listening peerd to `0.0.0.0`, `tcp` is used as overlay between peers.
+`--public-ip-addr` (default to `127.0.0.1`) and `--port` (default to `9735`) are used in the public offer for the taker to connect. `--bind-ip-addr` allows to bind the listening peerd to `0.0.0.0`, `tcp` is used as overlay between peers.
 
-:mag_right: To be able for a taker to connect and take the offer the `public-ip-addr:port` must be accessible and answered by the `peerd` binded to `bind-id-address:port`.
+:mag_right: To enable a taker to connect and take the offer the `public-ip-addr:port` must be accessible and answered by the `peerd` bound to `bind-id-address:port`.
 
 **The public offer result**
 
@@ -184,7 +184,7 @@ Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the sw
 
 ### :moneybag: Take the offer
 
-Taking a public offer is a much simpler process, all you need is a running node (doesn't require to know your network topology), an encoded public offer, a Bitcoin address and a Monero address to receive assets, again as a refund or as a payment depending on your swap role and if the swap completes.
+Taking a public offer is a much simpler process: all you need is a running node (doesn't require to know your network topology), an encoded public offer, a Bitcoin address and a Monero address to receive assets, again as a refund or as a payment depending on your swap role and if the swap completes.
 
 ```
 swap-cli take --btc-addr tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
@@ -192,13 +192,13 @@ swap-cli take --btc-addr tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
     --offer {offer}
 ```
 
-The cli will ask you to validate the offer informations (amounts, assets, etc.), you can use the flag of interest `--without-validation` or `-w` for externally validated automated setups.
+The cli will ask you to validate the offer's specifics (amounts, assets, etc.). You can use the flag of interest `--without-validation` or `-w` for externally validated automated setups.
 
-Then follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when it asks so, at the end you should receive the counterparty assets.
+Then follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneroj when it asks so. At the end of the swap, you should receive the counterparty's assets.
 
 ### Run a swap locally
 
-If you want to test a swap with yourself locally you can follow the instructions [here](./doc/local-swap.md).
+If you want to test a swap with yourself locally, you can follow the instructions [here](./doc/local-swap.md).
 
 ## Releases and Changelog
 
