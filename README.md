@@ -24,13 +24,73 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 
 ## Build and run
 
-Follow the instruction for [`installing the node`](./doc/install-guide.md).
+Follow the instruction for [`installing the node`](./doc/install-guide.md) on your machine by compiling sources or using containers.
+
+### From sources
+
+If you installed the node on your machine from sources (i.e. not using Docker) you can now launch the services needed to swap.
+
+#### Launching Monero RPC wallet
+
+First you need to run a `monero rpc wallet` to manage the moneros, if you have it already installed on your machine you can run
 
 ```
-docker-compose exec farcasterd swap-cli -d /var/lib/farcaster -x "lnpz://0.0.0.0:9981/?api=esb" info
+monero-wallet-rpc --stagenet --rpc-bind-port 38083\
+    --disable-rpc-login\
+    --daemon-host stagenet.melo.tools:38081\
+    --trusted-daemon\
+    --password "soMeDummYPasSwOrd"\
+    --wallet-dir ~/.fc_monero_wallets
 ```
 
+or you can use the Docker image
 
+```
+docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest\
+    /usr/bin/monero-wallet-rpc --stagenet\
+    --disable-rpc-login --wallet-dir wallets\
+    --daemon-host stagenet.melo.tools:38081\
+    --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083\
+    --confirm-external-bind
+```
+
+#### Launching `farcasterd`
+
+Now that you have a working Monero RPC wallet to connect you can launch the node in verbose mode (`-vv`), and follow the logs to see what's appening.
+
+```
+farcasterd -vv
+```
+
+:mag_right: You can find more details about the [configuration](#configuration) below.
+
+In another terminal you can now interact with the node with the cli.
+
+```
+swap-cli info
+```
+
+Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` give the state of a given swap.
+
+With those commands and farcasterd logs you should be able to follow your swaps.
+
+Checkout the documentaion on [how to use the node](#usage) for more details.
+
+### With docker
+
+If you did use Docker you are already all setup, the node and the wallet are running and you can interact with `farcasterd` container (when in the same folder as the `docker-compose.yml`) using the cli
+
+```
+docker-compose exec farcasterd swap-cli info
+```
+
+Commands you should know: `swap-cli info` gives a genaral overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` give the state of a given swap.
+
+With those commands and farcasterd logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`) you should be able to follow your swaps.
+
+Checkout the documentaion on [how to use the node](#usage) for more details.
+
+---
 
 The following section explain how to build and run Farcaster node locally or within containers through Docker and Docker compose.
 
