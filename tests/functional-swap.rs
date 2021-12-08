@@ -64,7 +64,42 @@ async fn swap_bob_maker_normal() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_bob_maker_refund() {
+async fn swap_bob_maker_refund_alice_does_not_fund() {
+    let execution_mutex = Arc::new(Mutex::new(0));
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (_monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_farcaster_clients().await;
+
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        "1 BTC".to_string(),
+        "1 XMR".to_string(),
+    )
+    .await;
+
+    run_refund_swap_alice_does_not_fund(
+        swap_id,
+        data_dir_taker,
+        data_dir_maker,
+        Arc::clone(&bitcoin_rpc),
+        bitcoin_address,
+        execution_mutex,
+    )
+    .await;
+
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
+async fn swap_bob_maker_punish_kill_bob() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
@@ -83,7 +118,7 @@ async fn swap_bob_maker_refund() {
     )
     .await;
 
-    run_refund_swap_kill_bob_before_monero_funding(
+    run_punish_swap_kill_bob_before_monero_funding(
         swap_id,
         data_dir_taker,
         data_dir_maker,
@@ -277,7 +312,78 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn run_refund_swap_kill_bob_before_monero_funding(
+async fn run_refund_swap_alice_does_not_fund(
+    swap_id: String,
+    data_dir_alice: Vec<String>,
+    data_dir_bob: Vec<String>,
+    bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
+    funding_btc_address: bitcoin::Address,
+    execution_mutex: Arc<Mutex<u8>>,
+) {
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice, swap_id.clone());
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob, swap_id.clone());
+
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    // run until bob has the btc funding address
+    let address = retry_until_bitcoin_funding_address(cli_bob_progress_args.clone()).await;
+
+    // fund the bitcoin address
+    let lock = execution_mutex.lock().await;
+    let amount = bitcoin::Amount::ONE_SAT * 100000150;
+    bitcoin_rpc
+        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .unwrap();
+
+    // run until the alice has the monero funding address, but do not fund it
+    retry_until_monero_funding_address(cli_alice_progress_args.clone()).await;
+
+    // generate some bitcoin blocks for confirmations
+    bitcoin_rpc
+        .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+
+    // run until the AliceState(Finish(Failure(Refunded))) is received
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(Finish(Failure(Refunded)))".to_string(),
+    )
+    .await;
+
+    // generate some bitcoin blocks for confirmations
+    bitcoin_rpc
+        .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // run until the BobState(Finish(Failure(Refunded))) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        // "BobState(Finish(Failure(Refunded)))".to_string(),
+        // FIXME!
+        "AliceState(Finish(Failure(Refunded)))".to_string(),
+    )
+    .await;
+
+    // generate some blocks on bitcoin's side
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    let (_stdout, _stderr) = run("../swap-cli", cli_bob_progress_args.clone()).unwrap();
+
+    // check that btc was received in the destination address
+    let balance = bitcoin_rpc
+        .get_received_by_address(&funding_btc_address, None)
+        .unwrap();
+    assert!(balance.as_sat() > 90000000);
+    drop(lock);
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_punish_swap_kill_bob_before_monero_funding(
     swap_id: String,
     data_dir_alice: Vec<String>,
     data_dir_bob: Vec<String>,
