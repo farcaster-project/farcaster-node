@@ -56,6 +56,6 @@ VOLUME "$DATA_DIR"
 
 EXPOSE 9735 9981
 
-ENTRYPOINT ["farcasterd", "--data-dir", "/var/lib/farcaster", "-x", "lnpz://0.0.0.0:9981/?api=esb"]
+ENTRYPOINT ["farcasterd"]
 
-CMD ["--help"]
+CMD ["--data-dir", "/var/lib/farcaster", "-x", "lnpz://0.0.0.0:9981/?api=esb", "--help"]
