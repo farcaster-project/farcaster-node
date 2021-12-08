@@ -287,7 +287,7 @@ async fn run_refund_swap_kill_bob_before_monero_funding(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
-    mut bob_farcasterd: std::process::Child,
+    bob_farcasterd: std::process::Child,
 ) {
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice, swap_id.clone());
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob, swap_id.clone());
@@ -312,41 +312,7 @@ async fn run_refund_swap_kill_bob_before_monero_funding(
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
-    let sys = System::new_all();
-    let procs: Vec<_> = sys
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["farcasterd"].contains(&process.name())
-                && [bob_farcasterd.id()].contains(&(process.parent().unwrap() as u32))
-        })
-        .collect();
-    println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
-
-    let _procs: Vec<_> = sys
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["walletd", "syncerd", "peerd", "swapd"].contains(&process.name())
-                && procs[0].0 == &(process.parent().unwrap())
-        })
-        .map(|(pid, _process)| {
-            println!("process: {:?}", pid);
-            nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(*pid as i32),
-                nix::sys::signal::Signal::SIGINT,
-            )
-            .expect("Sending CTRL-C failed")
-        })
-        .collect();
-
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(*procs[0].0),
-        nix::sys::signal::Signal::SIGINT,
-    )
-    .expect("Sending CTRL-C failed");
-
-    bob_farcasterd.kill().expect("Couldn't kill farcasterd");
+    cleanup_processes(vec![bob_farcasterd]);
 
     tokio::time::sleep(time::Duration::from_secs(200)).await;
 
