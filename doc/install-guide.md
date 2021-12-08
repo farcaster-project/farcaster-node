@@ -58,9 +58,7 @@ cargo install --path . --bins --all-features --locked
 
 ### macOS 11/12
 
-Install [Homebrew](https://brew.sh/) and [Rust](https://www.rust-lang.org/tools/install)
-
-Install dependencies
+Install [Homebrew](https://brew.sh/) and [Rust](https://www.rust-lang.org/tools/install), then install the dependencies
 
 ```
 brew install cmake
