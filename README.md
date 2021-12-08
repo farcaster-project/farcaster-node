@@ -25,11 +25,17 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 
 ## Build and run
 
-Follow the instruction for [installing the node](./doc/install-guide.md) on your machine by compiling sources or using containers and then follow the instructions below to launch the node.
+Follow the instruction for [`installing the node`](./doc/install-guide.md) on your machine by compiling sources or using containers. Containers might be your best bet, for a quick try.
+
+Depending on the chosen installation method:
+* you now have to continue to [build from sources](#build-from-sources)
+* or continue to [run with docker](#run-with-docker)
+
+They provide instructions on how to launch the swap node, codenamed `farcasterd`.
 
 ### Built from sources
 
-If you installed the node on your machine from sources (i.e. not using Docker) you can now launch the services needed to swap.
+If you installed the node on your machine from sources (i.e. not using Docker) you can now launch the services needed for the swap.
 
 #### Launching Monero RPC wallet
 
