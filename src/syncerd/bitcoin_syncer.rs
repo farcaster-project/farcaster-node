@@ -13,6 +13,7 @@ use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
+use crate::syncerd::TransactionRetrieved;
 use crate::ServiceId;
 use crate::{error::Error, syncerd::syncer_state::create_set};
 use crate::{error::SyncerError, internet2::Duplex};
@@ -447,6 +448,47 @@ async fn run_syncerd_task_receiver(
             match syncerd_task {
                 Ok(syncerd_task) => {
                     match syncerd_task.task {
+                        Task::GetTx(task) => {
+                            match Client::new(&electrum_server).and_then(|transaction_client| {
+                                transaction_client.transaction_get(
+                                    &bitcoin::Txid::from_slice(&task.hash).unwrap(),
+                                )
+                            }) {
+                                Ok(tx) => {
+                                    tx_event
+                                        .send(SyncerdBridgeEvent {
+                                            event: Event::TransactionRetrieved(
+                                                TransactionRetrieved {
+                                                    id: task.id,
+                                                    tx: Some(tx),
+                                                },
+                                            ),
+                                            source: syncerd_task.source,
+                                        })
+                                        .await
+                                        .expect("error sending transaction retrieved event");
+                                    info!(
+                                        "successfully retrieved tx: {:?}",
+                                        hex::encode(task.hash)
+                                    );
+                                }
+                                Err(e) => {
+                                    tx_event
+                                        .send(SyncerdBridgeEvent {
+                                            event: Event::TransactionRetrieved(
+                                                TransactionRetrieved {
+                                                    id: task.id,
+                                                    tx: None,
+                                                },
+                                            ),
+                                            source: syncerd_task.source,
+                                        })
+                                        .await
+                                        .expect("error sending transaction retrieved event");
+                                    info!("failed to retrieved tx: {:?}", e);
+                                }
+                            }
+                        }
                         Task::SweepAddress(_) => {
                             error!("sweep address not implemented for bitcoin syncer");
                         }
