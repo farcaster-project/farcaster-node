@@ -149,11 +149,13 @@ When `farcasterd` is up & running and `swap-cli` is configured to connect and co
 
 ### :hammer: Make an offer
 
-When listening for other peers to connect, e.g. for executing a swap, a `peerd` instance is spawned and binds to the specified `address:port` in arguments, counterparty `farcasterd` can then launch its own `peerd` that connects to the listening `peerd`, the communication is then established between two nodes.
+When making an offer, the maker starts listening for other peers to connect and take that offer -- and hopefully succesfully execute a swap. 
+
+A `peerd` instance is spawned by the maker and binds to the specified `address:port`. The takers `farcasterd` then launches its own `peerd` that connects to the makers `peerd`, the communication is then established between two nodes, and they can swap.
 
 :mag_right: This requires for the time being some notions about the network topology the maker node is running in, this requirement will be lifted off later when integrating Tor by default.
 
-To create an offer and spawn a listening `peerd` accepting incoming connections, run the following command:
+If you are the maker, to make an offer and spawn a listener awaiting for takers to take that offer, run the following command:
 
 ```
 swap-cli make --btc-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
