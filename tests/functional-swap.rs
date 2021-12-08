@@ -58,7 +58,7 @@ async fn swap_bob_maker_normal() {
     )
     .await;
 
-    cleanup_processes(Some(farcasterd_maker), farcasterd_taker);
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
 #[tokio::test]
@@ -97,7 +97,7 @@ async fn swap_bob_maker_refund() {
     )
     .await;
 
-    cleanup_processes(None, farcasterd_taker);
+    cleanup_processes(vec![farcasterd_taker]);
 }
 
 #[tokio::test]
@@ -135,7 +135,7 @@ async fn swap_alice_maker() {
     )
     .await;
 
-    cleanup_processes(Some(farcasterd_maker), farcasterd_taker);
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
 #[tokio::test]
@@ -243,7 +243,7 @@ async fn swap_parallel() {
 
     join_all(vec![alice_future, alice_future_1, bob_future, bob_future_1]).await;
 
-    cleanup_processes(Some(farcasterd_maker), farcasterd_taker);
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
 async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
@@ -621,10 +621,9 @@ async fn run_swap(
 }
 
 fn cleanup_processes(
-    farcasterd_maker: Option<process::Child>,
-    mut farcasterd_taker: process::Child,
+    mut farcasterds: Vec<process::Child>
 ) {
-    let mut farcasterd_maker_unwrapped = farcasterd_maker.unwrap();
+    let farcasterd_ids: Vec<_> = farcasterds.iter().map(|daemon| daemon.id()).collect();
     // clean up processes
     let sys = System::new_all();
     let procs: Vec<_> = sys
@@ -632,7 +631,7 @@ fn cleanup_processes(
         .iter()
         .filter(|(_pid, process)| {
             ["farcasterd"].contains(&process.name())
-                && [farcasterd_taker.id(), farcasterd_maker_unwrapped.id()].contains(&(process.parent().unwrap() as u32))
+                && farcasterd_ids.contains(&(process.parent().unwrap() as u32))
         })
         .collect();
     println!("\n\n\n farcasterd processes: {:?}\n\n\n", procs);
@@ -681,13 +680,7 @@ fn cleanup_processes(
     )
         .expect("Sending CTRL-C failed");
 
-    farcasterd_maker_unwrapped
-        .kill()
-        .expect("Couldn't kill farcasterd maker");
-    farcasterd_taker
-        .kill()
-        .expect("Couldn't kill farcasterd taker");
-
+    farcasterds.iter_mut().for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
 }
 
 fn reusable_btc_address() -> bitcoin::Address {
