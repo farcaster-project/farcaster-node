@@ -312,47 +312,38 @@ async fn run_refund_swap_kill_bob_before_monero_funding(
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
+    // kill bob
     cleanup_processes(vec![bob_farcasterd]);
-
-    tokio::time::sleep(time::Duration::from_secs(200)).await;
 
     // run until the alice has the monero funding address
     let monero_address = retry_until_monero_funding_address(cli_alice_progress_args.clone()).await;
     send_monero(Arc::clone(&monero_wallet), monero_address, 1000000000000).await;
 
-    // generate some bitcoin blocks for confirmations
-    bitcoin_rpc
-        .generate_to_address(20, &reusable_btc_address())
-        .unwrap();
-
-    println!("\n\n generated 100 blocks \n\n");
-
-    // run until the BobState(CoreArb) is received
-    // retry_until_finish_state_transition(
-    //     cli_bob_progress_args.clone(),
-    //     "BobState(CoreArb)".to_string(),
-    // )
-    // .await;
-
-    // generate some bitcoin blocks for confirmations
-    bitcoin_rpc
-        .generate_to_address(20, &reusable_btc_address())
-        .unwrap();
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
-    // run until the BobState(Finish(Failure(Refunded))) is received
-    // retry_until_finish_state_transition(
-    //     cli_bob_progress_args.clone(),
-    //     "BobState(Finish(Failure(Refunded)))".to_string(),
-    // )
-    // .await;
+    // generate some bitcoin blocks for confirmations
+    bitcoin_rpc
+        .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+
+    println!("\n\n generated 20 blocks \n\n");
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks for confirmations
+    bitcoin_rpc
+        .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+    println!("\n\n generated 20 blocks \n\n");
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
 
     // run until the AliceState(Finish) is received
-    // retry_until_finish_state_transition(
-    // cli_alice_progress_args.clone(),
-    // "AliceState(Finish)".to_string(),
-    // )
-    // .await;
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(Finish)".to_string(),
+    )
+    .await;
 
     // generate some blocks on bitcoin's side
     bitcoin_rpc
@@ -623,17 +614,17 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .filter(|(_pid, process)| {
             ["peerd"].contains(&process.name())
                 && procs_peerd
-                .iter()
-                .map(|proc| proc.0)
-                .collect::<Vec<_>>()
-                .contains(&&(process.parent().unwrap()))
+                    .iter()
+                    .map(|proc| proc.0)
+                    .collect::<Vec<_>>()
+                    .contains(&&(process.parent().unwrap()))
         })
         .map(|(pid, _process)| {
             nix::sys::signal::kill(
                 nix::unistd::Pid::from_raw(*pid as i32),
                 nix::sys::signal::Signal::SIGINT,
             )
-                .expect("Sending CTRL-C failed")
+            .expect("Sending CTRL-C failed")
         })
         .collect();
 
@@ -905,6 +896,7 @@ async fn retry_until_finish_state_transition(
         let alice_finish: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
+                println!("element: {:?}", element);
                 if element.contains(&finish_state) {
                     Some(element.to_string())
                 } else {
