@@ -1,21 +1,21 @@
 # Installation Guide
 
+We provide two methods to install Farcater: compiling the software from [sources](#install-from-sources) or using [containers](#with-docker-and-docker-compose).
+
+To install Farcaster on your machine from sources you need some terminal knowledge and know how to use your package manager.
+
 ## Install from sources
 
-To install Farcaster on your machine from sources you need some terminal knowledge and how to use your package manager. If you don't want to install the binaries on your machine you can try to use Farcaster with [docker](./docker-stack.md).
+After instaling [Rust](https://www.rust-lang.org/tools/install) don't forget to run `source $HOME/.cargo/env` or start a new terminal session. The binaries will be installed in `$HOME/.cargo/bin`.
 
-This document shows how to compile and install Farcaster on your machine depending on your operating system, we don't provide instructions for Windows at the moment, try using Docker.
-
-After installing [Rust](https://www.rust-lang.org/tools/install) don't forget to run `source $HOME/.cargo/env` or start a new terminal session. The binaries will be installed in `$HOME/.cargo/bin`.
-
-### Debian 10/11
+### Ubuntu & Debian 10/11
 
 To install Farcaster on Debian Buster or Bullseye run the following commands.
 
 Install dependencies
 
 ```
-apt-get update -y && apt-get install -y --no-install-recommends apt-utils
+apt-get update -y
 apt-get install -y git curl libssl-dev pkg-config build-essential cmake
 ```
 
@@ -77,7 +77,7 @@ cargo install --path . --bins --all-features --locked
 
 You can use the Docker image [`farcasterd`](https://github.com/farcaster-project/farcaster-node/pkgs/container/farcaster-node%2Ffarcasterd) and images from the [`containers`](https://github.com/orgs/farcaster-project/packages?repo_name=containers) repo.
 
-The easiet way is to use a `docker-compose.yml` file.
+The easiet way is to use Docker compose to run both the node and the Monero wallet. Copy and paste the following in a `docker-compose.yml` file and run `docker-compose up -d`
 
 ```yaml
 version: "3.9"
