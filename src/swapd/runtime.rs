@@ -14,8 +14,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
-    rpc::request::Outcome,
     rpc::request::FundingInfo,
+    rpc::request::Outcome,
     syncerd::{
         opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
@@ -1143,16 +1143,15 @@ impl Runtime {
                                 pending_requests.push(pending_request);
 
                                 if let Some(addr) = self.state.b_address().cloned() {
-                                    // let msg = format!(
-                                    //     "{} {}",
-                                    //     "Funding address:".bright_white_bold(),
-                                    //     addr.bright_yellow_bold()
-                                    // );
                                     let msg = format!(
-                                        "{} {}",
-                                        "Funding address:".bright_white_bold(),
-                                        addr.bright_yellow_bold()
+                                        "Send {} to {}",
+                                        self.syncer_state
+                                            .bitcoin_amount
+                                            .to_string()
+                                            .bright_green_bold(),
+                                        addr,
                                     );
+
                                     let fees = bitcoin::Amount::from_sat(150); // FIXME
                                     let req = Request::FundingInfo(FundingInfo::Bitcoin(
                                         self.swap_id(),

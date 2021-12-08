@@ -525,16 +525,16 @@ pub enum Request {
     // #[display("offer_list({0})", alt = "{0:#}")]
     // #[from]
     // OfferIdList(List<PublicOfferId>),
-    #[api(type = 1106)]
+    #[api(type = 1108)]
     #[display("funding_info({0})", alt = "{0:#}")]
     #[from]
     FundingInfo(FundingInfo),
 
-    #[api(type = 1107)]
+    #[api(type = 1109)]
     #[display("read_funding")]
     NeedsFunding(crate::syncerd::Coin),
 
-    #[api(type = 1108)]
+    #[api(type = 1110)]
     #[display("read_funding")]
     WriteText(List<String>),
 
