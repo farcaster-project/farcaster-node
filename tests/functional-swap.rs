@@ -442,12 +442,23 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
         .unwrap();
     println!("\n\n generated 20 blocks \n\n");
 
+    monero_regtest
+        .generate_blocks(20, reusable_xmr_address())
+        .await
+        .unwrap();
+
     tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks for confirmations
+    bitcoin_rpc
+        .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+    println!("\n\n generated 20 blocks \n\n");
 
     // run until the AliceState(Finish) is received
     retry_until_finish_state_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish)".to_string(),
+        "AliceState(Finish(Failure(Punished)))".to_string(),
     )
     .await;
 
@@ -477,23 +488,14 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     let before_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
     drop(monero_wallet_lock);
 
-    // generate some bitcoin blocks for confirmations
-    bitcoin_rpc
-        .generate_to_address(20, &reusable_btc_address())
-        .unwrap();
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
-    // generate some bitcoin blocks for confirmations
-    bitcoin_rpc
-        .generate_to_address(20, &reusable_btc_address())
-        .unwrap();
-
+    // tokio::time::sleep(time::Duration::from_secs(20)).await;
     // generate some blocks on monero's side
     monero_regtest
         .generate_blocks(20, reusable_xmr_address())
         .await
         .unwrap();
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // tokio::time::sleep(time::Duration::from_secs(20)).await;
 
     // run until the AliceState(Finish) is received
     retry_until_finish_state_transition(
