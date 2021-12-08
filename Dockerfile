@@ -8,9 +8,7 @@ ARG BUILDER_DIR
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends apt-utils
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        libsqlite3-dev \
         libssl-dev \
-        libzmq3-dev \
         pkg-config \
         build-essential \
         cmake
