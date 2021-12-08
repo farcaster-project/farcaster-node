@@ -608,14 +608,14 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .iter()
         .filter(|(_pid, process)| {
             ["peerd"].contains(&process.name())
-                && farcasterds
+                && procs
                     .iter()
-                    .map(|daemon| daemon.id())
+                    .map(|proc| proc.0)
                     .collect::<Vec<_>>()
-                    .contains(&(process.parent().unwrap() as u32))
+                    .contains(&&(process.parent().unwrap()))
         })
         .collect();
-    println!("\n\n\n peerd processes: {:?}\n\n\n", procs);
+    println!("\n\n\n peerd processes: {:?}\n\n\n", procs_peerd);
 
     let _procs: Vec<_> = sys
         .get_processes()
