@@ -925,9 +925,12 @@ impl Runtime {
                     use std::path::PathBuf;
                     use std::str::FromStr;
 
-                    let cookie = env::var("BITCOIN_COOKIE")
-                        .unwrap_or("/home/drgrid/.bitcoin/testnet3/.cookie".into());
-                    let path = PathBuf::from_str(&cookie).unwrap();
+                    let path = match env::var("BITCOIN_COOKIE") {
+                        Ok(cookie) => PathBuf::from_str(&cookie).unwrap(),
+                        Err(_) => PathBuf::from(
+                            shellexpand::tilde("~/.bitcoin/testnet3/.cookie").to_string(),
+                        ),
+                    };
                     let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
                     let bitcoin_rpc =
                         Client::new(&format!("http://{}:18334", host), Auth::CookieFile(path))
