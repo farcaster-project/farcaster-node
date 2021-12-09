@@ -812,7 +812,7 @@ impl Runtime {
                     }
                 } else {
                     error!(
-                        "{} | Unknown wallet and swap_id {:#?}",
+                        "{:#} | Unknown wallet and swap_id {:#}",
                         swap_id.bright_blue_italic(),
                         swap_id.bright_white_bold(),
                     );
