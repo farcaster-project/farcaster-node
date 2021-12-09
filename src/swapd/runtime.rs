@@ -1143,15 +1143,6 @@ impl Runtime {
                                 pending_requests.push(pending_request);
 
                                 if let Some(addr) = self.state.b_address().cloned() {
-                                    let msg = format!(
-                                        "Send {} to {}",
-                                        self.syncer_state
-                                            .bitcoin_amount
-                                            .to_string()
-                                            .bright_green_bold(),
-                                        addr,
-                                    );
-
                                     let fees = bitcoin::Amount::from_sat(150); // FIXME
                                     let req = Request::FundingInfo(FundingInfo::Bitcoin(
                                         BitcoinFundingInfo {
@@ -1168,7 +1159,6 @@ impl Runtime {
                                             req,
                                         )?
                                     }
-                                    // let _ = self.report_progress_to(senders, &enquirer, msg);
                                 }
                             }
                         }
@@ -1883,20 +1873,6 @@ impl Runtime {
                                         self.syncer_state.network.into(),
                                         &viewpair,
                                     );
-                                    let msg = format!(
-                                        "Send {} to {}",
-                                        self.syncer_state
-                                            .monero_amount
-                                            .to_string()
-                                            .bright_green_bold(),
-                                        address.addr(),
-                                    );
-                                    info!("{} | {}", self.swap_id.bright_blue_italic(), msg);
-                                    self.report_success_to(
-                                        senders,
-                                        self.enquirer.clone(),
-                                        Some(msg),
-                                    )?;
                                     let funding_request =
                                         Request::FundingInfo(FundingInfo::Monero(MoneroFundingInfo{
                                             swap_id: self.swap_id(),

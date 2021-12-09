@@ -917,7 +917,7 @@ impl Runtime {
                     address,
                     amount,
                 }) if self.auto_fund => {
-                    println!("attempting to auto fund bitcoin address");
+                    info!("attempting to auto fund bitcoin address");
                     use bitcoincore_rpc::{Auth, Client, RpcApi};
                     use std::env;
                     use std::path::PathBuf;
@@ -935,7 +935,7 @@ impl Runtime {
                         .send_to_address(&address, amount, None, None, None, None, None, None)
                         .unwrap();
 
-                    println!("bitcoin auto funded with tx id: {:?}", txid);
+                    info!("bitcoin auto funded with tx id: {:?}", txid);
                 }
                 FundingInfo::Bitcoin(BitcoinFundingInfo {
                     swap_id,
@@ -949,7 +949,7 @@ impl Runtime {
                     address,
                     amount,
                 }) if self.auto_fund => {
-                    println!("attempting to auto fund monero address");
+                    info!("attempting to auto-fund monero lock address");
                     use tokio::runtime::Builder;
                     let rt = Builder::new_multi_thread()
                         .worker_threads(1)
@@ -972,7 +972,7 @@ impl Runtime {
                             .await
                         {
                             Ok(_) => {
-                                info!("auto-funded monero transaction");
+                                info!("auto-funded monero lock address");
                             }
                             Err(_) => {
                                 info!("auto-funding monero transaction failed, pushing to cli");
@@ -1003,8 +1003,7 @@ impl Runtime {
                     .iter()
                     .enumerate()
                     .map(|(i, (swapid, (addr, amount)))| {
-                        let mut res =
-                            format!("{} needs funding {} with amount {}", swapid, addr, amount);
+                        let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
                         if i < len - 1 {
                             res.push('\n');
                         }
@@ -1025,10 +1024,7 @@ impl Runtime {
                     .iter()
                     .enumerate()
                     .map(|(i, (swapid, (addr, amount)))| {
-                        let mut res = format!(
-                            "{:#?} needs funding {} with amount {}",
-                            swapid, addr, amount
-                        );
+                        let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
                         if i < len - 1 {
                             res.push('\n');
                         }

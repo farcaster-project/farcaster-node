@@ -201,7 +201,7 @@ pub enum Command {
     },
 
     NeedsFunding {
-        coin: Coin
+        coin: Coin,
     },
 }
 

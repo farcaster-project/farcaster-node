@@ -358,15 +358,20 @@ async fn run_refund_swap_kill_alice_after_funding(
     execution_mutex: Arc<Mutex<u8>>,
     alice_farcasterd: std::process::Child,
 ) {
-    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice, swap_id.clone());
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob, swap_id.clone());
+    let cli_alice_progress_args: Vec<String> =
+        progress_args(data_dir_alice.clone(), swap_id.clone());
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_bob_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_bob, "bitcoin".to_string());
+    let cli_alice_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_alice, "monero".to_string());
 
     bitcoin_rpc
         .generate_to_address(1, &reusable_btc_address())
         .unwrap();
 
     // run until bob has the btc funding address
-    let address = retry_until_bitcoin_funding_address(cli_bob_progress_args.clone()).await;
+    let address = retry_until_bitcoin_funding_address(cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
@@ -918,6 +923,13 @@ fn progress_args(data_dir: Vec<String>, swap_id: String) -> Vec<String> {
     data_dir
         .into_iter()
         .chain(vec!["progress".to_string(), swap_id])
+        .collect()
+}
+
+fn needs_funding_args(data_dir: Vec<String>, currency: String) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(vec!["needs-funding".to_string(), currency])
         .collect()
 }
 

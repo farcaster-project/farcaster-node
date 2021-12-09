@@ -110,6 +110,7 @@ fn bicoin_syncer_retrieve_transaction_test() {
     let message = rx_event.recv_multipart(0).unwrap();
     let request = get_request_from_message(message);
     println!("received request: {:?}", request);
+    assert_transaction_received(request, txid);
 }
 
 fn assert_transaction_received(request: Request, expected_txid: bitcoin::Txid) {
