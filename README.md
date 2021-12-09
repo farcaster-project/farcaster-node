@@ -101,53 +101,15 @@ Commands you should know: `swap-cli info` gives a genaral overview of the node, 
 
 With those commands and farcasterd logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`), you should be able to follow your swaps.
 
-Check out the documentaion on [how to use the node](#usage) to learn how to make and take offers.
-
-### Configuration
-
-`farcasterd` can be configured through a `.toml` file located by default at `~/.farcaster/farcasterd.toml` (for Linux and BSD, macOS will use `/Users/{user}/Library/Application Support/Farcaster/` and see [here](./src/opts.rs) for more platforms specific). If no file is found, `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
-
-**Syncers**
-
-This entry configures the daemons' connection URLs for the three possible networks: _mainnet_, _testnet_, _local_:
-
-```toml
-[syncers.{network}]
-electrum_server = ""
-monero_daemon = ""
-monero_rpc_wallet = ""
-```
-
-:mag_right: The default config for _local_ network is set to `null`.
-
-#### :bulb: Use public infrastructure
-
-To help quickly test and avoid running the entire infrastructure on your machine, you can make use of public nodes. Following is a non-exhaustive list of public nodes.
-
-Only blockchain daemons and electrum servers are listed, you should always run your own `monero rpc wallet`.
-
-**Mainnet**
-
-| daemon            | value                                                |
-| ----------------- | ---------------------------------------------------- |
-| `electrum server` | `ssl://blockstream.info:700` **(default)**           |
-| `monero daemon`   | `http://node.melo.tools:18081`                       |
-| `monero daemon`   | `http://node.monerooutreach.org:18081` **(default)** |
-
-**Testnet/Stagenet**
-
-| daemon            | value                                            |
-| ----------------- | ------------------------------------------------ |
-| `electrum server` | `ssl://blockstream.info:993` **(default)**       |
-| `monero daemon`   | `http://stagenet.melo.tools:38081` **(default)** |
+Check out the documentation on [configuration](#configuration) for more advanced setups.
 
 ## Usage
 
-:rotating_light: **The following section focus on how to use the Farcaster Node to propose and run atomic swaps. Keep in mind that this software remains experimental and should not be used on mainnet or with any valuable assets.**
+:rotating_light: **The following section focus on how to use the Farcaster Node to propose and run atomic swaps. Keep in mind that this software remains experimental and should not be used on mainnet or with real money.**
 
 When `farcasterd` is up & running and `swap-cli` is configured to connect and control it, you can make offers and/or take offers. An offer encapsulate informations about a trade of Bitcoin and Monero. One will make :hammer: an offer, e.g. a market maker, and one will try to take :moneybag: the offer. Below are the commands to use to either `make` an offer or `take` one.
 
-If you just want to take a public offer, you may jump to Take the offer.
+If you just want to take a public offer, you may jump to [Take the offer](#:moneybag:-take-the-offer).
 
 ### :hammer: Make an offer
 
@@ -201,9 +163,48 @@ The cli will ask you to validate the offer's specifics (amounts, assets, etc.). 
 
 Then follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneroj when it asks so. At the end of the swap, you should receive the counterparty's assets.
 
+### Configuration
+
+`farcasterd` can be configured through a `.toml` file located by default at `~/.farcaster/farcasterd.toml` (for Linux and BSD, macOS will use `/Users/{user}/Library/Application Support/Farcaster/` and see [here](./src/opts.rs) for more platforms specific). If no file is found, `farcasterd` is launched with some default values. You can see an example [here](./farcasterd.toml).
+
+**Syncers**
+
+This entry configures the daemons' connection URLs for the three possible networks: _mainnet_, _testnet_, _local_:
+
+```toml
+[syncers.{network}]
+electrum_server = ""
+monero_daemon = ""
+monero_rpc_wallet = ""
+```
+
+:mag_right: The default config for _local_ network is set to `null`.
+
+#### :bulb: Use public infrastructure
+
+To help quickly test and avoid running the entire infrastructure on your machine, you can make use of public nodes. Following is a non-exhaustive list of public nodes.
+
+Only blockchain daemons and electrum servers are listed, you should always run your own `monero rpc wallet`.
+
+**Mainnet**
+
+| daemon            | value                                                |
+| ----------------- | ---------------------------------------------------- |
+| `electrum server` | `ssl://blockstream.info:700` **(default)**           |
+| `monero daemon`   | `http://node.melo.tools:18081`                       |
+| `monero daemon`   | `http://node.monerooutreach.org:18081` **(default)** |
+
+**Testnet/Stagenet**
+
+| daemon            | value                                            |
+| ----------------- | ------------------------------------------------ |
+| `electrum server` | `ssl://blockstream.info:993` **(default)**       |
+| `monero daemon`   | `http://stagenet.melo.tools:38081` **(default)** |
+
 ### Run a swap locally
 
 If you want to test a swap with yourself locally, you can follow the instructions [here](./doc/local-swap.md).
+
 
 ## Releases and Changelog
 
