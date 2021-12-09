@@ -16,8 +16,8 @@
 use crate::{
     error::SyncerError,
     rpc::request::{
-        BitcoinAddress, Keys, LaunchSwap, MoneroAddress, Outcome, PubOffer, RequestId, Reveal,
-        Token,
+        BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
+        MoneroFundingInfo, Outcome, PubOffer, RequestId, Reveal, Token,
     },
     swapd::get_swap_id,
     syncerd::opts::Coin,
@@ -84,7 +84,7 @@ use std::str::FromStr;
 pub fn run(
     service_config: ServiceConfig,
     config: Config,
-    _opts: Opts,
+    opts: Opts,
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
@@ -108,8 +108,15 @@ pub fn run(
         consumed_offers: none!(),
         progress: none!(),
         stats: none!(),
+        funding_xmr: none!(),
+        funding_btc: none!(),
         config,
+        auto_fund: opts.auto_fund,
     };
+
+    if opts.auto_fund {
+        info!("farcasterd will attempt to fund automatically");
+    }
 
     let broker = true;
     Service::run(service_config, runtime, broker)
@@ -134,8 +141,11 @@ pub struct Runtime {
     syncer_services: HashMap<(Coin, Network), ServiceId>,
     syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
+    funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount)>,
+    funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount)>,
     stats: Stats,
     config: Config,
+    auto_fund: bool,
 }
 
 struct Stats {
@@ -905,6 +915,141 @@ impl Runtime {
                     )?;
                 }
             }
+            Request::FundingInfo(info) => match info {
+                FundingInfo::Bitcoin(BitcoinFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) if self.auto_fund => {
+                    info!("Attempting to auto-fund Bitcoin");
+                    use bitcoincore_rpc::{Auth, Client, RpcApi};
+                    use std::env;
+                    use std::path::PathBuf;
+                    use std::str::FromStr;
+
+                    let path = match env::var("BITCOIN_COOKIE") {
+                        Ok(cookie) => PathBuf::from_str(&cookie).unwrap(),
+                        Err(_) => PathBuf::from(
+                            shellexpand::tilde("~/.bitcoin/testnet3/.cookie").to_string(),
+                        ),
+                    };
+                    let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
+                    let bitcoin_rpc =
+                        Client::new(&format!("http://{}:18334", host), Auth::CookieFile(path))
+                            .unwrap();
+
+                    match bitcoin_rpc
+                        .send_to_address(&address, amount, None, None, None, None, None, None)
+                    {
+                        Ok(txid) => info!("Auto-funded Bitcoin with txid: {}", txid),
+                        Err(_) => {
+                            error!("Auto-funding Bitcoin transaction failed, pushing to cli");
+                            self.funding_btc.insert(swap_id, (address, amount));
+                        }
+                    }
+                }
+                FundingInfo::Bitcoin(BitcoinFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) => {
+                    self.funding_btc.insert(swap_id, (address, amount));
+                }
+                FundingInfo::Monero(MoneroFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) if self.auto_fund => {
+                    info!("Attempting to auto-fund Monero");
+                    use tokio::runtime::Builder;
+                    let rt = Builder::new_multi_thread()
+                        .worker_threads(1)
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    rt.block_on(async {
+                        let wallet_client =
+                            monero_rpc::RpcClient::new("http://localhost:18083".to_string());
+                        let wallet = wallet_client.wallet();
+                        let options = monero_rpc::TransferOptions::default();
+                        let mut destination = HashMap::new();
+                        destination.insert(address, amount.as_pico());
+                        match wallet
+                            .transfer(
+                                destination.clone(),
+                                monero_rpc::TransferPriority::Default,
+                                options.clone(),
+                            )
+                            .await
+                        {
+                            Ok(tx) => {
+                                info!("Auto-funded Monero with txid: {}", tx.tx_hash.to_string());
+                            }
+                            Err(_) => {
+                                error!("Auto-funding Monero transaction failed, pushing to cli");
+                                self.funding_xmr.insert(swap_id, (address, amount));
+                            }
+                        }
+                    });
+                }
+                FundingInfo::Monero(MoneroFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) => {
+                    self.funding_xmr.insert(swap_id, (address, amount));
+                }
+            },
+
+            Request::FundingCompleted(swap_id) => {
+                info!("Funding completed on swap {}", swap_id);
+                self.funding_xmr.remove_entry(&swap_id);
+                self.funding_btc.remove_entry(&swap_id);
+            }
+
+            Request::NeedsFunding(Coin::Monero) => {
+                let len = self.funding_xmr.len();
+                let res = self
+                    .funding_xmr
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (swapid, (addr, amount)))| {
+                        let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
+                        if i < len - 1 {
+                            res.push('\n');
+                        }
+                        res
+                    })
+                    .collect();
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source,
+                    Request::String(res),
+                )?;
+            }
+            Request::NeedsFunding(Coin::Bitcoin) => {
+                let len = self.funding_btc.len();
+                let res = self
+                    .funding_btc
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (swapid, (addr, amount)))| {
+                        let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
+                        if i < len - 1 {
+                            res.push('\n');
+                        }
+                        res
+                    })
+                    .collect();
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source,
+                    Request::String(res),
+                )?;
+            }
+
             req => {
                 error!("Ignoring unsupported request: {}", req.err());
             }

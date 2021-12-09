@@ -15,6 +15,7 @@
 
 use crate::{
     rpc::request::Outcome,
+    rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
     syncerd::{
         opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
@@ -96,6 +97,7 @@ pub fn run(
         maker_role, // SwapRole of maker (Alice or Bob)
         network,
         accordant_amount: monero_amount,
+        arbitrating_amount: bitcoin_amount,
         ..
     } = public_offer.offer;
     // alice or bob
@@ -150,6 +152,7 @@ pub fn run(
         bitcoin_syncer: ServiceId::Syncer(Coin::Bitcoin, network),
         monero_syncer: ServiceId::Syncer(Coin::Monero, network),
         monero_amount,
+        bitcoin_amount,
     };
 
     let runtime = Runtime {
@@ -287,6 +290,7 @@ struct SyncerState {
     bitcoin_syncer: ServiceId,
     monero_syncer: ServiceId,
     monero_amount: monero::Amount,
+    bitcoin_amount: bitcoin::Amount,
 }
 
 #[derive(Display, Clone)]
@@ -1139,13 +1143,22 @@ impl Runtime {
                                 pending_requests.push(pending_request);
 
                                 if let Some(addr) = self.state.b_address().cloned() {
-                                    let msg = format!(
-                                        "{} {}",
-                                        "Funding address:".bright_white_bold(),
-                                        addr.bright_yellow_bold()
-                                    );
-                                    let enquirer = self.enquirer.clone();
-                                    let _ = self.report_progress_to(senders, &enquirer, msg);
+                                    let fees = bitcoin::Amount::from_sat(150); // FIXME
+                                    let req = Request::FundingInfo(FundingInfo::Bitcoin(
+                                        BitcoinFundingInfo {
+                                            swap_id: self.swap_id(),
+                                            address: addr,
+                                            amount: self.syncer_state.bitcoin_amount + fees,
+                                        },
+                                    ));
+                                    if let Some(enquirer) = self.enquirer.clone() {
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            enquirer,
+                                            req,
+                                        )?
+                                    }
                                 }
                             }
                         }
@@ -1534,6 +1547,12 @@ impl Runtime {
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCompleted(self.swap_id()),
+                        )?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
                             self.syncer_state.monero_syncer(),
                             Request::SyncerTask(task),
                         )?;
@@ -1552,6 +1571,12 @@ impl Runtime {
                             );
                             return Ok(());
                         }
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCompleted(self.swap_id()),
+                        )?;
                         if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(id) {
                             let watch_tx = self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
                             senders.send_to(
@@ -1712,7 +1737,7 @@ impl Runtime {
                         tx,
                     }) if self.syncer_state.tasks.watched_addrs.get(id).is_some() => {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
-                        trace!(
+                        info!(
                             "Received AddressTransaction, processing tx {}",
                             &tx.txid().addr()
                         );
@@ -1720,6 +1745,12 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding => {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Farcasterd,
+                                    Request::FundingCompleted(self.swap_id()),
+                                )?;
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
@@ -1842,20 +1873,21 @@ impl Runtime {
                                         self.syncer_state.network.into(),
                                         &viewpair,
                                     );
-                                    let msg = format!(
-                                        "Send {} to {}",
-                                        self.syncer_state
-                                            .monero_amount
-                                            .to_string()
-                                            .bright_green_bold(),
-                                        address.addr(),
-                                    );
-                                    info!("{} | {}", self.swap_id.bright_blue_italic(), msg);
-                                    self.report_success_to(
-                                        senders,
-                                        self.enquirer.clone(),
-                                        Some(msg),
-                                    )?;
+                                    let funding_request =
+                                        Request::FundingInfo(FundingInfo::Monero(MoneroFundingInfo{
+                                            swap_id: self.swap_id(),
+                                            address,
+                                            amount: self.syncer_state.monero_amount,
+                                        }));
+                                    if let Some(enquirer) = self.enquirer.clone() {
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            enquirer,
+                                            funding_request,
+                                        )?
+                                    }
+
                                     let watch_addr_task = self.syncer_state.watch_addr_xmr(
                                         spend,
                                         view,

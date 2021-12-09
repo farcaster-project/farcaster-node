@@ -20,7 +20,7 @@ _farcasterd() {
 
     case "${cmd}" in
         farcasterd)
-            opts=" -h -V -d -v -T -m -x -c  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket --config  "
+            opts=" -h -V -d -v -T -m -x -a -c  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket --auto-fund --config  "
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

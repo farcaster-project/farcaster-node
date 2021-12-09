@@ -263,7 +263,9 @@ impl Runtime {
             // after TakerCommit, blocks TakerCommit, as `self.btc_addrs.contains_key(&swap_id) ==
             // false`
             Request::BitcoinAddress(BitcoinAddress(swapid, btc_addr)) => {
-                self.btc_addrs.insert(swapid, btc_addr);
+                if self.btc_addrs.insert(swapid, btc_addr).is_some() {
+                    error!("btc_addrs rm accidentally")
+                };
             }
 
             // Handled in Msg to avoid race condition between Msg and Ctl bus (2 msgs sent
@@ -272,7 +274,9 @@ impl Runtime {
             // after TakerCommit, blocks TakerCommit, as `self.xmr_addrs.contains_key(&swap_id) ==
             // false`
             Request::MoneroAddress(MoneroAddress(swapid, xmr_addr)) => {
-                self.xmr_addrs.insert(swapid, xmr_addr);
+                if self.xmr_addrs.insert(swapid, xmr_addr).is_some() {
+                    error!("xmr_addrs rm accidentally")
+                };
             }
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
