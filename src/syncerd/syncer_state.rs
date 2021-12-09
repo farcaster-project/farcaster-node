@@ -333,6 +333,7 @@ impl SyncerState {
     pub async fn change_height(&mut self, new_height: u64, block: Vec<u8>) -> bool {
         if self.block_height != new_height || self.block_hash != block {
             self.handle_change_height(new_height, block.clone());
+            self.drop_lifetimes();
 
             // Emit a height_changed event
             for (id, task) in self.watch_height.iter() {
@@ -384,7 +385,6 @@ impl SyncerState {
             }
             _ => error!("Unexpected block height change, ignoring"),
         }
-        self.drop_lifetimes();
     }
 
     pub async fn change_address(
@@ -794,7 +794,7 @@ async fn syncer_state_transaction() {
     assert_eq!(state.unseen_transactions.len(), 2);
     assert!(event_rx.try_recv().is_ok());
 
-    state.change_height(5, vec![0]).await;
+    state.change_height(5, vec![1]).await;
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.transactions.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
@@ -940,7 +940,7 @@ async fn syncer_state_addresses() {
     assert_eq!(state.addresses.len(), 1);
     assert!(event_rx.try_recv().is_ok());
 
-    state.change_height(1, vec![0]).await;
+    state.change_height(1, vec![1]).await;
     let height_task = WatchHeight {
         id: TaskId(0),
         lifetime: 3,
@@ -950,7 +950,7 @@ async fn syncer_state_addresses() {
     assert_eq!(state.tasks_sources.len(), 2);
     assert!(event_rx.try_recv().is_ok());
 
-    state.change_height(2, vec![0]).await;
+    state.change_height(2, vec![2]).await;
     state
         .change_address(
             addendum.clone(),
@@ -1056,19 +1056,19 @@ async fn syncer_state_height() {
     assert_eq!(state.watch_height.len(), 2);
     assert!(event_rx.try_recv().is_err());
 
-    state.change_height(1, vec![0]).await;
+    state.change_height(1, vec![1]).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);
     assert!(event_rx.try_recv().is_ok());
 
-    state.change_height(3, vec![0]).await;
+    state.change_height(3, vec![3]).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);
     assert!(event_rx.try_recv().is_ok());
 
-    state.change_height(3, vec![0]).await;
+    state.change_height(3, vec![3]).await;
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);
