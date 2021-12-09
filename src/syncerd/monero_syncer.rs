@@ -1,4 +1,3 @@
-use crate::{error::{Error, SyncerError}, syncerd::opts::Coin};
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
@@ -16,6 +15,10 @@ use crate::syncerd::Event;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
+use crate::{
+    error::{Error, SyncerError},
+    syncerd::opts::Coin,
+};
 use farcaster_core::blockchain::Network;
 use internet2::zmqsocket::{Connection, ZmqType};
 use internet2::PlainTranscoder;
@@ -655,7 +658,8 @@ impl Synclet for MoneroSyncer {
                             TokioSender<SyncerdBridgeEvent>,
                             TokioReceiver<SyncerdBridgeEvent>,
                         ) = tokio::sync::mpsc::channel(120);
-                        let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone(), Coin::Monero)));
+                        let state =
+                            Arc::new(Mutex::new(SyncerState::new(event_tx.clone(), Coin::Monero)));
 
                         run_syncerd_task_receiver(
                             receive_task_channel,
