@@ -111,7 +111,7 @@ pub fn run(
         funding_xmr: none!(),
         funding_btc: none!(),
         config,
-        auto_fund: true,
+        auto_fund: false,
     };
 
     let broker = true;
@@ -936,23 +936,6 @@ impl Runtime {
                         .unwrap();
 
                     println!("bitcoin auto funded with tx id: {:?}", txid);
-
-                    // let len = self.funding_btc.len();
-                    // let _res: String = self
-                    //     .funding_btc
-                    //     .drain()
-                    //     .enumerate()
-                    //     .map(|(i, (swapid, (addr, amount)))| {
-                    //         let mut res = prefix.clone();
-                    //         res.push_str(&addr.to_string());
-                    //         res.push(' ');
-                    //         res.push_str(&amount.as_btc().to_string());
-                    //         if i < len - 1 {
-                    //             res.push('\n');
-                    //         }
-                    //         res
-                    //     })
-                    //     .collect();
                 }
                 FundingInfo::Bitcoin(BitcoinFundingInfo {
                     swap_id,
@@ -980,30 +963,22 @@ impl Runtime {
                         let options = monero_rpc::TransferOptions::default();
                         let mut destination = HashMap::new();
                         destination.insert(address, amount.as_pico());
-                        let transaction = wallet
+                        match wallet
                             .transfer(
                                 destination.clone(),
                                 monero_rpc::TransferPriority::Default,
                                 options.clone(),
                             )
                             .await
-                            .unwrap();
-                        println!("auto-funded monero transaction: {:?}", transaction);
-
-                        // let options = monero_rpc::TransferOptions::default();
-                        // for (i, (swapid, (addr, amount))) in self.funding_xmr.drain().enumerate() {
-                        // let mut destination = HashMap::new();
-                        // destination.insert(addr, amount.as_pico());
-                        // let transaction = wallet
-                        // .transfer(
-                        // destination.clone(),
-                        // monero_rpc::TransferPriority::Default,
-                        // options.clone(),
-                        // )
-                        // .await
-                        // .unwrap();
-                        // println!("")
-                        // }
+                        {
+                            Ok(_) => {
+                                info!("auto-funded monero transaction");
+                            }
+                            Err(_) => {
+                                info!("auto-funding monero transaction failed, pushing to cli");
+                                self.funding_xmr.insert(swap_id, (address, amount));
+                            }
+                        }
                     });
                 }
                 FundingInfo::Monero(MoneroFundingInfo {
@@ -1012,14 +987,14 @@ impl Runtime {
                     amount,
                 }) => {
                     self.funding_xmr.insert(swap_id, (address, amount));
-                    // if let Ok(addr) = monero::Address::from_str(&address) {
-                    //     let amount = monero::Amount::from_pico(amount);
-                    //     self.funding_xmr.insert(swap_id, (addr, amount));
-                    // } else {
-                    //     error!("Monero address not invalid");
-                    // };
                 }
             },
+
+            Request::FundingCompleted(swap_id) => {
+                info!("funding completed on swap {}", swap_id);
+                self.funding_xmr.remove_entry(&swap_id);
+                self.funding_btc.remove_entry(&swap_id);
+            }
 
             Request::NeedsFunding(Coin::Monero) => {
                 let len = self.funding_xmr.len();

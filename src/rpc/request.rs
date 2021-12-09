@@ -538,6 +538,10 @@ pub enum Request {
     #[display("read_funding")]
     WriteText(List<String>),
 
+    #[api(type = 1111)]
+    #[display("read_funding")]
+    FundingCompleted(SwapId),
+
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]
     // #[from]

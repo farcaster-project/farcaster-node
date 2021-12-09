@@ -1557,6 +1557,12 @@ impl Runtime {
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCompleted(self.swap_id()),
+                        )?;
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
                             self.syncer_state.monero_syncer(),
                             Request::SyncerTask(task),
                         )?;
@@ -1575,6 +1581,12 @@ impl Runtime {
                             );
                             return Ok(());
                         }
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCompleted(self.swap_id()),
+                        )?;
                         if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(id) {
                             let watch_tx = self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
                             senders.send_to(
@@ -1735,7 +1747,7 @@ impl Runtime {
                         tx,
                     }) if self.syncer_state.tasks.watched_addrs.get(id).is_some() => {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
-                        trace!(
+                        info!(
                             "Received AddressTransaction, processing tx {}",
                             &tx.txid().addr()
                         );
@@ -1743,6 +1755,12 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding => {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Farcasterd,
+                                    Request::FundingCompleted(self.swap_id()),
+                                )?;
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
