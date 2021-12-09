@@ -305,7 +305,7 @@ pub enum AliceState {
     #[display("Reveal")]
     RevealA(Params, Commit), // local, remote
     // #[display("RefundProcSigs: {0}")]
-    #[display("RefundProcSigs")]
+    #[display("RefundSigs")]
     RefundSigA(RefundSigA),
     #[display("Finish({0})")]
     FinishA(Outcome),
@@ -348,7 +348,7 @@ pub enum BobState {
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>, bool), // lock (not signed), cancel_seen
-    #[display("BuyProcSig")]
+    #[display("BuySig")]
     BuySigB(BuySigB),
     #[display("Finish({0})")]
     FinishB(Outcome),
