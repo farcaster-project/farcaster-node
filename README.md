@@ -147,11 +147,13 @@ Only blockchain daemons and electrum servers are listed, you should always run y
 
 When `farcasterd` is up & running and `swap-cli` is configured to connect and control it, you can make offers and/or take offers. An offer encapsulate informations about a trade of Bitcoin and Monero. One will make :hammer: an offer, e.g. a market maker, and one will try to take :moneybag: the offer. Below are the commands to use to either `make` an offer or `take` one.
 
+If you just want to take a public offer, you may jump to Take the offer.
+
 ### :hammer: Make an offer
 
 After making an offer, the maker starts listening for other peers to connect and take that offer -- and hopefully execute a swap successfully. 
 
-A `peerd` instance is spawned by the maker and binds to the specified `address:port`. The taker's `farcasterd` then launches its own `peerd` that connects to the makers `peerd`. The communication is then established between two nodes, and they can swap.
+A `peerd` instance is spawned by the maker and binds to the specified `address:port`. The taker's `farcasterd` then launches its own `peerd` that connects to the makers `peerd`. The communication is then established between two nodes, and they can pass lightning encoded peer messages and swap.
 
 :mag_right: This requires for the time being some notions about the network topology the maker node is running in; this requirement will be removed once we're integrating Tor by default.
 
@@ -166,21 +168,24 @@ swap-cli make --btc-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
     --public-ip-addr 1.2.3.4 --bind-ip-addr 0.0.0.0 --port 9735 --overlay tcp
 ```
 
-Network and assets by default are Bitcoin and Monero on testnet. The first two arguments `--btc-addr` and `--xmr-addr` are the Bitcoin and Monero addresses used to get the bitcoins and moneroj as a refund or when the swap completes depending on the role. They are followed by the amounts exchanged.
+The `btc-addr` and `xmr-addr` are your external wallet addresses, where the coins will end up upon successful or failure cases. They are followed by the amounts exchanged. Assets and networks defaults to Bitcoin and Monero on testnet (Bitcoin testnet3, Monero stagenet). 
 
 The role for the maker is specified in the offer with `--maker-role`. `Alice` sells moneroj for bitcoins, `Bob` sells bitcoins for moneroj. Timelock parameters are set to **4** and **5** for cancel and punish and the transaction fee that must be applied is **1 satoshi per vByte**.
 
-Here the maker will send bitcoins and will receive moneros in his `54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu` address if the swap is successful.
+Here the maker will send bitcoins and will receive moneroj in her `54EYTy2HYFcAXwAbFQ3HmAis8JLNmxRdTC9DwQL7sGJd4CAUYimPxuQHYkMNg1EELNP85YqFwqraLd4ovz6UeeekFLoCKiu` address if the swap is successful.
 
 `--public-ip-addr` (default to `127.0.0.1`) and `--port` (default to `9735`) are used in the public offer for the taker to connect. `--bind-ip-addr` allows to bind the listening peerd to `0.0.0.0`, `tcp` is used as overlay between peers.
 
-:mag_right: To enable a taker to connect and take the offer the `public-ip-addr:port` must be accessible and answered by the `peerd` bound to `bind-id-address:port`.
+:mag_right: To enable a taker to connect and take the offer the `public-ip-addr:port` must be accessible and answered by the `peerd` bound to `bind-id-address:port`. 
+
+So maker must make sure her router allows external connections to that port to her node.
 
 **The public offer result**
 
-The command will ouput an encoded **public offer** that must be shared to anyone susceptible to take it and your `farcasterd` will register this public offer in its list, waiting for someone to connect and take it.
+The make command will output an encoded **public offer** that can be shared with potential takers. As a maker, your `farcasterd` registers this public offer, and waits for someone to connect through `peerd` and take the offer. A taker in her turn takes the offer and initiate a swap with the maker. 
 
-Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when it asks so, at the end you should receive the counterparty assets.
+
+Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when it asks so. At the end coins are swapped successfully, or less ideally refunded. We currently offer no manual cancel functionallity. We offer progress through `swap-cli progress {swapid}`. To list the the swapids of ther running swaps use `swap-cli ls`.
 
 ### :moneybag: Take the offer
 
