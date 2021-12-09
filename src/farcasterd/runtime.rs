@@ -740,8 +740,8 @@ impl Runtime {
                         serialized_offer.bright_yellow_bold()
                     );
                     info!(
-                        "{} {}",
-                        "Public offer registered:".bright_blue_bold(),
+                        "{}: {:#}",
+                        "Public offer registered".bright_green_bold(),
                         pub_offer_id.bright_yellow_bold()
                     );
                     report_to.push((
@@ -833,9 +833,9 @@ impl Runtime {
 
                     if peer_connected_is_ok {
                         let offer_registered = format!(
-                            "{} {}",
-                            "Public offer registered:".bright_blue_bold(),
-                            &public_offer.id().bright_white_bold()
+                            "{}: {:#}",
+                            "Public offer registered".bright_green_bold(),
+                            &public_offer.id().bright_yellow_bold()
                         );
                         // not yet in the set
                         self.public_offers.insert(public_offer.clone());
