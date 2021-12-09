@@ -111,7 +111,7 @@ pub fn run(
         funding_xmr: none!(),
         funding_btc: none!(),
         config,
-        auto_fund: true,
+        auto_fund: false,
     };
 
     let broker = true;
