@@ -892,14 +892,14 @@ impl SyncerState {
                     info!(
                         "{} | Tx {} on mempool but hasn't been mined",
                         swapid.bright_blue_italic(),
-                        txlabel.bright_green_bold()
+                        txlabel.bright_white_bold()
                     );
                 }
                 Some(confs) => {
                     info!(
                         "{} | Tx {} mined with {} {}",
                         swapid.bright_blue_italic(),
-                        txlabel.bright_green_bold(),
+                        txlabel.bright_white_bold(),
                         confs.bright_green_bold(),
                         "confirmations".bright_green_bold(),
                     )
@@ -908,7 +908,7 @@ impl SyncerState {
                     info!(
                         "{} | Tx {} not on the mempool",
                         swapid.bright_blue_italic(),
-                        txlabel.bright_green_bold()
+                        txlabel.bright_white_bold()
                     );
                 }
             }
@@ -1293,7 +1293,7 @@ impl Runtime {
                     "{} | Service {} daemon is now {}",
                     self.swap_id.bright_blue_italic(),
                     source.bright_green_bold(),
-                    "connected".bright_green_bold()
+                    "connected"
                 );
             }
             (_, ServiceId::Syncer(..)) if source == self.syncer_state.bitcoin_syncer || source == self.syncer_state.monero_syncer => {
@@ -1334,14 +1334,14 @@ impl Runtime {
                     .sweep_xmr(view_key, spend_key, address, from_height);
                 let acc_confs_needs =
                     self.temporal_safety.sweep_monero_thr - self.temporal_safety.xmr_finality_thr;
-                let sweep_block = self.syncer_state.height(Coin::Monero) + acc_confs_need as u64s;
+                let sweep_block = self.syncer_state.height(Coin::Monero) + acc_confs_needs as u64;
                 info!(
                     "{} | Tx {} needs {}, and has {} {}",
                     self.swap_id.bright_blue_italic(),
-                    TxLabel::AccLock.bright_green_bold(),
-                    "10 confirmations".bright_blue_bold(),
-                    (10 - acc_confs_needs).bright_blue_bold(),
-                    "confirmations".bright_blue_bold(),
+                    TxLabel::AccLock.bright_white_bold(),
+                    "10 confirmations".bright_green_bold(),
+                    (10 - acc_confs_needs).bright_green_bold(),
+                    "confirmations".bright_green_bold(),
                 );
                 info!(
                     "{} | {} reaches your address {} around block {}",
