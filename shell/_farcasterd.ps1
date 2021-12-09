@@ -36,6 +36,8 @@ Register-ArgumentCompleter -Native -CommandName 'farcasterd' -ScriptBlock {
             [CompletionResult]::new('--version', 'version', [CompletionResultType]::ParameterName, 'Print version information')
             [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
             [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
+            [CompletionResult]::new('-a', 'a', [CompletionResultType]::ParameterName, 'Data directory path')
+            [CompletionResult]::new('--auto-fund', 'auto-fund', [CompletionResultType]::ParameterName, 'Data directory path')
             break
         }
     })

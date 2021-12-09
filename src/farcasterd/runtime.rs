@@ -84,7 +84,7 @@ use std::str::FromStr;
 pub fn run(
     service_config: ServiceConfig,
     config: Config,
-    _opts: Opts,
+    opts: Opts,
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
@@ -111,8 +111,10 @@ pub fn run(
         funding_xmr: none!(),
         funding_btc: none!(),
         config,
-        auto_fund: false,
+        auto_fund: opts.auto_fund,
     };
+
+    info!("funding automatically {:?}", opts.auto_fund);
 
     let broker = true;
     Service::run(service_config, runtime, broker)
