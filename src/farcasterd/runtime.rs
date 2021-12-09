@@ -16,8 +16,8 @@
 use crate::{
     error::SyncerError,
     rpc::request::{
-        BitcoinAddress, FundingInfo, Keys, LaunchSwap, MoneroAddress, Outcome, PubOffer, RequestId,
-        Reveal, Token,
+        BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
+        MoneroFundingInfo, Outcome, PubOffer, RequestId, Reveal, Token,
     },
     swapd::get_swap_id,
     syncerd::opts::Coin,
@@ -912,7 +912,11 @@ impl Runtime {
                 }
             }
             Request::FundingInfo(info) => match info {
-                FundingInfo::Bitcoin(swapid, addr, amount) if self.auto_fund => {
+                FundingInfo::Bitcoin(BitcoinFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) if self.auto_fund => {
                     println!("attempting to auto fund bitcoin address");
                     use bitcoincore_rpc::{Auth, Client, RpcApi};
                     use std::env;
@@ -928,7 +932,7 @@ impl Runtime {
                             .unwrap();
 
                     let txid = bitcoin_rpc
-                        .send_to_address(&addr, amount, None, None, None, None, None, None)
+                        .send_to_address(&address, amount, None, None, None, None, None, None)
                         .unwrap();
 
                     println!("bitcoin auto funded with tx id: {:?}", txid);
@@ -950,10 +954,18 @@ impl Runtime {
                     //     })
                     //     .collect();
                 }
-                FundingInfo::Bitcoin(swapid, addr, amount) => {
-                    self.funding_btc.insert(swapid, (addr, amount));
+                FundingInfo::Bitcoin(BitcoinFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) => {
+                    self.funding_btc.insert(swap_id, (address, amount));
                 }
-                FundingInfo::Monero(swapid, addr, amount) if self.auto_fund => {
+                FundingInfo::Monero(MoneroFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) if self.auto_fund => {
                     println!("attempting to auto fund monero address");
                     use tokio::runtime::Builder;
                     let rt = Builder::new_multi_thread()
@@ -965,16 +977,9 @@ impl Runtime {
                         let wallet_client =
                             monero_rpc::RpcClient::new("http://localhost:18083".to_string());
                         let wallet = wallet_client.wallet();
-                        // let _ = wallet
-                        //     .create_wallet("test".to_string(), None, "English".to_string())
-                        //     .await;
-                        // wallet
-                        //     .open_wallet("stagenet".to_string(), None)
-                        //     .await
-                        //     .expect("The wallet exists, created the line before");
                         let options = monero_rpc::TransferOptions::default();
                         let mut destination = HashMap::new();
-                        destination.insert(monero::Address::from_str(&addr).unwrap(), amount);
+                        destination.insert(address, amount.as_pico());
                         let transaction = wallet
                             .transfer(
                                 destination.clone(),
@@ -1001,13 +1006,18 @@ impl Runtime {
                         // }
                     });
                 }
-                FundingInfo::Monero(swapid, addr, amount) => {
-                    if let Ok(addr) = monero::Address::from_str(&addr) {
-                        let amount = monero::Amount::from_pico(amount);
-                        self.funding_xmr.insert(swapid, (addr, amount));
-                    } else {
-                        error!("Monero address not invalid");
-                    };
+                FundingInfo::Monero(MoneroFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) => {
+                    self.funding_xmr.insert(swap_id, (address, amount));
+                    // if let Ok(addr) = monero::Address::from_str(&address) {
+                    //     let amount = monero::Amount::from_pico(amount);
+                    //     self.funding_xmr.insert(swap_id, (addr, amount));
+                    // } else {
+                    //     error!("Monero address not invalid");
+                    // };
                 }
             },
 

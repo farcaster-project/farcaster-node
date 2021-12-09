@@ -14,8 +14,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
-    rpc::request::FundingInfo,
     rpc::request::Outcome,
+    rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
     syncerd::{
         opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
@@ -1154,9 +1154,11 @@ impl Runtime {
 
                                     let fees = bitcoin::Amount::from_sat(150); // FIXME
                                     let req = Request::FundingInfo(FundingInfo::Bitcoin(
-                                        self.swap_id(),
-                                        addr,
-                                        self.syncer_state.bitcoin_amount + fees,
+                                        BitcoinFundingInfo {
+                                            swap_id: self.swap_id(),
+                                            address: addr,
+                                            amount: self.syncer_state.bitcoin_amount + fees,
+                                        },
                                     ));
                                     if let Some(enquirer) = self.enquirer.clone() {
                                         senders.send_to(
@@ -1878,11 +1880,11 @@ impl Runtime {
                                         Some(msg),
                                     )?;
                                     let funding_request =
-                                        Request::FundingInfo(FundingInfo::Monero(
-                                            self.swap_id(),
-                                            address.to_string(),
-                                            self.syncer_state.monero_amount.as_pico(),
-                                        ));
+                                        Request::FundingInfo(FundingInfo::Monero(MoneroFundingInfo{
+                                            swap_id: self.swap_id(),
+                                            address,
+                                            amount: self.syncer_state.monero_amount,
+                                        }));
                                     if let Some(enquirer) = self.enquirer.clone() {
                                         senders.send_to(
                                             ServiceBus::Ctl,

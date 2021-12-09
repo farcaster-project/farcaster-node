@@ -579,8 +579,60 @@ pub enum Outcome {
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display("funding_info")]
 pub enum FundingInfo {
-    Bitcoin(SwapId, bitcoin::Address, bitcoin::Amount),
-    Monero(SwapId, String, u64),
+    Bitcoin(BitcoinFundingInfo),
+    Monero(MoneroFundingInfo),
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("bitcoin_funding_info")]
+pub struct BitcoinFundingInfo {
+    pub swap_id: SwapId,
+    pub address: bitcoin::Address,
+    pub amount: bitcoin::Amount,
+}
+
+impl StrictEncode for MoneroFundingInfo {
+    fn strict_encode<E: ::std::io::Write>(
+        &self,
+        mut e: E,
+    ) -> Result<usize, strict_encoding::Error> {
+        let mut len = self.swap_id.strict_encode(&mut e)?;
+        len += self
+            .amount
+            .as_pico()
+            .strict_encode(&mut e)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
+
+        use monero::consensus::Encodable;
+
+        Ok(len
+            + self
+                .address
+                .consensus_encode(&mut e)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
+    }
+}
+
+impl StrictDecode for MoneroFundingInfo {
+    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        Ok(Self {
+            swap_id: SwapId::strict_decode(&mut d)?,
+            amount: monero::Amount::from_pico(
+                u64::strict_decode(&mut d)
+                    .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            ),
+            address: monero::Address::consensus_decode(&mut d)
+                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Display)]
+#[display("monero_funding_info")]
+pub struct MoneroFundingInfo {
+    pub swap_id: SwapId,
+    pub amount: monero::Amount,
+    pub address: monero::Address,
 }
 
 impl rpc_connection::Request for Request {}
