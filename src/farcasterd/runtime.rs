@@ -114,7 +114,9 @@ pub fn run(
         auto_fund: opts.auto_fund,
     };
 
-    info!("funding automatically {:?}", opts.auto_fund);
+    if opts.auto_fund {
+        info!("farcasterd will attempt to fund automatically");
+    }
 
     let broker = true;
     Service::run(service_config, runtime, broker)
@@ -919,7 +921,7 @@ impl Runtime {
                     address,
                     amount,
                 }) if self.auto_fund => {
-                    info!("attempting to auto fund bitcoin address");
+                    info!("Attempting to auto-fund Bitcoin");
                     use bitcoincore_rpc::{Auth, Client, RpcApi};
                     use std::env;
                     use std::path::PathBuf;
@@ -936,11 +938,15 @@ impl Runtime {
                         Client::new(&format!("http://{}:18334", host), Auth::CookieFile(path))
                             .unwrap();
 
-                    let txid = bitcoin_rpc
+                    match bitcoin_rpc
                         .send_to_address(&address, amount, None, None, None, None, None, None)
-                        .unwrap();
-
-                    info!("bitcoin auto funded with tx id: {:?}", txid);
+                    {
+                        Ok(txid) => info!("Auto-funded Bitcoin with txid: {}", txid),
+                        Err(_) => {
+                            error!("Auto-funding Bitcoin transaction failed, pushing to cli");
+                            self.funding_btc.insert(swap_id, (address, amount));
+                        }
+                    }
                 }
                 FundingInfo::Bitcoin(BitcoinFundingInfo {
                     swap_id,
@@ -954,7 +960,7 @@ impl Runtime {
                     address,
                     amount,
                 }) if self.auto_fund => {
-                    info!("attempting to auto-fund monero lock address");
+                    info!("Attempting to auto-fund Monero");
                     use tokio::runtime::Builder;
                     let rt = Builder::new_multi_thread()
                         .worker_threads(1)
@@ -976,11 +982,11 @@ impl Runtime {
                             )
                             .await
                         {
-                            Ok(_) => {
-                                info!("auto-funded monero lock address");
+                            Ok(tx) => {
+                                info!("Auto-funded Monero with txid: {}", tx.tx_hash.to_string());
                             }
                             Err(_) => {
-                                info!("auto-funding monero transaction failed, pushing to cli");
+                                error!("Auto-funding Monero transaction failed, pushing to cli");
                                 self.funding_xmr.insert(swap_id, (address, amount));
                             }
                         }
@@ -996,7 +1002,7 @@ impl Runtime {
             },
 
             Request::FundingCompleted(swap_id) => {
-                info!("funding completed on swap {}", swap_id);
+                info!("Funding completed on swap {}", swap_id);
                 self.funding_xmr.remove_entry(&swap_id);
                 self.funding_btc.remove_entry(&swap_id);
             }
