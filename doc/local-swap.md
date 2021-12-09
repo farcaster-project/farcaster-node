@@ -99,3 +99,37 @@ The `--btc-addr` argument is the Bitcoin destination address in case the bitcoin
 Upon taking the public offer is printed and user is asked for validation with `y` or `n`.
 
 :mag_right: Flag of interest: `--without-validation` or `-w`, for externally validated automated setups (skip validation in cli).
+
+---
+
+If you want to use your full nodes and infrastructure you can change the configuration to the following.
+
+Farcaster needs to connect to tree services to do actions on-chain and track on-chain events. Needed services are: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
+
+You can launch all the needed services locally by running the following commands:
+
+```sh
+bitcoind -server -testnet
+electrs --network testnet
+monerod --stagenet
+monero-wallet-rpc --stagenet --rpc-bind-port 38083\
+    --disable-rpc-login\
+    --trusted-daemon\
+    --password "pw"\
+    --wallet-dir ~/.fc_monero_wallets
+```
+
+Then start the node with:
+
+```
+farcasterd -vv -c farcasterd.toml
+```
+
+with `farcasterd.toml` configuration file:
+
+```toml
+[syncers.testnet]
+electrum_server = "tcp://localhost:60001"
+monero_daemon = "http://localhost:38081"
+monero_rpc_wallet = "http://localhost:{38083|38084}"
+```
