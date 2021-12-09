@@ -13,6 +13,7 @@ use std::marker::{Send, Sized};
 use tokio::sync::mpsc::Sender as TokioSender;
 
 use crate::serde::Deserialize;
+use crate::service::LogStyle;
 use crate::syncerd::*;
 use hex;
 
@@ -37,6 +38,7 @@ impl TaskCounter {
 }
 
 pub struct SyncerState {
+    coin: Coin,
     block_height: u64,
     block_hash: Vec<u8>,
     tasks_sources: HashMap<InternalId, ServiceId>,
@@ -74,7 +76,7 @@ pub fn create_set<T: std::hash::Hash + Eq>(xs: Vec<T>) -> HashSet<T> {
 }
 
 impl SyncerState {
-    pub fn new(tx_event: TokioSender<SyncerdBridgeEvent>) -> Self {
+    pub fn new(tx_event: TokioSender<SyncerdBridgeEvent>, id: Coin) -> Self {
         Self {
             block_height: 0,
             block_hash: vec![0],
@@ -87,6 +89,7 @@ impl SyncerState {
             sweep_addresses: HashMap::new(),
             tx_event,
             task_count: TaskCounter(0),
+            coin: id,
         }
     }
 
@@ -327,12 +330,9 @@ impl SyncerState {
         self.tasks_sources.insert(self.task_count.into(), source);
     }
 
-    pub async fn change_height(&mut self, height: u64, block: Vec<u8>) -> bool {
-        if self.block_height != height || self.block_hash != block {
-            self.block_height = height;
-            self.block_hash = block.clone();
-
-            self.drop_lifetimes();
+    pub async fn change_height(&mut self, new_height: u64, block: Vec<u8>) -> bool {
+        if self.block_height != new_height || self.block_hash != block {
+            self.handle_change_height(new_height, block.clone());
 
             // Emit a height_changed event
             for (id, task) in self.watch_height.iter() {
@@ -353,6 +353,38 @@ impl SyncerState {
         } else {
             false
         }
+    }
+
+    fn handle_change_height(&mut self, new_height: u64, block: Vec<u8>) {
+        match (new_height, &block) {
+            (h, b) if h > self.block_height && b != &self.block_hash => {
+                self.block_height = h;
+                self.block_hash = block;
+                info!(
+                    "{} incremented height {}",
+                    self.coin.bright_white_bold(),
+                    &h.bright_blue_bold()
+                );
+            }
+            (h, b) if h == self.block_height && b != &self.block_hash => {
+                self.block_hash = block;
+                info!("{} new chain tip", self.coin.bright_white_bold());
+            }
+            (h, b) if h < self.block_height && b != &self.block_hash => {
+                self.block_height = h;
+                self.block_hash = block;
+                warn!(
+                    "{} height decreased {}, new chain tip",
+                    self.coin.bright_white_bold(),
+                    &h.bright_blue_bold()
+                );
+            }
+            (_, b) if b == &self.block_hash => {
+                error!("Unreachable: Block hash didnt change, ignoring")
+            }
+            _ => error!("Unexpected block height change, ignoring"),
+        }
+        self.drop_lifetimes();
     }
 
     pub async fn change_address(
@@ -662,7 +694,7 @@ async fn syncer_state_transaction() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone());
+    let mut state = SyncerState::new(event_tx.clone(), Coin::Bitcoin);
 
     let transaction_task_one = WatchTransaction {
         id: TaskId(0),
@@ -778,7 +810,7 @@ async fn syncer_state_addresses() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone());
+    let mut state = SyncerState::new(event_tx.clone(), Coin::Bitcoin);
     let address = bitcoin::Address::from_str("32BkaQeAVcd65Vn7pjEziohf5bCiryNQov").unwrap();
     let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum {
         address: Some(address.clone()),
@@ -939,7 +971,7 @@ async fn syncer_state_sweep_addresses() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone());
+    let mut state = SyncerState::new(event_tx.clone(), Coin::Monero);
     let sweep_task = SweepAddress {
         id: TaskId(0),
         lifetime: 11,
@@ -991,7 +1023,7 @@ async fn syncer_state_height() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone());
+    let mut state = SyncerState::new(event_tx.clone(), Coin::Bitcoin);
     let height_task = WatchHeight {
         id: TaskId(0),
         lifetime: 0,

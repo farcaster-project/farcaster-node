@@ -1,4 +1,4 @@
-use crate::error::{Error, SyncerError};
+use crate::{error::{Error, SyncerError}, syncerd::opts::Coin};
 use crate::internet2::Duplex;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
@@ -655,7 +655,7 @@ impl Synclet for MoneroSyncer {
                             TokioSender<SyncerdBridgeEvent>,
                             TokioReceiver<SyncerdBridgeEvent>,
                         ) = tokio::sync::mpsc::channel(120);
-                        let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
+                        let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone(), Coin::Monero)));
 
                         run_syncerd_task_receiver(
                             receive_task_channel,
