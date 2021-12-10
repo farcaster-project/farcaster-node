@@ -20,7 +20,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Docker build
-      run: docker build -f $GITHUB_WORKSPACE/Dockerfile -t ghcr.io/farcaster-project/farcaster-node/farcasterd:latest $GITHUB_WORKSPACE
+      run: docker build -f $GITHUB_WORKSPACE/Dockerfile -t ghcr.io/farcaster-project/farcaster-node/farcasterd:main $GITHUB_WORKSPACE
 
     - name: Docker push to GitHub Packages
-      run: docker push ghcr.io/farcaster-project/farcaster-node/farcasterd:latest
+      run: docker push ghcr.io/farcaster-project/farcaster-node/farcasterd:main
