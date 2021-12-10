@@ -139,6 +139,7 @@ pub fn run(
         retrieving_txs: none!(),
         sweeping_addr: none!(),
         txids: none!(),
+        final_txs: none!(),
     };
     let syncer_state = SyncerState {
         swap_id,
@@ -264,6 +265,7 @@ impl TemporalSafety {
 struct SyncerTasks {
     counter: u32,
     watched_txs: HashMap<TaskId, TxLabel>,
+    final_txs: HashMap<TxLabel, bool>,
     watched_addrs: HashMap<TaskId, TxLabel>,
     retrieving_txs: HashMap<TaskId, (TxLabel, Task)>,
     sweeping_addr: Option<TaskId>,
@@ -885,31 +887,60 @@ impl SyncerState {
             .values()
             .any(|&x| x == TxLabel::AccLock)
     }
-    fn handle_tx_confs(&self, id: &TaskId, confirmations: &Option<u32>, swapid: SwapId) {
+    fn handle_tx_confs(
+        &mut self,
+        id: &TaskId,
+        confirmations: &Option<u32>,
+        swapid: SwapId,
+        finality_thr: u32,
+    ) {
         if let Some(txlabel) = self.tasks.watched_txs.get(id) {
-            match confirmations {
-                Some(0) => {
-                    info!(
-                        "{} | Tx {} on mempool but hasn't been mined",
-                        swapid.bright_blue_italic(),
-                        txlabel.bright_white_bold()
-                    );
-                }
-                Some(confs) => {
-                    info!(
-                        "{} | Tx {} mined with {} {}",
-                        swapid.bright_blue_italic(),
-                        txlabel.bright_white_bold(),
-                        confs.bright_green_bold(),
-                        "confirmations".bright_green_bold(),
-                    )
-                }
-                None => {
-                    info!(
-                        "{} | Tx {} not on the mempool",
-                        swapid.bright_blue_italic(),
-                        txlabel.bright_white_bold()
-                    );
+            if confirmations.unwrap_or(0) > finality_thr
+                && !self.tasks.final_txs.contains_key(txlabel)
+            {
+                info!(
+                    "{} | Tx {} {} with {} {}",
+                    self.swap_id.bright_blue_italic(),
+                    txlabel.bright_white_bold(),
+                    "final".bright_green_bold(),
+                    confirmations.unwrap().bright_green_bold(),
+                    "confirmations".bright_green_bold()
+                );
+                self.tasks.final_txs.insert(*txlabel, true);
+            } else if self.tasks.final_txs.contains_key(txlabel) {
+                debug!(
+                    "{} | Tx {} {} with {} {}",
+                    self.swap_id.bright_blue_italic(),
+                    txlabel.bright_white_bold(),
+                    "final".bright_green_bold(),
+                    confirmations.unwrap().bright_green_bold(),
+                    "confirmations".bright_green_bold()
+                );
+            } else {
+                match confirmations {
+                    Some(0) => {
+                        info!(
+                            "{} | Tx {} on mempool but hasn't been mined",
+                            swapid.bright_blue_italic(),
+                            txlabel.bright_white_bold()
+                        );
+                    }
+                    Some(confs) => {
+                        info!(
+                            "{} | Tx {} mined with {} {}",
+                            swapid.bright_blue_italic(),
+                            txlabel.bright_white_bold(),
+                            confs.bright_green_bold(),
+                            "confirmations".bright_green_bold(),
+                        )
+                    }
+                    None => {
+                        info!(
+                            "{} | Tx {} not on the mempool",
+                            swapid.bright_blue_italic(),
+                            txlabel.bright_white_bold()
+                        );
+                    }
                 }
             }
         } else {
@@ -1695,10 +1726,31 @@ impl Runtime {
                         id,
                         confirmations,
                         ..
-                    }) if self.syncer_state.tasks.watched_txs.contains_key(id) => {
-                        self.syncer_state
-                            .handle_tx_confs(id, confirmations, self.swap_id());
+                    }) if self.syncer_state.tasks.watched_txs.contains_key(id)
+                        && !self
+                            .temporal_safety
+                            .final_tx(confirmations.unwrap_or(0), Coin::Monero) =>
+                    {
+                        self.syncer_state.handle_tx_confs(
+                            id,
+                            &confirmations,
+                            self.swap_id(),
+                            self.temporal_safety.xmr_finality_thr,
+                        );
                     }
+                    Event::TransactionConfirmations(TransactionConfirmations {
+                        id,
+                        confirmations,
+                        ..
+                    }) => {
+                        self.syncer_state.handle_tx_confs(
+                            id,
+                            &confirmations,
+                            self.swap_id(),
+                            self.temporal_safety.xmr_finality_thr,
+                        );
+                    }
+
                     Event::TaskAborted(_) => {}
                     Event::SweepSuccess(SweepSuccess { id, .. })
                         if (self.state.b_buy_sig() || self.state.a_xmr_locked())
@@ -1858,16 +1910,9 @@ impl Runtime {
                             id,
                             &Some(*confirmations),
                             self.swap_id(),
+                            self.temporal_safety.btc_finality_thr,
                         );
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id).unwrap();
-                        info!(
-                            "{} | {} transaction {} with {} {}",
-                            self.swap_id.bright_blue_italic(),
-                            txlabel.bright_white_bold(),
-                            "final".bright_green_bold(),
-                            confirmations.bright_blue_bold(),
-                            "confirmations".bright_blue_bold()
-                        );
                         // saving requests of interest for later replaying latest event
                         match &txlabel {
                             TxLabel::Lock => {
@@ -2201,8 +2246,12 @@ impl Runtime {
                         confirmations,
                         ..
                     }) => {
-                        self.syncer_state
-                            .handle_tx_confs(id, confirmations, self.swap_id());
+                        self.syncer_state.handle_tx_confs(
+                            id,
+                            &confirmations,
+                            self.swap_id(),
+                            self.temporal_safety.btc_finality_thr,
+                        );
                     }
                     Event::TransactionBroadcasted(event) => {
                         debug!("{}", event)
