@@ -787,7 +787,10 @@ impl Synclet for BitcoinSyncer {
                         TokioSender<SyncerdBridgeEvent>,
                         TokioReceiver<SyncerdBridgeEvent>,
                     ) = tokio::sync::mpsc::channel(120);
-                    let state = Arc::new(Mutex::new(SyncerState::new(event_tx.clone())));
+                    let state = Arc::new(Mutex::new(SyncerState::new(
+                        event_tx.clone(),
+                        Coin::Bitcoin,
+                    )));
 
                     run_syncerd_task_receiver(
                         electrum_server.clone(),

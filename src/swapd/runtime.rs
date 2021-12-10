@@ -305,7 +305,7 @@ pub enum AliceState {
     #[display("Reveal")]
     RevealA(Params, Commit), // local, remote
     // #[display("RefundProcSigs: {0}")]
-    #[display("RefundProcSigs")]
+    #[display("RefundSigs")]
     RefundSigA(RefundSigA),
     #[display("Finish({0})")]
     FinishA(Outcome),
@@ -348,7 +348,7 @@ pub enum BobState {
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>, bool), // lock (not signed), cancel_seen
-    #[display("BuyProcSig")]
+    #[display("BuySig")]
     BuySigB(BuySigB),
     #[display("Finish({0})")]
     FinishB(Outcome),
@@ -814,13 +814,13 @@ impl SyncerState {
         view: monero::PrivateKey,
         tx_label: TxLabel,
     ) -> Task {
-        info!(
+        debug!(
             "{} | Address's secret view key for {}: {}",
             self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             view.bright_white_italic()
         );
-        info!(
+        debug!(
             "{} | Address's public spend key for {}: {}",
             self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
@@ -885,25 +885,31 @@ impl SyncerState {
             .values()
             .any(|&x| x == TxLabel::AccLock)
     }
-    fn handle_tx_confs(&self, id: &TaskId, confirmations: &Option<u32>) {
+    fn handle_tx_confs(&self, id: &TaskId, confirmations: &Option<u32>, swapid: SwapId) {
         if let Some(txlabel) = self.tasks.watched_txs.get(id) {
             match confirmations {
                 Some(0) => {
-                    debug!(
-                        "tx {} on mempool but hasn't been mined",
-                        txlabel.bright_green_bold()
+                    info!(
+                        "{} | Tx {} on mempool but hasn't been mined",
+                        swapid.bright_blue_italic(),
+                        txlabel.bright_white_bold()
                     );
                 }
                 Some(confs) => {
-                    debug!(
-                        "tx {} mined with {} {}",
-                        txlabel.bright_green_bold(),
+                    info!(
+                        "{} | Tx {} mined with {} {}",
+                        swapid.bright_blue_italic(),
+                        txlabel.bright_white_bold(),
                         confs.bright_green_bold(),
                         "confirmations".bright_green_bold(),
                     )
                 }
                 None => {
-                    debug!("tx {} not on the mempool", txlabel.bright_green_bold());
+                    info!(
+                        "{} | Tx {} not on the mempool",
+                        swapid.bright_blue_italic(),
+                        txlabel.bright_white_bold()
+                    );
                 }
             }
         } else {
@@ -1287,7 +1293,7 @@ impl Runtime {
                     "{} | Service {} daemon is now {}",
                     self.swap_id.bright_blue_italic(),
                     source.bright_green_bold(),
-                    "connected".bright_green_bold()
+                    "connected"
                 );
             }
             (_, ServiceId::Syncer(..)) if source == self.syncer_state.bitcoin_syncer || source == self.syncer_state.monero_syncer => {
@@ -1326,6 +1332,24 @@ impl Runtime {
                 let task = self
                     .syncer_state
                     .sweep_xmr(view_key, spend_key, address, from_height);
+                let acc_confs_needs =
+                    self.temporal_safety.sweep_monero_thr - self.temporal_safety.xmr_finality_thr;
+                let sweep_block = self.syncer_state.height(Coin::Monero) + acc_confs_needs as u64;
+                info!(
+                    "{} | Tx {} needs {}, and has {} {}",
+                    self.swap_id.bright_blue_italic(),
+                    TxLabel::AccLock.bright_white_bold(),
+                    "10 confirmations".bright_green_bold(),
+                    (10 - acc_confs_needs).bright_green_bold(),
+                    "confirmations".bright_green_bold(),
+                );
+                info!(
+                    "{} | {} reaches your address {} around block {}",
+                    self.swap_id.bright_blue_italic(),
+                    Coin::Monero.bright_white_bold(),
+                    address.bright_yellow_bold(),
+                    sweep_block.bright_blue_bold(),
+                );
                 let request = Request::SyncerTask(task);
                 let dest = self.syncer_state.monero_syncer();
                 let pending_request = PendingRequest {
@@ -1672,7 +1696,8 @@ impl Runtime {
                         confirmations,
                         ..
                     }) if self.syncer_state.tasks.watched_txs.contains_key(id) => {
-                        self.syncer_state.handle_tx_confs(id, confirmations);
+                        self.syncer_state
+                            .handle_tx_confs(id, confirmations, self.swap_id());
                     }
                     Event::TaskAborted(_) => {}
                     Event::SweepSuccess(SweepSuccess { id, .. })
@@ -1812,7 +1837,7 @@ impl Runtime {
                     Event::TransactionRetrieved(TransactionRetrieved { id, tx: None })
                         if self.syncer_state.tasks.retrieving_txs.contains_key(id) =>
                     {
-                        let (txlabel, task) =
+                        let (_tx_label, task) =
                             self.syncer_state.tasks.retrieving_txs.get(id).unwrap();
                         std::thread::sleep(core::time::Duration::from_millis(500));
                         senders.send_to(
@@ -1829,7 +1854,11 @@ impl Runtime {
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
                         && self.syncer_state.tasks.watched_txs.get(id).is_some() =>
                     {
-                        self.syncer_state.handle_tx_confs(id, &Some(*confirmations));
+                        self.syncer_state.handle_tx_confs(
+                            id,
+                            &Some(*confirmations),
+                            self.swap_id(),
+                        );
                         let txlabel = self.syncer_state.tasks.watched_txs.get(id).unwrap();
                         info!(
                             "{} | {} transaction {} with {} {}",
@@ -1873,12 +1902,13 @@ impl Runtime {
                                         self.syncer_state.network.into(),
                                         &viewpair,
                                     );
-                                    let funding_request =
-                                        Request::FundingInfo(FundingInfo::Monero(MoneroFundingInfo{
+                                    let funding_request = Request::FundingInfo(
+                                        FundingInfo::Monero(MoneroFundingInfo {
                                             swap_id: self.swap_id(),
                                             address,
                                             amount: self.syncer_state.monero_amount,
-                                        }));
+                                        }),
+                                    );
                                     if let Some(enquirer) = self.enquirer.clone() {
                                         senders.send_to(
                                             ServiceBus::Ctl,
@@ -1939,11 +1969,12 @@ impl Runtime {
                                     );
                                 }
                             }
-                            TxLabel::Cancel if self.temporal_safety.valid_punish(*confirmations)
-                                && self.state.a_refundsig()
-                                && self.state.a_xmr_locked()
-                                && self.txs.contains_key(&TxLabel::Punish)
-                                && !self.state.a_refund_seen() =>
+                            TxLabel::Cancel
+                                if self.temporal_safety.valid_punish(*confirmations)
+                                    && self.state.a_refundsig()
+                                    && self.state.a_xmr_locked()
+                                    && self.txs.contains_key(&TxLabel::Punish)
+                                    && !self.state.a_refund_seen() =>
                             {
                                 trace!("Alice publishes punish tx");
 
@@ -1974,8 +2005,14 @@ impl Runtime {
                                     self.txs.remove_entry(&TxLabel::Refund).unwrap();
                                 self.broadcast(refund_tx, tx_label, senders)?;
                             }
-                            TxLabel::Cancel if (self.state.swap_role() == SwapRole::Alice && !self.state.a_xmr_locked()) => {
-                                self.state_update(senders, State::Alice(AliceState::FinishA(Outcome::Refund)))?;
+                            TxLabel::Cancel
+                                if (self.state.swap_role() == SwapRole::Alice
+                                    && !self.state.a_xmr_locked()) =>
+                            {
+                                self.state_update(
+                                    senders,
+                                    State::Alice(AliceState::FinishA(Outcome::Refund)),
+                                )?;
                                 let abort_all = Task::Abort(Abort {
                                     task_target: TaskTarget::AllTasks,
                                     respond: Boolean::False,
@@ -2010,7 +2047,10 @@ impl Runtime {
                             {
                                 // FIXME: swap ends here for alice
                                 // wallet + farcaster
-                                self.state_update(senders, State::Alice(AliceState::FinishA(Outcome::Buy)))?;
+                                self.state_update(
+                                    senders,
+                                    State::Alice(AliceState::FinishA(Outcome::Buy)),
+                                )?;
                                 let abort_all = Task::Abort(Abort {
                                     task_target: TaskTarget::AllTasks,
                                     respond: Boolean::False,
@@ -2042,10 +2082,8 @@ impl Runtime {
                                     && self.syncer_state.tasks.txids.contains_key(txlabel) =>
                             {
                                 debug!("request Buy tx task");
-                                let (txlabel, txid) = self
-                                    .syncer_state
-                                    .tasks
-                                    .txids.remove_entry(txlabel).unwrap();
+                                let (txlabel, txid) =
+                                    self.syncer_state.tasks.txids.remove_entry(txlabel).unwrap();
                                 let task = self.syncer_state.retrieve_tx_btc(txid, txlabel);
                                 senders.send_to(
                                     ServiceBus::Ctl,
@@ -2061,12 +2099,9 @@ impl Runtime {
                             {
                                 debug!("subscribe Refund address task");
                                 self.state.a_sup_refundsig_refund_seen();
-                                let (txlabel, txid) = self
-                                    .syncer_state
-                                    .tasks
-                                    .txids.remove_entry(txlabel).unwrap();
-                                let task =
-                                    self.syncer_state.retrieve_tx_btc(txid, txlabel);
+                                let (txlabel, txid) =
+                                    self.syncer_state.tasks.txids.remove_entry(txlabel).unwrap();
+                                let task = self.syncer_state.retrieve_tx_btc(txid, txlabel);
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
@@ -2092,9 +2127,16 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(abort_all),
                                 )?;
-                                self.state_update(senders, State::Bob(BobState::FinishB(Outcome::Refund)))?;
+                                self.state_update(
+                                    senders,
+                                    State::Bob(BobState::FinishB(Outcome::Refund)),
+                                )?;
                                 let swap_success_req = Request::SwapOutcome(Outcome::Refund);
-                                self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
+                                self.send_ctl(
+                                    senders,
+                                    ServiceId::Wallet,
+                                    swap_success_req.clone(),
+                                )?;
                                 self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                                 // remove txs to invalidate outdated states
                                 self.txs.remove(&TxLabel::Cancel);
@@ -2122,15 +2164,22 @@ impl Runtime {
                                 match self.state.swap_role() {
                                     SwapRole::Alice => self.state_update(
                                         senders,
-                                        State::Alice(AliceState::FinishA(Outcome::Punish))
+                                        State::Alice(AliceState::FinishA(Outcome::Punish)),
                                     )?,
                                     SwapRole::Bob => {
                                         warn!("{}", "You were punished!".err());
-                                        self.state_update(senders, State::Bob(BobState::FinishB(Outcome::Punish)))?
-                                    },
+                                        self.state_update(
+                                            senders,
+                                            State::Bob(BobState::FinishB(Outcome::Punish)),
+                                        )?
+                                    }
                                 }
                                 let swap_success_req = Request::SwapOutcome(Outcome::Punish);
-                                self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
+                                self.send_ctl(
+                                    senders,
+                                    ServiceId::Wallet,
+                                    swap_success_req.clone(),
+                                )?;
                                 self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
                                 // remove txs to invalidate outdated states
                                 self.txs.remove(&TxLabel::Cancel);
@@ -2138,10 +2187,10 @@ impl Runtime {
                                 self.txs.remove(&TxLabel::Buy);
                                 self.txs.remove(&TxLabel::Punish);
                             }
-                            tx_label => warn!(
-                                "{} | Be patient! {} transaction with {} confirmations evokes no response in state {}",
+                            tx_label => trace!(
+                                "{} | Tx {} with {} confirmations evokes no response in state {}",
                                 self.swap_id.bright_blue_italic(),
-                                tx_label,
+                                tx_label.bright_white_bold(),
                                 confirmations,
                                 &self.state
                             ),
@@ -2152,7 +2201,8 @@ impl Runtime {
                         confirmations,
                         ..
                     }) => {
-                        self.syncer_state.handle_tx_confs(id, confirmations);
+                        self.syncer_state
+                            .handle_tx_confs(id, confirmations, self.swap_id());
                     }
                     Event::TransactionBroadcasted(event) => {
                         debug!("{}", event)
@@ -2286,7 +2336,7 @@ impl Runtime {
                     self.syncer_state.bitcoin_syncer(),
                     Request::SyncerTask(task),
                 )?;
-                // set external address: needed to subscribe for buy tx (bob) or refund (alice)
+                // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
 
                 let pending_request = PendingRequest {
