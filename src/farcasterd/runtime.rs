@@ -955,9 +955,10 @@ impl Runtime {
                                 swap_id.bright_blue_italic(),
                                 txid
                             ),
-                            Err(_) => {
+                            Err(err) => {
+                                warn!("{}", err);
                                 error!(
-                                    "{} | Auto-funding Bitcoin transaction failed, pushing to cli",
+                                    "{} | Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount",
                                     swap_id.bright_blue_italic()
                                 );
                                 self.funding_btc.insert(swap_id, (address, amount));
@@ -1016,8 +1017,9 @@ impl Runtime {
                                         tx.tx_hash.to_string()
                                     );
                                 }
-                                Err(_) => {
-                                    error!("{} | Auto-funding Monero transaction failed, pushing to cli", &swap_id.bright_blue_italic());
+                                Err(err) => {
+                                    warn!("{}", err);
+                                    error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
                                     self.funding_xmr.insert(swap_id, (address, amount));
                                 }
                             }
