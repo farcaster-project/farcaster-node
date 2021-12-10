@@ -309,7 +309,7 @@ impl Runtime {
                             let funding_addr = funding.get_address()?;
                             let funding_fee = bitcoin::Amount::from_sat(150);
                             let funding_amount = offer.arbitrating_amount + funding_fee;
-                            info!(
+                            debug!(
                                 "{} | Send {} to {}",
                                 swap_id.bright_blue_italic(),
                                 funding_amount.bright_green_bold(),
@@ -1062,7 +1062,7 @@ impl Runtime {
                         let funding_addr = funding.get_address()?;
                         let funding_fee = bitcoin::Amount::from_sat(150);
                         let funding_amount = offer.arbitrating_amount + funding_fee;
-                        info!(
+                        debug!(
                             "{} | Send {} to {}",
                             swap_id.bright_blue_italic(),
                             funding_amount.to_string().bright_green_bold(),
