@@ -1,3 +1,24 @@
+# Farcasterd configuration
+# configures farcasterd specific behaviors such as auto-funding swaps
+
+# Defines auto-funding
+[farcasterd.auto_funding]
+# Set this to true if you want to enable auto-funding, default to false
+# if set to true you need to register the parameter for the networks you
+# want to support: mainnet, testnet, or local
+auto_fund = false
+
+# Auto-funding testnet parameters
+[farcasterd.auto_funding.testnet]
+# The bitcoin node to use to auto-send funds when swap funding is required
+# the node should have a wallet with spendable funds
+bitcoin_rpc = "http://localhost:18334"
+# The path to the cookie file to connect to the bitcoin node
+bitcoin_cookie_path = "~/.bitcoin/testnet3/.cookie"
+# The monero wallet to use to auto-send funds when swap funding is required
+# the wallet should have spendable funds
+monero_rpc_wallet = "http://localhost:38084"
+
 # Syncers configuration
 # configures the Bitcoin and Monero syncers for the three
 # networks.

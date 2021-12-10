@@ -84,10 +84,15 @@ use std::str::FromStr;
 pub fn run(
     service_config: ServiceConfig,
     config: Config,
-    opts: Opts,
+    _opts: Opts,
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
+
+    if config.is_auto_funding_enable() {
+        info!("farcasterd will attempt to fund automatically");
+    }
+
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
         listens: none!(),
@@ -111,12 +116,7 @@ pub fn run(
         funding_xmr: none!(),
         funding_btc: none!(),
         config,
-        auto_fund: opts.auto_fund,
     };
-
-    if opts.auto_fund {
-        info!("farcasterd will attempt to fund automatically");
-    }
 
     let broker = true;
     Service::run(service_config, runtime, broker)
@@ -145,7 +145,6 @@ pub struct Runtime {
     funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount)>,
     stats: Stats,
     config: Config,
-    auto_fund: bool,
 }
 
 struct Stats {
@@ -915,32 +914,38 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::FundingInfo(info) => {
-                match info {
-                    FundingInfo::Bitcoin(BitcoinFundingInfo {
-                        swap_id,
-                        address,
-                        amount,
-                    }) if self.auto_fund => {
+            Request::FundingInfo(info) => match info {
+                FundingInfo::Bitcoin(BitcoinFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) => {
+                    let network = match address.network {
+                        bitcoin::Network::Bitcoin => Network::Mainnet,
+                        bitcoin::Network::Testnet => Network::Testnet,
+                        bitcoin::Network::Signet => Network::Testnet,
+                        bitcoin::Network::Regtest => Network::Local,
+                    };
+                    if let Some(auto_fund_config) = self.config.get_auto_funding_config(network) {
                         info!(
                             "{} | Attempting to auto-fund Bitcoin",
                             swap_id.bright_blue_italic()
                         );
+                        debug!(
+                            "{} | Auto funding config: {:#?}",
+                            swap_id.bright_blue_italic(),
+                            auto_fund_config
+                        );
+
                         use bitcoincore_rpc::{Auth, Client, RpcApi};
                         use std::env;
                         use std::path::PathBuf;
                         use std::str::FromStr;
 
-                        let path = match env::var("BITCOIN_COOKIE") {
-                            Ok(cookie) => PathBuf::from_str(&cookie).unwrap(),
-                            Err(_) => PathBuf::from(
-                                shellexpand::tilde("~/.bitcoin/testnet3/.cookie").to_string(),
-                            ),
-                        };
-                        let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
-                        let bitcoin_rpc =
-                            Client::new(&format!("http://{}:18334", host), Auth::CookieFile(path))
-                                .unwrap();
+                        let cookie = auto_fund_config.bitcoin_cookie_path;
+                        let path = PathBuf::from_str(&shellexpand::tilde(&cookie)).unwrap();
+                        let host = auto_fund_config.bitcoin_rpc;
+                        let bitcoin_rpc = Client::new(&host, Auth::CookieFile(path)).unwrap();
 
                         match bitcoin_rpc
                             .send_to_address(&address, amount, None, None, None, None, None, None)
@@ -950,30 +955,38 @@ impl Runtime {
                                 swap_id.bright_blue_italic(),
                                 txid
                             ),
-                            Err(_) => {
+                            Err(err) => {
+                                warn!("{}", err);
                                 error!(
-                                    "{} | Auto-funding Bitcoin transaction failed, pushing to cli",
+                                    "{} | Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount",
                                     swap_id.bright_blue_italic()
                                 );
                                 self.funding_btc.insert(swap_id, (address, amount));
                             }
                         }
-                    }
-                    FundingInfo::Bitcoin(BitcoinFundingInfo {
-                        swap_id,
-                        address,
-                        amount,
-                    }) => {
+                    } else {
                         self.funding_btc.insert(swap_id, (address, amount));
                     }
-                    FundingInfo::Monero(MoneroFundingInfo {
-                        swap_id,
-                        address,
-                        amount,
-                    }) if self.auto_fund => {
+                }
+                FundingInfo::Monero(MoneroFundingInfo {
+                    swap_id,
+                    address,
+                    amount,
+                }) => {
+                    let network = match address.network {
+                        monero::Network::Mainnet => Network::Mainnet,
+                        monero::Network::Stagenet => Network::Testnet,
+                        monero::Network::Testnet => Network::Local,
+                    };
+                    if let Some(auto_fund_config) = self.config.get_auto_funding_config(network) {
                         info!(
                             "{} | Attempting to auto-fund Monero",
                             swap_id.bright_blue_italic()
+                        );
+                        debug!(
+                            "{} | Auto funding config: {:#?}",
+                            swap_id.bright_blue_italic(),
+                            auto_fund_config
                         );
                         use tokio::runtime::Builder;
                         let rt = Builder::new_multi_thread()
@@ -982,43 +995,40 @@ impl Runtime {
                             .build()
                             .unwrap();
                         rt.block_on(async {
-                        let wallet_client =
-                            monero_rpc::RpcClient::new("http://localhost:18083".to_string());
-                        let wallet = wallet_client.wallet();
-                        let options = monero_rpc::TransferOptions::default();
-                        let mut destination = HashMap::new();
-                        destination.insert(address, amount.as_pico());
-                        match wallet
-                            .transfer(
-                                destination.clone(),
-                                monero_rpc::TransferPriority::Default,
-                                options.clone(),
-                            )
-                            .await
-                        {
-                            Ok(tx) => {
-                                info!(
-                                    "{} | Auto-funded Monero with txid: {}",
-                                    &swap_id.bright_blue_italic(),
-                                    tx.tx_hash.to_string()
-                                );
+                            let host = auto_fund_config.monero_rpc_wallet;
+                            let wallet_client =
+                                monero_rpc::RpcClient::new(host);
+                            let wallet = wallet_client.wallet();
+                            let options = monero_rpc::TransferOptions::default();
+                            let mut destination = HashMap::new();
+                            destination.insert(address, amount.as_pico());
+                            match wallet
+                                .transfer(
+                                    destination.clone(),
+                                    monero_rpc::TransferPriority::Default,
+                                    options.clone(),
+                                )
+                                .await
+                            {
+                                Ok(tx) => {
+                                    info!(
+                                        "{} | Auto-funded Monero with txid: {}",
+                                        &swap_id.bright_blue_italic(),
+                                        tx.tx_hash.to_string()
+                                    );
+                                }
+                                Err(err) => {
+                                    warn!("{}", err);
+                                    error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
+                                    self.funding_xmr.insert(swap_id, (address, amount));
+                                }
                             }
-                            Err(_) => {
-                                error!("{} | Auto-funding Monero transaction failed, pushing to cli", &swap_id.bright_blue_italic());
-                                self.funding_xmr.insert(swap_id, (address, amount));
-                            }
-                        }
-                    });
-                    }
-                    FundingInfo::Monero(MoneroFundingInfo {
-                        swap_id,
-                        address,
-                        amount,
-                    }) => {
+                        });
+                    } else {
                         self.funding_xmr.insert(swap_id, (address, amount));
                     }
                 }
-            }
+            },
 
             Request::FundingCompleted(swap_id) => {
                 info!("{} | Funding completed", swap_id.bright_blue_italic());

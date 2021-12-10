@@ -34,19 +34,6 @@ pub struct Opts {
     #[clap(flatten)]
     pub shared: crate::opts::Opts,
 
-    /// Data directory path
-    ///
-    /// Path to the directory that contains Farcaster Node data, and where ZMQ
-    /// RPC socket files are located.
-    #[clap(
-        short,
-        long,
-        global = true,
-        env = "FARCASTER_AUTO_FUND",
-        takes_value = false
-    )]
-    pub auto_fund: bool,
-
     /// Path to the configuration file.
     #[clap(
         short,

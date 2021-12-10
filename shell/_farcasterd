@@ -31,8 +31,6 @@ _farcasterd() {
 '--version[Print version information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-'-a[Data directory path]' \
-'--auto-fund[Data directory path]' \
 && ret=0
     
 }
