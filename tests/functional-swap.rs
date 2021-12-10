@@ -380,6 +380,20 @@ async fn run_refund_swap_kill_alice_after_funding(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+    // run until BobState(CoreArb) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(CoreArb)".to_string(),
+    )
+    .await;
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin arb lock tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
     // run until the alice has the monero funding address and fund it
     let monero_address =
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
@@ -397,11 +411,21 @@ async fn run_refund_swap_kill_alice_after_funding(
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
+    // generate some bitcoin blocks to finalize the bitcoin cancel tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
     // generate some bitcoin blocks for confirmations
     bitcoin_rpc
         .generate_to_address(20, &reusable_btc_address())
         .unwrap();
     tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin refund tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
 
     // run until the BobState(Finish(Failure(Refunded))) is received
     retry_until_finish_state_transition(
@@ -458,12 +482,32 @@ async fn run_refund_swap_alice_does_not_fund(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+    // run until BobState(CoreArb) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(CoreArb)".to_string(),
+    )
+    .await;
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin arb lock tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
     // run until the alice has the monero funding address, but do not fund it
     retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
 
     // generate some bitcoin blocks for confirmations
     bitcoin_rpc
         .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
     // run until the AliceState(Finish(Failure(Refunded))) is received
@@ -478,6 +522,10 @@ async fn run_refund_swap_alice_does_not_fund(
         .generate_to_address(20, &reusable_btc_address())
         .unwrap();
     tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
 
     // run until the BobState(Finish(Failure(Refunded))) is received
     retry_until_finish_state_transition(
@@ -513,6 +561,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     execution_mutex: Arc<Mutex<u8>>,
     bob_farcasterd: std::process::Child,
 ) {
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
     let cli_alice_progress_args: Vec<String> =
         progress_args(data_dir_alice.clone(), swap_id.clone());
     let cli_bob_needs_funding_args: Vec<String> =
@@ -535,6 +584,20 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
+
+    // run until BobState(CoreArb) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(CoreArb)".to_string(),
+    )
+    .await;
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin arb lock tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
     monero_regtest
         .generate_blocks(11, reusable_xmr_address())
         .await
@@ -545,7 +608,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     // kill bob
     cleanup_processes(vec![bob_farcasterd]);
 
-    // run until the alice has the monero funding address
+    // run until alice has the monero funding address
     let monero_address =
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
     send_monero(Arc::clone(&monero_wallet), monero_address, 1000000000000).await;
@@ -555,6 +618,15 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     // generate some bitcoin blocks for confirmations
     bitcoin_rpc
         .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+
+    println!("generated 20 bitcoin blocks");
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some confirmations for the cancel tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
     println!("generated 20 bitcoin blocks");
@@ -578,6 +650,15 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     bitcoin_rpc
         .generate_to_address(20, &reusable_btc_address())
         .unwrap();
+    println!("generated 20 bitcoin blocks");
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some confirmations for the cancel tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
     println!("generated 20 bitcoin blocks");
 
     // run until the AliceState(Finish) is received
@@ -690,9 +771,19 @@ async fn run_swap(
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
-    monero_regtest
-        .generate_blocks(11, reusable_xmr_address())
-        .await
+
+    // run until BobState(CoreArb) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(CoreArb)".to_string(),
+    )
+    .await;
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin arb lock tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
     // run until the alice has the monero funding address
@@ -700,7 +791,17 @@ async fn run_swap(
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
     send_monero(Arc::clone(&monero_wallet), monero_address, 1000000000000).await;
 
-    // generate some bitcoin blocks for confirmations
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+
+    // generate some monero blocks to finalize the monero acc lock tx
+    monero_regtest
+        .generate_blocks(6, reusable_xmr_address())
+        .await
+        .unwrap();
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to make the buy tx final
     bitcoin_rpc
         .generate_to_address(5, &reusable_btc_address())
         .unwrap();
@@ -1103,6 +1204,7 @@ async fn retry_until_finish_state_transition(
         let alice_finish: Vec<String> = stdout
             .iter()
             .filter_map(|element| {
+                println!("element: {:?}", element);
                 if element.contains(&finish_state) {
                     Some(element.to_string())
                 } else {
