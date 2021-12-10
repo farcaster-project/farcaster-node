@@ -1179,15 +1179,24 @@ impl Runtime {
                                 }
                                 pending_requests.push(pending_request);
 
-                                if let Some(addr) = self.state.b_address().cloned() {
-                                    let fees = bitcoin::Amount::from_sat(150); // FIXME
+                                if let Some(address) = self.state.b_address().cloned() {
+                                    let swap_id = self.swap_id();
+                                    let fees = bitcoin::Amount::from_sat(200); // FIXME
+                                    let amount = self.syncer_state.bitcoin_amount + fees;
+                                    info!(
+                                        "{} | Send {} to {}",
+                                        swap_id.bright_blue_italic(),
+                                        amount.bright_green_bold(),
+                                        address.addr(),
+                                    );
                                     let req = Request::FundingInfo(FundingInfo::Bitcoin(
                                         BitcoinFundingInfo {
-                                            swap_id: self.swap_id(),
-                                            address: addr,
-                                            amount: self.syncer_state.bitcoin_amount + fees,
+                                            swap_id,
+                                            address,
+                                            amount,
                                         },
                                     ));
+
                                     if let Some(enquirer) = self.enquirer.clone() {
                                         senders.send_to(
                                             ServiceBus::Ctl,
@@ -1947,11 +1956,20 @@ impl Runtime {
                                         self.syncer_state.network.into(),
                                         &viewpair,
                                     );
+                                    let swap_id = self.swap_id();
+                                    let amount = self.syncer_state.monero_amount
+                                        + monero::Amount::from_xmr(0.02).unwrap();
+                                    info!(
+                                        "{} | Send {} to {}",
+                                        swap_id.bright_blue_italic(),
+                                        amount.bright_green_bold(),
+                                        address.addr(),
+                                    );
                                     let funding_request = Request::FundingInfo(
                                         FundingInfo::Monero(MoneroFundingInfo {
-                                            swap_id: self.swap_id(),
+                                            swap_id,
                                             address,
-                                            amount: self.syncer_state.monero_amount,
+                                            amount,
                                         }),
                                     );
                                     if let Some(enquirer) = self.enquirer.clone() {
