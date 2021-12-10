@@ -35,11 +35,44 @@ use crate::opts::Opts;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct Config {
+    /// Farcasterd configuration
+    pub farcasterd: Option<FarcasterdConfig>,
     /// Syncer configuration
     pub syncers: Option<SyncersConfig>,
 }
 
 impl Config {
+    /// Returns if auto-funding functionality is enable
+    pub fn is_auto_funding_enable(&self) -> bool {
+        match &self.farcasterd {
+            Some(FarcasterdConfig {
+                auto_funding: Some(AutoFundingConfig { auto_fund, .. }),
+            }) => *auto_fund,
+            _ => false,
+        }
+    }
+
+    /// Returns the auto-funding configuration for a given network if enable, if None no
+    /// configuration is found
+    pub fn get_auto_funding_config(&self, network: Network) -> Option<AutoFundingServers> {
+        match &self.farcasterd {
+            Some(FarcasterdConfig {
+                auto_funding:
+                    Some(AutoFundingConfig {
+                        auto_fund,
+                        mainnet,
+                        testnet,
+                        local,
+                    }),
+            }) if *auto_fund => match network {
+                Network::Mainnet => mainnet.clone(),
+                Network::Testnet => testnet.clone(),
+                Network::Local => local.clone(),
+            },
+            _ => None,
+        }
+    }
+
     pub fn get_syncer_servers(&self, network: Network) -> Option<SyncerServers> {
         match network {
             Network::Mainnet => self.syncers.as_ref()?.mainnet.clone(),
@@ -52,6 +85,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            farcasterd: None,
             syncers: Some(SyncersConfig::default()),
         }
     }
@@ -59,13 +93,48 @@ impl Default for Config {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
+pub struct FarcasterdConfig {
+    /// Sets the auto-funding parameters, default to no auto-fund
+    pub auto_funding: Option<AutoFundingConfig>,
+}
+
+impl Default for FarcasterdConfig {
+    fn default() -> Self {
+        FarcasterdConfig { auto_funding: None }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct AutoFundingConfig {
+    /// Use auto-funding functionality
+    pub auto_fund: bool,
+    /// Mainnet auto-funding configuration
+    pub mainnet: Option<AutoFundingServers>,
+    /// Testnet auto-funding configuration
+    pub testnet: Option<AutoFundingServers>,
+    /// Local auto-funding configuration
+    pub local: Option<AutoFundingServers>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct AutoFundingServers {
+    /// The host and port with scheme for connecting to bitcoin-core node
+    pub bitcoin_rpc: String,
+    /// Path to the cookie file to connect to the bitcoin-core node
+    pub bitcoin_cookie_path: String,
+    /// The monero wallet rpc url to auto-fund monero
+    pub monero_rpc_wallet: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
 pub struct SyncersConfig {
     /// Mainnet syncer configuration
     pub mainnet: Option<SyncerServers>,
-
     /// Testnet syncer configuration
     pub testnet: Option<SyncerServers>,
-
     /// Local syncer configuration
     pub local: Option<SyncerServers>,
 }
@@ -75,10 +144,8 @@ pub struct SyncersConfig {
 pub struct SyncerServers {
     /// Electrum server to use
     pub electrum_server: String,
-
     /// Monero daemon to use
     pub monero_daemon: String,
-
     /// Monero rpc wallet to use
     pub monero_rpc_wallet: String,
 }
