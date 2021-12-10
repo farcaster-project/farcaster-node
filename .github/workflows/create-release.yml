@@ -90,5 +90,5 @@ jobs:
     - name: Docker push to GitHub Packages (latest)
       run: docker push ghcr.io/farcaster-project/farcaster-node/farcasterd:latest
 
-    - name: Docker push to GitHub Packages (${{ steps.extract-version.outputs.version }})
+    - name: Docker push to GitHub Packages (release)
       run: docker push ghcr.io/farcaster-project/farcaster-node/farcasterd:${{ steps.extract-version.outputs.version }}
