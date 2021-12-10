@@ -895,8 +895,9 @@ impl SyncerState {
         finality_thr: u32,
     ) {
         if let Some(txlabel) = self.tasks.watched_txs.get(id) {
-            if confirmations.unwrap_or(0) > finality_thr
-                && !self.tasks.final_txs.contains_key(txlabel)
+            if !self.tasks.final_txs.contains_key(txlabel)
+                && confirmations.is_some()
+                && confirmations.unwrap() >= finality_thr
             {
                 info!(
                     "{} | Tx {} {} with {} {}",
