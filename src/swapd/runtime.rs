@@ -125,9 +125,9 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: 0,
+        btc_finality_thr: 1,
         race_thr: 3,
-        xmr_finality_thr: 0,
+        xmr_finality_thr: 5,
         sweep_monero_thr,
     };
 
