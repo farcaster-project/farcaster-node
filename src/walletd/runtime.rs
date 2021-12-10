@@ -338,7 +338,6 @@ impl Runtime {
                                 return Ok(());
                             }
                             let launch_swap = LaunchSwap {
-                                maker_node_id: node_id,
                                 local_trade_role: TradeRole::Maker,
                                 public_offer: pub_offer,
                                 local_params: Params::Bob(local_params),
@@ -384,7 +383,6 @@ impl Runtime {
                                 self.wallets.insert(swap_id, Wallet::Alice(alice_state));
 
                                 let launch_swap = LaunchSwap {
-                                    maker_node_id: node_id,
                                     local_trade_role: TradeRole::Maker,
                                     public_offer: pub_offer,
                                     local_params: Params::Alice(local_params),
@@ -1089,7 +1087,6 @@ impl Runtime {
                             return Ok(());
                         }
                         let launch_swap = LaunchSwap {
-                            maker_node_id: node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Bob(local_params),
@@ -1131,7 +1128,6 @@ impl Runtime {
                             error!("{} | Wallet already exists", swap_id.bright_blue_italic());
                         }
                         let launch_swap = LaunchSwap {
-                            maker_node_id: node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Alice(local_params),
@@ -1345,11 +1341,12 @@ impl Runtime {
                     return Err(Error::InvalidToken);
                 }
                 trace!("sent Secret request to farcasterd");
+                let node_secrets = NodeSecrets::new(shellexpand::tilde(".peer_key").to_string());
                 self.send_farcasterd(
                     senders,
                     Request::Keys(Keys(
-                        self.node_secrets.peerd_secret_key,
-                        self.node_secrets.node_id(),
+                        node_secrets.peerd_secret_key,
+                        node_secrets.node_id(),
                         request_id,
                     )),
                 )?

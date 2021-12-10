@@ -230,7 +230,6 @@ pub struct GetKeys(pub Token, pub RequestId);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("launch_swap")]
 pub struct LaunchSwap {
-    pub maker_node_id: bitcoin::secp256k1::PublicKey,
     pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub local_params: Params,
@@ -726,6 +725,7 @@ pub struct ProtoPublicOffer {
     pub arbitrating_addr: bitcoin::Address,
     pub accordant_addr: String,
     pub peer_secret_key: Option<SecretKey>,
+    pub peer_public_key: Option<secp256k1::PublicKey>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
