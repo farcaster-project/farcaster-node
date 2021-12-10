@@ -33,13 +33,13 @@ jobs:
         with:
           files: target/release/address target/release/farcasterd target/release/peerd target/release/swap-cli target/release/swapd target/release/syncerd target/release/walletd
           recursive: false
-          dest: bins.zip
+          dest: ubuntu-latest-bins.zip
 
       - name: Archive release bins
         uses: actions/upload-artifact@v2
         with:
-          name: release-bins
-          path: bins.zip
+          name: release-ubuntu-latest-bins
+          path: ubuntu-latest-bins.zip
           retention-days: 7
 
   create_release:
@@ -48,8 +48,8 @@ jobs:
     # Do not run before uploading the binaries
     needs: produce_binaries
     with:
-      artifact_name: release-bins
-      files: bins.zip
+      artifact_name: release-ubuntu-latest-bins
+      files: ubuntu-latest-bins.zip
 
   release_to_crates:
     name: Publish the new release to crates.io
