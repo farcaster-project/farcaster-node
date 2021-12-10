@@ -57,7 +57,11 @@ use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use farcaster_core::{blockchain::Network, negotiation::PublicOfferId, swap::SwapId};
+use farcaster_core::{
+    blockchain::Network,
+    negotiation::{OfferId, PublicOfferId},
+    swap::SwapId,
+};
 
 use crate::farcasterd::Opts;
 use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
@@ -124,7 +128,7 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,
-    listens: HashSet<RemoteSocketAddr>,
+    listens: HashMap<OfferId, RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
     running_swaps: HashSet<SwapId>,
@@ -135,7 +139,7 @@ pub struct Runtime {
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
     consumed_offers: HashSet<(PublicOfferId, SwapId)>,
-    node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
+    node_ids: HashMap<OfferId, PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncer_services: HashMap<(Coin, Network), ServiceId>,
@@ -281,7 +285,7 @@ impl Runtime {
         Ok(())
     }
     fn node_ids(&self) -> Vec<PublicKey> {
-        self.node_ids.iter().cloned().collect()
+        self.node_ids.values().into_iter().cloned().collect()
     }
 
     fn _known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
@@ -539,7 +543,6 @@ impl Runtime {
             }
 
             Request::LaunchSwap(LaunchSwap {
-                maker_node_id,
                 local_trade_role,
                 public_offer,
                 local_params,
@@ -547,23 +550,24 @@ impl Runtime {
                 remote_commit,
                 funding_address,
             }) => {
-                let (node_id, peer_address) = match (local_trade_role, self.listens.len()) {
+                let offerid = &public_offer.offer.id();
+                let listener = self.listens.get(&offerid);
+                let node_id = self.node_ids.get(&offerid);
+                let (node_id, peer_address) = match local_trade_role {
                     // Maker has only one listener, MAYBE for more listeners self.listens may be a
                     // HashMap<RemoteSocketAddr, Vec<OfferId>>
-                    (TradeRole::Maker, 1) => (
-                        maker_node_id,
-                        self.listens
-                            .clone()
-                            .into_iter()
-                            .find_map(Some)
-                            .expect("exactly 1 listener checked on pattern match"),
+                    TradeRole::Maker if listener.is_some() && node_id.is_some() => (
+                        node_id.cloned().unwrap(),
+                        // internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
+                        // internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
+                        listener.cloned().unwrap(),
                     ),
-                    (TradeRole::Taker, _) if public_offer.node_id == maker_node_id => (
+                    TradeRole::Taker => (
                         public_offer.node_id,
                         internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
                     ),
                     _ => {
-                        error!("Currently only one listener supported!");
+                        error!("Listener must exist!");
                         return Ok(());
                     }
                 };
@@ -605,10 +609,10 @@ impl Runtime {
                 trace!("received peerd keys");
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
-                    self.node_ids.insert(pk);
                     trace!("Received expected peer keys, injecting key in request");
                     let req = if let Request::MakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
+                        req.peer_public_key = Some(pk);
                         Ok(Request::MakeOffer(req))
                     } else if let Request::TakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
@@ -633,7 +637,7 @@ impl Runtime {
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
                         node_ids: self.node_ids(),
-                        listens: self.listens.iter().cloned().collect(),
+                        listens: self.listens.values().into_iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or_else(|_| Duration::from_secs(0)),
@@ -696,16 +700,26 @@ impl Runtime {
                 public_addr,
                 bind_addr,
                 peer_secret_key,
+                peer_public_key,
                 arbitrating_addr,
                 accordant_addr,
             }) => {
-                let resp = match (self.listens.contains(&bind_addr), peer_secret_key) {
-                    (false, None) => {
+                let resp = match (
+                    self.listens
+                        .values()
+                        .find(|a| a == &&bind_addr)
+                        .map(|_| true)
+                        .unwrap_or(false),
+                    peer_secret_key,
+                    peer_public_key,
+                ) {
+                    (false, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
                         return self.get_secret(senders, source, request);
                     }
-                    (false, Some(sk)) => {
-                        self.listens.insert(bind_addr);
+                    (false, Some(sk), Some(pk)) => {
+                        self.listens.insert(offer.id(), bind_addr);
+                        self.node_ids.insert(offer.id(), pk);
                         info!(
                             "{} for incoming peer connections on {}",
                             "Starting listener".bright_blue_bold(),
@@ -713,11 +727,12 @@ impl Runtime {
                         );
                         self.listen(&bind_addr, sk)
                     }
-                    (true, _) => {
+                    (true, ..) => {
                         let msg = format!("Already listening on {}", &bind_addr);
                         info!("{}", &msg);
                         Ok(msg)
                     }
+                    _ => unreachable!(),
                 };
                 match resp {
                     Ok(_) => info!(
@@ -738,14 +753,8 @@ impl Runtime {
                         //     self.node_id, remote_addr
                         // )),
                     ));
-
-                let node_ids = self.node_ids();
-                if node_ids.len() != 1 {
-                    error!("{}", "Currently node supports only 1 node id");
-                    return Ok(());
-                }
-
-                let public_offer = offer.to_public_v1(node_ids[0], public_addr.into());
+                let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
+                let public_offer = offer.to_public_v1(node_id, public_addr.into());
                 let pub_offer_id = public_offer.id();
                 let serialized_offer = public_offer.to_string();
                 if self.public_offers.insert(public_offer) {

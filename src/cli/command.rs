@@ -146,6 +146,7 @@ impl Exec for Command {
                     public_addr,
                     bind_addr,
                     peer_secret_key: None,
+                    peer_public_key: None,
                     arbitrating_addr,
                     accordant_addr: accordant_addr.to_string(),
                 };
