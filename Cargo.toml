@@ -1,6 +1,6 @@
 [package]
 name = "farcaster_node"
-version = "0.0.2"
+version = "0.1.0"
 authors = ["Farcaster Devs", "Dr. Maxim Orlovsky <orlovsky@pandoracore.com>"]
 build = "build.rs"
 edition = "2018"
