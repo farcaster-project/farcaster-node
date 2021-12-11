@@ -16,7 +16,7 @@
 
 use crate::syncerd::{
     types::{Event, Task},
-    SweepXmrAddress,
+    Coin, SweepXmrAddress,
 };
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
@@ -539,7 +539,7 @@ pub enum Request {
 
     #[api(type = 1111)]
     #[display("read_funding")]
-    FundingCompleted(SwapId),
+    FundingCompleted(Coin),
 
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]
