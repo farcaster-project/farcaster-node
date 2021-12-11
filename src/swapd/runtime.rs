@@ -154,6 +154,8 @@ pub fn run(
         monero_syncer: ServiceId::Syncer(Coin::Monero, network),
         monero_amount,
         bitcoin_amount,
+        funding_btc_seen: false,
+        funding_xmr_seen: false,
     };
 
     let runtime = Runtime {
@@ -293,6 +295,8 @@ struct SyncerState {
     monero_syncer: ServiceId,
     monero_amount: monero::Amount,
     bitcoin_amount: bitcoin::Amount,
+    funding_btc_seen: bool,
+    funding_xmr_seen: bool,
 }
 
 #[derive(Display, Clone)]
@@ -651,7 +655,7 @@ impl State {
                 *xmr_locked = true;
                 true
             } else {
-                error!("xmr_locked was already set to true");
+                trace!("xmr_locked was already set to true");
                 false
             }
         } else {
@@ -1609,12 +1613,15 @@ impl Runtime {
                         let task = self
                             .syncer_state
                             .watch_tx_xmr(hash.clone(), TxLabel::AccLock);
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            Request::FundingCompleted(self.swap_id()),
-                        )?;
+                        if !self.syncer_state.funding_xmr_seen {
+                            self.syncer_state.funding_xmr_seen = true;
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Farcasterd,
+                                Request::FundingCompleted(Coin::Monero),
+                            )?;
+                        }
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -1636,12 +1643,15 @@ impl Runtime {
                             );
                             return Ok(());
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            Request::FundingCompleted(self.swap_id()),
-                        )?;
+                        if !self.syncer_state.funding_xmr_seen {
+                            self.syncer_state.funding_xmr_seen = true;
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Farcasterd,
+                                Request::FundingCompleted(Coin::Monero),
+                            )?;
+                        }
                         if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(id) {
                             let watch_tx = self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
                             senders.send_to(
@@ -1830,13 +1840,14 @@ impl Runtime {
                         );
                         let txlabel = self.syncer_state.tasks.watched_addrs.get(id).unwrap();
                         match txlabel {
-                            TxLabel::Funding => {
+                            TxLabel::Funding if !self.syncer_state.funding_btc_seen => {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
+                                self.syncer_state.funding_btc_seen = true;
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    Request::FundingCompleted(self.swap_id()),
+                                    Request::FundingCompleted(Coin::Bitcoin),
                                 )?;
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;

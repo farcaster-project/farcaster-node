@@ -698,20 +698,13 @@ impl Runtime {
                 arbitrating_addr,
                 accordant_addr,
             }) => {
-                let resp = match (
-                    self.listens
-                        .values()
-                        .find(|a| a == &&bind_addr)
-                        .map(|_| true)
-                        .unwrap_or(false),
-                    peer_secret_key,
-                    peer_public_key,
-                ) {
-                    (false, None, None) => {
+                let bindaddr = self.listens.values().find(|a| a == &&bind_addr);
+                let resp = match (bindaddr, peer_secret_key, peer_public_key) {
+                    (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
                         return self.get_secret(senders, source, request);
                     }
-                    (false, Some(sk), Some(pk)) => {
+                    (None, Some(sk), Some(pk)) => {
                         self.listens.insert(offer.id(), bind_addr);
                         self.node_ids.insert(offer.id(), pk);
                         info!(
@@ -721,7 +714,8 @@ impl Runtime {
                         );
                         self.listen(&bind_addr, sk)
                     }
-                    (true, ..) => {
+                    (Some(addr), ..) => {
+                        // no need for the keys, because peerd already knows them
                         let msg = format!("Already listening on {}", &bind_addr);
                         info!("{}", &msg);
                         Ok(msg)
@@ -1039,10 +1033,15 @@ impl Runtime {
                 }
             },
 
-            Request::FundingCompleted(swap_id) => {
-                info!("{} | Funding completed", swap_id.bright_blue_italic());
-                self.funding_xmr.remove_entry(&swap_id);
-                self.funding_btc.remove_entry(&swap_id);
+            Request::FundingCompleted(coin) => {
+                let swapid = get_swap_id(&source)?;
+                info!(
+                    "{} | {} Funding completed",
+                    swapid.bright_blue_italic(),
+                    coin.bright_green_bold()
+                );
+                self.funding_xmr.remove_entry(&swapid);
+                self.funding_btc.remove_entry(&swapid);
             }
 
             Request::NeedsFunding(Coin::Monero) => {
