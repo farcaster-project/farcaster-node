@@ -151,39 +151,50 @@ pub struct Runtime {
     config: Config,
 }
 
+#[derive(Default)]
 struct Stats {
     success: u64,
-    failure: u64,
+    refund: u64,
+    punish: u64,
+    initialized: u64,
 }
 
 impl Stats {
     fn incr_success(&mut self) {
         self.success += 1
     }
-    fn incr_failure(&mut self) {
-        self.failure += 1
+    fn incr_refund(&mut self) {
+        self.refund += 1
     }
+    fn incr_punish(&mut self) {
+        self.punish += 1
+    }
+    fn incr_initiated(&mut self) {
+        self.initialized += 1
+    }
+
     fn success_rate(&self) -> f64 {
-        let Stats { success, failure } = self;
-        let total = success + failure;
+        let Stats {
+            success,
+            refund,
+            punish,
+            initialized,
+        } = self;
+        let total = success + refund + punish;
         let rate = *success as f64 / (total as f64);
         info!(
-            "{}: Success({}) / Total({}) = {:>4.3}",
-            "Swap success rate".bright_blue_bold(),
+            "Swapped({}) / Refunded({}) / Punished({}) / Initialized({})",
             success.bright_white_bold(),
-            total.bright_white_bold(),
-            rate.bright_yellow_bold()
+            refund.bright_white_bold(),
+            punish.bright_white_bold(),
+            initialized
+        );
+        info!(
+            "{}:  = {:>4.3}",
+            "Swap success rate".bright_blue_bold(),
+            rate.bright_yellow_bold(),
         );
         rate
-    }
-}
-
-impl Default for Stats {
-    fn default() -> Self {
-        Stats {
-            success: 0,
-            failure: 0,
-        }
     }
 }
 
@@ -533,10 +544,15 @@ impl Runtime {
                         debug!("Success on swap {}", &swapid);
                         self.stats.incr_success();
                     }
-                    _ => {
-                        warn!("Failure on swap {}", &swapid);
-                        self.stats.incr_failure();
+                    Outcome::Refund => {
+                        warn!("Refund on swap {}", &swapid);
+                        self.stats.incr_refund();
                     }
+                    Outcome::Punish => {
+                        warn!("Punish on swap {}", &swapid);
+                        self.stats.incr_punish();
+                    }
+                    _ => {}
                 }
                 self.stats.success_rate();
                 senders.send_to(ServiceBus::Ctl, self.identity(), source, request)?;
@@ -587,6 +603,7 @@ impl Runtime {
                         .into();
 
                     self.consumed_offers.insert((public_offer.id(), swap_id));
+                    self.stats.incr_initiated();
                     launch_swapd(
                         self,
                         peer,
