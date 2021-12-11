@@ -673,11 +673,17 @@ impl Runtime {
 
             // TODO: only list offers matching list of OfferIds
             Request::ListOffers => {
+                let pub_offers = self
+                    .public_offers
+                    .iter()
+                    .filter(|k| !self.consumed_offers_contains(&k.id()))
+                    .cloned()
+                    .collect();
                 senders.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
-                    Request::OfferList(self.public_offers.iter().cloned().collect()),
+                    Request::OfferList(pub_offers),
                 )?;
             }
 

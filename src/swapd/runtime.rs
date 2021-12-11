@@ -1604,7 +1604,9 @@ impl Runtime {
                         amount,
                         block,
                         tx,
-                    }) if self.state.swap_role() == SwapRole::Alice => {
+                    }) if self.state.swap_role() == SwapRole::Alice
+                        && !self.state.a_xmr_locked() =>
+                    {
                         debug!(
                             "Event details: {} {:?} {} {:?} {:?}",
                             id, hash, amount, block, tx
