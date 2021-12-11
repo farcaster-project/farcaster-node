@@ -199,10 +199,8 @@ pub enum Command {
         /// The swap id requested.
         swapid: SwapId,
     },
-
-    NeedsFunding {
-        coin: Coin,
-    },
+    /// Returns addresses and amounts that require funding for coin
+    NeedsFunding { coin: Coin },
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
