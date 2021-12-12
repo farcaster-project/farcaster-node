@@ -1658,8 +1658,7 @@ impl Runtime {
                         let amount = monero::Amount::from_pico(*amount);
                         if amount < self.syncer_state.monero_amount {
                             warn!(
-                                "Not enough monero locked: expected {}, \
-                                 found {}, continuing anyway",
+                                "Not enough monero locked: expected {}, found {}",
                                 self.syncer_state.monero_amount, amount
                             );
                             return Ok(());
