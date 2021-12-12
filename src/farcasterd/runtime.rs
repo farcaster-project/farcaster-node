@@ -51,7 +51,9 @@ use bitcoin::{
     },
     Address,
 };
-use internet2::{addr::InetSocketAddr, NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
+use internet2::{
+    addr::InetSocketAddr, NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum,
+};
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
@@ -138,7 +140,7 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashSet<(PublicOfferId, SwapId)>,
+    consumed_offers: HashMap<OfferId, SwapId>,
     node_ids: HashMap<OfferId, PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
@@ -236,16 +238,48 @@ impl Runtime {
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
     ) -> Result<(), Error> {
         self.running_swaps.remove(swapid);
-        let offers2rm: Vec<_> = self
+        let mut offerid = None;
+        self.consumed_offers = self
             .consumed_offers
-            .iter()
-            .filter(|(_, i_swapid)| swapid == i_swapid)
-            .cloned()
+            .drain()
+            .filter_map(|(k, v)| {
+                if swapid != &v {
+                    Some((k, v))
+                } else {
+                    offerid = Some(k);
+                    None
+                }
+            })
             .collect();
+        if let Some(offerid) = &offerid {
+            if self.listens.contains_key(offerid) && self.node_ids.contains_key(offerid) {
+                let node_id = self.node_ids.remove(offerid).unwrap();
+                let remote_addr = self.listens.remove(offerid).unwrap();
+                // nr of offers using that peerd
+                let peerd_used_by: Vec<_> = self
+                    .listens
+                    .values()
+                    .filter(|x| x == &&remote_addr)
+                    .into_iter()
+                    .collect();
+                if peerd_used_by.len() == 0 {
+                    let connectionid = NodeAddr::Remote(RemoteNodeAddr {
+                        node_id,
+                        remote_addr,
+                    });
 
-        for offer in &offers2rm {
-            self.consumed_offers.remove(offer);
+                    if self.connections.remove(&connectionid) {
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Peer(connectionid),
+                            Request::Terminate,
+                        )?;
+                    }
+                }
+            }
         }
+
         let identity = self.identity();
         self.syncer_clients = self
             .syncer_clients
@@ -279,16 +313,13 @@ impl Runtime {
             .drain()
             .filter(|(k, _)| clients.contains_key(k))
             .collect();
+        // self.connections.into_iter().filter(|(o, r)| )
 
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offerid: &PublicOfferId) -> bool {
-        self.consumed_offers
-            .iter()
-            .filter(|(i_offerid, _)| i_offerid == offerid)
-            .find_map(|_| Some(true))
-            .unwrap_or(false)
+    fn consumed_offers_contains(&self, offerid: &OfferId) -> bool {
+        self.consumed_offers.contains_key(offerid)
     }
 
     fn _send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
@@ -601,7 +632,8 @@ impl Runtime {
                         .ok_or(internet2::presentation::Error::InvalidEndpoint)?
                         .into();
 
-                    self.consumed_offers.insert((public_offer.id(), swap_id));
+                    self.consumed_offers
+                        .insert(public_offer.offer.id(), swap_id);
                     self.stats.incr_initiated();
                     launch_swapd(
                         self,
@@ -692,7 +724,7 @@ impl Runtime {
                 let pub_offers = self
                     .public_offers
                     .iter()
-                    .filter(|k| !self.consumed_offers_contains(&k.id()))
+                    .filter(|k| !self.consumed_offers_contains(&k.offer.id()))
                     .cloned()
                     .collect();
                 senders.send_to(
@@ -816,7 +848,7 @@ impl Runtime {
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
-                    || self.consumed_offers_contains(&public_offer.id())
+                    || self.consumed_offers_contains(&public_offer.offer.id())
                 {
                     let msg = format!(
                         "{} already exists or was already taken, ignoring request",

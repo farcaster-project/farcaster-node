@@ -309,6 +309,10 @@ impl Runtime {
                 self.routing.remove(&source);
                 self.routing.insert(channel_id.into(), source);
             }
+            Request::Terminate if source == ServiceId::Farcasterd => {
+                info!("Terminating {}", self.identity().bright_white_bold());
+                std::process::exit(0);
+            }
 
             Request::GetInfo => {
                 let info = PeerInfo {
