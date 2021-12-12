@@ -1605,6 +1605,7 @@ impl Runtime {
                         block,
                         tx,
                     }) if self.state.swap_role() == SwapRole::Alice
+                        && self.syncer_state.tasks.watched_addrs.contains_key(id)
                         && !self.state.a_xmr_locked() =>
                     {
                         debug!(
@@ -1630,6 +1631,19 @@ impl Runtime {
                             self.syncer_state.monero_syncer(),
                             Request::SyncerTask(task),
                         )?;
+
+                        if self.syncer_state.tasks.watched_addrs.remove(id).is_some() {
+                            let abort_task = Task::Abort(Abort {
+                                task_target: TaskTarget::TaskId(*id),
+                                respond: Boolean::False,
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.monero_syncer(),
+                                Request::SyncerTask(abort_task),
+                            )?;
+                        }
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1637,10 +1651,15 @@ impl Runtime {
                         amount,
                         block: _,
                         tx: _,
-                    }) if self.state.swap_role() == SwapRole::Bob => {
-                        if amount < &self.syncer_state.monero_amount.as_pico() {
-                            error!(
-                                "Not enough monero locked: expected {}, found {}",
+                    }) if self.state.swap_role() == SwapRole::Bob
+                        && self.syncer_state.tasks.watched_addrs.contains_key(id)
+                        && !self.syncer_state.funding_xmr_seen =>
+                    {
+                        let amount = monero::Amount::from_pico(*amount);
+                        if amount < self.syncer_state.monero_amount {
+                            warn!(
+                                "Not enough monero locked: expected {}, \
+                                 found {}, continuing anyway",
                                 self.syncer_state.monero_amount, amount
                             );
                             return Ok(());
@@ -1661,6 +1680,17 @@ impl Runtime {
                                 self.identity(),
                                 self.syncer_state.monero_syncer(),
                                 Request::SyncerTask(watch_tx),
+                            )?;
+
+                            let abort_task = Task::Abort(Abort {
+                                task_target: TaskTarget::TaskId(*id),
+                                respond: Boolean::False,
+                            });
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.monero_syncer(),
+                                Request::SyncerTask(abort_task),
                             )?;
                         }
                     }
