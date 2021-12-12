@@ -552,7 +552,6 @@ impl Runtime {
                         warn!("Punish on swap {}", &swapid);
                         self.stats.incr_punish();
                     }
-                    _ => {}
                 }
                 self.stats.success_rate();
                 senders.send_to(ServiceBus::Ctl, self.identity(), source, request)?;
@@ -746,9 +745,9 @@ impl Runtime {
                         );
                         self.listen(&bind_addr, sk)
                     }
-                    (Some(addr), _, Some(pk)) => {
+                    (Some(&addr), _, Some(pk)) => {
                         // no need for the keys, because peerd already knows them
-                        self.listens.insert(offer.id(), addr.clone());
+                        self.listens.insert(offer.id(), addr);
                         self.node_ids.insert(offer.id(), pk);
                         let msg = format!("Already listening on {}", &bind_addr);
                         info!("{}", &msg);
