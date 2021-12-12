@@ -66,13 +66,12 @@ pub fn run(
     config: ServiceConfig,
     wallet_token: Token,
     node_secrets: NodeSecrets,
-    node_id: bitcoin::secp256k1::PublicKey,
+    _node_id: bitcoin::secp256k1::PublicKey,
 ) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
         wallet_token,
         node_secrets,
-        node_id,
         wallets: none!(),
         swaps: none!(),
         btc_addrs: none!(),
@@ -86,7 +85,6 @@ pub struct Runtime {
     identity: ServiceId,
     wallet_token: Token,
     node_secrets: NodeSecrets,
-    node_id: bitcoin::secp256k1::PublicKey,
     wallets: HashMap<SwapId, Wallet>,
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
@@ -294,7 +292,6 @@ impl Runtime {
                     &pub_offer
                 );
                 let PublicOffer { offer, .. } = pub_offer.clone();
-                let node_id = self.node_id;
                 let external_address = self.btc_addrs.remove(&swap_id).expect("checked above");
                 match offer.maker_role {
                     SwapRole::Bob => {
@@ -1040,7 +1037,7 @@ impl Runtime {
                 internal_address,
                 peer_secret_key: None,
             }) if source == ServiceId::Farcasterd => {
-                let PublicOffer { offer, node_id, .. } = public_offer.clone();
+                let PublicOffer { offer, .. } = public_offer.clone();
 
                 let swap_id: SwapId = SwapId::random();
                 self.swaps.insert(swap_id, None);
