@@ -704,7 +704,16 @@ impl Runtime {
                 arbitrating_addr,
                 accordant_addr,
             }) => {
-                let bindaddr = self.listens.values().find(|a| a == &&bind_addr);
+                let (bindaddr, peer_public_key) = if let Some((pk, bindaddr)) = self
+                    .listens
+                    .iter()
+                    .find(|(_, a)| a == &&bind_addr)
+                    .and_then(|(k, v)| self.node_ids.get(k).map(|pk| (pk, v)))
+                {
+                    (Some(bindaddr), Some(*pk))
+                } else {
+                    (None, peer_public_key.clone())
+                };
                 let resp = match (bindaddr, peer_secret_key, peer_public_key) {
                     (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
@@ -720,8 +729,10 @@ impl Runtime {
                         );
                         self.listen(&bind_addr, sk)
                     }
-                    (Some(addr), ..) => {
+                    (Some(addr), _, Some(pk)) => {
                         // no need for the keys, because peerd already knows them
+                        self.listens.insert(offer.id(), addr.clone());
+                        self.node_ids.insert(offer.id(), pk);
                         let msg = format!("Already listening on {}", &bind_addr);
                         info!("{}", &msg);
                         Ok(msg)
