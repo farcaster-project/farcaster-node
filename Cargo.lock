@@ -936,7 +936,7 @@ dependencies = [
 
 [[package]]
 name = "farcaster_node"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "amplify",
  "amplify_derive",
