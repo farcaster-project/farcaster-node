@@ -327,7 +327,13 @@ impl Runtime {
         Ok(())
     }
     fn node_ids(&self) -> Vec<PublicKey> {
-        self.node_ids.values().into_iter().cloned().collect()
+        self.node_ids
+            .values()
+            .into_iter()
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     fn _known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
