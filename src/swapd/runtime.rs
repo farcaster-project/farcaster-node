@@ -243,10 +243,10 @@ impl TemporalSafety {
         };
         confs >= finality_thr
     }
-    /// lock must be final, cancel cannot be raced
+    /// lock must be final, cancel cannot be raced, add + 1 to offset initial lock confirmation
     fn stop_funding_before_cancel(&self, lock_confirmations: u32) -> bool {
         self.final_tx(lock_confirmations, Coin::Bitcoin)
-            && lock_confirmations > self.cancel_timelock - self.race_thr
+            && lock_confirmations > self.cancel_timelock - self.race_thr + 1
     }
     /// lock must be final, valid after lock_minedblock + cancel_timelock
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
