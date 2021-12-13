@@ -1338,10 +1338,18 @@ impl Runtime {
                     return Err(Error::InvalidToken);
                 }
                 trace!("sent Secret request to farcasterd");
-                let mut rng = thread_rng();
-                let sk = SecretKey::new(&mut rng);
-                let pk = PublicKey::from_secret_key(&Secp256k1::new(), &sk);
-                self.send_farcasterd(senders, Request::Keys(Keys(sk, pk, request_id)))?
+                // let mut rng = thread_rng();
+                // let sk = SecretKey::new(&mut rng);
+                // let pk = PublicKey::from_secret_key(&Secp256k1::new(), &sk);
+                // self.send_farcasterd(senders, Request::Keys(Keys(sk, pk, request_id)))?
+                self.send_farcasterd(
+                    senders,
+                    Request::Keys(Keys(
+                        self.node_secrets.peerd_secret_key,
+                        self.node_secrets.node_id(),
+                        request_id,
+                    )),
+                )?
             }
             Request::SwapOutcome(success) => {
                 let swap_id = get_swap_id(&source)?;
