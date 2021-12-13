@@ -328,7 +328,7 @@ pub struct CommitC {
 }
 
 #[derive(Clone, Display)]
-#[display("xmr_locked({xmr_locked}),buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen})")]
+#[display("xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen})")]
 pub struct RefundSigA {
     #[display("xmr_locked({0})")]
     xmr_locked: bool,
@@ -816,6 +816,9 @@ impl SyncerState {
         })
     }
 
+    fn is_watched_addr(&self, tx_label: &TxLabel) -> bool {
+        self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
+    }
     fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
@@ -1056,15 +1059,17 @@ impl Runtime {
                                 .b_address()
                                 .cloned()
                                 .expect("address available at CommitB");
-
-                            let task = self
-                                .syncer_state
-                                .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
-                            self.send_ctl(
-                                senders,
-                                self.syncer_state.bitcoin_syncer(),
-                                Request::SyncerTask(task),
-                            )?;
+                            let txlabel = TxLabel::Funding;
+                            if !self.syncer_state.is_watched_addr(&txlabel) {
+                                let task = self
+                                    .syncer_state
+                                    .watch_addr_btc(addr.script_pubkey(), txlabel);
+                                self.send_ctl(
+                                    senders,
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(task),
+                                )?;
+                            }
                         }
 
                         trace!("Watch height bitcoin");
@@ -1223,14 +1228,17 @@ impl Runtime {
                         if self.state.commit() && self.state.trade_role() == Some(TradeRole::Maker)
                         {
                             if let Some(addr) = self.state.b_address().cloned() {
-                                let watch_addr_task = self
-                                    .syncer_state
-                                    .watch_addr_btc(addr.script_pubkey(), TxLabel::Funding);
-                                self.send_ctl(
-                                    senders,
-                                    self.syncer_state.bitcoin_syncer(),
-                                    Request::SyncerTask(watch_addr_task),
-                                )?;
+                                let txlabel = TxLabel::Funding;
+                                if !self.syncer_state.is_watched_addr(&txlabel) {
+                                    let watch_addr_task = self
+                                        .syncer_state
+                                        .watch_addr_btc(addr.script_pubkey(), txlabel);
+                                    self.send_ctl(
+                                        senders,
+                                        self.syncer_state.bitcoin_syncer(),
+                                        Request::SyncerTask(watch_addr_task),
+                                    )?;
+                                }
                             }
                             trace!("Watch height bitcoin");
                             let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
@@ -1656,8 +1664,15 @@ impl Runtime {
                         block: _,
                         tx: _,
                     }) if self.state.swap_role() == SwapRole::Bob
+                        && !self.syncer_state.funding_xmr_seen
                         && self.syncer_state.tasks.watched_addrs.contains_key(id)
-                        && !self.syncer_state.funding_xmr_seen =>
+                        && self
+                            .syncer_state
+                            .tasks
+                            .watched_addrs
+                            .get(id)
+                            .map(|txlabel| txlabel == &TxLabel::AccLock)
+                            .unwrap_or(false) =>
                     {
                         let amount = monero::Amount::from_pico(*amount);
                         if amount < self.syncer_state.monero_amount {
@@ -2031,18 +2046,17 @@ impl Runtime {
                                             funding_request,
                                         )?
                                     }
-
-                                    let watch_addr_task = self.syncer_state.watch_addr_xmr(
-                                        spend,
-                                        view,
-                                        TxLabel::AccLock,
-                                    );
-                                    senders.send_to(
-                                        ServiceBus::Ctl,
-                                        self.identity(),
-                                        self.syncer_state.monero_syncer(),
-                                        Request::SyncerTask(watch_addr_task),
-                                    )?;
+                                    let txlabel = TxLabel::AccLock;
+                                    if !self.syncer_state.is_watched_addr(&txlabel) {
+                                        let watch_addr_task =
+                                            self.syncer_state.watch_addr_xmr(spend, view, txlabel);
+                                        senders.send_to(
+                                            ServiceBus::Ctl,
+                                            self.identity(),
+                                            self.syncer_state.monero_syncer(),
+                                            Request::SyncerTask(watch_addr_task),
+                                        )?;
+                                    }
                                 } else {
                                     error!("remote_params not set for Bob, state {}", self.state)
                                 }
@@ -2373,15 +2387,17 @@ impl Runtime {
                     (&self.local_params, &self.remote_params)
                 {
                     let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
-                    let task = self
-                        .syncer_state
-                        .watch_addr_xmr(spend, view, TxLabel::AccLock);
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.monero_syncer(),
-                        Request::SyncerTask(task),
-                    )?
+
+                    let txlabel = TxLabel::AccLock;
+                    if !self.syncer_state.is_watched_addr(&txlabel) {
+                        let task = self.syncer_state.watch_addr_xmr(spend, view, txlabel);
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(task),
+                        )?
+                    }
                 } else {
                     error!("remote_params not set, state {}", self.state)
                 }
