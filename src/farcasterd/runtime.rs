@@ -147,8 +147,8 @@ pub struct Runtime {
     syncer_services: HashMap<(Coin, Network), ServiceId>,
     syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
-    funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount)>,
-    funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount)>,
+    funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount, bool)>,
+    funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount, bool)>,
     stats: Stats,
     config: Config,
 }
@@ -1031,22 +1031,25 @@ impl Runtime {
                         match bitcoin_rpc
                             .send_to_address(&address, amount, None, None, None, None, None, None)
                         {
-                            Ok(txid) => info!(
-                                "{} | Auto-funded Bitcoin with txid: {}",
-                                swap_id.bright_blue_italic(),
-                                txid
-                            ),
+                            Ok(txid) => {
+                                info!(
+                                    "{} | Auto-funded Bitcoin with txid: {}",
+                                    swap_id.bright_blue_italic(),
+                                    txid
+                                );
+                                self.funding_btc.insert(swap_id, (address, amount, true));
+                            }
                             Err(err) => {
                                 warn!("{}", err);
                                 error!(
                                     "{} | Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount",
                                     swap_id.bright_blue_italic()
                                 );
-                                self.funding_btc.insert(swap_id, (address, amount));
+                                self.funding_btc.insert(swap_id, (address, amount, false));
                             }
                         }
                     } else {
-                        self.funding_btc.insert(swap_id, (address, amount));
+                        self.funding_btc.insert(swap_id, (address, amount, false));
                     }
                 }
                 FundingInfo::Monero(MoneroFundingInfo {
@@ -1097,20 +1100,21 @@ impl Runtime {
                                         &swap_id.bright_blue_italic(),
                                         tx.tx_hash.to_string()
                                     );
+                                    self.funding_xmr.insert(swap_id, (address, amount, true));
                                 }
                                 Err(err) => {
                                     warn!("{}", err);
                                     error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
-                                    self.funding_xmr.insert(swap_id, (address, amount));
+                                    self.funding_xmr.insert(swap_id, (address, amount, false));
                                 }
                             }
                         });
                     } else {
-                        self.funding_xmr.insert(swap_id, (address, amount));
+                        self.funding_xmr.insert(swap_id, (address, amount, false));
                     }
                 }
             },
-
+            // if us: my funding_btc or funding_xmr was set
             Request::FundingCompleted(coin)
                 if {
                     let swapid = get_swap_id(&source)?;
@@ -1122,11 +1126,6 @@ impl Runtime {
             {
                 let swapid = get_swap_id(&source)?;
                 self.stats.incr_funded(&coin);
-                info!(
-                    "{} | {} Funding completed",
-                    swapid.bright_blue_italic(),
-                    coin.bright_green_bold()
-                );
                 match coin {
                     Coin::Bitcoin => {
                         self.funding_btc.remove(&swapid);
@@ -1135,6 +1134,21 @@ impl Runtime {
                         self.funding_xmr.remove(&swapid);
                     }
                 };
+                info!(
+                    "{} | Your {} funding completed",
+                    swapid.bright_blue_italic(),
+                    coin.bright_green_bold()
+                );
+            }
+
+            // if counterpaty: not in funding_btc nor funding_xmr
+            Request::FundingCompleted(coin) => {
+                let swapid = get_swap_id(&source)?;
+                info!(
+                    "{} | Counterparty {} funding completed",
+                    swapid.bright_blue_italic(),
+                    coin.bright_green_bold()
+                );
             }
 
             Request::NeedsFunding(Coin::Monero) => {
@@ -1142,8 +1156,9 @@ impl Runtime {
                 let res = self
                     .funding_xmr
                     .iter()
+                    .filter(|(_, (_, _, autofund))| !*autofund)
                     .enumerate()
-                    .map(|(i, (swapid, (addr, amount)))| {
+                    .map(|(i, (swapid, (addr, amount, _)))| {
                         let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
                         if i < len - 1 {
                             res.push('\n');
@@ -1163,8 +1178,9 @@ impl Runtime {
                 let res = self
                     .funding_btc
                     .iter()
+                    .filter(|(_, (_, _, autofund))| !*autofund)
                     .enumerate()
-                    .map(|(i, (swapid, (addr, amount)))| {
+                    .map(|(i, (swapid, (addr, amount, _)))| {
                         let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
                         if i < len - 1 {
                             res.push('\n');

@@ -1986,7 +1986,6 @@ impl Runtime {
 
                             _ => {}
                         }
-
                         match txlabel {
                             TxLabel::Funding => {}
                             TxLabel::Lock
