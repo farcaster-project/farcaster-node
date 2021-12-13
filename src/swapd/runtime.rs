@@ -154,8 +154,7 @@ pub fn run(
         monero_syncer: ServiceId::Syncer(Coin::Monero, network),
         monero_amount,
         bitcoin_amount,
-        funding_btc_seen: false,
-        funding_xmr_seen: false,
+        awaiting_funding: false,
     };
 
     let runtime = Runtime {
@@ -300,8 +299,7 @@ struct SyncerState {
     monero_syncer: ServiceId,
     monero_amount: monero::Amount,
     bitcoin_amount: bitcoin::Amount,
-    funding_btc_seen: bool,
-    funding_xmr_seen: bool,
+    awaiting_funding: bool,
 }
 
 #[derive(Display, Clone)]
@@ -1213,6 +1211,7 @@ impl Runtime {
                                             amount,
                                         },
                                     ));
+                                    self.syncer_state.awaiting_funding = true;
 
                                     if let Some(enquirer) = self.enquirer.clone() {
                                         senders.send_to(
@@ -1632,6 +1631,15 @@ impl Runtime {
                         self.state.a_sup_refundsig_xmrlocked();
                         let txlabel = TxLabel::AccLock;
                         if !self.syncer_state.is_watched_tx(&txlabel) {
+                            if self.syncer_state.awaiting_funding {
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Farcasterd,
+                                    Request::FundingCompleted(Coin::Monero),
+                                )?;
+                                self.syncer_state.awaiting_funding = false;
+                            }
                             let task = self.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
                             senders.send_to(
                                 ServiceBus::Ctl,
@@ -1666,7 +1674,6 @@ impl Runtime {
                         block: _,
                         tx: _,
                     }) if self.state.swap_role() == SwapRole::Bob
-                        && !self.syncer_state.funding_xmr_seen
                         && self.syncer_state.tasks.watched_addrs.contains_key(id)
                         && self
                             .syncer_state
@@ -1680,19 +1687,9 @@ impl Runtime {
                         if amount < self.syncer_state.monero_amount {
                             warn!(
                                 "Not enough monero locked: expected {}, found {}",
-                                self.syncer_state.monero_amount,
-                                monero::Amount::from_pico(*amount)
+                                self.syncer_state.monero_amount, amount
                             );
                             return Ok(());
-                        }
-                        if !self.syncer_state.funding_xmr_seen {
-                            self.syncer_state.funding_xmr_seen = true;
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                ServiceId::Farcasterd,
-                                Request::FundingCompleted(Coin::Monero),
-                            )?;
                         }
                         if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(id) {
                             if !self.syncer_state.is_watched_tx(&tx_label) {
@@ -1896,10 +1893,10 @@ impl Runtime {
                         );
                         let txlabel = self.syncer_state.tasks.watched_addrs.get(id).unwrap();
                         match txlabel {
-                            TxLabel::Funding if !self.syncer_state.funding_btc_seen => {
+                            TxLabel::Funding if self.syncer_state.awaiting_funding => {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
-                                if !self.syncer_state.funding_btc_seen {
-                                    self.syncer_state.funding_btc_seen = true;
+                                if self.syncer_state.awaiting_funding {
+                                    self.syncer_state.awaiting_funding = false;
                                     senders.send_to(
                                         ServiceBus::Ctl,
                                         self.identity(),
@@ -1910,6 +1907,7 @@ impl Runtime {
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
+
                             txlabel => {
                                 error!(
                                     "address transaction event not supported for tx {} at state {}",
@@ -2041,6 +2039,7 @@ impl Runtime {
                                             amount,
                                         }),
                                     );
+                                    self.syncer_state.awaiting_funding = true;
                                     if let Some(enquirer) = self.enquirer.clone() {
                                         senders.send_to(
                                             ServiceBus::Ctl,
@@ -2105,14 +2104,19 @@ impl Runtime {
                                     .temporal_safety
                                     .stop_funding_before_cancel(*confirmations)
                                     && self.state.safe_cancel()
-                                    && self.state.swap_role() == SwapRole::Alice =>
+                                    && self.state.swap_role() == SwapRole::Alice
+                                    && self.syncer_state.awaiting_funding =>
                             {
-                                warn!("Alice, the swap may be cancelled soon. For your safety, do not fund this swap anymore");
+                                warn!(
+                                    "{} | Alice, the swap may be cancelled soon. For your safety, do not fund this swap anymore", 
+                                    self.swap_id.bright_blue_italic()
+                                );
+                                self.syncer_state.awaiting_funding = false;
                                 senders.send_to(
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    Request::FundingCanceled(self.swap_id()),
+                                    Request::FundingCanceled(Coin::Monero),
                                 )?
                             }
 
@@ -2156,13 +2160,19 @@ impl Runtime {
                                 if (self.state.swap_role() == SwapRole::Alice
                                     && !self.state.a_xmr_locked()) =>
                             {
-                                warn!("Alice, this swap was canceled, do not fund anymore");
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Farcasterd,
-                                    Request::FundingCanceled(self.swap_id()),
-                                )?;
+                                warn!(
+                                    "{} | Alice, this swap was canceled. Do not fund anymore.",
+                                    self.swap_id.bright_blue_italic()
+                                );
+                                if self.syncer_state.awaiting_funding {
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        ServiceId::Farcasterd,
+                                        Request::FundingCanceled(Coin::Monero),
+                                    )?;
+                                    self.syncer_state.awaiting_funding = false;
+                                }
                                 self.state_update(
                                     senders,
                                     State::Alice(AliceState::FinishA(Outcome::Refund)),

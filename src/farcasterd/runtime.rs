@@ -1135,10 +1135,17 @@ impl Runtime {
                 }
             }
 
-            Request::FundingCanceled(swap_id) => {
-                info!("{} | Funding canceled", swap_id.bright_blue_italic());
-                self.funding_xmr.remove_entry(&swap_id);
-                self.funding_btc.remove_entry(&swap_id);
+            Request::FundingCanceled(coin) => {
+                let swapid = get_swap_id(&source)?;
+                if self.funding_xmr.remove(&swapid).is_some()
+                    || self.funding_btc.remove(&swapid).is_some()
+                {
+                    info!(
+                        "{} | Your {} funding was canceled",
+                        swapid.bright_blue_italic(),
+                        coin.bright_green_bold()
+                    );
+                }
             }
 
             Request::NeedsFunding(Coin::Monero) => {

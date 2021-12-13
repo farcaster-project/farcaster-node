@@ -543,7 +543,7 @@ pub enum Request {
 
     #[api(type = 1112)]
     #[display("read_funding")]
-    FundingCanceled(SwapId),
+    FundingCanceled(Coin),
 
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]
