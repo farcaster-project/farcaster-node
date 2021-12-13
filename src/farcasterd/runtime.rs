@@ -260,6 +260,7 @@ impl Runtime {
                 }
             })
             .collect();
+        let identity = self.identity();
         if let Some(offerid) = &offerid {
             if self.listens.contains_key(offerid) && self.node_ids.contains_key(offerid) {
                 let node_id = self.node_ids.remove(offerid).unwrap();
@@ -280,7 +281,7 @@ impl Runtime {
                     if self.connections.remove(&connectionid) {
                         senders.send_to(
                             ServiceBus::Ctl,
-                            self.identity(),
+                            identity.clone(),
                             ServiceId::Peer(connectionid),
                             Request::Terminate,
                         )?;
@@ -289,7 +290,6 @@ impl Runtime {
             }
         }
 
-        let identity = self.identity();
         self.syncer_clients = self
             .syncer_clients
             .drain()
@@ -1111,7 +1111,15 @@ impl Runtime {
                 }
             },
 
-            Request::FundingCompleted(coin) => {
+            Request::FundingCompleted(coin)
+                if {
+                    let swapid = get_swap_id(&source)?;
+                    match coin {
+                        Coin::Bitcoin => self.funding_btc.contains_key(&swapid),
+                        Coin::Monero => self.funding_xmr.contains_key(&swapid),
+                    }
+                } =>
+            {
                 let swapid = get_swap_id(&source)?;
                 self.stats.incr_funded(&coin);
                 info!(
