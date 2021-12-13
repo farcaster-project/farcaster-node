@@ -311,7 +311,7 @@ pub enum AliceState {
     #[display("Reveal")]
     RevealA(Params, Commit), // local, remote
     // #[display("RefundProcSigs: {0}")]
-    #[display("RefundSigs")]
+    #[display("RefundSigs({0})")]
     RefundSigA(RefundSigA),
     #[display("Finish({0})")]
     FinishA(Outcome),
@@ -328,7 +328,7 @@ pub struct CommitC {
 }
 
 #[derive(Clone, Display)]
-#[display("{xmr_locked} and {buy_published}")]
+#[display("xmr_locked({xmr_locked}),buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen})")]
 pub struct RefundSigA {
     #[display("xmr_locked({0})")]
     xmr_locked: bool,
@@ -1616,15 +1616,13 @@ impl Runtime {
                         let task = self
                             .syncer_state
                             .watch_tx_xmr(hash.clone(), TxLabel::AccLock);
-                        if !self.syncer_state.funding_xmr_seen {
-                            self.syncer_state.funding_xmr_seen = true;
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                ServiceId::Farcasterd,
-                                Request::FundingCompleted(Coin::Monero),
-                            )?;
-                        }
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCompleted(Coin::Monero),
+                        )?;
+
                         senders.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
