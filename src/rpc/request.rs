@@ -530,15 +530,15 @@ pub enum Request {
     FundingInfo(FundingInfo),
 
     #[api(type = 1109)]
-    #[display("read_funding")]
-    NeedsFunding(crate::syncerd::Coin),
+    #[display("needs_funding({0})")]
+    NeedsFunding(Coin),
 
     #[api(type = 1110)]
-    #[display("read_funding")]
+    #[display("write_text")]
     WriteText(List<String>),
 
     #[api(type = 1111)]
-    #[display("read_funding")]
+    #[display("funding_completed({0})")]
     FundingCompleted(Coin),
 
     // #[api(type = 1203)]
