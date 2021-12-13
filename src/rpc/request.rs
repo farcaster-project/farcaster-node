@@ -541,6 +541,10 @@ pub enum Request {
     #[display("funding_completed({0})")]
     FundingCompleted(Coin),
 
+    #[api(type = 1112)]
+    #[display("read_funding")]
+    FundingCanceled(SwapId),
+
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]
     // #[from]

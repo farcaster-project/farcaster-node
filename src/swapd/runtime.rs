@@ -243,6 +243,11 @@ impl TemporalSafety {
         };
         confs >= finality_thr
     }
+    /// lock must be final, cancel cannot be raced
+    fn stop_funding_before_cancel(&self, lock_confirmations: u32) -> bool {
+        self.final_tx(lock_confirmations, Coin::Bitcoin)
+            && lock_confirmations > self.cancel_timelock - self.race_thr
+    }
     /// lock must be final, valid after lock_minedblock + cancel_timelock
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
         self.final_tx(lock_confirmations, Coin::Bitcoin)
@@ -1675,7 +1680,8 @@ impl Runtime {
                         if amount < self.syncer_state.monero_amount {
                             warn!(
                                 "Not enough monero locked: expected {}, found {}",
-                                self.syncer_state.monero_amount, amount
+                                self.syncer_state.monero_amount,
+                                monero::Amount::from_pico(*amount)
                             );
                             return Ok(());
                         }
@@ -2094,6 +2100,22 @@ impl Runtime {
                                     );
                                 }
                             }
+                            TxLabel::Lock
+                                if self
+                                    .temporal_safety
+                                    .stop_funding_before_cancel(*confirmations)
+                                    && self.state.safe_cancel()
+                                    && self.state.swap_role() == SwapRole::Alice =>
+                            {
+                                warn!("Alice, the swap may be cancelled soon. For your safety, do not fund this swap anymore");
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Farcasterd,
+                                    Request::FundingCanceled(self.swap_id()),
+                                )?
+                            }
+
                             TxLabel::Cancel
                                 if self.temporal_safety.valid_punish(*confirmations)
                                     && self.state.a_refundsig()
@@ -2134,6 +2156,13 @@ impl Runtime {
                                 if (self.state.swap_role() == SwapRole::Alice
                                     && !self.state.a_xmr_locked()) =>
                             {
+                                warn!("Alice, this swap was canceled, do not fund anymore");
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Farcasterd,
+                                    Request::FundingCanceled(self.swap_id()),
+                                )?;
                                 self.state_update(
                                     senders,
                                     State::Alice(AliceState::FinishA(Outcome::Refund)),
