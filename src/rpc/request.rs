@@ -530,7 +530,7 @@ pub enum Request {
     #[api(type = 1107)]
     #[display("offer_list({0})", alt = "{0:#}")]
     #[from]
-    ListenList(List<RemoteSocketAddr>),
+    ListenList(List<String>),
 
     #[api(type = 1108)]
     #[display("funding_info({0})", alt = "{0:#}")]

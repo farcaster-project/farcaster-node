@@ -54,6 +54,7 @@ use bitcoin::{
 };
 use internet2::{
     addr::InetSocketAddr, NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum,
+    UrlString,
 };
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::chain::Chain;
@@ -764,12 +765,17 @@ impl Runtime {
             //     )?;
             // }
             Request::ListListens => {
-                let listens_list = List::from_iter(self.listens.clone());
+                let listen_url: List<String> = List::from_iter(
+                    self.listens
+                        .clone()
+                        .iter()
+                        .map(|listen| listen.to_url_string()),
+                );
                 senders.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
-                    Request::ListenList(listens_list),
+                    Request::ListenList(listen_url),
                 )?;
             }
 
