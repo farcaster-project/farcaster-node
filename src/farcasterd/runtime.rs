@@ -159,42 +159,51 @@ struct Stats {
     refund: u64,
     punish: u64,
     initialized: u64,
+    funded_xmr: u64,
+    funded_btc: u64,
 }
 
 impl Stats {
-    fn incr_success(&mut self) {
-        self.success += 1
-    }
-    fn incr_refund(&mut self) {
-        self.refund += 1
-    }
-    fn incr_punish(&mut self) {
-        self.punish += 1
+    fn incr_outcome(&mut self, outcome: &Outcome) {
+        match outcome {
+            Outcome::Buy => self.success += 1,
+            Outcome::Refund => self.refund += 1,
+            Outcome::Punish => self.punish += 1,
+        };
     }
     fn incr_initiated(&mut self) {
         self.initialized += 1
     }
-
+    fn incr_funded(&mut self, coin: &Coin) {
+        match coin {
+            Coin::Monero => self.funded_xmr += 1,
+            Coin::Bitcoin => self.funded_btc += 1,
+        }
+    }
     fn success_rate(&self) -> f64 {
         let Stats {
             success,
             refund,
             punish,
             initialized,
+            funded_btc,
+            funded_xmr,
         } = self;
         let total = success + refund + punish;
         let rate = *success as f64 / (total as f64);
         info!(
-            "Swapped({}) / Refunded({}) / Punished({}) / Initialized({})",
+            "Swapped({}) | Refunded({}) / Punished({}) | Initialized({}) / FundedXMR({}) / FundedBTC({}) ",
             success.bright_white_bold(),
             refund.bright_white_bold(),
             punish.bright_white_bold(),
-            initialized
+            initialized,
+            funded_btc.bright_white_bold(),
+            funded_xmr.bright_white_bold(),
         );
         info!(
-            "{}:  = {:>4.3}",
-            "Swap success rate".bright_blue_bold(),
-            rate.bright_yellow_bold(),
+            "{} = {:>4.3}%",
+            "Swap success".bright_blue_bold(),
+            (rate * 100.).bright_yellow_bold(),
         );
         rate
     }
@@ -576,18 +585,16 @@ impl Runtime {
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
                 self.clean_up_after_swap(&swapid, senders)?;
+                self.stats.incr_outcome(&success);
                 match success {
                     Outcome::Buy => {
                         debug!("Success on swap {}", &swapid);
-                        self.stats.incr_success();
                     }
                     Outcome::Refund => {
                         warn!("Refund on swap {}", &swapid);
-                        self.stats.incr_refund();
                     }
                     Outcome::Punish => {
                         warn!("Punish on swap {}", &swapid);
-                        self.stats.incr_punish();
                     }
                 }
                 self.stats.success_rate();
@@ -1106,6 +1113,7 @@ impl Runtime {
 
             Request::FundingCompleted(coin) => {
                 let swapid = get_swap_id(&source)?;
+                self.stats.incr_funded(&coin);
                 info!(
                     "{} | {} Funding completed",
                     swapid.bright_blue_italic(),
