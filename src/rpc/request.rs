@@ -400,7 +400,7 @@ pub enum Request {
     // #[display("list_offer_ids()")]
     // ListOfferIds,
     #[api(type = 105)]
-    #[display("list_offers()")]
+    #[display("list_listens()")]
     ListListens,
 
     // Can be issued from `cli` to `lnpd`
