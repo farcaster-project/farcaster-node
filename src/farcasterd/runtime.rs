@@ -771,22 +771,22 @@ impl Runtime {
                 arbitrating_addr,
                 accordant_addr,
             }) => {
-                let (bindaddr, peer_public_key) = if let Some((pk, bindaddr)) = self
+                let (pk, bindaddr) = if let Some((pk, bindaddr)) = self
                     .listens
                     .iter()
                     .find(|(_, a)| a == &&bind_addr)
-                    .and_then(|(k, v)| self.node_ids.get(k).map(|pk| (pk, v)))
+                    .and_then(|(k, bindaddr)| self.node_ids.get(k).map(|pk| (pk, bindaddr)))
                 {
-                    (Some(bindaddr), Some(*pk))
+                    (Some(*pk), Some(bindaddr))
                 } else {
-                    (None, peer_public_key.clone())
+                    (peer_public_key.clone(), None)
                 };
-                let resp = match (bindaddr, peer_secret_key, peer_public_key) {
+                let resp = match (peer_secret_key, pk, bindaddr) {
                     (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
                         return self.get_secret(senders, source, request);
                     }
-                    (None, Some(sk), Some(pk)) => {
+                    (Some(sk), Some(pk), None) => {
                         self.listens.insert(offer.id(), bind_addr);
                         self.node_ids.insert(offer.id(), pk);
                         info!(
@@ -796,7 +796,7 @@ impl Runtime {
                         );
                         self.listen(&bind_addr, sk)
                     }
-                    (Some(&addr), _, Some(pk)) => {
+                    (_, Some(pk), Some(&addr)) => {
                         // no need for the keys, because peerd already knows them
                         self.listens.insert(offer.id(), addr);
                         self.node_ids.insert(offer.id(), pk);
