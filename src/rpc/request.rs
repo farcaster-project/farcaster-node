@@ -399,6 +399,9 @@ pub enum Request {
     // #[api(type = 105)]
     // #[display("list_offer_ids()")]
     // ListOfferIds,
+    #[api(type = 105)]
+    #[display("list_offers()")]
+    ListListens,
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 200)]
@@ -524,6 +527,11 @@ pub enum Request {
     // #[display("offer_list({0})", alt = "{0:#}")]
     // #[from]
     // OfferIdList(List<PublicOfferId>),
+    #[api(type = 1107)]
+    #[display("offer_list({0})", alt = "{0:#}")]
+    #[from]
+    ListenList(List<RemoteSocketAddr>),
+
     #[api(type = 1108)]
     #[display("funding_info({0})", alt = "{0:#}")]
     #[from]

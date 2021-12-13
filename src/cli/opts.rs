@@ -85,6 +85,10 @@ pub enum Command {
     // /// Lists IDs of public offers created by daemon
     // #[clap(setting = AppSettings::ColoredHelp)]
     // ListOfferIds,
+    /// Lists listeners created by daemon
+    #[clap(aliases = &["ll"], setting = AppSettings::ColoredHelp)]
+    ListListens,
+
     /// Maker creates offer and start listening for incoming connections. Command used to to print
     /// the resulting public offer that shall be shared with Taker. Additionally it spins up the
     /// listener awaiting for connection related to this offer.

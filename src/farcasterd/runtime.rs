@@ -27,8 +27,9 @@ use crate::{
 use amplify::Wrapper;
 use clap::Clap;
 use clap::IntoApp;
-use request::{Commit, Params};
+use request::{Commit, List, Params};
 use std::io;
+use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::process;
 use std::time::{Duration, SystemTime};
@@ -762,6 +763,16 @@ impl Runtime {
             //         Request::OfferIdList(self.public_offers.iter().map(|public_offer| public_offer.id()).collect()),
             //     )?;
             // }
+            Request::ListListens => {
+                let listens_list = List::from_iter(self.listens.clone());
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
+                    Request::ListenList(listens_list),
+                )?;
+            }
+
             Request::MakeOffer(request::ProtoPublicOffer {
                 offer,
                 public_addr,
