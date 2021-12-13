@@ -235,6 +235,7 @@ impl TemporalSafety {
             )))
         }
     }
+    /// returns whether tx is final given the finality threshold set for the chain
     fn final_tx(&self, confs: u32, coin: Coin) -> bool {
         let finality_thr = match coin {
             Coin::Bitcoin => self.btc_finality_thr,
@@ -245,7 +246,7 @@ impl TemporalSafety {
     /// lock must be final, cancel cannot be raced, add + 1 to offset initial lock confirmation
     fn stop_funding_before_cancel(&self, lock_confirmations: u32) -> bool {
         self.final_tx(lock_confirmations, Coin::Bitcoin)
-            && lock_confirmations > self.cancel_timelock - self.race_thr + 1
+            && lock_confirmations > (self.cancel_timelock - self.race_thr + 1)
     }
     /// lock must be final, valid after lock_minedblock + cancel_timelock
     fn valid_cancel(&self, lock_confirmations: u32) -> bool {
@@ -503,6 +504,7 @@ impl State {
             _ => unreachable!("conditional early return"),
         }
     }
+    /// returns whether safe to cancel given swap role & current stage of swap protocol
     fn safe_cancel(&self) -> bool {
         if self.finish() || self.cancel_seen() || self.a_refund_seen() {
             return false;
