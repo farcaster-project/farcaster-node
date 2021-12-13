@@ -23,12 +23,12 @@ use crate::{
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use bitcoin::{
     hashes::hex::FromHex,
-    secp256k1::{self, Signature},
+    secp256k1::{self, rand::thread_rng, PublicKey, Secp256k1, SecretKey, Signature},
     util::{
         bip32::{DerivationPath, ExtendedPrivKey},
         psbt::serialize::Deserialize,
     },
-    Address, PrivateKey, PublicKey,
+    Address,
 };
 use colored::Colorize;
 use farcaster_core::{
@@ -1338,15 +1338,10 @@ impl Runtime {
                     return Err(Error::InvalidToken);
                 }
                 trace!("sent Secret request to farcasterd");
-                let node_secrets = NodeSecrets::new(shellexpand::tilde(".peer_key").to_string());
-                self.send_farcasterd(
-                    senders,
-                    Request::Keys(Keys(
-                        node_secrets.peerd_secret_key,
-                        node_secrets.node_id(),
-                        request_id,
-                    )),
-                )?
+                let mut rng = thread_rng();
+                let sk = SecretKey::new(&mut rng);
+                let pk = PublicKey::from_secret_key(&Secp256k1::new(), &sk);
+                self.send_farcasterd(senders, Request::Keys(Keys(sk, pk, request_id)))?
             }
             Request::SwapOutcome(success) => {
                 let swap_id = get_swap_id(&source)?;
