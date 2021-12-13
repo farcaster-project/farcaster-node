@@ -762,7 +762,9 @@ impl SyncerState {
             confirmation_bound: self.confirmation_bound,
         })
     }
-
+    fn is_watched_tx(&self, tx_label: &TxLabel) -> bool {
+        self.tasks.watched_txs.values().any(|tx| tx == tx_label)
+    }
     fn watch_tx_xmr(&mut self, hash: Vec<u8>, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
@@ -1273,13 +1275,15 @@ impl Runtime {
                         ]) {
                             let tx = tx.clone().extract_tx();
                             let txid = tx.txid();
-                            let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                self.syncer_state.bitcoin_syncer(),
-                                Request::SyncerTask(task),
-                            )?;
+                            if !self.syncer_state.is_watched_tx(&tx_label) {
+                                let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(task),
+                                )?;
+                            }
                             if tx_label == TxLabel::Refund {
                                 self.syncer_state.tasks.txids.insert(TxLabel::Refund, txid);
                             }
@@ -1296,14 +1300,17 @@ impl Runtime {
                     {
                         // Alice verifies that she has sent refund procedure signatures before
                         // processing the buy signatures from Bob
-                        let txid = buy.clone().extract_tx().txid();
-                        let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(task),
-                        )?;
+                        let tx_label = TxLabel::Buy;
+                        if !self.syncer_state.is_watched_tx(&tx_label) {
+                            let txid = buy.clone().extract_tx().txid();
+                            let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.bitcoin_syncer(),
+                                Request::SyncerTask(task),
+                            )?;
+                        }
                         self.send_wallet(msg_bus, senders, request)?
                     }
 
@@ -1613,23 +1620,16 @@ impl Runtime {
                             id, hash, amount, block, tx
                         );
                         self.state.a_sup_refundsig_xmrlocked();
-                        let task = self
-                            .syncer_state
-                            .watch_tx_xmr(hash.clone(), TxLabel::AccLock);
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            Request::FundingCompleted(Coin::Monero),
-                        )?;
-
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.monero_syncer(),
-                            Request::SyncerTask(task),
-                        )?;
-
+                        let txlabel = TxLabel::AccLock;
+                        if !self.syncer_state.is_watched_tx(&txlabel) {
+                            let task = self.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.monero_syncer(),
+                                Request::SyncerTask(task),
+                            )?;
+                        }
                         if self.syncer_state.tasks.watched_addrs.remove(id).is_some() {
                             let abort_task = Task::Abort(Abort {
                                 task_target: TaskTarget::TaskId(*id),
@@ -1642,6 +1642,12 @@ impl Runtime {
                                 Request::SyncerTask(abort_task),
                             )?;
                         }
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCompleted(Coin::Monero),
+                        )?;
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1671,13 +1677,16 @@ impl Runtime {
                             )?;
                         }
                         if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(id) {
-                            let watch_tx = self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
-                            senders.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                self.syncer_state.monero_syncer(),
-                                Request::SyncerTask(watch_tx),
-                            )?;
+                            if !self.syncer_state.is_watched_tx(&tx_label) {
+                                let watch_tx =
+                                    self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.monero_syncer(),
+                                    Request::SyncerTask(watch_tx),
+                                )?;
+                            }
 
                             let abort_task = Task::Abort(Abort {
                                 task_target: TaskTarget::TaskId(*id),
@@ -2087,7 +2096,7 @@ impl Runtime {
                                 let (tx_label, punish_tx) =
                                     self.txs.remove_entry(&TxLabel::Punish).unwrap();
                                 // syncer's watch punish tx task
-                                {
+                                if !self.syncer_state.is_watched_tx(&tx_label) {
                                     let txid = punish_tx.clone().txid();
                                     let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                                     senders.send_to(
@@ -2341,14 +2350,16 @@ impl Runtime {
                     TxLabel::Cancel,
                     TxLabel::Refund,
                 ]) {
-                    let txid = tx.clone().extract_tx().txid();
-                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                    senders.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        Request::SyncerTask(task),
-                    )?;
+                    if !self.syncer_state.is_watched_tx(&tx_label) {
+                        let txid = tx.clone().extract_tx().txid();
+                        let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
@@ -2439,13 +2450,16 @@ impl Runtime {
                 let buy_tx = buy_proc_sig.buy.clone().extract_tx();
                 let txid = buy_tx.txid();
                 // register Buy tx task
-                let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
-                senders.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    Request::SyncerTask(task),
-                )?;
+                let tx_label = TxLabel::Buy;
+                if !self.syncer_state.is_watched_tx(&tx_label) {
+                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.bitcoin_syncer(),
+                        Request::SyncerTask(task),
+                    )?;
+                }
                 // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
 
