@@ -1871,13 +1871,15 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Funding if !self.syncer_state.funding_btc_seen => {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
-                                self.syncer_state.funding_btc_seen = true;
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Farcasterd,
-                                    Request::FundingCompleted(Coin::Bitcoin),
-                                )?;
+                                if !self.syncer_state.funding_btc_seen {
+                                    self.syncer_state.funding_btc_seen = true;
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        ServiceId::Farcasterd,
+                                        Request::FundingCompleted(Coin::Bitcoin),
+                                    )?;
+                                }
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, senders, req)?;
                             }
