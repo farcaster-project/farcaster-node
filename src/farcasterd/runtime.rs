@@ -246,7 +246,14 @@ impl Runtime {
         swapid: &SwapId,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
     ) -> Result<(), Error> {
-        self.running_swaps.remove(swapid);
+        if self.running_swaps.remove(swapid) {
+            senders.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                ServiceId::Swap(*swapid),
+                Request::Terminate,
+            )?;
+        }
         let mut offerid = None;
         self.consumed_offers = self
             .consumed_offers
@@ -266,13 +273,13 @@ impl Runtime {
                 let node_id = self.node_ids.remove(offerid).unwrap();
                 let remote_addr = self.listens.remove(offerid).unwrap();
                 // nr of offers using that peerd
-                let peerd_used_by: Vec<_> = self
+                let peerd_users: Vec<_> = self
                     .listens
                     .values()
                     .filter(|x| x == &&remote_addr)
                     .into_iter()
                     .collect();
-                if peerd_used_by.len() == 0 {
+                if peerd_users.len() == 0 {
                     let connectionid = NodeAddr::Remote(RemoteNodeAddr {
                         node_id,
                         remote_addr,
@@ -598,7 +605,6 @@ impl Runtime {
                     }
                 }
                 self.stats.success_rate();
-                senders.send_to(ServiceBus::Ctl, self.identity(), source, request)?;
             }
 
             Request::LaunchSwap(LaunchSwap {

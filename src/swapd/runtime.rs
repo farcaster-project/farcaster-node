@@ -1371,16 +1371,13 @@ impl Runtime {
         };
 
         match request {
-            Request::SwapOutcome(success) if source == ServiceId::Farcasterd => {
+            Request::Terminate if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
                     self.swap_id.bright_blue_italic(),
                     format!("Terminating {}", self.identity()).bright_white_bold()
                 );
-                std::process::exit(match success {
-                    request::Outcome::Buy => 0,
-                    _ => 1,
-                });
+                std::process::exit(0);
             }
             Request::SweepXmrAddress(SweepXmrAddress {
                 view_key,
