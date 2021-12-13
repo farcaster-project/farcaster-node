@@ -784,6 +784,7 @@ impl Runtime {
                 let resp = match (peer_secret_key, pk, bindaddr) {
                     (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
+                        // it will continued on (Some(sk), Some(pk), None)
                         return self.get_secret(senders, source, request);
                     }
                     (Some(sk), Some(pk), None) => {
@@ -796,14 +797,25 @@ impl Runtime {
                         );
                         self.listen(&bind_addr, sk)
                     }
-                    (_, Some(pk), Some(&addr)) => {
-                        // no need for the keys, because peerd already knows them
-                        self.listens.insert(offer.id(), addr);
-                        self.node_ids.insert(offer.id(), pk);
-                        let msg = format!("Already listening on {}", &bind_addr);
-                        info!("{}", &msg);
-                        Ok(msg)
+                    (_, Some(_pk), Some(_addr)) => {
+                        return Err(Error::Farcaster(s!(
+                            "Currently only one offer per port supported"
+                        )));
                     }
+                    // (_, Some(pk), Some(&addr)) => {
+                    //     self.listens.insert(offer.id(), addr);
+                    //     self.node_ids.insert(offer.id(), pk);
+                    //     let msg = format!("Already listening on {}", &bind_addr);
+                    //     info!("{}", &msg);
+                    //     Ok(msg)
+                    // }
+                    // (Some(sk), Some(pk), Some(&addr)) => {
+                    //     self.listens.insert(offer.id(), addr);
+                    //     self.node_ids.insert(offer.id(), pk);
+                    //     let msg = format!("Already listening on {}", &bind_addr);
+                    //     info!("{}", &msg);
+                    //     self.listen(&addr, sk)
+                    // }
                     _ => unreachable!(),
                 };
                 match resp {
