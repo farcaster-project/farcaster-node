@@ -169,6 +169,14 @@ impl Exec for Command {
                 monero_address,
                 without_validation,
             } => {
+                let network = public_offer.offer.network;
+                if network != Network::Testnet && network != Network::Local {
+                    eprintln!(
+                        "Error: {} not yet supported. Only Testnet and Local currently enabled, for your funds safety",
+                        network
+                    );
+                    return Ok(());
+                }
                 // println!("{:#?}", &public_offer);
                 let PublicOffer {
                     version: _,
