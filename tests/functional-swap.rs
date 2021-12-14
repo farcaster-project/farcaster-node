@@ -43,8 +43,8 @@ async fn swap_bob_maker_normal() {
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -119,8 +119,8 @@ async fn swap_bob_maker_refund_kill_alice_after_funding() {
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -156,8 +156,8 @@ async fn swap_bob_maker_refund_alice_does_not_fund() {
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -191,8 +191,8 @@ async fn swap_bob_maker_punish_kill_bob() {
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -229,8 +229,8 @@ async fn swap_alice_maker() {
         "Alice".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -267,8 +267,8 @@ async fn swap_parallel() {
         "Alice".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -290,8 +290,8 @@ async fn swap_parallel() {
         "Alice".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "0.999999999999 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("0.999999999999 XMR").unwrap(),
     )
     .await;
 
@@ -313,8 +313,8 @@ async fn swap_parallel() {
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -336,8 +336,8 @@ async fn swap_parallel() {
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "0.999999999999 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("0.999999999999 XMR").unwrap(),
     )
     .await;
 
@@ -556,13 +556,12 @@ async fn run_refund_swap_kill_alice_after_funding(
         .unwrap();
 
     // run until bob has the btc funding address
-    let address =
+    let (address, amount) =
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
-    let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
@@ -582,9 +581,9 @@ async fn run_refund_swap_kill_alice_after_funding(
         .unwrap();
 
     // run until the alice has the monero funding address and fund it
-    let monero_address =
+    let (monero_address, monero_amount) =
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
-    send_monero(Arc::clone(&monero_wallet), monero_address, 1000000000000).await;
+    send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
 
     // kill alice
     cleanup_processes(vec![alice_farcasterd]);
@@ -658,13 +657,12 @@ async fn run_refund_swap_alice_does_not_fund(
         .unwrap();
 
     // run until bob has the btc funding address
-    let address =
+    let (address, amount) =
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
-    let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
@@ -761,13 +759,12 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
         .unwrap();
 
     // run until bob has the btc funding address
-    let address =
+    let (address, amount) =
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
-    let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
@@ -796,9 +793,9 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     cleanup_processes(vec![bob_farcasterd]);
 
     // run until alice has the monero funding address
-    let monero_address =
+    let (monero_address, monero_amount) =
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
-    send_monero(Arc::clone(&monero_wallet), monero_address, 1000000000000).await;
+    send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
@@ -874,8 +871,8 @@ async fn make_and_take_offer(
     role: String,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
-    btc_amount: String,
-    xmr_amount: String,
+    btc_amount: bitcoin::Amount,
+    xmr_amount: monero::Amount,
 ) -> (String, bitcoin::Address, SwapId) {
     let maker_info_args = info_args(data_dir_maker.clone());
     let taker_info_args = info_args(data_dir_maker.clone());
@@ -946,12 +943,11 @@ async fn run_swap(
     let lock = execution_mutex.lock().await;
 
     // run until bob has the btc funding address
-    let address =
+    let (address, amount) =
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
     // fund the bitcoin address
-    let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
@@ -971,9 +967,9 @@ async fn run_swap(
         .unwrap();
 
     // run until the alice has the monero funding address
-    let monero_address =
+    let (monero_address, monero_amount) =
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
-    send_monero(Arc::clone(&monero_wallet), monero_address, 1000000000000).await;
+    send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1166,9 +1162,9 @@ fn make_offer_args(
     data_dir: Vec<String>,
     role: String,
     btc_addr: String,
-    btc_amount: String,
+    btc_amount: bitcoin::Amount,
     xmr_addr: String,
-    xmr_amount: String,
+    xmr_amount: monero::Amount,
 ) -> Vec<String> {
     data_dir
         .into_iter()
@@ -1185,9 +1181,9 @@ fn make_offer_args(
             "--acc-blockchain".to_string(),
             "Monero".to_string(),
             "--btc-amount".to_string(),
-            btc_amount,
+            format!("{}", btc_amount),
             "--xmr-amount".to_string(),
-            xmr_amount,
+            format!("{}", xmr_amount),
             "--maker-role".to_string(),
             role,
             "--cancel-timelock".to_string(),
@@ -1283,17 +1279,17 @@ async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<SwapI
 async fn retry_until_bitcoin_funding_address(
     swap_id: SwapId,
     args: Vec<String>,
-) -> bitcoin::Address {
+) -> (bitcoin::Address, bitcoin::Amount) {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
         // get the btc funding address
-        let bitcoin_addresses: Vec<bitcoin::Address> = stdout
+        let funding_infos: Vec<BitcoinFundingInfo> = stdout
             .iter()
             .filter_map(|element| {
                 if let Ok(funding_info) = BitcoinFundingInfo::from_str(element) {
                     if funding_info.swap_id == swap_id {
-                        Some(funding_info.address)
+                        Some(funding_info)
                     } else {
                         None
                     }
@@ -1303,25 +1299,28 @@ async fn retry_until_bitcoin_funding_address(
             })
             .collect();
 
-        if !bitcoin_addresses.is_empty() {
-            return bitcoin_addresses[0].clone();
+        if !funding_infos.is_empty() {
+            return (funding_infos[0].address.clone(), funding_infos[0].amount);
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
     panic!("timeout before any bitcoin funding address could be retrieved");
 }
 
-async fn retry_until_monero_funding_address(swap_id: SwapId, args: Vec<String>) -> monero::Address {
+async fn retry_until_monero_funding_address(
+    swap_id: SwapId,
+    args: Vec<String>,
+) -> (monero::Address, monero::Amount) {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
         // get the monero funding address
-        let monero_addresses: Vec<monero::Address> = stdout
+        let funding_infos: Vec<MoneroFundingInfo> = stdout
             .iter()
             .filter_map(|element| {
                 if let Ok(funding_info) = MoneroFundingInfo::from_str(element) {
                     if funding_info.swap_id == swap_id {
-                        Some(funding_info.address)
+                        Some(funding_info)
                     } else {
                         None
                     }
@@ -1331,8 +1330,8 @@ async fn retry_until_monero_funding_address(swap_id: SwapId, args: Vec<String>) 
             })
             .collect();
 
-        if !monero_addresses.is_empty() {
-            return monero_addresses[0].clone();
+        if !funding_infos.is_empty() {
+            return (funding_infos[0].address.clone(), funding_infos[0].amount);
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
@@ -1563,10 +1562,10 @@ pub fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<
 async fn send_monero(
     wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     address: monero::Address,
-    amount: u64,
+    amount: monero::Amount,
 ) -> Vec<u8> {
     let mut destination: HashMap<monero::Address, u64> = HashMap::new();
-    destination.insert(address, amount);
+    destination.insert(address, amount.as_pico());
     let options = monero_rpc::TransferOptions {
         account_index: None,
         subaddr_indices: None,
