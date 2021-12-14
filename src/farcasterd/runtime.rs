@@ -768,7 +768,7 @@ impl Runtime {
                 let listen_url: List<String> = List::from_iter(
                     self.listens
                         .clone()
-                        .iter()
+                        .values()
                         .map(|listen| listen.to_url_string()),
                 );
                 senders.send_to(
