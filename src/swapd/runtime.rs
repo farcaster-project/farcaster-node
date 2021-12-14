@@ -2108,7 +2108,7 @@ impl Runtime {
                                     && self.syncer_state.awaiting_funding =>
                             {
                                 warn!(
-                                    "{} | Alice, the swap may be cancelled soon. For your safety, do not fund this swap anymore", 
+                                    "{} | Alice, the swap may be cancelled soon. Do not fund anymore",
                                     self.swap_id.bright_blue_italic()
                                 );
                                 self.syncer_state.awaiting_funding = false;
