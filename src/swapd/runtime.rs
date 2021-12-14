@@ -1691,7 +1691,17 @@ impl Runtime {
                             );
                             return Ok(());
                         }
-                        if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(id) {
+                        if let Some(TxLabel::AccLock) =
+                            self.syncer_state.tasks.watched_addrs.remove(id)
+                        { 
+                            // send remote funding
+                            senders.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Farcasterd,
+                                Request::FundingCompleted(Coin::Monero),
+                            )?;
+                            let tx_label = TxLabel::AccLock;
                             if !self.syncer_state.is_watched_tx(&tx_label) {
                                 let watch_tx =
                                     self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
