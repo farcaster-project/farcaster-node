@@ -795,7 +795,7 @@ impl SyncerState {
     }
     fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        let from_height = self.height(Coin::Bitcoin);
+        let from_height = self.from_height(Coin::Bitcoin, 6);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
             "{} | Watching {} transaction with scriptPubkey: {}",
@@ -819,6 +819,12 @@ impl SyncerState {
     fn is_watched_addr(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
     }
+    fn from_height(&self, coin: Coin, delta: u64) -> u64 {
+        let height = self.height(coin);
+        let delta = if height > delta { delta } else { height };
+        height - delta
+    }
+
     fn watch_addr_xmr(
         &mut self,
         spend: monero::PublicKey,
@@ -839,9 +845,7 @@ impl SyncerState {
         );
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
-
-        let from_height = self.height(Coin::Monero);
-
+        let from_height = self.from_height(Coin::Monero, 20);
         let addendum = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: spend,
             view_key: view,
