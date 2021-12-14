@@ -771,20 +771,24 @@ impl Runtime {
                 arbitrating_addr,
                 accordant_addr,
             }) => {
-                let (pk, bindaddr) = if let Some((pk, bindaddr)) = self
+                // checks whether there's already a listener on bind_addr
+                let (pk, existing_bind_addr) = if let Some((pk, existing_bind_addr)) = self
                     .listens
                     .iter()
-                    .find(|(_, a)| a == &&bind_addr)
-                    .and_then(|(k, bindaddr)| self.node_ids.get(k).map(|pk| (pk, bindaddr)))
-                {
-                    (Some(*pk), Some(bindaddr))
+                    .find(|(_, candidate_bind_addr)| candidate_bind_addr == &&bind_addr)
+                    .and_then(|(offer_id, matching_bind_addr)| {
+                        self.node_ids
+                            .get(offer_id)
+                            .map(|pk| (pk, matching_bind_addr))
+                    }) {
+                    (Some(*pk), Some(existing_bind_addr))
                 } else {
                     (peer_public_key.clone(), None)
                 };
-                let resp = match (peer_secret_key, pk, bindaddr) {
+                let resp = match (peer_secret_key, pk, existing_bind_addr) {
                     (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
-                        // it will continued on (Some(sk), Some(pk), None)
+                        // it will be continued on (Some(sk), Some(pk), None)
                         return self.get_secret(senders, source, request);
                     }
                     (Some(sk), Some(pk), None) => {
