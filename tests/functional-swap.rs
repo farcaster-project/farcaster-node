@@ -2,6 +2,9 @@
 extern crate log;
 
 use bitcoincore_rpc::{Auth, Client, RpcApi};
+use farcaster_core::swap::SwapId;
+use farcaster_node::rpc::request::BitcoinFundingInfo;
+use farcaster_node::rpc::request::MoneroFundingInfo;
 use farcaster_node::rpc::request::NodeInfo;
 use futures::future::join_all;
 use std::collections::HashSet;
@@ -533,7 +536,7 @@ async fn run_refund_swap_race_cancel(
 
 #[allow(clippy::too_many_arguments)]
 async fn run_refund_swap_kill_alice_after_funding(
-    swap_id: String,
+    swap_id: SwapId,
     data_dir_alice: Vec<String>,
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
@@ -635,7 +638,7 @@ async fn run_refund_swap_kill_alice_after_funding(
 
 #[allow(clippy::too_many_arguments)]
 async fn run_refund_swap_alice_does_not_fund(
-    swap_id: String,
+    swap_id: SwapId,
     data_dir_alice: Vec<String>,
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
@@ -735,7 +738,7 @@ async fn run_refund_swap_alice_does_not_fund(
 
 #[allow(clippy::too_many_arguments)]
 async fn run_punish_swap_kill_bob_before_monero_funding(
-    swap_id: String,
+    swap_id: SwapId,
     data_dir_alice: Vec<String>,
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
@@ -873,7 +876,7 @@ async fn make_and_take_offer(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     btc_amount: String,
     xmr_amount: String,
-) -> (String, bitcoin::Address, String) {
+) -> (String, bitcoin::Address, SwapId) {
     let maker_info_args = info_args(data_dir_maker.clone());
     let taker_info_args = info_args(data_dir_maker.clone());
 
@@ -887,11 +890,8 @@ async fn make_and_take_offer(
     let xmr_addr = xmr_address.to_string();
 
     let (stdout, _stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
-    let previous_swap_ids: HashSet<String> = cli_output_to_node_info(stdout)
-        .swaps
-        .iter()
-        .map(|swap_id| format!("{:#x}", swap_id))
-        .collect();
+    let previous_swap_ids: HashSet<SwapId> =
+        cli_output_to_node_info(stdout).swaps.drain(..).collect();
 
     let cli_make_args = make_offer_args(
         data_dir_maker.clone(),
@@ -921,7 +921,7 @@ async fn make_and_take_offer(
 
 #[allow(clippy::too_many_arguments)]
 async fn run_swap(
-    swap_id: String,
+    swap_id: SwapId,
     data_dir_alice: Vec<String>,
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
@@ -1227,10 +1227,10 @@ fn take_offer_args(
         .collect()
 }
 
-fn progress_args(data_dir: Vec<String>, swap_id: String) -> Vec<String> {
+fn progress_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
     data_dir
         .into_iter()
-        .chain(vec!["progress".to_string(), swap_id])
+        .chain(vec!["progress".to_string(), format!("{:#?}", swap_id)])
         .collect()
 }
 
@@ -1267,16 +1267,13 @@ async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
     panic!("timeout before any offer could be retrieved");
 }
 
-async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<String>) -> String {
+async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<SwapId>) -> SwapId {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-        let new_swap_ids: HashSet<String> = cli_output_to_node_info(stdout)
-            .swaps
-            .iter()
-            .map(|swap_id| format!("{:#x}", swap_id))
-            .collect();
+        let new_swap_ids: HashSet<SwapId> =
+            cli_output_to_node_info(stdout).swaps.drain(..).collect();
         if let Some(swap_id) = new_swap_ids.difference(&previous_swap_ids).next() {
-            return swap_id.to_string();
+            return swap_id.clone();
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
@@ -1284,50 +1281,50 @@ async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<Strin
 }
 
 async fn retry_until_bitcoin_funding_address(
-    swap_id: String,
+    swap_id: SwapId,
     args: Vec<String>,
 ) -> bitcoin::Address {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
         // get the btc funding address
-        let bitcoin_address: Vec<String> = stdout
+        let bitcoin_addresses: Vec<bitcoin::Address> = stdout
             .iter()
             .filter_map(|element| {
-                let content: Vec<&str> = element.split(" ").collect();
-                if content.len() < 5 {
-                    return None;
-                }
-                if content[5].contains("bcr") && content[0] == &swap_id {
-                    Some(content[5].to_string())
+                if let Ok(funding_info) = BitcoinFundingInfo::from_str(element) {
+                    if funding_info.swap_id == swap_id {
+                        Some(funding_info.address)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
             })
             .collect();
 
-        if !bitcoin_address.is_empty() {
-            return bitcoin::Address::from_str(&bitcoin_address[0]).unwrap();
+        if !bitcoin_addresses.is_empty() {
+            return bitcoin_addresses[0].clone();
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
     panic!("timeout before any bitcoin funding address could be retrieved");
 }
 
-async fn retry_until_monero_funding_address(swap_id: String, args: Vec<String>) -> monero::Address {
+async fn retry_until_monero_funding_address(swap_id: SwapId, args: Vec<String>) -> monero::Address {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
         // get the monero funding address
-        let monero_addresses: Vec<String> = stdout
+        let monero_addresses: Vec<monero::Address> = stdout
             .iter()
             .filter_map(|element| {
-                let content: Vec<&str> = element.split(" ").collect();
-                if content.len() < 5 {
-                    return None;
-                }
-                if content[5].contains("4") && content[0] == &swap_id {
-                    Some(content[5].to_string())
+                if let Ok(funding_info) = MoneroFundingInfo::from_str(element) {
+                    if funding_info.swap_id == swap_id {
+                        Some(funding_info.address)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -1335,7 +1332,7 @@ async fn retry_until_monero_funding_address(swap_id: String, args: Vec<String>) 
             .collect();
 
         if !monero_addresses.is_empty() {
-            return monero::Address::from_str(&monero_addresses[0]).unwrap();
+            return monero_addresses[0].clone();
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }

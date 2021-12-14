@@ -1223,8 +1223,15 @@ impl Runtime {
                     .iter()
                     .filter(|(_, (_, _, autofund))| !*autofund)
                     .enumerate()
-                    .map(|(i, (swapid, (addr, amount, _)))| {
-                        let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
+                    .map(|(i, (swap_id, (address, amount, _)))| {
+                        let mut res = format!(
+                            "{}",
+                            MoneroFundingInfo {
+                                swap_id: swap_id.clone(),
+                                amount: amount.clone(),
+                                address: address.clone(),
+                            }
+                        );
                         if i < len - 1 {
                             res.push('\n');
                         }
@@ -1245,8 +1252,15 @@ impl Runtime {
                     .iter()
                     .filter(|(_, (_, _, autofund))| !*autofund)
                     .enumerate()
-                    .map(|(i, (swapid, (addr, amount, _)))| {
-                        let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
+                    .map(|(i, (swap_id, (address, amount, _)))| {
+                        let mut res = format!(
+                            "{}",
+                            BitcoinFundingInfo {
+                                swap_id: swap_id.clone(),
+                                amount: amount.clone(),
+                                address: address.clone(),
+                            }
+                        );
                         if i < len - 1 {
                             res.push('\n');
                         }

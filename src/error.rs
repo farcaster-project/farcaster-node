@@ -174,9 +174,33 @@ impl From<monero::util::address::Error> for Error {
     }
 }
 
+impl From<bitcoin::util::address::Error> for Error {
+    fn from(err: bitcoin::util::address::Error) -> Self {
+        Error::Farcaster(err.to_string())
+    }
+}
+
+impl From<monero::util::amount::ParsingError> for Error {
+    fn from(err: monero::util::amount::ParsingError) -> Self {
+        Error::Farcaster(err.to_string())
+    }
+}
+
+impl From<bitcoin::util::amount::ParseAmountError> for Error {
+    fn from(err: bitcoin::util::amount::ParseAmountError) -> Self {
+        Error::Farcaster(err.to_string())
+    }
+}
+
 impl From<electrum_client::Error> for Error {
     fn from(err: electrum_client::Error) -> Self {
         Error::Syncer(SyncerError::Electrum(err))
+    }
+}
+
+impl From<rustc_hex::FromHexError> for Error {
+    fn from(err: rustc_hex::FromHexError) -> Self {
+        Error::Farcaster(err.to_string())
     }
 }
 
