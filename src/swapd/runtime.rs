@@ -2064,6 +2064,26 @@ impl Runtime {
                                 }
                             }
                             TxLabel::Lock
+                                if self
+                                    .temporal_safety
+                                    .stop_funding_before_cancel(*confirmations)
+                                    && self.state.safe_cancel()
+                                    && self.state.swap_role() == SwapRole::Alice
+                                    && self.syncer_state.awaiting_funding =>
+                            {
+                                warn!(
+                                    "{} | Alice, the swap may be cancelled soon. Do not fund anymore",
+                                    self.swap_id.bright_blue_italic()
+                                );
+                                self.syncer_state.awaiting_funding = false;
+                                senders.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Farcasterd,
+                                    Request::FundingCanceled(Coin::Monero),
+                                )?
+                            }
+                            TxLabel::Lock
                                 if self.temporal_safety.valid_cancel(*confirmations)
                                     && self.state.safe_cancel()
                                     && self.txs.contains_key(&TxLabel::Cancel) =>
@@ -2098,26 +2118,6 @@ impl Runtime {
                                         self.state
                                     );
                                 }
-                            }
-                            TxLabel::Lock
-                                if self
-                                    .temporal_safety
-                                    .stop_funding_before_cancel(*confirmations)
-                                    && self.state.safe_cancel()
-                                    && self.state.swap_role() == SwapRole::Alice
-                                    && self.syncer_state.awaiting_funding =>
-                            {
-                                warn!(
-                                    "{} | Alice, the swap may be cancelled soon. Do not fund anymore",
-                                    self.swap_id.bright_blue_italic()
-                                );
-                                self.syncer_state.awaiting_funding = false;
-                                senders.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Farcasterd,
-                                    Request::FundingCanceled(Coin::Monero),
-                                )?
                             }
 
                             TxLabel::Cancel
