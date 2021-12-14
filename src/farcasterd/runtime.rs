@@ -51,13 +51,19 @@ use bitcoin::{
     },
     Address,
 };
-use internet2::{addr::InetSocketAddr, NodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum};
+use internet2::{
+    addr::InetSocketAddr, NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum,
+};
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use farcaster_core::{blockchain::Network, negotiation::PublicOfferId, swap::SwapId};
+use farcaster_core::{
+    blockchain::Network,
+    negotiation::{OfferId, PublicOfferId},
+    swap::SwapId,
+};
 
 use crate::farcasterd::Opts;
 use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
@@ -124,7 +130,7 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,
-    listens: HashSet<RemoteSocketAddr>,
+    listens: HashMap<OfferId, RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
     running_swaps: HashSet<SwapId>,
@@ -134,52 +140,72 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashSet<(PublicOfferId, SwapId)>,
-    node_ids: HashSet<PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
+    consumed_offers: HashMap<OfferId, SwapId>,
+    node_ids: HashMap<OfferId, PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncer_services: HashMap<(Coin, Network), ServiceId>,
     syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
-    funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount)>,
-    funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount)>,
+    funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount, bool)>,
+    funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount, bool)>,
     stats: Stats,
     config: Config,
 }
 
+#[derive(Default)]
 struct Stats {
     success: u64,
-    failure: u64,
+    refund: u64,
+    punish: u64,
+    initialized: u64,
+    funded_xmr: u64,
+    funded_btc: u64,
 }
 
 impl Stats {
-    fn incr_success(&mut self) {
-        self.success += 1
+    fn incr_outcome(&mut self, outcome: &Outcome) {
+        match outcome {
+            Outcome::Buy => self.success += 1,
+            Outcome::Refund => self.refund += 1,
+            Outcome::Punish => self.punish += 1,
+        };
     }
-    fn incr_failure(&mut self) {
-        self.failure += 1
+    fn incr_initiated(&mut self) {
+        self.initialized += 1
+    }
+    fn incr_funded(&mut self, coin: &Coin) {
+        match coin {
+            Coin::Monero => self.funded_xmr += 1,
+            Coin::Bitcoin => self.funded_btc += 1,
+        }
     }
     fn success_rate(&self) -> f64 {
-        let Stats { success, failure } = self;
-        let total = success + failure;
+        let Stats {
+            success,
+            refund,
+            punish,
+            initialized,
+            funded_btc,
+            funded_xmr,
+        } = self;
+        let total = success + refund + punish;
         let rate = *success as f64 / (total as f64);
         info!(
-            "{}: Success({}) / Total({}) = {:>4.3}",
-            "Swap success rate".bright_blue_bold(),
+            "Swapped({}) | Refunded({}) / Punished({}) | Initialized({}) / FundedXMR({}) / FundedBTC({}) ",
             success.bright_white_bold(),
-            total.bright_white_bold(),
-            rate.bright_yellow_bold()
+            refund.bright_white_bold(),
+            punish.bright_white_bold(),
+            initialized,
+            funded_btc.bright_white_bold(),
+            funded_xmr.bright_white_bold(),
+        );
+        info!(
+            "{} = {:>4.3}%",
+            "Swap success".bright_blue_bold(),
+            (rate * 100.).bright_yellow_bold(),
         );
         rate
-    }
-}
-
-impl Default for Stats {
-    fn default() -> Self {
-        Stats {
-            success: 0,
-            failure: 0,
-        }
     }
 }
 
@@ -220,18 +246,57 @@ impl Runtime {
         swapid: &SwapId,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
     ) -> Result<(), Error> {
-        self.running_swaps.remove(swapid);
-        let offers2rm: Vec<_> = self
-            .consumed_offers
-            .iter()
-            .filter(|(_, i_swapid)| swapid == i_swapid)
-            .cloned()
-            .collect();
-
-        for offer in &offers2rm {
-            self.consumed_offers.remove(offer);
+        if self.running_swaps.remove(swapid) {
+            senders.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                ServiceId::Swap(*swapid),
+                Request::Terminate,
+            )?;
         }
+        let mut offerid = None;
+        self.consumed_offers = self
+            .consumed_offers
+            .drain()
+            .filter_map(|(k, v)| {
+                if swapid != &v {
+                    Some((k, v))
+                } else {
+                    offerid = Some(k);
+                    None
+                }
+            })
+            .collect();
         let identity = self.identity();
+        if let Some(offerid) = &offerid {
+            if self.listens.contains_key(offerid) && self.node_ids.contains_key(offerid) {
+                let node_id = self.node_ids.remove(offerid).unwrap();
+                let remote_addr = self.listens.remove(offerid).unwrap();
+                // nr of offers using that peerd
+                let peerd_users: Vec<_> = self
+                    .listens
+                    .values()
+                    .filter(|x| x == &&remote_addr)
+                    .into_iter()
+                    .collect();
+                if peerd_users.len() == 0 {
+                    let connectionid = NodeAddr::Remote(RemoteNodeAddr {
+                        node_id,
+                        remote_addr,
+                    });
+
+                    if self.connections.remove(&connectionid) {
+                        senders.send_to(
+                            ServiceBus::Ctl,
+                            identity.clone(),
+                            ServiceId::Peer(connectionid),
+                            Request::Terminate,
+                        )?;
+                    }
+                }
+            }
+        }
+
         self.syncer_clients = self
             .syncer_clients
             .drain()
@@ -264,16 +329,13 @@ impl Runtime {
             .drain()
             .filter(|(k, _)| clients.contains_key(k))
             .collect();
+        // self.connections.into_iter().filter(|(o, r)| )
 
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offerid: &PublicOfferId) -> bool {
-        self.consumed_offers
-            .iter()
-            .filter(|(i_offerid, _)| i_offerid == offerid)
-            .find_map(|_| Some(true))
-            .unwrap_or(false)
+    fn consumed_offers_contains(&self, offerid: &OfferId) -> bool {
+        self.consumed_offers.contains_key(offerid)
     }
 
     fn _send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
@@ -281,7 +343,13 @@ impl Runtime {
         Ok(())
     }
     fn node_ids(&self) -> Vec<PublicKey> {
-        self.node_ids.iter().cloned().collect()
+        self.node_ids
+            .values()
+            .into_iter()
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     fn _known_swap_id(&self, source: ServiceId) -> Result<SwapId, Error> {
@@ -524,22 +592,22 @@ impl Runtime {
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
                 self.clean_up_after_swap(&swapid, senders)?;
+                self.stats.incr_outcome(&success);
                 match success {
                     Outcome::Buy => {
                         debug!("Success on swap {}", &swapid);
-                        self.stats.incr_success();
                     }
-                    _ => {
-                        warn!("Failure on swap {}", &swapid);
-                        self.stats.incr_failure();
+                    Outcome::Refund => {
+                        warn!("Refund on swap {}", &swapid);
+                    }
+                    Outcome::Punish => {
+                        warn!("Punish on swap {}", &swapid);
                     }
                 }
                 self.stats.success_rate();
-                senders.send_to(ServiceBus::Ctl, self.identity(), source, request)?;
             }
 
             Request::LaunchSwap(LaunchSwap {
-                maker_node_id,
                 local_trade_role,
                 public_offer,
                 local_params,
@@ -547,23 +615,24 @@ impl Runtime {
                 remote_commit,
                 funding_address,
             }) => {
-                let (node_id, peer_address) = match (local_trade_role, self.listens.len()) {
+                let offerid = &public_offer.offer.id();
+                let listener = self.listens.get(&offerid);
+                let node_id = self.node_ids.get(&offerid);
+                let (node_id, peer_address) = match local_trade_role {
                     // Maker has only one listener, MAYBE for more listeners self.listens may be a
                     // HashMap<RemoteSocketAddr, Vec<OfferId>>
-                    (TradeRole::Maker, 1) => (
-                        maker_node_id,
-                        self.listens
-                            .clone()
-                            .into_iter()
-                            .find_map(Some)
-                            .expect("exactly 1 listener checked on pattern match"),
+                    TradeRole::Maker if listener.is_some() && node_id.is_some() => (
+                        node_id.cloned().unwrap(),
+                        // internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
+                        // internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
+                        listener.cloned().unwrap(),
                     ),
-                    (TradeRole::Taker, _) if public_offer.node_id == maker_node_id => (
+                    TradeRole::Taker => (
                         public_offer.node_id,
                         internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
                     ),
                     _ => {
-                        error!("Currently only one listener supported!");
+                        error!("Listener must exist!");
                         return Ok(());
                     }
                 };
@@ -582,7 +651,9 @@ impl Runtime {
                         .ok_or(internet2::presentation::Error::InvalidEndpoint)?
                         .into();
 
-                    self.consumed_offers.insert((public_offer.id(), swap_id));
+                    self.consumed_offers
+                        .insert(public_offer.offer.id(), swap_id);
+                    self.stats.incr_initiated();
                     launch_swapd(
                         self,
                         peer,
@@ -605,10 +676,10 @@ impl Runtime {
                 trace!("received peerd keys");
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
-                    self.node_ids.insert(pk);
                     trace!("Received expected peer keys, injecting key in request");
                     let req = if let Request::MakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
+                        req.peer_public_key = Some(pk);
                         Ok(Request::MakeOffer(req))
                     } else if let Request::TakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
@@ -633,7 +704,7 @@ impl Runtime {
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
                         node_ids: self.node_ids(),
-                        listens: self.listens.iter().cloned().collect(),
+                        listens: self.listens.values().into_iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or_else(|_| Duration::from_secs(0)),
@@ -672,7 +743,7 @@ impl Runtime {
                 let pub_offers = self
                     .public_offers
                     .iter()
-                    .filter(|k| !self.consumed_offers_contains(&k.id()))
+                    .filter(|k| !self.consumed_offers_contains(&k.offer.id()))
                     .cloned()
                     .collect();
                 senders.send_to(
@@ -696,16 +767,28 @@ impl Runtime {
                 public_addr,
                 bind_addr,
                 peer_secret_key,
+                peer_public_key,
                 arbitrating_addr,
                 accordant_addr,
             }) => {
-                let resp = match (self.listens.contains(&bind_addr), peer_secret_key) {
-                    (false, None) => {
+                let (bindaddr, peer_public_key) = if let Some((pk, bindaddr)) = self
+                    .listens
+                    .iter()
+                    .find(|(_, a)| a == &&bind_addr)
+                    .and_then(|(k, v)| self.node_ids.get(k).map(|pk| (pk, v)))
+                {
+                    (Some(bindaddr), Some(*pk))
+                } else {
+                    (None, peer_public_key.clone())
+                };
+                let resp = match (bindaddr, peer_secret_key, peer_public_key) {
+                    (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
                         return self.get_secret(senders, source, request);
                     }
-                    (false, Some(sk)) => {
-                        self.listens.insert(bind_addr);
+                    (None, Some(sk), Some(pk)) => {
+                        self.listens.insert(offer.id(), bind_addr);
+                        self.node_ids.insert(offer.id(), pk);
                         info!(
                             "{} for incoming peer connections on {}",
                             "Starting listener".bright_blue_bold(),
@@ -713,11 +796,15 @@ impl Runtime {
                         );
                         self.listen(&bind_addr, sk)
                     }
-                    (true, _) => {
+                    (Some(&addr), _, Some(pk)) => {
+                        // no need for the keys, because peerd already knows them
+                        self.listens.insert(offer.id(), addr);
+                        self.node_ids.insert(offer.id(), pk);
                         let msg = format!("Already listening on {}", &bind_addr);
                         info!("{}", &msg);
                         Ok(msg)
                     }
+                    _ => unreachable!(),
                 };
                 match resp {
                     Ok(_) => info!(
@@ -738,14 +825,8 @@ impl Runtime {
                         //     self.node_id, remote_addr
                         // )),
                     ));
-
-                let node_ids = self.node_ids();
-                if node_ids.len() != 1 {
-                    error!("{}", "Currently node supports only 1 node id");
-                    return Ok(());
-                }
-
-                let public_offer = offer.to_public_v1(node_ids[0], public_addr.into());
+                let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
+                let public_offer = offer.to_public_v1(node_id, public_addr.into());
                 let pub_offer_id = public_offer.id();
                 let serialized_offer = public_offer.to_string();
                 if self.public_offers.insert(public_offer) {
@@ -786,7 +867,7 @@ impl Runtime {
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
-                    || self.consumed_offers_contains(&public_offer.id())
+                    || self.consumed_offers_contains(&public_offer.offer.id())
                 {
                     let msg = format!(
                         "{} already exists or was already taken, ignoring request",
@@ -956,22 +1037,25 @@ impl Runtime {
                         match bitcoin_rpc
                             .send_to_address(&address, amount, None, None, None, None, None, None)
                         {
-                            Ok(txid) => info!(
-                                "{} | Auto-funded Bitcoin with txid: {}",
-                                swap_id.bright_blue_italic(),
-                                txid
-                            ),
+                            Ok(txid) => {
+                                info!(
+                                    "{} | Auto-funded Bitcoin with txid: {}",
+                                    swap_id.bright_blue_italic(),
+                                    txid
+                                );
+                                self.funding_btc.insert(swap_id, (address, amount, true));
+                            }
                             Err(err) => {
                                 warn!("{}", err);
                                 error!(
                                     "{} | Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount",
                                     swap_id.bright_blue_italic()
                                 );
-                                self.funding_btc.insert(swap_id, (address, amount));
+                                self.funding_btc.insert(swap_id, (address, amount, false));
                             }
                         }
                     } else {
-                        self.funding_btc.insert(swap_id, (address, amount));
+                        self.funding_btc.insert(swap_id, (address, amount, false));
                     }
                 }
                 FundingInfo::Monero(MoneroFundingInfo {
@@ -1022,24 +1106,55 @@ impl Runtime {
                                         &swap_id.bright_blue_italic(),
                                         tx.tx_hash.to_string()
                                     );
+                                    self.funding_xmr.insert(swap_id, (address, amount, true));
                                 }
                                 Err(err) => {
                                     warn!("{}", err);
                                     error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
-                                    self.funding_xmr.insert(swap_id, (address, amount));
+                                    self.funding_xmr.insert(swap_id, (address, amount, false));
                                 }
                             }
                         });
                     } else {
-                        self.funding_xmr.insert(swap_id, (address, amount));
+                        self.funding_xmr.insert(swap_id, (address, amount, false));
                     }
                 }
             },
+            // if us: my funding_btc or funding_xmr was set
+            Request::FundingCompleted(coin)
+                if {
+                    let swapid = get_swap_id(&source)?;
+                    match coin {
+                        Coin::Bitcoin => self.funding_btc.contains_key(&swapid),
+                        Coin::Monero => self.funding_xmr.contains_key(&swapid),
+                    }
+                } =>
+            {
+                let swapid = get_swap_id(&source)?;
+                self.stats.incr_funded(&coin);
+                match coin {
+                    Coin::Bitcoin => {
+                        self.funding_btc.remove(&swapid);
+                    }
+                    Coin::Monero => {
+                        self.funding_xmr.remove(&swapid);
+                    }
+                };
+                info!(
+                    "{} | Your {} funding completed",
+                    swapid.bright_blue_italic(),
+                    coin.bright_green_bold()
+                );
+            }
 
-            Request::FundingCompleted(swap_id) => {
-                info!("{} | Funding completed", swap_id.bright_blue_italic());
-                self.funding_xmr.remove_entry(&swap_id);
-                self.funding_btc.remove_entry(&swap_id);
+            // if counterpaty: not in funding_btc nor funding_xmr
+            Request::FundingCompleted(coin) => {
+                let swapid = get_swap_id(&source)?;
+                info!(
+                    "{} | Counterparty {} funding completed",
+                    swapid.bright_blue_italic(),
+                    coin.bright_green_bold()
+                );
             }
 
             Request::NeedsFunding(Coin::Monero) => {
@@ -1047,8 +1162,9 @@ impl Runtime {
                 let res = self
                     .funding_xmr
                     .iter()
+                    .filter(|(_, (_, _, autofund))| !*autofund)
                     .enumerate()
-                    .map(|(i, (swapid, (addr, amount)))| {
+                    .map(|(i, (swapid, (addr, amount, _)))| {
                         let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
                         if i < len - 1 {
                             res.push('\n');
@@ -1068,8 +1184,9 @@ impl Runtime {
                 let res = self
                     .funding_btc
                     .iter()
+                    .filter(|(_, (_, _, autofund))| !*autofund)
                     .enumerate()
-                    .map(|(i, (swapid, (addr, amount)))| {
+                    .map(|(i, (swapid, (addr, amount, _)))| {
                         let mut res = format!("{:#?} needs {} to {}", swapid, amount, addr);
                         if i < len - 1 {
                             res.push('\n');

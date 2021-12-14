@@ -16,7 +16,7 @@
 
 use crate::syncerd::{
     types::{Event, Task},
-    SweepXmrAddress,
+    Coin, SweepXmrAddress,
 };
 use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
@@ -230,7 +230,6 @@ pub struct GetKeys(pub Token, pub RequestId);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("launch_swap")]
 pub struct LaunchSwap {
-    pub maker_node_id: bitcoin::secp256k1::PublicKey,
     pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer<BtcXmr>,
     pub local_params: Params,
@@ -531,16 +530,16 @@ pub enum Request {
     FundingInfo(FundingInfo),
 
     #[api(type = 1109)]
-    #[display("read_funding")]
-    NeedsFunding(crate::syncerd::Coin),
+    #[display("needs_funding({0})")]
+    NeedsFunding(Coin),
 
     #[api(type = 1110)]
-    #[display("read_funding")]
+    #[display("write_text")]
     WriteText(List<String>),
 
     #[api(type = 1111)]
-    #[display("read_funding")]
-    FundingCompleted(SwapId),
+    #[display("funding_completed({0})")]
+    FundingCompleted(Coin),
 
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]
@@ -726,6 +725,7 @@ pub struct ProtoPublicOffer {
     pub arbitrating_addr: bitcoin::Address,
     pub accordant_addr: String,
     pub peer_secret_key: Option<SecretKey>,
+    pub peer_public_key: Option<secp256k1::PublicKey>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

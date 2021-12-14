@@ -23,12 +23,12 @@ use crate::{
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use bitcoin::{
     hashes::hex::FromHex,
-    secp256k1::{self, Signature},
+    secp256k1::{self, rand::thread_rng, PublicKey, Secp256k1, SecretKey, Signature},
     util::{
         bip32::{DerivationPath, ExtendedPrivKey},
         psbt::serialize::Deserialize,
     },
-    Address, PrivateKey, PublicKey,
+    Address,
 };
 use colored::Colorize;
 use farcaster_core::{
@@ -66,13 +66,12 @@ pub fn run(
     config: ServiceConfig,
     wallet_token: Token,
     node_secrets: NodeSecrets,
-    node_id: bitcoin::secp256k1::PublicKey,
+    _node_id: bitcoin::secp256k1::PublicKey,
 ) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
         wallet_token,
         node_secrets,
-        node_id,
         wallets: none!(),
         swaps: none!(),
         btc_addrs: none!(),
@@ -86,7 +85,6 @@ pub struct Runtime {
     identity: ServiceId,
     wallet_token: Token,
     node_secrets: NodeSecrets,
-    node_id: bitcoin::secp256k1::PublicKey,
     wallets: HashMap<SwapId, Wallet>,
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
@@ -294,7 +292,6 @@ impl Runtime {
                     &pub_offer
                 );
                 let PublicOffer { offer, .. } = pub_offer.clone();
-                let node_id = self.node_id;
                 let external_address = self.btc_addrs.remove(&swap_id).expect("checked above");
                 match offer.maker_role {
                     SwapRole::Bob => {
@@ -338,7 +335,6 @@ impl Runtime {
                                 return Ok(());
                             }
                             let launch_swap = LaunchSwap {
-                                maker_node_id: node_id,
                                 local_trade_role: TradeRole::Maker,
                                 public_offer: pub_offer,
                                 local_params: Params::Bob(local_params),
@@ -384,7 +380,6 @@ impl Runtime {
                                 self.wallets.insert(swap_id, Wallet::Alice(alice_state));
 
                                 let launch_swap = LaunchSwap {
-                                    maker_node_id: node_id,
                                     local_trade_role: TradeRole::Maker,
                                     public_offer: pub_offer,
                                     local_params: Params::Alice(local_params),
@@ -1042,7 +1037,7 @@ impl Runtime {
                 internal_address,
                 peer_secret_key: None,
             }) if source == ServiceId::Farcasterd => {
-                let PublicOffer { offer, node_id, .. } = public_offer.clone();
+                let PublicOffer { offer, .. } = public_offer.clone();
 
                 let swap_id: SwapId = SwapId::random();
                 self.swaps.insert(swap_id, None);
@@ -1089,7 +1084,6 @@ impl Runtime {
                             return Ok(());
                         }
                         let launch_swap = LaunchSwap {
-                            maker_node_id: node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Bob(local_params),
@@ -1131,7 +1125,6 @@ impl Runtime {
                             error!("{} | Wallet already exists", swap_id.bright_blue_italic());
                         }
                         let launch_swap = LaunchSwap {
-                            maker_node_id: node_id,
                             local_trade_role: TradeRole::Taker,
                             public_offer,
                             local_params: Params::Alice(local_params),
@@ -1345,6 +1338,10 @@ impl Runtime {
                     return Err(Error::InvalidToken);
                 }
                 trace!("sent Secret request to farcasterd");
+                // let mut rng = thread_rng();
+                // let sk = SecretKey::new(&mut rng);
+                // let pk = PublicKey::from_secret_key(&Secp256k1::new(), &sk);
+                // self.send_farcasterd(senders, Request::Keys(Keys(sk, pk, request_id)))?
                 self.send_farcasterd(
                     senders,
                     Request::Keys(Keys(
