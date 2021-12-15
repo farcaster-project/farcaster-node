@@ -27,8 +27,9 @@ use crate::{
 use amplify::Wrapper;
 use clap::Clap;
 use clap::IntoApp;
-use request::{Commit, Params};
+use request::{Commit, List, Params};
 use std::io;
+use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::process;
 use std::time::{Duration, SystemTime};
@@ -53,6 +54,7 @@ use bitcoin::{
 };
 use internet2::{
     addr::InetSocketAddr, NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum,
+    UrlString,
 };
 use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::chain::Chain;
@@ -762,6 +764,21 @@ impl Runtime {
             //         Request::OfferIdList(self.public_offers.iter().map(|public_offer| public_offer.id()).collect()),
             //     )?;
             // }
+            Request::ListListens => {
+                let listen_url: List<String> = List::from_iter(
+                    self.listens
+                        .clone()
+                        .values()
+                        .map(|listen| listen.to_url_string()),
+                );
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd, // source
+                    source,                // destination
+                    Request::ListenList(listen_url),
+                )?;
+            }
+
             Request::MakeOffer(request::ProtoPublicOffer {
                 offer,
                 public_addr,
