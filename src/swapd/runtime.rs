@@ -1831,6 +1831,11 @@ impl Runtime {
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
                     {
                         if self.syncer_state.awaiting_funding {
+                            warn!(
+                                "FundingCompleted never emmited, but not possible to sweep\\
+                                   monero without passing through funding completed,\\
+                                   emmiting it now to clean up farcasterd"
+                            );
                             self.syncer_state.awaiting_funding = false;
                             match self.state.swap_role() {
                                 SwapRole::Alice => {
