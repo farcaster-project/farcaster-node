@@ -199,8 +199,8 @@ impl Stats {
             refund.bright_white_bold(),
             punish.bright_white_bold(),
             initialized,
-            funded_btc.bright_white_bold(),
             funded_xmr.bright_white_bold(),
+            funded_btc.bright_white_bold(),
         );
         info!(
             "{} = {:>4.3}%",
