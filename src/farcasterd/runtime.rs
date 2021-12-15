@@ -1123,9 +1123,10 @@ impl Runtime {
 
             Request::FundingCompleted(coin) => {
                 let swapid = get_swap_id(&source)?;
-                if self.funding_btc.remove(&swapid).is_some()
-                    || self.funding_xmr.remove(&swapid).is_some()
-                {
+                if match coin {
+                    Coin::Bitcoin => self.funding_btc.remove(&get_swap_id(&source)?).is_some(),
+                    Coin::Monero => self.funding_xmr.remove(&get_swap_id(&source)?).is_some(),
+                } {
                     self.stats.incr_funded(&coin);
                     info!(
                         "{} | Your {} funding completed",
