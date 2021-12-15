@@ -507,7 +507,7 @@ impl Runtime {
                     let swapid = get_swap_id(&source)?;
                     // when online, Syncers say Hello, then they get registered to self.syncers
                     syncers_up(
-                        source.clone(),
+                        ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
@@ -517,7 +517,7 @@ impl Runtime {
                         &self.config,
                     )?;
                     syncers_up(
-                        source.clone(),
+                        ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
@@ -554,7 +554,7 @@ impl Runtime {
 
                     let swapid = get_swap_id(&source)?;
                     syncers_up(
-                        source.clone(),
+                        ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
@@ -564,7 +564,7 @@ impl Runtime {
                         &self.config,
                     )?;
                     syncers_up(
-                        source.clone(),
+                        ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
@@ -590,10 +590,7 @@ impl Runtime {
                     );
                     report_to.push((
                         Some(enquirer.clone()),
-                        Request::Success(OptionDetails::with(format!(
-                            "Connected to {}",
-                            source
-                        ))),
+                        Request::Success(OptionDetails::with(format!("Connected to {}", source))),
                     ));
                     self.spawning_services.remove(&source);
                 }
