@@ -1666,12 +1666,6 @@ impl Runtime {
                                 Request::SyncerTask(abort_task),
                             )?;
                         }
-                        senders.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            Request::FundingCompleted(Coin::Monero),
-                        )?;
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
