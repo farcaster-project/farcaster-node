@@ -1675,13 +1675,7 @@ impl Runtime {
                         tx: _,
                     }) if self.state.swap_role() == SwapRole::Bob
                         && self.syncer_state.tasks.watched_addrs.contains_key(id)
-                        && self
-                            .syncer_state
-                            .tasks
-                            .watched_addrs
-                            .get(id)
-                            .map(|txlabel| txlabel == &TxLabel::AccLock)
-                            .unwrap_or(false) =>
+                        && self.syncer_state.is_watched_addr(&TxLabel::AccLock) =>
                     {
                         let amount = monero::Amount::from_pico(*amount);
                         if amount < self.syncer_state.monero_amount {
