@@ -507,10 +507,23 @@ impl Runtime {
                         }
                     }
                     ServiceId::Syncer(coin, network)
-                        if !self.syncer_services.contains_key(&(*coin, *network)) =>
+                        if !self.syncer_services.contains_key(&(*coin, *network))
+                            && self.spawning_services.contains_key(&source) =>
                     {
                         self.syncer_services
                             .insert((*coin, *network), source.clone());
+                        info!(
+                            "Syncer {} is registered; total {} syncers are known",
+                            &source,
+                            self.syncer_services.len().bright_blue_bold()
+                        );
+                    }
+                    ServiceId::Syncer(..) => {
+                        error!(
+                            "Syncer {} was already registered; the service probably was relaunched\\
+                             externally, or maybe multiple syncers launched?",
+                            source
+                        );
                     }
                     _ => {
                         // Ignoring the rest of daemon/client types
