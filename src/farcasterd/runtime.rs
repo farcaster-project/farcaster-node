@@ -199,8 +199,8 @@ impl Stats {
             refund.bright_white_bold(),
             punish.bright_white_bold(),
             initialized,
-            funded_btc.bright_white_bold(),
             funded_xmr.bright_white_bold(),
+            funded_btc.bright_white_bold(),
         );
         info!(
             "{} = {:>4.3}%",
@@ -507,6 +507,8 @@ impl Runtime {
                     let swapid = get_swap_id(&source)?;
                     // when online, Syncers say Hello, then they get registered to self.syncers
                     syncers_up(
+                        source.clone(),
+                        &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
                         Coin::Bitcoin,
@@ -515,6 +517,8 @@ impl Runtime {
                         &self.config,
                     )?;
                     syncers_up(
+                        source.clone(),
+                        &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
                         Coin::Monero,
@@ -550,6 +554,8 @@ impl Runtime {
 
                     let swapid = get_swap_id(&source)?;
                     syncers_up(
+                        source.clone(),
+                        &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
                         Coin::Bitcoin,
@@ -558,6 +564,8 @@ impl Runtime {
                         &self.config,
                     )?;
                     syncers_up(
+                        source.clone(),
+                        &mut self.spawning_services,
                         &self.syncer_services,
                         &mut self.syncer_clients,
                         Coin::Monero,
@@ -583,7 +591,7 @@ impl Runtime {
                     report_to.push((
                         Some(enquirer.clone()),
                         Request::Success(OptionDetails::with(format!(
-                            "Peer connected to {}",
+                            "Connected to {}",
                             source
                         ))),
                     ));
@@ -1339,6 +1347,8 @@ impl Runtime {
 }
 
 fn syncers_up(
+    source: ServiceId,
+    spawning_services: &mut HashMap<ServiceId, ServiceId>,
     services: &HashMap<(Coin, Network), ServiceId>,
     clients: &mut HashMap<(Coin, Network), HashSet<SwapId>>,
     coin: Coin,
@@ -1347,7 +1357,8 @@ fn syncers_up(
     config: &Config,
 ) -> Result<(), Error> {
     let k = (coin, network);
-    if !services.contains_key(&k) {
+    let s = ServiceId::Syncer(coin, network);
+    if !services.contains_key(&k) || !spawning_services.contains_key(&s) {
         let mut args = vec![
             "--coin".to_string(),
             coin.to_string(),
@@ -1357,6 +1368,7 @@ fn syncers_up(
         args.append(&mut syncer_servers_args(config, coin, network)?);
         launch("syncerd", args)?;
         clients.insert(k, none!());
+        spawning_services.insert(s, source);
     }
     if let Some(xs) = clients.get_mut(&k) {
         xs.insert(swap_id);
