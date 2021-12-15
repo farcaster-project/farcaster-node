@@ -591,7 +591,7 @@ impl Runtime {
                     report_to.push((
                         Some(enquirer.clone()),
                         Request::Success(OptionDetails::with(format!(
-                            "Peer connected to {}",
+                            "Connected to {}",
                             source
                         ))),
                     ));
