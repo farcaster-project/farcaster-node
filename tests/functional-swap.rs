@@ -81,8 +81,8 @@ async fn swap_bob_maker_refund_race_cancel() {
         "Bob".to_string(),
         Arc::clone(&bitcoin_rpc),
         Arc::clone(&monero_wallet),
-        "1 BTC".to_string(),
-        "1 XMR".to_string(),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
     )
     .await;
 
@@ -390,7 +390,7 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
 
 #[allow(clippy::too_many_arguments)]
 async fn run_refund_swap_race_cancel(
-    swap_id: String,
+    swap_id: SwapId,
     data_dir_alice: Vec<String>,
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
@@ -413,13 +413,12 @@ async fn run_refund_swap_race_cancel(
         .unwrap();
 
     // run until bob has the btc funding address
-    let address =
+    let (address, amount) =
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
-    let amount = bitcoin::Amount::ONE_SAT * 100000150;
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
@@ -439,9 +438,9 @@ async fn run_refund_swap_race_cancel(
         .unwrap();
 
     // run until the alice has the monero funding address and fund it
-    let monero_address =
+    let (monero_address, monero_amount) =
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
-    send_monero(Arc::clone(&monero_wallet), monero_address, 1000000000000).await;
+    send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
