@@ -1138,9 +1138,10 @@ impl Runtime {
 
             Request::FundingCanceled(coin) => {
                 let swapid = get_swap_id(&source)?;
-                if self.funding_xmr.remove(&swapid).is_some()
-                    || self.funding_btc.remove(&swapid).is_some()
-                {
+                if match coin {
+                    Coin::Bitcoin => self.funding_btc.remove(&get_swap_id(&source)?).is_some(),
+                    Coin::Monero => self.funding_xmr.remove(&get_swap_id(&source)?).is_some(),
+                } {
                     info!(
                         "{} | Your {} funding was canceled",
                         swapid.bright_blue_italic(),
