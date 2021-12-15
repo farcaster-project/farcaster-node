@@ -1417,6 +1417,10 @@ impl Runtime {
                     address.bright_yellow_bold(),
                     sweep_block.bright_blue_bold(),
                 );
+                warn!(
+                    "Peerd might crash, just ignore it, counterparty closed\\
+                       connection but you don't need it anymore!"
+                );
                 let request = Request::SyncerTask(task);
                 let dest = self.syncer_state.monero_syncer();
                 let pending_request = PendingRequest {
