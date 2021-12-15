@@ -1830,6 +1830,27 @@ impl Runtime {
                             && self.syncer_state.tasks.sweeping_addr.is_some()
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
                     {
+                        if self.syncer_state.awaiting_funding {
+                            self.syncer_state.awaiting_funding = false;
+                            match self.state.swap_role() {
+                                SwapRole::Alice => {
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        ServiceId::Farcasterd,
+                                        Request::FundingCompleted(Coin::Monero),
+                                    )?;
+                                }
+                                SwapRole::Bob => {
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        ServiceId::Farcasterd,
+                                        Request::FundingCompleted(Coin::Bitcoin),
+                                    )?;
+                                }
+                            }
+                        }
                         let abort_all = Task::Abort(Abort {
                             task_target: TaskTarget::AllTasks,
                             respond: Boolean::False,
@@ -1851,22 +1872,27 @@ impl Runtime {
                                 senders,
                                 State::Bob(BobState::FinishB(Outcome::Buy)),
                             )?;
-                            Outcome::Buy
-                        } else {
+                            Some(Outcome::Buy)
+                        } else if self.state.a_refund_seen() {
                             self.state_update(
                                 senders,
                                 State::Alice(AliceState::FinishA(Outcome::Refund)),
                             )?;
-                            Outcome::Refund
+                            Some(Outcome::Refund)
+                        } else {
+                            error!("Unexpected sweeping state, not sending finalization commands to wallet and farcasterd");
+                            None
                         };
-                        let swap_success_req = Request::SwapOutcome(success);
-                        self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
-                        self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
-                        // remove txs to invalidate outdated states
-                        self.txs.remove(&TxLabel::Cancel);
-                        self.txs.remove(&TxLabel::Refund);
-                        self.txs.remove(&TxLabel::Buy);
-                        self.txs.remove(&TxLabel::Punish);
+                        if let Some(success) = success {
+                            let swap_success_req = Request::SwapOutcome(success);
+                            self.send_ctl(senders, ServiceId::Wallet, swap_success_req.clone())?;
+                            self.send_ctl(senders, ServiceId::Farcasterd, swap_success_req)?;
+                            // remove txs to invalidate outdated states
+                            self.txs.remove(&TxLabel::Cancel);
+                            self.txs.remove(&TxLabel::Refund);
+                            self.txs.remove(&TxLabel::Buy);
+                            self.txs.remove(&TxLabel::Punish);
+                        }
                     }
                     event => {
                         error!("event not handled {}", event)
