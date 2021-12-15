@@ -1383,7 +1383,7 @@ fn syncers_up(
 ) -> Result<(), Error> {
     let k = (coin, network);
     let s = ServiceId::Syncer(coin, network);
-    if !services.contains_key(&k) || !spawning_services.contains_key(&s) {
+    if !services.contains_key(&k) && !spawning_services.contains_key(&s) {
         let mut args = vec![
             "--coin".to_string(),
             coin.to_string(),
