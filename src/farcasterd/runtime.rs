@@ -1137,41 +1137,34 @@ impl Runtime {
                     }
                 }
             },
-            // if us: my funding_btc or funding_xmr was set
-            Request::FundingCompleted(coin)
-                if {
-                    let swapid = get_swap_id(&source)?;
-                    match coin {
-                        Coin::Bitcoin => self.funding_btc.contains_key(&swapid),
-                        Coin::Monero => self.funding_xmr.contains_key(&swapid),
-                    }
-                } =>
-            {
-                let swapid = get_swap_id(&source)?;
-                self.stats.incr_funded(&coin);
-                match coin {
-                    Coin::Bitcoin => {
-                        self.funding_btc.remove(&swapid);
-                    }
-                    Coin::Monero => {
-                        self.funding_xmr.remove(&swapid);
-                    }
-                };
-                info!(
-                    "{} | Your {} funding completed",
-                    swapid.bright_blue_italic(),
-                    coin.bright_green_bold()
-                );
-            }
 
-            // if counterpaty: not in funding_btc nor funding_xmr
             Request::FundingCompleted(coin) => {
                 let swapid = get_swap_id(&source)?;
-                info!(
-                    "{} | Counterparty {} funding completed",
-                    swapid.bright_blue_italic(),
-                    coin.bright_green_bold()
-                );
+                if match coin {
+                    Coin::Bitcoin => self.funding_btc.remove(&get_swap_id(&source)?).is_some(),
+                    Coin::Monero => self.funding_xmr.remove(&get_swap_id(&source)?).is_some(),
+                } {
+                    self.stats.incr_funded(&coin);
+                    info!(
+                        "{} | Your {} funding completed",
+                        swapid.bright_blue_italic(),
+                        coin.bright_green_bold()
+                    );
+                }
+            }
+
+            Request::FundingCanceled(coin) => {
+                let swapid = get_swap_id(&source)?;
+                if match coin {
+                    Coin::Bitcoin => self.funding_btc.remove(&get_swap_id(&source)?).is_some(),
+                    Coin::Monero => self.funding_xmr.remove(&get_swap_id(&source)?).is_some(),
+                } {
+                    info!(
+                        "{} | Your {} funding was canceled",
+                        swapid.bright_blue_italic(),
+                        coin.bright_green_bold()
+                    );
+                }
             }
 
             Request::NeedsFunding(Coin::Monero) => {
