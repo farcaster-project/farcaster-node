@@ -590,10 +590,7 @@ impl Runtime {
                     );
                     report_to.push((
                         Some(enquirer.clone()),
-                        Request::Success(OptionDetails::with(format!(
-                            "Connected to {}",
-                            source
-                        ))),
+                        Request::Success(OptionDetails::with(format!("Connected to {}", source))),
                     ));
                     self.spawning_services.remove(&source);
                 }
