@@ -127,7 +127,7 @@ pub fn run(
         punish_timelock: punish_timelock.as_u32(),
         btc_finality_thr: 1,
         race_thr: 3,
-        xmr_finality_thr: 5,
+        xmr_finality_thr: 1,
         sweep_monero_thr,
     };
 
