@@ -1418,7 +1418,7 @@ impl Runtime {
                     sweep_block.bright_blue_bold(),
                 );
                 warn!(
-                    "Peerd might crash, just ignore it, counterparty closed\\
+                    "Peerd might crash, just ignore it, counterparty closed\
                        connection but you don't need it anymore!"
                 );
                 let request = Request::SyncerTask(task);
@@ -1830,8 +1830,8 @@ impl Runtime {
                     {
                         if self.syncer_state.awaiting_funding {
                             warn!(
-                                "FundingCompleted never emmited, but not possible to sweep\\
-                                   monero without passing through funding completed,\\
+                                "FundingCompleted never emmited, but not possible to sweep\
+                                   monero without passing through funding completed,\
                                    emmiting it now to clean up farcasterd"
                             );
                             self.syncer_state.awaiting_funding = false;
