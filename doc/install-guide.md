@@ -81,17 +81,16 @@ The easiet way is to use Docker compose to run both the node and the Monero wall
 version: "3.9"
 services:
   farcasterd:
-    image: "ghcr.io/farcaster-project/farcaster-node/farcasterd:latest"
+    image: "ghcr.io/farcaster-project/farcaster-node/farcasterd:compose"
     ports:
       - "9735:9735"
       - "9981:9981"
-    command: "-vv"
+    command: "-vvv -c /var/lib/farcaster/farcasterd.toml"
     depends_on:
       - "walletrpc"
   walletrpc:
     image: "ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3"
     command: "/usr/bin/monero-wallet-rpc --stagenet --disable-rpc-login --wallet-dir wallets --daemon-host stagenet.melo.tools:38081 --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083 --confirm-external-bind"
-    ports:
-      - "38083:38083"
 ```
 
+:mag_right: If you plan to make offer with the Docker stack make sure you understand what ports need to be open and forwarded, a current limitation does not allow port reuse while making multiple offers. Either refresh the containers or forward more ports for peerd to listen on, by default `9735` is forwarded.
