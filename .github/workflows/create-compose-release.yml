@@ -1,0 +1,25 @@
+name: Create and publish Compose release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  faracsterd_compose_image:
+    name: Farcasterd:compose Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Docker build
+      run: docker build -f $GITHUB_WORKSPACE/compose/Dockerfile -t ghcr.io/farcaster-project/farcaster-node/farcasterd:compose $GITHUB_WORKSPACE/compose
+
+    - name: Docker push to GitHub Packages (compose)
+      run: docker push ghcr.io/farcaster-project/farcaster-node/farcasterd:compose
