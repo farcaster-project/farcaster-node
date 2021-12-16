@@ -1227,9 +1227,9 @@ impl Runtime {
                         let mut res = format!(
                             "{}",
                             MoneroFundingInfo {
-                                swap_id: swap_id.clone(),
-                                amount: amount.clone(),
-                                address: address.clone(),
+                                swap_id: *swap_id,
+                                amount: *amount,
+                                address: *address,
                             }
                         );
                         if i < len - 1 {
@@ -1256,8 +1256,8 @@ impl Runtime {
                         let mut res = format!(
                             "{}",
                             BitcoinFundingInfo {
-                                swap_id: swap_id.clone(),
-                                amount: amount.clone(),
+                                swap_id: *swap_id,
+                                amount: *amount,
                                 address: address.clone(),
                             }
                         );
