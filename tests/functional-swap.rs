@@ -253,7 +253,7 @@ async fn swap_alice_maker() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_parallel() {
+async fn swap_parallel_offer_creation_serial_execution() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
@@ -1004,7 +1004,6 @@ async fn run_swap(
         .get_received_by_address(&funding_btc_address, None)
         .unwrap();
     assert!(balance.as_sat() > 90000000);
-    drop(lock);
 
     // cache the monero balance before sweeping
     let monero_wallet_lock = monero_wallet.lock().await;
@@ -1048,6 +1047,7 @@ async fn run_swap(
     monero_wallet_lock.refresh(Some(1)).await.unwrap();
     let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
     drop(monero_wallet_lock);
+    drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
     assert!(delta_balance > 999660000000);
 }
