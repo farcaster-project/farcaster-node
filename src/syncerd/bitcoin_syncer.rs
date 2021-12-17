@@ -259,7 +259,7 @@ impl ElectrumRpc {
                     {
                         Ok(history) => history,
                         Err(err) => {
-                            debug!(
+                            trace!(
                                 "error getting script history, treating as not found: {}",
                                 err
                             );
@@ -354,7 +354,7 @@ impl ElectrumRpc {
                     drop(state_guard);
                 }
                 Err(err) => {
-                    debug!("error getting transaction, treating as not found: {}", err);
+                    trace!("error getting transaction, treating as not found: {}", err);
                     let mut state_guard = state.lock().await;
                     state_guard
                         .change_transaction(tx_id.to_vec(), None, None, vec![])
@@ -395,7 +395,7 @@ fn query_addr_history(
             }
         }
         if !output_found {
-            debug!("ignoring outgoing transaction in handle address notification, continuing");
+            trace!("ignoring outgoing transaction in handle address notification, continuing");
             continue;
         }
         addr_txs.push(AddressTx {
