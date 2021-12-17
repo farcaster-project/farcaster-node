@@ -802,15 +802,15 @@ impl Synclet for BitcoinSyncer {
                     let (event_tx, event_rx): (
                         TokioSender<SyncerdBridgeEvent>,
                         TokioReceiver<SyncerdBridgeEvent>,
-                    ) = tokio::sync::mpsc::channel(120);
+                    ) = tokio::sync::mpsc::channel(200);
                     let (transaction_broadcast_tx, transaction_broadcast_rx): (
                         TokioSender<(BroadcastTransaction, ServiceId)>,
                         TokioReceiver<(BroadcastTransaction, ServiceId)>,
-                    ) = tokio::sync::mpsc::channel(120);
+                    ) = tokio::sync::mpsc::channel(200);
                     let (transaction_get_tx, transaction_get_rx): (
                         TokioSender<(GetTx, ServiceId)>,
                         TokioReceiver<(GetTx, ServiceId)>,
-                    ) = tokio::sync::mpsc::channel(120);
+                    ) = tokio::sync::mpsc::channel(200);
                     let state = Arc::new(Mutex::new(SyncerState::new(
                         event_tx.clone(),
                         Coin::Bitcoin,
