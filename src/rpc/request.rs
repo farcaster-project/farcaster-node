@@ -598,8 +598,30 @@ pub enum FundingInfo {
     Monero(MoneroFundingInfo),
 }
 
-#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display("bitcoin_funding_info")]
+impl FromStr for BitcoinFundingInfo {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Error> {
+        let content: Vec<&str> = s.split(" ").collect();
+
+        Ok(BitcoinFundingInfo {
+            swap_id: SwapId::from_str(content[0])?,
+            amount: bitcoin::Amount::from_str(&format!("{} {}", content[2], content[3]))?,
+            address: bitcoin::Address::from_str(content[5])?,
+        })
+    }
+}
+
+impl fmt::Display for BitcoinFundingInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:#?} needs {} to {}",
+            self.swap_id, self.amount, self.address
+        )
+    }
+}
+
+#[derive(Clone, Debug, StrictDecode, StrictEncode)]
 pub struct BitcoinFundingInfo {
     pub swap_id: SwapId,
     pub address: bitcoin::Address,
@@ -642,8 +664,33 @@ impl StrictDecode for MoneroFundingInfo {
     }
 }
 
-#[derive(Clone, Debug, Display)]
-#[display("monero_funding_info")]
+impl FromStr for MoneroFundingInfo {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Error> {
+        let content: Vec<&str> = s.split(" ").collect();
+        Ok(MoneroFundingInfo {
+            swap_id: SwapId::from_str(content[0])?,
+            amount: monero::Amount::from_str_with_denomination(&format!(
+                "{} {}",
+                content[2], content[3]
+            ))?,
+
+            address: monero::Address::from_str(content[5])?,
+        })
+    }
+}
+
+impl fmt::Display for MoneroFundingInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:#?} needs {} to {}",
+            self.swap_id, self.amount, self.address
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MoneroFundingInfo {
     pub swap_id: SwapId,
     pub amount: monero::Amount,

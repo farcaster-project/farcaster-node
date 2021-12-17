@@ -973,6 +973,7 @@ dependencies = [
  "paste",
  "rand 0.8.4",
  "regex",
+ "rustc-hex",
  "serde 1.0.127",
  "serde_json",
  "serde_with",
