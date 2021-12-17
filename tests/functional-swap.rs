@@ -250,6 +250,83 @@ async fn swap_alice_maker() {
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
+struct SwapParams {
+    data_dir_bob: Vec<String>,
+    data_dir_alice: Vec<String>,
+    xmr_dest_wallet_name: String,
+    destination_btc_address: bitcoin::Address,
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
+async fn swap_parallel_execution() {
+    let execution_mutex = Arc::new(Mutex::new(0));
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_farcaster_clients().await;
+
+    // let (xmr_dest_wallet_name_1, bitcoin_address_1, swap_id_1) = make_and_take_offer(
+    //     data_dir_maker.clone(),
+    //     data_dir_taker.clone(),
+    //     "Alice".to_string(),
+    //     Arc::clone(&bitcoin_rpc),
+    //     Arc::clone(&monero_wallet),
+    //     bitcoin::Amount::from_str("1 BTC").unwrap(),
+    //     monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    // )
+    // .await;
+
+    // let (xmr_dest_wallet_name_2, bitcoin_address_2, swap_id_2) = make_and_take_offer(
+    //     data_dir_maker.clone(),
+    //     data_dir_taker.clone(),
+    //     "Alice".to_string(),
+    //     Arc::clone(&bitcoin_rpc),
+    //     Arc::clone(&monero_wallet),
+    //     bitcoin::Amount::from_str("1 BTC").unwrap(),
+    //     monero::Amount::from_str_with_denomination("0.999999999999 XMR").unwrap(),
+    // )
+    // .await;
+
+    let mut swap_info: HashMap<SwapId, SwapParams> = HashMap::new();
+
+    for i in 1..10 {
+        let xmr_amount = format!("1.{} XMR", i);
+        let (xmr_dest_wallet_name, destination_btc_address, swap_id) = make_and_take_offer(
+            data_dir_maker.clone(),
+            data_dir_taker.clone(),
+            "Bob".to_string(),
+            Arc::clone(&bitcoin_rpc),
+            Arc::clone(&monero_wallet),
+            bitcoin::Amount::from_str("1 BTC").unwrap(),
+            monero::Amount::from_str_with_denomination(&xmr_amount).unwrap(),
+        )
+        .await;
+
+        swap_info.insert(
+            swap_id,
+            SwapParams {
+                data_dir_bob: data_dir_maker.clone(),
+                data_dir_alice: data_dir_taker.clone(),
+                xmr_dest_wallet_name,
+                destination_btc_address,
+            },
+        );
+    }
+
+    run_swaps_parallel(
+        swap_info,
+        Arc::clone(&bitcoin_rpc),
+        monero_regtest.clone(),
+        Arc::clone(&monero_wallet.clone()),
+        Arc::clone(&execution_mutex),
+    )
+    .await;
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+}
+
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
@@ -916,6 +993,179 @@ async fn make_and_take_offer(
 }
 
 #[allow(clippy::too_many_arguments)]
+async fn run_swaps_parallel(
+    swap_info: HashMap<SwapId, SwapParams>,
+    bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
+    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
+    execution_mutex: Arc<Mutex<u8>>,
+) {
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    let lock = execution_mutex.lock().await;
+
+    // run until bob has the btc funding address
+    for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
+        let (address, amount) = retry_until_bitcoin_funding_address(
+            swap_id.clone(),
+            needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string()),
+        )
+        .await;
+
+        // fund the bitcoin address
+        bitcoin_rpc
+            .send_to_address(&address, amount, None, None, None, None, None, None)
+            .unwrap();
+    }
+
+    // run until BobState(CoreArb) is received
+    for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
+        retry_until_finish_state_transition(
+            progress_args(data_dir_bob.clone(), swap_id.clone()),
+            "BobState(CoreArb)".to_string(),
+        )
+        .await;
+    }
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin arb lock tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
+    // run until the alice has the monero funding address
+    for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
+        let (monero_address, monero_amount) = retry_until_monero_funding_address(
+            swap_id.clone(),
+            needs_funding_args(data_dir_alice.clone(), "monero".to_string()),
+        )
+        .await;
+        send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
+    }
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+
+    // generate some monero blocks to finalize the monero acc lock tx
+    monero_regtest
+        .generate_blocks(6, reusable_xmr_address())
+        .await
+        .unwrap();
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to make the buy tx final
+    bitcoin_rpc
+        .generate_to_address(5, &reusable_btc_address())
+        .unwrap();
+
+    // run until the AliceState(Finish) is received
+    for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
+        retry_until_finish_state_transition(
+            progress_args(data_dir_alice.clone(), swap_id.clone()),
+            "AliceState(Finish(Success(Swapped)))".to_string(),
+        )
+        .await;
+    }
+
+    // generate some blocks on bitcoin's side
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    // check that btc was received in the destination address
+    for (
+        _,
+        SwapParams {
+            destination_btc_address,
+            ..
+        },
+    ) in swap_info.iter()
+    {
+        let balance = bitcoin_rpc
+            .get_received_by_address(&destination_btc_address, None)
+            .unwrap();
+        assert!(balance.as_sat() > 90000000);
+    }
+
+    // cache the monero balance before sweeping
+    let mut before_balances: HashMap<SwapId, u64> = HashMap::new();
+    for (
+        swap_id,
+        SwapParams {
+            xmr_dest_wallet_name,
+            ..
+        },
+    ) in swap_info.iter()
+    {
+        let monero_wallet_lock = monero_wallet.lock().await;
+        monero_wallet_lock
+            .open_wallet(xmr_dest_wallet_name.clone(), None)
+            .await
+            .unwrap();
+        before_balances.insert(
+            *swap_id,
+            monero_wallet_lock
+                .get_balance(0, None)
+                .await
+                .unwrap()
+                .balance,
+        );
+        drop(monero_wallet_lock);
+    }
+
+    // Sleep here to work around a race condition between pending
+    // SweepXmrAddress requests and tx Acc Lock confirmations. If Acc Lock
+    // confirmations are produced before the pending request is queued, no
+    // action will take place after this point.
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some blocks on monero's side
+    monero_regtest
+        .generate_blocks(10, reusable_xmr_address())
+        .await
+        .unwrap();
+
+    // run until the BobState(Finish) is received
+    for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
+        retry_until_bob_finish_state_transition(
+            progress_args(data_dir_bob.clone(), swap_id.clone()),
+            "BobState(Finish(Success(Swapped)))".to_string(),
+            monero_regtest.clone(),
+        )
+        .await;
+    }
+
+    monero_regtest
+        .generate_blocks(1, reusable_xmr_address())
+        .await
+        .unwrap();
+
+    for (
+        swap_id,
+        SwapParams {
+            xmr_dest_wallet_name,
+            ..
+        },
+    ) in swap_info.iter()
+    {
+        let monero_wallet_lock = monero_wallet.lock().await;
+        monero_wallet_lock
+            .open_wallet(xmr_dest_wallet_name.clone(), None)
+            .await
+            .unwrap();
+        monero_wallet_lock.refresh(Some(1)).await.unwrap();
+        let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
+        drop(monero_wallet_lock);
+        let delta_balance = after_balance.balance - before_balances[swap_id];
+        assert!(delta_balance > 999660000000);
+    }
+    drop(lock);
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_swap(
     swap_id: SwapId,
     data_dir_alice: Vec<String>,
@@ -1286,6 +1536,7 @@ async fn retry_until_bitcoin_funding_address(
         let funding_infos: Vec<BitcoinFundingInfo> = stdout
             .iter()
             .filter_map(|element| {
+                println!("element: {:?}", element);
                 if let Ok(funding_info) = BitcoinFundingInfo::from_str(element) {
                     if funding_info.swap_id == swap_id {
                         Some(funding_info)
