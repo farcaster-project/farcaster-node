@@ -273,7 +273,7 @@ async fn swap_parallel_execution() {
     let previous_swap_ids: Arc<Mutex<HashSet<SwapId>>> = Arc::new(Mutex::new(HashSet::new()));
 
     let mut res = Vec::new();
-    for i in 0..3 {
+    for i in 0..5 {
         let xmr_amount = format!("1.{} XMR", i);
         res.push(make_and_take_offer_parallel(
             data_dir_maker.clone(),
@@ -305,7 +305,7 @@ async fn swap_parallel_execution() {
         .collect();
 
     let mut res = Vec::new();
-    for i in 0..3 {
+    for i in 0..5 {
         let xmr_amount = format!("1.{} XMR", i);
         res.push(make_and_take_offer_parallel(
             data_dir_maker.clone(),
@@ -414,14 +414,26 @@ async fn run_refund_swap_race_cancel(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+    println!("waiting for AliceState(RefundSigs");
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(RefundSigs".to_string(),
+    )
+    .await;
+
     // run until BobState(CoreArb) is received
+    println!("waiting for BobState(CoreArb)");
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
         "BobState(CoreArb)".to_string(),
     )
     .await;
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until the funding infos are cleared again
+    println!("waiting for the bitcoin funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
@@ -536,6 +548,8 @@ async fn run_refund_swap_kill_alice_after_funding(
     alice_farcasterd: std::process::Child,
 ) {
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_alice_progress_args: Vec<String> =
+        progress_args(data_dir_alice.clone(), swap_id.clone());
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob, "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -556,14 +570,26 @@ async fn run_refund_swap_kill_alice_after_funding(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+    println!("waiting for AliceState(RefundSigs");
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(RefundSigs".to_string(),
+    )
+    .await;
+
     // run until BobState(CoreArb) is received
+    println!("waiting for BobState(CoreArb)");
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
         "BobState(CoreArb)".to_string(),
     )
     .await;
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until the funding infos are cleared again
+    println!("waiting for the bitcoin funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
@@ -657,14 +683,26 @@ async fn run_refund_swap_alice_does_not_fund(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+    println!("waiting for AliceState(RefundSigs");
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(RefundSigs".to_string(),
+    )
+    .await;
+
     // run until BobState(CoreArb) is received
+    println!("waiting for BobState(CoreArb)");
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
         "BobState(CoreArb)".to_string(),
     )
     .await;
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until the funding infos are cleared again
+    println!("waiting for the bitcoin funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
@@ -759,14 +797,26 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+    println!("waiting for AliceState(RefundSigs");
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(RefundSigs".to_string(),
+    )
+    .await;
+
     // run until BobState(CoreArb) is received
+    println!("waiting for BobState(CoreArb)");
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
         "BobState(CoreArb)".to_string(),
     )
     .await;
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until the funding infos are cleared again
+    println!("waiting for the bitcoin funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
@@ -982,6 +1032,15 @@ async fn run_swaps_parallel(
             .unwrap();
     }
 
+    for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
+        println!("waiting for AliceState(RefundSigs");
+        retry_until_finish_state_transition(
+            progress_args(data_dir_alice.clone(), swap_id.clone()),
+            "AliceState(RefundSigs".to_string(),
+        )
+        .await;
+    }
+
     // run until BobState(CoreArb) is received
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
         println!("waiting for BobState(CoreArb)");
@@ -992,7 +1051,17 @@ async fn run_swaps_parallel(
         .await;
     }
 
-    tokio::time::sleep(time::Duration::from_secs(40)).await;
+    // run until the funding infos are cleared again
+    for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
+        println!("waiting for the funding info to clear");
+        retry_until_funding_info_cleared(
+            swap_id.clone(),
+            needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string()),
+        )
+        .await;
+    }
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
@@ -1009,7 +1078,15 @@ async fn run_swaps_parallel(
         send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
     }
 
-    tokio::time::sleep(time::Duration::from_secs(30)).await;
+    // run until the funding infos are cleared again
+    for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
+        println!("waiting for the funding info to clear");
+        retry_until_funding_info_cleared(
+            swap_id.clone(),
+            needs_funding_args(data_dir_alice.clone(), "monero".to_string()),
+        )
+        .await;
+    }
 
     // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
@@ -1017,7 +1094,17 @@ async fn run_swaps_parallel(
         .await
         .unwrap();
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until BobState(BuySig) is received
+    for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
+        println!("waiting for BobState(BuySig)");
+        retry_until_finish_state_transition(
+            progress_args(data_dir_bob.clone(), swap_id.clone()),
+            "BobState(BuySig)".to_string(),
+        )
+        .await;
+    }
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to make the buy tx final
     bitcoin_rpc
@@ -1164,14 +1251,26 @@ async fn run_swap(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
+    println!("waiting for AliceState(RefundSigs");
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(RefundSigs".to_string(),
+    )
+    .await;
+
     // run until BobState(CoreArb) is received
+    println!("waiting for BobState(CoreArb)");
     retry_until_finish_state_transition(
         cli_bob_progress_args.clone(),
         "BobState(CoreArb)".to_string(),
     )
     .await;
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until the funding infos are cleared again
+    println!("waiting for the bitcoin funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
@@ -1183,7 +1282,9 @@ async fn run_swap(
         retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
     send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
 
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
+    // run until the funding infos are cleared again
+    println!("waiting for the monero funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
 
     // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
@@ -1191,7 +1292,14 @@ async fn run_swap(
         .await
         .unwrap();
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until BobState(BuySig) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(BuySig)".to_string(),
+    )
+    .await;
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to make the buy tx final
     bitcoin_rpc
@@ -1559,6 +1667,35 @@ async fn retry_until_bitcoin_funding_address(
 
         if !funding_infos.is_empty() {
             return (funding_infos[0].address.clone(), funding_infos[0].amount);
+        }
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
+    panic!("timeout before any bitcoin funding address could be retrieved");
+}
+
+async fn retry_until_funding_info_cleared(swap_id: SwapId, args: Vec<String>) {
+    for _ in 0..ALLOWED_RETRIES {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+
+        // get the btc funding address
+        let funding_infos: Vec<BitcoinFundingInfo> = stdout
+            .iter()
+            .filter_map(|element| {
+                println!("element: {:?}", element);
+                if let Ok(funding_info) = BitcoinFundingInfo::from_str(element) {
+                    if funding_info.swap_id == swap_id {
+                        Some(funding_info)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if funding_infos.is_empty() {
+            return;
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
