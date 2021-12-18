@@ -30,6 +30,7 @@ use electrum_client::{raw_client::RawClient, GetHistoryRes};
 use electrum_client::{Client, ElectrumApi};
 use farcaster_core::blockchain::Network;
 use farcaster_core::consensus;
+use futures::future::join_all;
 use internet2::zmqsocket::Connection;
 use internet2::zmqsocket::ZmqType;
 use internet2::PlainTranscoder;
@@ -231,136 +232,118 @@ impl ElectrumRpc {
         notifs
     }
 
-    async fn query_transactions(&self, state: Arc<Mutex<SyncerState>>, unseen: bool) {
-        let state_guard = state.lock().await;
-        let txids: Vec<Vec<u8>> = if unseen {
-            state_guard
-                .unseen_transactions
-                .iter()
-                .map(|task_id| state_guard.transactions[task_id].task.hash.clone())
-                .collect()
-        } else {
-            state_guard
-                .transactions
-                .iter()
-                .map(|(_, watched_tx)| watched_tx.task.hash.clone())
-                .collect()
-        };
-        drop(state_guard);
-        for tx_id in txids.iter() {
-            let tx_id = bitcoin::Txid::from_slice(tx_id).unwrap();
-            // Get the full transaction
-            match self.client.transaction_get(&tx_id) {
-                Ok(tx) => {
-                    debug!("Updated tx: {}", &tx_id);
-                    // Look for history of the first output (maybe last is generally less likely
-                    // to be used multiple times, so more efficient?!)
-                    let history = match self.client.script_get_history(&tx.output[0].script_pubkey)
-                    {
-                        Ok(history) => history,
-                        Err(err) => {
-                            trace!(
-                                "error getting script history, treating as not found: {}",
-                                err
-                            );
-                            let mut state_guard = state.lock().await;
-                            state_guard
-                                .change_transaction(
-                                    tx_id.to_vec(),
-                                    None,
-                                    Some(0),
-                                    bitcoin::consensus::serialize(&tx),
-                                )
-                                .await;
-                            drop(state_guard);
-                            continue;
-                        }
-                    };
+    async fn query_transaction(&self, state: Arc<Mutex<SyncerState>>, tx_id: Vec<u8>) {
+        let tx_id = bitcoin::Txid::from_slice(&tx_id).unwrap();
+        // Get the full transaction
+        match self.client.transaction_get(&tx_id) {
+            Ok(tx) => {
+                debug!("Updated tx: {}", &tx_id);
+                // Look for history of the first output (maybe last is generally less likely
+                // to be used multiple times, so more efficient?!)
+                let history = match self.client.script_get_history(&tx.output[0].script_pubkey) {
+                    Ok(history) => history,
+                    Err(err) => {
+                        trace!(
+                            "error getting script history, treating as not found: {}",
+                            err
+                        );
+                        let mut state_guard = state.lock().await;
+                        state_guard
+                            .change_transaction(
+                                tx_id.to_vec(),
+                                None,
+                                Some(0),
+                                bitcoin::consensus::serialize(&tx),
+                            )
+                            .await;
+                        drop(state_guard);
+                        return;
+                    }
+                };
 
-                    let entry = history.iter().find(|history_res| {
+                let entry = history.iter().find(|history_res| {
                         history_res.tx_hash == tx_id
                     }).expect("Should be found in the history if we successfully queried `transaction_get`");
 
-                    let (conf_in_block, blockhash) = match entry.height {
-                        // Transaction unconfirmed (0 or -1)
-                        i32::MIN..=0 => (None, None),
-                        // Transaction confirmed at this height
-                        1.. => {
-                            // SAFETY: safe cast as it strictly greater than 0
-                            let confirm_height = entry.height as usize;
-                            let block = match self.client.block_header(confirm_height) {
-                                Ok(block) => block,
-                                Err(err) => {
-                                    debug!(
-                                        "error getting block header, treating as not found: {}",
-                                        err
-                                    );
-                                    let mut state_guard = state.lock().await;
-                                    state_guard
-                                        .change_transaction(
-                                            tx_id.to_vec(),
-                                            None,
-                                            Some(0),
-                                            bitcoin::consensus::serialize(&tx),
-                                        )
-                                        .await;
-                                    drop(state_guard);
-                                    continue;
-                                }
-                            };
-                            let blockhash = Some(block.block_hash().to_vec());
-                            // SAFETY: safe cast u64 from usize
-                            (Some(confirm_height as u64), blockhash)
-                        }
-                    };
-
-                    let current_block_height = match self.client.block_headers_subscribe() {
+                let (conf_in_block, blockhash) = match entry.height {
+                    // Transaction unconfirmed (0 or -1)
+                    i32::MIN..=0 => (None, None),
+                    // Transaction confirmed at this height
+                    1.. => {
+                        // SAFETY: safe cast as it strictly greater than 0
+                        let confirm_height = entry.height as usize;
+                        let block = match self.client.block_header(confirm_height) {
+                            Ok(block) => block,
+                            Err(err) => {
+                                debug!(
+                                    "error getting block header, treating as not found: {}",
+                                    err
+                                );
+                                let mut state_guard = state.lock().await;
+                                state_guard
+                                    .change_transaction(
+                                        tx_id.to_vec(),
+                                        None,
+                                        Some(0),
+                                        bitcoin::consensus::serialize(&tx),
+                                    )
+                                    .await;
+                                drop(state_guard);
+                                return;
+                            }
+                        };
+                        let blockhash = Some(block.block_hash().to_vec());
                         // SAFETY: safe cast u64 from usize
-                        Ok(block) => block.height as u64,
-                        Err(err) => {
-                            debug!(
-                                "error getting top block header, treating as not found: {}",
-                                err
-                            );
-                            let mut state_guard = state.lock().await;
-                            state_guard
-                                .change_transaction(
-                                    tx_id.to_vec(),
-                                    None,
-                                    Some(0),
-                                    bitcoin::consensus::serialize(&tx),
-                                )
-                                .await;
-                            drop(state_guard);
-                            continue;
-                        }
-                    };
-                    let confs = match conf_in_block {
-                        // check against block reorgs
-                        Some(conf_in_block) if current_block_height < conf_in_block => 0,
-                        // SAFETY: confirmations should not overflow 32-bits
-                        Some(conf_in_block) => (current_block_height - conf_in_block) as u32 + 1,
-                        None => 0,
-                    };
-                    let mut state_guard = state.lock().await;
-                    state_guard
-                        .change_transaction(
-                            tx.txid().to_vec(),
-                            blockhash,
-                            Some(confs),
-                            bitcoin::consensus::serialize(&tx),
-                        )
-                        .await;
-                    drop(state_guard);
-                }
-                Err(err) => {
-                    trace!("error getting transaction, treating as not found: {}", err);
-                    let mut state_guard = state.lock().await;
-                    state_guard
-                        .change_transaction(tx_id.to_vec(), None, None, vec![])
-                        .await;
-                    drop(state_guard);
-                }
+                        (Some(confirm_height as u64), blockhash)
+                    }
+                };
+
+                let current_block_height = match self.client.block_headers_subscribe() {
+                    // SAFETY: safe cast u64 from usize
+                    Ok(block) => block.height as u64,
+                    Err(err) => {
+                        debug!(
+                            "error getting top block header, treating as not found: {}",
+                            err
+                        );
+                        let mut state_guard = state.lock().await;
+                        state_guard
+                            .change_transaction(
+                                tx_id.to_vec(),
+                                None,
+                                Some(0),
+                                bitcoin::consensus::serialize(&tx),
+                            )
+                            .await;
+                        drop(state_guard);
+                        return;
+                    }
+                };
+                let confs = match conf_in_block {
+                    // check against block reorgs
+                    Some(conf_in_block) if current_block_height < conf_in_block => 0,
+                    // SAFETY: confirmations should not overflow 32-bits
+                    Some(conf_in_block) => (current_block_height - conf_in_block) as u32 + 1,
+                    None => 0,
+                };
+                let mut state_guard = state.lock().await;
+                state_guard
+                    .change_transaction(
+                        tx.txid().to_vec(),
+                        blockhash,
+                        Some(confs),
+                        bitcoin::consensus::serialize(&tx),
+                    )
+                    .await;
+                drop(state_guard);
+            }
+            Err(err) => {
+                trace!("error getting transaction, treating as not found: {}", err);
+                let mut state_guard = state.lock().await;
+                state_guard
+                    .change_transaction(tx_id.to_vec(), None, None, vec![])
+                    .await;
+                drop(state_guard);
             }
         }
     }
@@ -715,7 +698,18 @@ fn height_polling(
 
                 // if the blocks changed, query transactions
                 if block_change {
-                    rpc.query_transactions(Arc::clone(&state), false).await;
+                    let state_guard = state.lock().await;
+                    let txids: Vec<Vec<u8>> = state_guard
+                        .transactions
+                        .iter()
+                        .map(|(_, watched_tx)| watched_tx.task.hash.clone())
+                        .collect();
+                    drop(state_guard);
+                    let mut futures = vec![];
+                    for txid in txids.iter() {
+                        futures.push(rpc.query_transaction(Arc::clone(&state), txid.clone()));
+                    }
+                    join_all(futures).await;
                 }
 
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -747,7 +741,20 @@ fn unseen_transaction_polling(
                 }
             };
             loop {
-                rpc.query_transactions(Arc::clone(&state), true).await;
+                let state_guard = state.lock().await;
+                let txids: Vec<Vec<u8>> = state_guard
+                    .unseen_transactions
+                    .iter()
+                    .map(|task_id| state_guard.transactions[task_id].task.hash.clone())
+                    .collect();
+
+                drop(state_guard);
+                let mut futures = vec![];
+                for txid in txids.iter() {
+                    futures.push(rpc.query_transaction(Arc::clone(&state), txid.clone()));
+                }
+                join_all(futures).await;
+
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             }
         }
