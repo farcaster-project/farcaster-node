@@ -259,7 +259,7 @@ struct SwapParams {
 }
 
 #[tokio::test]
-#[timeout(600000)]
+#[timeout(800000)]
 #[ignore]
 async fn swap_parallel_execution() {
     let execution_mutex = Arc::new(Mutex::new(0));
