@@ -36,7 +36,7 @@ use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 pub fn run(
     config: ServiceConfig,
     connection: PeerConnection,
-    id: NodeAddr,
+    internal_id: NodeAddr,
     local_id: PublicKey,
     remote_id: Option<PublicKey>,
     local_socket: Option<InetSocketAddr>,
@@ -52,11 +52,11 @@ pub fn run(
     tx.connect("inproc://bridge")?;
     rx.bind("inproc://bridge")?;
 
-    let identity = ServiceId::Peer(id);
+    let internal_identity = ServiceId::Peer(internal_id);
 
     debug!("Starting thread listening for messages from the remote peer");
     let bridge_handler = ListenerRuntime {
-        identity: identity.clone(),
+        internal_identity: internal_identity.clone(),
         bridge: esb::Controller::with(
             map! {
                 ServiceBus::Bridge => esb::BusConfig {
@@ -75,9 +75,12 @@ pub fn run(
     spawn(move || listener.run_or_panic("peerd-listener"));
     // TODO: Use the handle returned by spawn to track the child process
 
-    debug!("Starting main service runtime");
+    debug!(
+        "Starting main service runtime with identity: {}",
+        internal_identity
+    );
     let runtime = Runtime {
-        identity,
+        identity: internal_identity,
         local_id,
         remote_id,
         local_socket,
@@ -126,7 +129,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 }
 
 pub struct ListenerRuntime {
-    identity: ServiceId,
+    internal_identity: ServiceId,
     bridge: esb::Controller<ServiceBus, Request, BridgeHandler>,
 }
 
@@ -139,7 +142,7 @@ impl ListenerRuntime {
         debug!("Forwarding FWP message over BRIDGE interface to the runtime");
         self.bridge.send_to(
             ServiceBus::Bridge,
-            self.identity.clone(),
+            self.internal_identity.clone(),
             Request::Protocol((&*req).clone()),
         )?;
         Ok(())
