@@ -111,6 +111,9 @@ pub enum Msg {
     #[api(type = 33)]
     #[display("ping_peer")]
     PingPeer,
+    #[api(type = 34)]
+    #[display("error_shutdown")]
+    PeerdShutdown,
 }
 
 impl Msg {
@@ -137,7 +140,7 @@ impl Msg {
             Msg::BuyProcedureSignature(protocol_message::BuyProcedureSignature {
                 swap_id, ..
             }) => *swap_id,
-            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
+            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer | Msg::PeerdShutdown => {
                 unreachable!("Ping and Pong does not containt swapid")
             }
         }
