@@ -11,7 +11,9 @@ use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::syncerd::types::{AddressAddendum, Boolean, Task};
 use crate::syncerd::BroadcastTransaction;
 use crate::syncerd::BtcAddressAddendum;
+use crate::syncerd::EstimateFee;
 use crate::syncerd::Event;
+use crate::syncerd::FeeEstimation;
 use crate::syncerd::GetTx;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
@@ -439,6 +441,7 @@ async fn run_syncerd_task_receiver(
     state: Arc<Mutex<SyncerState>>,
     transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
     transaction_get_tx: TokioSender<(GetTx, ServiceId)>,
+    estimate_fee_tx: TokioSender<(EstimateFee, ServiceId)>,
 ) {
     let task_receiver = Arc::new(Mutex::new(receive_task_channel));
     tokio::spawn(async move {
@@ -455,6 +458,12 @@ async fn run_syncerd_task_receiver(
                                 .send((task, syncerd_task.source))
                                 .await
                                 .expect("failed on transaction_get sender");
+                        }
+                        Task::EstimateFee(task) => {
+                            estimate_fee_tx
+                                .send((task, syncerd_task.source))
+                                .await
+                                .expect("failed on estimate fee sender");
                         }
                         Task::SweepAddress(_) => {
                             error!("sweep address not implemented for bitcoin syncer");
@@ -734,6 +743,54 @@ fn transaction_broadcasting(
     })
 }
 
+fn estimate_fee(
+    electrum_server: String,
+    mut estimate_fee_rx: TokioReceiver<(EstimateFee, ServiceId)>,
+    tx_event: TokioSender<SyncerdBridgeEvent>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        while let Some((estimate_fee_task, source)) = estimate_fee_rx.recv().await {
+            match Client::new(&electrum_server).and_then(|estimate_fee_client| {
+                estimate_fee_client.estimate_fee(estimate_fee_task.blocks_until_confirmation)
+            }) {
+                Ok(fee) => {
+                    let fee = format!("{:.8} BTC", fee);
+                    let amount =
+                        if let Ok(amount) = bitcoin::Amount::from_str_with_denomination(&fee) {
+                            Some(amount)
+                        } else {
+                            None
+                        };
+                    tx_event
+                        .send(SyncerdBridgeEvent {
+                            event: Event::FeeEstimation(FeeEstimation {
+                                id: estimate_fee_task.id,
+                                btc_per_kbyte: amount,
+                            }),
+                            source,
+                        })
+                        .await
+                        .expect("error sending fee estimation event");
+                    debug!("Successfully sent fee estimation");
+                }
+                Err(e) => {
+                    println!("failed to retrieve fee estimation: {}", e.err());
+                    tx_event
+                        .send(SyncerdBridgeEvent {
+                            event: Event::FeeEstimation(FeeEstimation {
+                                id: estimate_fee_task.id,
+                                btc_per_kbyte: None,
+                            }),
+                            source,
+                        })
+                        .await
+                        .expect("error sending fee estimation event");
+                }
+            }
+        }
+    })
+}
+
 fn transaction_fetcher(
     electrum_server: String,
     mut transaction_get_rx: TokioReceiver<(GetTx, ServiceId)>,
@@ -811,6 +868,10 @@ impl Synclet for BitcoinSyncer {
                         TokioSender<(GetTx, ServiceId)>,
                         TokioReceiver<(GetTx, ServiceId)>,
                     ) = tokio::sync::mpsc::channel(200);
+                    let (estimate_fee_tx, estimate_fee_rx): (
+                        TokioSender<(EstimateFee, ServiceId)>,
+                        TokioReceiver<(EstimateFee, ServiceId)>,
+                    ) = tokio::sync::mpsc::channel(200);
                     let state = Arc::new(Mutex::new(SyncerState::new(
                         event_tx.clone(),
                         Coin::Bitcoin,
@@ -821,6 +882,7 @@ impl Synclet for BitcoinSyncer {
                         Arc::clone(&state),
                         transaction_broadcast_tx,
                         transaction_get_tx,
+                        estimate_fee_tx,
                     )
                     .await;
                     run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
@@ -843,8 +905,14 @@ impl Synclet for BitcoinSyncer {
                         event_tx.clone(),
                     );
 
-                    let transaction_get_handle =
-                        transaction_fetcher(electrum_server, transaction_get_rx, event_tx.clone());
+                    let transaction_get_handle = transaction_fetcher(
+                        electrum_server.clone(),
+                        transaction_get_rx,
+                        event_tx.clone(),
+                    );
+
+                    let estimate_fee_handle =
+                        estimate_fee(electrum_server, estimate_fee_rx, event_tx.clone());
 
                     let res = tokio::try_join!(
                         address_handle,
@@ -852,6 +920,7 @@ impl Synclet for BitcoinSyncer {
                         unseen_transaction_handle,
                         transaction_broadcast_handle,
                         transaction_get_handle,
+                        estimate_fee_handle,
                     );
                     debug!("exiting bitcoin synclet run routine with: {:?}", res);
                 });

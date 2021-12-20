@@ -2413,6 +2413,9 @@ impl Runtime {
                     Event::TransactionRetrieved(event) => {
                         debug!("{}", event)
                     }
+                    Event::FeeEstimation(event) => {
+                        debug!("{}", event)
+                    }
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) if self.state.reveal() => {

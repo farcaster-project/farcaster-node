@@ -204,6 +204,13 @@ pub struct GetTx {
     pub hash: Vec<u8>,
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct EstimateFee {
+    pub id: TaskId,
+    pub blocks_until_confirmation: usize,
+}
+
 /// Tasks created by the daemon and handle by syncers to process a blockchain
 /// and generate [`Event`] back to the syncer.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -216,6 +223,7 @@ pub enum Task {
     BroadcastTransaction(BroadcastTransaction),
     SweepAddress(SweepAddress),
     GetTx(GetTx),
+    EstimateFee(EstimateFee),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -277,6 +285,13 @@ pub struct TransactionRetrieved {
     pub tx: Option<bitcoin::Transaction>,
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct FeeEstimation {
+    pub id: TaskId,
+    pub btc_per_kbyte: Option<bitcoin::Amount>,
+}
+
 /// Events returned by syncers to the daemon to update the blockchain states.
 /// Events are identified with a unique 32-bits integer that match the [`Task`]
 /// id.
@@ -293,4 +308,5 @@ pub enum Event {
     /// Carries the status for the task abortion.
     TaskAborted(TaskAborted),
     TransactionRetrieved(TransactionRetrieved),
+    FeeEstimation(FeeEstimation),
 }
