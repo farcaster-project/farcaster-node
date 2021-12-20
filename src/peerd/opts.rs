@@ -105,6 +105,7 @@ pub struct PeerKeyOpts {
     pub peer_secret_key: String,
 }
 
+use bitcoin::secp256k1::rand::RngCore;
 use bitcoin::secp256k1::{rand::thread_rng, SecretKey};
 use std::str::FromStr;
 
@@ -117,12 +118,23 @@ pub struct PeerSecrets {
 
 impl PeerKeyOpts {
     pub fn local_node(&self) -> LocalNode {
-        self.node_secrets().local_node
+        self.node_secrets(Some(
+            SecretKey::from_str(&self.peer_secret_key).expect("peer secret key"),
+        ))
+        .local_node
     }
 
-    pub fn node_secrets(&self) -> PeerSecrets {
+    pub fn internal_node(&self) -> LocalNode {
+        self.node_secrets(None).local_node
+    }
+
+    pub fn node_secrets(&self, opt_secret_key: Option<SecretKey>) -> PeerSecrets {
         let mut rng = thread_rng();
-        let secret_key = SecretKey::from_str(&self.peer_secret_key).expect("peer secret key");
+        rng.next_u64();
+        let secret_key = match opt_secret_key {
+            Some(secret_key) => secret_key,
+            None => SecretKey::new(&mut rng),
+        };
         let ephemeral_secret_key = SecretKey::new(&mut rng);
         let local_node = LocalNode::from_keys(secret_key, ephemeral_secret_key);
         PeerSecrets { local_node }

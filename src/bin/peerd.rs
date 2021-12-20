@@ -184,10 +184,10 @@ fn main() {
         local_id.bright_yellow_bold()
     );
 
-    let peer_socket = PeerSocket::from(opts);
+    let peer_socket = PeerSocket::from(opts.clone());
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
-    let id: NodeAddr;
+    let internal_id: NodeAddr;
     let mut local_socket: Option<InetSocketAddr> = None;
     let mut remote_id: Option<PublicKey> = None;
     let mut remote_socket: InetSocketAddr;
@@ -198,10 +198,6 @@ fn main() {
 
             connect = false;
             local_socket = Some(inet_addr);
-            id = NodeAddr::Remote(RemoteNodeAddr {
-                node_id: local_node.node_id(),
-                remote_addr: RemoteSocketAddr::Ftcp(inet_addr),
-            });
 
             debug!("Binding TCP socket {}", inet_addr);
             let listener = TcpListener::bind(
@@ -231,10 +227,17 @@ fn main() {
                     let session = session::Raw::with_ftcp_unencrypted(stream, inet_addr)
                         .expect("Unable to establish session with the remote peer");
 
-                    debug!("Session successfully established");
+                    internal_id = NodeAddr::Remote(RemoteNodeAddr {
+                        node_id: opts.peer_key_opts.internal_node().node_id(),
+                        remote_addr: RemoteSocketAddr::Ftcp(inet_addr),
+                    });
+                    debug!(
+                        "Session successfully established with new unique id: {}",
+                        internal_id
+                    );
                     break PeerConnection::with(session);
                 }
-                trace!("Child forked; returning into main listener event loop");
+                debug!("Child forked; returning into main listener event loop");
                 continue;
             }
         }
@@ -242,11 +245,11 @@ fn main() {
             debug!("Running in CONNECT mode");
 
             connect = true;
-            id = NodeAddr::Remote(remote_node_addr.clone());
+            internal_id = NodeAddr::Remote(remote_node_addr.clone());
             remote_id = Some(remote_node_addr.node_id);
             remote_socket = remote_node_addr.remote_addr.into();
 
-            info!("Connecting to {}", &remote_node_addr.addr());
+            debug!("Connecting to {}", &remote_node_addr.addr());
             PeerConnection::connect(remote_node_addr, &local_node)
                 .expect("Unable to connect to the remote peer")
         }
@@ -257,7 +260,7 @@ fn main() {
     peerd::run(
         service_config,
         connection,
-        id,
+        internal_id,
         local_id,
         remote_id,
         local_socket,

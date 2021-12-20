@@ -114,6 +114,7 @@ pub fn run(
         acc_addrs: none!(),
         public_offers: none!(),
         node_ids: none!(),
+        peerd_ids: none!(),
         wallet_token,
         pending_requests: none!(),
         syncer_services: none!(),
@@ -144,6 +145,7 @@ pub struct Runtime {
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
     consumed_offers: HashMap<OfferId, SwapId>,
     node_ids: HashMap<OfferId, PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
+    peerd_ids: HashMap<OfferId, ServiceId>,
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncer_services: HashMap<(Coin, Network), ServiceId>,
@@ -297,6 +299,7 @@ impl Runtime {
         let identity = self.identity();
         if let Some(offerid) = &offerid {
             if self.listens.contains_key(offerid) && self.node_ids.contains_key(offerid) {
+                self.peerd_ids.remove(offerid);
                 let node_id = self.node_ids.remove(offerid).unwrap();
                 let remote_addr = self.listens.remove(offerid).unwrap();
                 // nr of offers using that peerd
@@ -410,7 +413,7 @@ impl Runtime {
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(
-                        "Unknow offer {}, you are not the maker of that offer, ignoring it",
+                        "Unknown (or already taken) offer {}, you are not the maker of that offer (or you already had a taker for it), ignoring it",
                         &public_offer
                     );
                 } else {
@@ -442,6 +445,9 @@ impl Runtime {
                     } else {
                         error!("missing acc_addr")
                     }
+                    info!("passing request to walletd from {}", source);
+                    self.peerd_ids
+                        .insert(public_offer.offer.id(), source.clone());
 
                     senders.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?;
                 }
@@ -663,6 +669,7 @@ impl Runtime {
                 let offerid = &public_offer.offer.id();
                 let listener = self.listens.get(&offerid);
                 let node_id = self.node_ids.get(&offerid);
+                let peerd_id = self.peerd_ids.get(&offerid);
                 let (node_id, peer_address) = match local_trade_role {
                     // Maker has only one listener, MAYBE for more listeners self.listens may be a
                     // HashMap<RemoteSocketAddr, Vec<OfferId>>
@@ -691,10 +698,14 @@ impl Runtime {
                         node_id,
                         remote_addr: peer_address,
                     };
-                    let peer = daemon_service
-                        .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or(internet2::presentation::Error::InvalidEndpoint)?
-                        .into();
+                    let peer: ServiceId = if peerd_id.is_none() {
+                        daemon_service
+                            .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
+                            .ok_or(internet2::presentation::Error::InvalidEndpoint)?
+                            .into()
+                    } else {
+                        peerd_id.unwrap().clone()
+                    };
 
                     self.consumed_offers
                         .insert(public_offer.offer.id(), swap_id);
