@@ -413,7 +413,7 @@ impl Runtime {
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(
-                        "Unknow offer {}, you are not the maker of that offer, ignoring it",
+                        "Unknown (or already taken) offer {}, you are not the maker of that offer (or you already had a taker for it), ignoring it",
                         &public_offer
                     );
                 } else {
