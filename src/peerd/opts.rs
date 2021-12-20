@@ -130,12 +130,10 @@ impl PeerKeyOpts {
 
     pub fn node_secrets(&self, opt_secret_key: Option<SecretKey>) -> PeerSecrets {
         let mut rng = thread_rng();
+        rng.next_u64();
         let secret_key = match opt_secret_key {
             Some(secret_key) => secret_key,
-            None => {
-                rng.next_u64();
-                SecretKey::new(&mut rng)
-            }
+            None => SecretKey::new(&mut rng),
         };
         let ephemeral_secret_key = SecretKey::new(&mut rng);
         let local_node = LocalNode::from_keys(secret_key, ephemeral_secret_key);
