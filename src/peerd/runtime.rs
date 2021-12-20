@@ -169,6 +169,19 @@ impl peer::Handler<Msg> for ListenerRuntime {
                 self.send_over_bridge(Arc::new(Msg::PingPeer))?;
                 Ok(())
             }
+            Error::Peer(presentation::Error::Transport(transport::Error::SocketIo(
+                std::io::ErrorKind::UnexpectedEof,
+            ))) => {
+                error!(
+                    "The remote peer has hung up, notifying that peerd has halted: {}",
+                    err
+                );
+                self.send_over_bridge(Arc::new(Msg::PeerdShutdown))?;
+                // park this thread, the process exit is supposed to be handled by the parent
+                //  the socket will continue spamming this error until peerd is shutdown, this ensures it is only handled once
+                std::thread::park();
+                Ok(())
+            }
             // for all other error types, indicating internal errors, we
             // propagate error to the upper level
             _ => {
@@ -372,6 +385,12 @@ impl Runtime {
                     _ => trace!("Got pong reply, exiting pong await mode"),
                 }
                 self.awaited_pong = None;
+            }
+
+            Request::Protocol(Msg::PeerdShutdown) => {
+                warn!("Exiting peerd");
+                // handle further side effects here, e.g. sending a message to farcasterd to cleanup the peer connection, before exiting.
+                std::process::exit(0);
             }
 
             // swap initiation message
