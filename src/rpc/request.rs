@@ -141,7 +141,7 @@ impl Msg {
                 swap_id, ..
             }) => *swap_id,
             Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer | Msg::PeerdShutdown => {
-                unreachable!("Ping and Pong does not containt swapid")
+                unreachable!("Ping and Pong does not contain swapid")
             }
         }
     }
