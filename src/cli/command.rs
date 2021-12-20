@@ -182,7 +182,6 @@ impl Exec for Command {
                     );
                     return Ok(());
                 }
-                // println!("{:#?}", &public_offer);
                 let PublicOffer {
                     version: _,
                     offer,
@@ -196,8 +195,18 @@ impl Exec for Command {
                     println!(
                         "\nWant to buy {}?\n\nCarefully validate offer!\n",
                         match taker_role {
-                            SwapRole::Alice => format!("{} for {}", arb_amount, acc_amount),
-                            SwapRole::Bob => format!("{} for {}", acc_amount, arb_amount),
+                            SwapRole::Alice => format!(
+                                "{} for {} at {} BTC/XMR",
+                                arb_amount,
+                                acc_amount,
+                                arb_amount.as_btc() / acc_amount.as_xmr()
+                            ),
+                            SwapRole::Bob => format!(
+                                "{} for {} at {} XMR/BTC",
+                                acc_amount,
+                                arb_amount,
+                                acc_amount.as_xmr() / arb_amount.as_btc()
+                            ),
                         }
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
