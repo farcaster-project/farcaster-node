@@ -166,7 +166,7 @@ impl MoneroRpc {
             .await
         {
             Err(err) => {
-                warn!("wallet doesn't exist, generating a new wallet: {:?}", err);
+                debug!("wallet doesn't exist, generating a new wallet: {:?}", err);
                 wallet
                     .generate_from_keys(GenerateFromKeysArgs {
                         restore_height: Some(address_addendum.from_height),
@@ -248,7 +248,7 @@ async fn sweep_address(
         .open_wallet(wallet_filename.clone(), Some(password.clone()))
         .await
     {
-        warn!(
+        debug!(
             "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
             err,
         );
