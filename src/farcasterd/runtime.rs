@@ -871,11 +871,8 @@ impl Runtime {
                         // no need for the keys, because peerd already knows them
                         self.listens.insert(offer.id(), addr);
                         self.node_ids.insert(offer.id(), pk);
-                        let msg = format!(
-                            "Already listening on {} won't work with multiple distinct peers",
-                            &bind_addr
-                        );
-                        warn!("{}", &msg);
+                        let msg = format!("Already listening on {}", &bind_addr);
+                        debug!("{}", &msg);
                         Ok(msg)
                     }
                     _ => unreachable!(),
