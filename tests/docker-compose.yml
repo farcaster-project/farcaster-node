@@ -59,3 +59,12 @@ services:
             - "monerod"
         ports:
             - 18085:18083
+    monero-lws-daemon:
+        image: monero-lws:latest
+        environment:
+            MONEROD_ADDRESS: monerod:18081
+        depends_on:
+            - "monerod"
+        ports:
+            - 38084:38084
+
