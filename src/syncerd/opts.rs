@@ -61,6 +61,10 @@ pub struct Opts {
     /// Monero rpc wallet to use for Monero syncers
     #[clap(long)]
     pub monero_rpc_wallet: Option<String>,
+
+    /// Monero lws to use for Monero syncers
+    #[clap(long)]
+    pub monero_lws: Option<String>,
 }
 
 #[derive(Clap, Display, Copy, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]

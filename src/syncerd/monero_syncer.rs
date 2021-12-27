@@ -144,6 +144,36 @@ impl MoneroRpc {
         }
     }
 
+    async fn check_address_lws(
+        &mut self,
+        address_addndum: XmrAddressAddendum,
+        network: monero::Network,
+        monero_lws_url: String,
+    ) -> Result<AddressNotif, Error> {
+        let keypair = monero::ViewPair {
+            spend: address_addndum.spend_key,
+            view: address_addndum.view_key,
+        };
+        let address = monero::Address::from_viewpair(network, &keypair);
+        let daemon_client = monero_lws::RpcClient::new(monero_lws_url);
+        let daemon = daemon_client.lws();
+        daemon
+            .login(address, keypair.view, true, true)
+            .await
+            .unwrap();
+        let mut txs = daemon.get_address_txs(address, keypair.view).await.unwrap();
+        let address_txs: Vec<AddressTx> = txs
+            .transactions
+            .drain(..)
+            .map(|tx| AddressTx {
+                our_amount: tx.total_received.parse::<u64>().unwrap(),
+                tx_id: tx.hash.0.to_bytes().into(),
+                tx: vec![],
+            })
+            .collect();
+        Ok(AddressNotif { txs: address_txs })
+    }
+
     async fn check_address(
         &mut self,
         address_addendum: XmrAddressAddendum,
@@ -432,16 +462,31 @@ fn address_polling(
                     AddressAddendum::Monero(address) => address,
                     _ => panic!("should never get an invalid address"),
                 };
-                // we cannot parallelize polling here, since we have to open and close the
-                // wallet
-                let address_transactions = match rpc
-                    .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
-                    .await
+                let address_transactions = if let Some(monero_lws) =
+                    syncer_servers.monero_lws.clone()
                 {
-                    Ok(address_transactions) => Some(address_transactions),
-                    Err(err) => {
-                        error!("error polling addresses: {:?}", err);
-                        None
+                    match rpc
+                        .check_address_lws(address_addendum.clone(), network, monero_lws)
+                        .await
+                    {
+                        Ok(address_transactions) => Some(address_transactions),
+                        Err(err) => {
+                            error!("error polling addresses: {:?}", err);
+                            None
+                        }
+                    }
+                } else {
+                    // we cannot parallelize polling here, since we have to open and close the
+                    // wallet
+                    match rpc
+                        .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
+                        .await
+                    {
+                        Ok(address_transactions) => Some(address_transactions),
+                        Err(err) => {
+                            error!("error polling addresses: {:?}", err);
+                            None
+                        }
                     }
                 };
                 if let Some(address_transactions) = address_transactions {
@@ -619,6 +664,9 @@ pub struct MoneroSyncerServers {
 
     /// Monero rpc wallet to use
     pub monero_rpc_wallet: String,
+
+    /// Monero lws to use
+    pub monero_lws: Option<String>,
 }
 
 impl Synclet for MoneroSyncer {
@@ -640,6 +688,7 @@ impl Synclet for MoneroSyncer {
                 let syncer_servers = MoneroSyncerServers {
                     monero_daemon: daemon.clone(),
                     monero_rpc_wallet: rpc_wallet.clone(),
+                    monero_lws: opts.monero_lws.clone(),
                 };
 
                 let _handle = std::thread::spawn(move || {

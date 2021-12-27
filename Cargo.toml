@@ -73,6 +73,7 @@ log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug
 monero = "0.16"
 monero-rpc = { git = "https://github.com/monero-ecosystem/monero-rpc-rs", branch = "master" }
 # monero-rpc = { path = "../monero-rpc-rs/" }
+monero-lws = { path = "../monero-lws-rs/"}
 nix = { version = "0.19", optional = true }
 # Misc
 paste = "1.0"
