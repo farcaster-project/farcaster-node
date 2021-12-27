@@ -755,12 +755,7 @@ fn estimate_fee(
             }) {
                 Ok(fee) => {
                     let fee = format!("{:.8} BTC", fee);
-                    let amount =
-                        if let Ok(amount) = bitcoin::Amount::from_str_with_denomination(&fee) {
-                            Some(amount)
-                        } else {
-                            None
-                        };
+                    let amount = bitcoin::Amount::from_str_with_denomination(&fee).ok();
                     tx_event
                         .send(SyncerdBridgeEvent {
                             event: Event::FeeEstimation(FeeEstimation {
