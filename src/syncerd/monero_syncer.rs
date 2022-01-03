@@ -146,22 +146,25 @@ impl MoneroRpc {
 
     async fn check_address_lws(
         &mut self,
-        address_addndum: XmrAddressAddendum,
+        address_addendum: XmrAddressAddendum,
         network: monero::Network,
         monero_lws_url: String,
     ) -> Result<AddressNotif, Error> {
         let keypair = monero::ViewPair {
-            spend: address_addndum.spend_key,
-            view: address_addndum.view_key,
+            spend: address_addendum.spend_key,
+            view: address_addendum.view_key,
         };
         let address = monero::Address::from_viewpair(network, &keypair);
-        let daemon_client = monero_lws::RpcClient::new(monero_lws_url);
-        let daemon = daemon_client.lws();
-        daemon
-            .login(address, keypair.view, true, true)
+        let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
+        daemon_client
+            .login(address, keypair.view, false, false)
             .await
             .unwrap();
-        let mut txs = daemon.get_address_txs(address, keypair.view).await.unwrap();
+        let mut txs = daemon_client
+            .get_address_txs(address, keypair.view)
+            .await
+            .unwrap();
+        println!("transactions: {:?}", txs);
         let address_txs: Vec<AddressTx> = txs
             .transactions
             .drain(..)
@@ -445,6 +448,23 @@ async fn run_syncerd_task_receiver(
     });
 }
 
+async fn subscribe_address_lws(
+    address_addendum: XmrAddressAddendum,
+    network: monero::Network,
+    monero_lws_url: String,
+) -> Result<(), Error> {
+    let keypair = monero::ViewPair {
+        spend: address_addendum.spend_key,
+        view: address_addendum.view_key,
+    };
+    let address = monero::Address::from_viewpair(network, &keypair);
+    let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
+    daemon_client
+        .login(address, keypair.view, true, true)
+        .await?;
+    Ok(())
+}
+
 fn address_polling(
     state: Arc<Mutex<SyncerState>>,
     syncer_servers: MoneroSyncerServers,
@@ -457,7 +477,7 @@ fn address_polling(
             let state_guard = state.lock().await;
             let mut addresses = state_guard.addresses.clone();
             drop(state_guard);
-            for (_, watched_address) in addresses.drain() {
+            for (id, watched_address) in addresses.drain() {
                 let address_addendum = match watched_address.task.addendum {
                     AddressAddendum::Monero(address) => address,
                     _ => panic!("should never get an invalid address"),
@@ -465,6 +485,26 @@ fn address_polling(
                 let address_transactions = if let Some(monero_lws) =
                     syncer_servers.monero_lws.clone()
                 {
+                    if !watched_address.subscribed {
+                        let success = match subscribe_address_lws(
+                            address_addendum.clone(),
+                            network,
+                            monero_lws.clone(),
+                        )
+                        .await
+                        {
+                            Ok(_) => true,
+                            Err(err) => {
+                                error!("error subscribing address to monero lws: {:?}", err);
+                                false
+                            }
+                        };
+                        if success {
+                            let mut state_guard = state.lock().await;
+                            state_guard.address_subscribed(id);
+                            drop(state_guard);
+                        }
+                    }
                     match rpc
                         .check_address_lws(address_addendum.clone(), network, monero_lws)
                         .await

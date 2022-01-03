@@ -61,6 +61,7 @@ pub struct WatchedTransaction {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct AddressTransactions {
     pub task: WatchAddress,
+    pub subscribed: bool,
     known_txs: HashSet<AddressTx>,
 }
 
@@ -288,10 +289,18 @@ impl SyncerState {
         self.tasks_sources.insert(self.task_count.into(), source);
         let address_txs = AddressTransactions {
             task,
+            subscribed: false,
             known_txs: none!(),
         };
         self.addresses.insert(self.task_count.into(), address_txs);
         Ok(())
+    }
+
+    pub fn address_subscribed(&mut self, id: InternalId) {
+        let address = self.addresses.get_mut(&id);
+        if let Some(address) = address {
+            address.subscribed = true;
+        }
     }
 
     pub fn watch_transaction(&mut self, task: WatchTransaction, source: ServiceId) {
@@ -457,6 +466,7 @@ impl SyncerState {
                         id,
                         AddressTransactions {
                             task: addr.task,
+                            subscribed: addr.subscribed,
                             known_txs: txs.clone(),
                         },
                     )

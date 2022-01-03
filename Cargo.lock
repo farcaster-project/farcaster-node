@@ -1754,6 +1754,7 @@ dependencies = [
 [[package]]
 name = "monero-lws"
 version = "0.1.0"
+source = "git+https://github.com/TheCharlatan/monero-lws-rs?branch=main#8e11482b10b7d1e3c153330f848be59bcca0bdf4"
 dependencies = [
  "anyhow",
  "fixed-hash",
