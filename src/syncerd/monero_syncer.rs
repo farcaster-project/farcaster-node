@@ -462,6 +462,9 @@ async fn subscribe_address_lws(
     daemon_client
         .login(address, keypair.view, true, true)
         .await?;
+    daemon_client
+        .import_request(address, keypair.view, Some(address_addendum.from_height))
+        .await?;
     Ok(())
 }
 
