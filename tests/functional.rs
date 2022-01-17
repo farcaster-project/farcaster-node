@@ -33,8 +33,8 @@ use std::str::FromStr;
 
 use farcaster_core::blockchain::Network;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, GetTx, Task,
-    WatchAddress, WatchHeight, WatchTransaction,
+    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, EstimateFee, Event,
+    GetTx, Task, WatchAddress, WatchHeight, WatchTransaction,
 };
 
 const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
@@ -123,6 +123,39 @@ fn assert_transaction_received(request: Request, expected_txid: bitcoin::Txid) {
                 panic!("expected height changed event");
             }
         },
+        _ => {
+            panic!("expected syncerd bridge event");
+        }
+    }
+}
+
+#[test]
+#[timeout(300000)]
+#[ignore]
+fn bitcoin_syncer_estimate_fee_test() {
+    bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(true, "estimatefee");
+    let task = SyncerdTask {
+        task: Task::EstimateFee(EstimateFee {
+            id: TaskId(1),
+            blocks_until_confirmation: 1,
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    let message = rx_event.recv_multipart(0).unwrap();
+    let request = get_request_from_message(message);
+    assert_fee_estimation_received(request)
+}
+
+fn assert_fee_estimation_received(request: Request) {
+    match request {
+        Request::SyncerdBridgeEvent(farcaster_node::rpc::request::SyncerdBridgeEvent {
+            event: Event::FeeEstimation(fee_estimation),
+            ..
+        }) => {
+            assert!(fee_estimation.btc_per_kbyte.is_some());
+        }
         _ => {
             panic!("expected syncerd bridge event");
         }
