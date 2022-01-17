@@ -396,19 +396,22 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        match &request {
-            Request::Hello => {
+        match (&request, &source) {
+            (Request::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
-            Request::Protocol(Msg::TakerCommit(request::TakeCommit {
-                commit: _,
-                public_offer,
-                swap_id,
-            })) => {
+            (
+                Request::Protocol(Msg::TakerCommit(request::TakeCommit {
+                    commit: _,
+                    public_offer,
+                    swap_id,
+                })),
+                ServiceId::Peer(_),
+            ) => {
                 let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(public_offer)?;
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
