@@ -156,14 +156,11 @@ impl MoneroRpc {
         };
         let address = monero::Address::from_viewpair(network, &keypair);
         let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
-        daemon_client
-            .login(address, keypair.view, false, false)
-            .await
-            .unwrap();
-        let mut txs = daemon_client
-            .get_address_txs(address, keypair.view)
-            .await
-            .unwrap();
+        // daemon_client
+        //     .login(address, keypair.view, false, false)
+        //     .await
+        //     .unwrap();
+        let mut txs = daemon_client.get_address_txs(address, keypair.view).await?;
         println!("transactions: {:?}", txs);
         let address_txs: Vec<AddressTx> = txs
             .transactions
@@ -459,12 +456,21 @@ async fn subscribe_address_lws(
     };
     let address = monero::Address::from_viewpair(network, &keypair);
     let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
-    daemon_client
-        .login(address, keypair.view, true, true)
-        .await?;
-    daemon_client
+    println!("subscribing monero address: {}, {:?}", address, address);
+    let res = daemon_client.login(address, keypair.view, true, true).await;
+    println!("account created: {:?}", res);
+    // if res.is_err() {
+    // println!("error creating account, retrying with a proper login");
+    let res = daemon_client
+        .login(address, keypair.view, false, false)
+        .await;
+    println!("logged in to lws: {:?}", res);
+    // .await?;
+    // }
+    let res = daemon_client
         .import_request(address, keypair.view, Some(address_addendum.from_height))
-        .await?;
+        .await;
+    println!("import request to lws: {:?}", res);
     Ok(())
 }
 
@@ -496,9 +502,12 @@ fn address_polling(
                         )
                         .await
                         {
-                            Ok(_) => true,
+                            Ok(res) => {
+                                println!("success subscribing address to monero lws: {:?}", res);
+                                true
+                            }
                             Err(err) => {
-                                error!("error subscribing address to monero lws: {:?}", err);
+                                println!("error subscribing address to monero lws: {:?}", err);
                                 false
                             }
                         };
@@ -506,6 +515,8 @@ fn address_polling(
                             let mut state_guard = state.lock().await;
                             state_guard.address_subscribed(id);
                             drop(state_guard);
+                        } else {
+                            continue;
                         }
                     }
                     match rpc
@@ -733,6 +744,7 @@ impl Synclet for MoneroSyncer {
                     monero_rpc_wallet: rpc_wallet.clone(),
                     monero_lws: opts.monero_lws.clone(),
                 };
+                info!("monero syncer servers: {:?}", syncer_servers);
 
                 let _handle = std::thread::spawn(move || {
                     use tokio::runtime::Builder;

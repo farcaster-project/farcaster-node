@@ -1426,6 +1426,7 @@ fn syncers_up(
             network.to_string(),
         ];
         args.append(&mut syncer_servers_args(config, coin, network)?);
+        info!("launching syncer with: {:?}", args);
         launch("syncerd", args)?;
         clients.insert(k, none!());
         spawning_services.insert(s, source);
