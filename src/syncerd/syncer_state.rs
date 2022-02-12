@@ -50,6 +50,7 @@ pub struct SyncerState {
     pub sweep_addresses: HashMap<InternalId, SweepAddress>,
     tx_event: TokioSender<SyncerdBridgeEvent>,
     task_count: TaskCounter,
+    pub subscribed_addresses: HashSet<AddressAddendum>,
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +92,7 @@ impl SyncerState {
             tx_event,
             task_count: TaskCounter(0),
             coin: id,
+            subscribed_addresses: HashSet::new(),
         }
     }
 
@@ -300,6 +302,8 @@ impl SyncerState {
         let address = self.addresses.get_mut(&id);
         if let Some(address) = address {
             address.subscribed = true;
+            self.subscribed_addresses
+                .insert(address.task.addendum.clone());
         }
     }
 
@@ -466,7 +470,7 @@ impl SyncerState {
                         id,
                         AddressTransactions {
                             task: addr.task,
-                            subscribed: addr.subscribed,
+                            subscribed: true,
                             known_txs: txs.clone(),
                         },
                     )

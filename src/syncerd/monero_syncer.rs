@@ -457,19 +457,21 @@ async fn subscribe_address_lws(
     let address = monero::Address::from_viewpair(network, &keypair);
     let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
     println!("subscribing monero address: {}, {:?}", address, address);
-    let res = daemon_client.login(address, keypair.view, true, true).await;
+    let res = daemon_client
+        .login(address, keypair.view, true, true)
+        .await?;
     println!("account created: {:?}", res);
     // if res.is_err() {
     // println!("error creating account, retrying with a proper login");
     let res = daemon_client
         .login(address, keypair.view, false, false)
-        .await;
+        .await?;
     println!("logged in to lws: {:?}", res);
     // .await?;
     // }
     let res = daemon_client
         .import_request(address, keypair.view, Some(address_addendum.from_height))
-        .await;
+        .await?;
     println!("import request to lws: {:?}", res);
     Ok(())
 }
@@ -485,16 +487,17 @@ fn address_polling(
         loop {
             let state_guard = state.lock().await;
             let mut addresses = state_guard.addresses.clone();
+            let subscribed_addresses = state_guard.subscribed_addresses.clone();
             drop(state_guard);
             for (id, watched_address) in addresses.drain() {
-                let address_addendum = match watched_address.task.addendum {
+                let address_addendum = match watched_address.task.addendum.clone() {
                     AddressAddendum::Monero(address) => address,
                     _ => panic!("should never get an invalid address"),
                 };
                 let address_transactions = if let Some(monero_lws) =
                     syncer_servers.monero_lws.clone()
                 {
-                    if !watched_address.subscribed {
+                    if !subscribed_addresses.contains(&watched_address.task.addendum) {
                         let success = match subscribe_address_lws(
                             address_addendum.clone(),
                             network,
