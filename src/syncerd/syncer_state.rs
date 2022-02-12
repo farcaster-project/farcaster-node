@@ -284,10 +284,13 @@ impl SyncerState {
         }
     }
 
-    pub fn watch_address(&mut self, task: WatchAddress, source: ServiceId) -> Result<(), Error> {
+    pub fn watch_address(&mut self, task: WatchAddress, source: ServiceId) {
         // increment the count to use it as a unique internal id
         self.task_count.increment();
-        self.add_lifetime(task.lifetime, self.task_count.into())?;
+        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.into()) {
+            error!("{}", e);
+            return;
+        };
         self.tasks_sources.insert(self.task_count.into(), source);
         let address_txs = AddressTransactions {
             task,
@@ -295,7 +298,6 @@ impl SyncerState {
             known_txs: none!(),
         };
         self.addresses.insert(self.task_count.into(), address_txs);
-        Ok(())
     }
 
     pub fn address_subscribed(&mut self, id: InternalId) {
@@ -845,9 +847,7 @@ async fn syncer_state_addresses() {
     };
     let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
 
-    state
-        .watch_address(address_task_two.clone(), source1.clone())
-        .unwrap();
+    state.watch_address(address_task_two.clone(), source1.clone());
     state
         .abort(TaskTarget::TaskId(TaskId(0)), source1.clone(), true)
         .await;
@@ -856,7 +856,7 @@ async fn syncer_state_addresses() {
     assert_eq!(state.addresses.len(), 0);
     assert!(event_rx.try_recv().is_ok());
 
-    state.watch_address(address_task, source1.clone()).unwrap();
+    state.watch_address(address_task, source1.clone());
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
@@ -943,9 +943,7 @@ async fn syncer_state_addresses() {
     assert!(event_rx.try_recv().is_ok());
 
     let source2 = ServiceId::Syncer(Coin::Monero, Network::Testnet);
-    state
-        .watch_address(address_task_two.clone(), source2.clone())
-        .unwrap();
+    state.watch_address(address_task_two.clone(), source2.clone());
     state
         .abort(TaskTarget::TaskId(TaskId(0)), source2.clone(), true)
         .await;

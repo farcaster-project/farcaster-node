@@ -413,9 +413,7 @@ async fn run_syncerd_task_receiver(
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Monero(_) => {
                                 let mut state_guard = state.lock().await;
-                                state_guard
-                                    .watch_address(task, syncerd_task.source)
-                                    .expect("Monero Task::WatchAddress");
+                                state_guard.watch_address(task, syncerd_task.source);
                             }
                             _ => {
                                 error!("Aborting watch address task - unable to decode address addendum");

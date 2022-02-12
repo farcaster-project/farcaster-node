@@ -480,9 +480,7 @@ async fn run_syncerd_task_receiver(
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Bitcoin(_) => {
                                 let mut state_guard = state.lock().await;
-                                state_guard
-                                    .watch_address(task.clone(), syncerd_task.source)
-                                    .expect("Bitcoin Task::WatchAddress");
+                                state_guard.watch_address(task.clone(), syncerd_task.source);
                                 drop(state_guard);
                             }
                             _ => {
