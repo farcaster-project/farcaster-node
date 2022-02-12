@@ -156,12 +156,7 @@ impl MoneroRpc {
         };
         let address = monero::Address::from_viewpair(network, &keypair);
         let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
-        // daemon_client
-        //     .login(address, keypair.view, false, false)
-        //     .await
-        //     .unwrap();
         let mut txs = daemon_client.get_address_txs(address, keypair.view).await?;
-        println!("transactions: {:?}", txs);
         let address_txs: Vec<AddressTx> = txs
             .transactions
             .drain(..)
@@ -454,23 +449,19 @@ async fn subscribe_address_lws(
     };
     let address = monero::Address::from_viewpair(network, &keypair);
     let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
-    println!("subscribing monero address: {}, {:?}", address, address);
+    debug!("subscribing monero address: {}, {:?}", address, address);
     let res = daemon_client
         .login(address, keypair.view, true, true)
         .await?;
-    println!("account created: {:?}", res);
-    // if res.is_err() {
-    // println!("error creating account, retrying with a proper login");
+    debug!("account created: {:?}", res);
     let res = daemon_client
         .login(address, keypair.view, false, false)
         .await?;
-    println!("logged in to lws: {:?}", res);
-    // .await?;
-    // }
+    debug!("logged in to lws: {:?}", res);
     let res = daemon_client
         .import_request(address, keypair.view, Some(address_addendum.from_height))
         .await?;
-    println!("import request to lws: {:?}", res);
+    debug!("import request to lws: {:?}", res);
     Ok(())
 }
 
@@ -487,6 +478,7 @@ fn address_polling(
             let mut addresses = state_guard.addresses.clone();
             let subscribed_addresses = state_guard.subscribed_addresses.clone();
             drop(state_guard);
+            let mut needs_resubscribe = false;
             for (id, watched_address) in addresses.drain() {
                 let address_addendum = match watched_address.task.addendum.clone() {
                     AddressAddendum::Monero(address) => address,
@@ -495,6 +487,12 @@ fn address_polling(
                 let address_transactions = if let Some(monero_lws) =
                     syncer_servers.monero_lws.clone()
                 {
+                    if needs_resubscribe {
+                        needs_resubscribe = false;
+                        let mut state_guard = state.lock().await;
+                        state_guard.subscribed_addresses = none!();
+                        drop(state_guard);
+                    }
                     if !subscribed_addresses.contains(&watched_address.task.addendum) {
                         let success = match subscribe_address_lws(
                             address_addendum.clone(),
@@ -504,11 +502,11 @@ fn address_polling(
                         .await
                         {
                             Ok(res) => {
-                                println!("success subscribing address to monero lws: {:?}", res);
+                                debug!("success subscribing address to monero lws: {:?}", res);
                                 true
                             }
                             Err(err) => {
-                                println!("error subscribing address to monero lws: {:?}", err);
+                                warn!("error subscribing address to monero lws: {:?}", err);
                                 false
                             }
                         };
@@ -517,6 +515,8 @@ fn address_polling(
                             state_guard.address_subscribed(id);
                             drop(state_guard);
                         } else {
+                            // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
+                            needs_resubscribe = true;
                             continue;
                         }
                     }
@@ -526,7 +526,10 @@ fn address_polling(
                     {
                         Ok(address_transactions) => Some(address_transactions),
                         Err(err) => {
+                            // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
+                            needs_resubscribe = true;
                             error!("error polling addresses: {:?}", err);
+                            // the remote server may have disconnected, set the subscribed addresses to none
                             None
                         }
                     }
