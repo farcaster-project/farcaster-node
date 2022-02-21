@@ -103,7 +103,6 @@ pub struct BridgeHandler;
 
 impl esb::Handler<ServiceBus> for BridgeHandler {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -112,7 +111,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 
     fn handle(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _senders: &mut Endpoints,
         _bus: ServiceBus,
         _addr: ServiceId,
         request: Request,
@@ -122,7 +121,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
         Ok(())
     }
 
-    fn handle_err(&mut self, err: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, err: esb::Error<ServiceId>) -> Result<(), esb::Error<ServiceId>> {
         // We simply propagate the error since it's already being reported
         Err(err)
     }
@@ -261,7 +260,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(&mut self, _: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: esb::Error<ServiceId>) -> Result<(), esb::Error<ServiceId>> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic

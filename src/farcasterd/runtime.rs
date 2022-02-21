@@ -25,7 +25,6 @@ use crate::{
     Senders,
 };
 use amplify::Wrapper;
-use clap::Clap;
 use clap::IntoApp;
 use request::{Commit, List, Params};
 use std::io;
@@ -261,7 +260,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(&mut self, _: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: esb::Error<ServiceId>) -> Result<(), esb::Error<ServiceId>> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic

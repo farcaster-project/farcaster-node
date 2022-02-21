@@ -158,7 +158,7 @@ impl esb::Handler<ServiceBus> for Handler {
         Ok(())
     }
 
-    fn handle_err(&mut self, err: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, err: esb::Error<ServiceId>) -> Result<(), esb::Error<ServiceId>> {
         // We simply propagate the error since it's already being reported
         Err(err)
     }

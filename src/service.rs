@@ -161,8 +161,8 @@ impl From<Vec<u8>> for ServiceId {
 
 pub struct Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Address = ServiceId, Request = Request>,
-    esb::Error: From<Runtime::Error>,
+    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    esb::Error<ServiceId>: From<Runtime::Error>,
 {
     esb: esb::Controller<ServiceBus, Request, Runtime>,
     broker: bool,
@@ -170,8 +170,8 @@ where
 
 impl<Runtime> Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Address = ServiceId, Request = Request>,
-    esb::Error: From<Runtime::Error>,
+    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    esb::Error<ServiceId>: From<Runtime::Error>,
 {
     #[cfg(feature = "node")]
     pub fn run(config: ServiceConfig, runtime: Runtime, broker: bool) -> Result<(), Error> {
@@ -180,7 +180,11 @@ where
         unreachable!()
     }
 
-    fn with(config: ServiceConfig, runtime: Runtime, broker: bool) -> Result<Self, esb::Error> {
+    fn with(
+        config: ServiceConfig,
+        runtime: Runtime,
+        broker: bool,
+    ) -> Result<Self, esb::Error<ServiceId>> {
         let router = if !broker {
             Some(ServiceId::router())
         } else {
@@ -189,7 +193,7 @@ where
         let esb = esb::Controller::with(
             map! {
                 ServiceBus::Msg => esb::BusConfig::with_locator(
-                        config.msg_endpoint.try_into()
+                    config.msg_endpoint.try_into()
                             .expect("Only ZMQ RPC is currently supported"),
                     router.clone()
                 ),
@@ -209,12 +213,12 @@ where
         Ok(Self { esb, broker })
     }
 
-    pub fn broker(config: ServiceConfig, runtime: Runtime) -> Result<Self, esb::Error> {
+    pub fn broker(config: ServiceConfig, runtime: Runtime) -> Result<Self, esb::Error<ServiceId>> {
         Self::with(config, runtime, true)
     }
 
     #[allow(clippy::self_named_constructors)]
-    pub fn service(config: ServiceConfig, runtime: Runtime) -> Result<Self, esb::Error> {
+    pub fn service(config: ServiceConfig, runtime: Runtime) -> Result<Self, esb::Error<ServiceId>> {
         Self::with(config, runtime, false)
     }
 
@@ -222,7 +226,7 @@ where
         self.broker
     }
 
-    pub fn add_loopback(&mut self, socket: zmq::Socket) -> Result<(), esb::Error> {
+    pub fn add_loopback(&mut self, socket: zmq::Socket) -> Result<(), esb::Error<ServiceId>> {
         self.esb.add_service_bus(
             ServiceBus::Bridge,
             esb::BusConfig {
@@ -252,7 +256,7 @@ where
     }
 }
 
-pub type Senders = esb::SenderList<ServiceBus, ServiceId>;
+pub type Senders = esb::EndpointList<ServiceBus, ServiceId>;
 
 pub trait TryToServiceId {
     fn try_to_service_id(&self) -> Option<ServiceId>;
@@ -279,7 +283,7 @@ impl TryToServiceId for Option<ServiceId> {
 pub trait CtlServer
 where
     Self: esb::Handler<ServiceBus, Address = ServiceId>,
-    esb::Error: From<Self::Error>,
+    esb::Error<ServiceId>: From<Self::Error>,
 {
     fn report_success_to(
         &mut self,
