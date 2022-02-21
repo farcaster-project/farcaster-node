@@ -1,3 +1,4 @@
+use crate::service::Endpoints;
 use std::{
     any::Any,
     collections::{HashMap, HashSet},
@@ -10,7 +11,6 @@ use std::{
 use crate::swapd::get_swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
-use crate::Senders;
 use crate::{
     rpc::{
         request::{
@@ -188,7 +188,6 @@ impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -197,19 +196,23 @@ impl esb::Handler<ServiceBus> for Runtime {
 
     fn handle(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
+            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
+            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
             _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
-    fn handle_err(&mut self, _: esb::Error<ServiceId>) -> Result<(), esb::Error<ServiceId>> {
+    fn handle_err(
+        &mut self,
+        _: Endpoints,
+        _: esb::Error<ServiceId>,
+    ) -> Result<(), esb::Error<ServiceId>> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
@@ -220,10 +223,10 @@ impl esb::Handler<ServiceBus> for Runtime {
 impl Runtime {
     fn send_farcasterd(
         &self,
-        senders: &mut Senders,
+        endpoints: &mut Endpoints,
         message: request::Request,
     ) -> Result<(), Error> {
-        senders.send_to(
+        endpoints.send_to(
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Farcasterd,
@@ -234,7 +237,7 @@ impl Runtime {
 
     fn handle_rpc_msg(
         &mut self,
-        senders: &mut Senders,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -344,7 +347,7 @@ impl Runtime {
                             };
                             self.swaps.insert(swap_id, None);
                             self.send_ctl(
-                                senders,
+                                endpoints,
                                 ServiceId::Farcasterd,
                                 Request::LaunchSwap(launch_swap),
                             )?;
@@ -388,7 +391,7 @@ impl Runtime {
                                     funding_address: None,
                                 };
                                 self.send_ctl(
-                                    senders,
+                                    endpoints,
                                     ServiceId::Farcasterd,
                                     Request::LaunchSwap(launch_swap),
                                 )?;
@@ -455,7 +458,7 @@ impl Runtime {
                     Wallet::Alice(AliceState { local_proof, .. }) => local_proof,
                     Wallet::Bob(BobState { local_proof, .. }) => local_proof,
                 };
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Wallet,
                     // TODO: (maybe) what if the message responded to is not sent by swapd?
@@ -527,7 +530,7 @@ impl Runtime {
                                 *remote_params = Some(remote_params_candidate);
                                 // if we're maker, send Ctl RevealProof to counterparty
                                 if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Alice {
-                                    senders.send_to(
+                                    endpoints.send_to(
                                         ServiceBus::Ctl,
                                         ServiceId::Wallet,
                                         // TODO: (maybe) what if the message responded to is not
@@ -590,7 +593,7 @@ impl Runtime {
 
                             // if we're maker, send Ctl RevealProof to counterparty
                             if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Bob {
-                                senders.send_to(
+                                endpoints.send_to(
                                     ServiceBus::Ctl,
                                     ServiceId::Wallet,
                                     // TODO: (maybe) what if the message responded to is not sent
@@ -630,7 +633,11 @@ impl Runtime {
                             )));
                             let core_arb_setup_msg =
                                 Msg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
-                            self.send_ctl(senders, source, Request::Protocol(core_arb_setup_msg))?;
+                            self.send_ctl(
+                                endpoints,
+                                source,
+                                Request::Protocol(core_arb_setup_msg),
+                            )?;
                         } else {
                             error!("{} | only Some(Wallet::Bob)", swap_id.bright_blue_italic());
                         }
@@ -737,7 +744,7 @@ impl Runtime {
                         let finalized_lock_tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
 
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
@@ -762,7 +769,7 @@ impl Runtime {
                             adaptor_buy.clone().unwrap(),
                         ));
                         let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
@@ -778,7 +785,7 @@ impl Runtime {
                         cancel_tx.add_witness(local_params.cancel, core_arb_setup.cancel_sig)?;
                         let finalized_cancel_tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
@@ -802,7 +809,7 @@ impl Runtime {
                         refund_tx.add_witness(remote_params.refund, refund_adapted_sig)?;
                         let final_refund_tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut refund_tx)?;
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id,
                             source, // destination swapd
@@ -882,7 +889,7 @@ impl Runtime {
                         )?;
                         let finalized_cancel_tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
@@ -902,7 +909,7 @@ impl Runtime {
                         punish_tx.add_witness(local_params.punish, punish_sig)?;
                         let tx =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut punish_tx)?;
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(),
@@ -913,7 +920,7 @@ impl Runtime {
                     let refund_proc_signatures =
                         Msg::RefundProcedureSignatures(refund_proc_signatures);
 
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         my_id,
                         source,
@@ -957,7 +964,7 @@ impl Runtime {
                     cancel_tx.add_witness(bob_parameters.cancel, core_arb_setup.cancel_sig)?;
                     let finalized_cancel_tx =
                         Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut cancel_tx)?;
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         id.clone(),
                         source.clone(), // destination swapd
@@ -989,7 +996,7 @@ impl Runtime {
                     buy_tx.add_witness(bob_parameters.buy, buy_decrypted_sig)?;
                     let tx = Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut buy_tx)?;
                     trace!("wallet sends fullysignedbuy");
-                    senders.send_to(ServiceBus::Ctl, id, source, Request::Tx(Tx::Buy(tx)))?;
+                    endpoints.send_to(ServiceBus::Ctl, id, source, Request::Tx(Tx::Buy(tx)))?;
 
                     // buy_adaptor_sig
                 } else {
@@ -1011,7 +1018,7 @@ impl Runtime {
 
     fn handle_rpc_ctl(
         &mut self,
-        senders: &mut Senders,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -1023,7 +1030,7 @@ impl Runtime {
                         if let Some(req) = option_req {
                             let request = req.clone();
                             *option_req = None;
-                            self.send_ctl(senders, source, request)?
+                            self.send_ctl(endpoints, source, request)?
                         }
                     }
                 }
@@ -1091,7 +1098,7 @@ impl Runtime {
                             remote_commit: None,
                             funding_address: Some(funding_addr),
                         };
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             source,
                             ServiceId::Farcasterd,
@@ -1132,7 +1139,7 @@ impl Runtime {
                             remote_commit: None,
                             funding_address: None,
                         };
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             source,
                             ServiceId::Farcasterd,
@@ -1160,7 +1167,7 @@ impl Runtime {
                         "{} | bob's wallet informs swapd that funding was successfully updated",
                         swap_id.bright_blue_italic(),
                     );
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
                         // TODO: (maybe) what if this message responded to is not sent by swapd?
@@ -1243,7 +1250,7 @@ impl Runtime {
                         address,
                         minimum_balance: pub_offer.offer.accordant_amount,
                     };
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
@@ -1327,7 +1334,7 @@ impl Runtime {
                         address,
                         minimum_balance: pub_offer.offer.accordant_amount,
                     };
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
@@ -1343,9 +1350,9 @@ impl Runtime {
                 // let mut rng = thread_rng();
                 // let sk = SecretKey::new(&mut rng);
                 // let pk = PublicKey::from_secret_key(&Secp256k1::new(), &sk);
-                // self.send_farcasterd(senders, Request::Keys(Keys(sk, pk, request_id)))?
+                // self.send_farcasterd(endpoints, Request::Keys(Keys(sk, pk, request_id)))?
                 self.send_farcasterd(
-                    senders,
+                    endpoints,
                     Request::Keys(Keys(
                         self.node_secrets.peerd_secret_key,
                         self.node_secrets.node_id(),

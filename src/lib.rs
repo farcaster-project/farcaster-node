@@ -77,4 +77,4 @@ pub use crate::config::Config;
 pub use crate::service::ServiceConfig;
 pub use error::Error;
 #[cfg(feature = "_rpc")]
-pub use service::{CtlServer, LogStyle, Senders, Service, ServiceId, TryToServiceId};
+pub use service::{CtlServer, Endpoints, LogStyle, Service, ServiceId, TryToServiceId};

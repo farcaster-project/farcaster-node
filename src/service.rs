@@ -190,19 +190,21 @@ where
         } else {
             None
         };
-        let esb = esb::Controller::with(
-            map! {
-                ServiceBus::Msg => esb::BusConfig::with_locator(
-                    config.msg_endpoint.try_into()
-                            .expect("Only ZMQ RPC is currently supported"),
-                    router.clone()
-                ),
-                ServiceBus::Ctl => esb::BusConfig::with_locator(
-                    config.ctl_endpoint.try_into()
+        let services = map! {
+            ServiceBus::Msg => esb::BusConfig::with_locator(
+                config.msg_endpoint.try_into()
                         .expect("Only ZMQ RPC is currently supported"),
-                    router
-                )
-            },
+                router.clone()
+            ),
+            ServiceBus::Ctl => esb::BusConfig::with_locator(
+                config.ctl_endpoint.try_into()
+                    .expect("Only ZMQ RPC is currently supported"),
+                router
+            )
+        };
+
+        let esb = esb::Controller::with(
+            services,
             runtime,
             if broker {
                 ZmqType::RouterBind
@@ -256,7 +258,7 @@ where
     }
 }
 
-pub type Senders = esb::EndpointList<ServiceBus, ServiceId>;
+pub type Endpoints = esb::EndpointList<ServiceBus>;
 
 pub trait TryToServiceId {
     fn try_to_service_id(&self) -> Option<ServiceId>;
@@ -282,12 +284,12 @@ impl TryToServiceId for Option<ServiceId> {
 
 pub trait CtlServer
 where
-    Self: esb::Handler<ServiceBus, Address = ServiceId>,
+    Self: esb::Handler<ServiceBus>,
     esb::Error<ServiceId>: From<Self::Error>,
 {
     fn report_success_to(
         &mut self,
-        senders: &mut Senders,
+        senders: &mut Endpoints,
         dest: impl TryToServiceId,
         msg: Option<impl ToString>,
     ) -> Result<(), Error> {
@@ -304,7 +306,7 @@ where
 
     fn report_progress_to(
         &mut self,
-        senders: &mut Senders,
+        senders: &mut Endpoints,
         dest: impl TryToServiceId,
         msg: impl ToString,
     ) -> Result<(), Error> {
@@ -321,7 +323,7 @@ where
 
     fn report_failure_to(
         &mut self,
-        senders: &mut Senders,
+        senders: &mut Endpoints,
         dest: impl TryToServiceId,
         failure: impl Into<rpc::Failure>,
     ) -> Error {
@@ -340,7 +342,7 @@ where
 
     fn send_ctl(
         &mut self,
-        senders: &mut Senders,
+        senders: &mut Endpoints,
         dest: impl TryToServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -353,7 +355,7 @@ where
     fn send_wallet(
         &mut self,
         bus: ServiceBus,
-        senders: &mut Senders,
+        senders: &mut Endpoints,
         request: Request,
     ) -> Result<(), Error> {
         let source = self.identity();
