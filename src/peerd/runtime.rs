@@ -18,11 +18,11 @@ use std::{collections::HashMap, sync::Arc};
 use std::{rc::Rc, thread::spawn};
 
 use amplify::Bipolar;
-use bitcoin::secp256k1::rand::{self, Rng};
+use bitcoin::secp256k1::rand::{self, Rng, RngCore};
 use bitcoin::secp256k1::PublicKey;
 use internet2::{addr::InetSocketAddr, CreateUnmarshaller, Unmarshall, Unmarshaller};
 use internet2::{presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType, ZMQ_CONTEXT};
-use lnp::{message, Message};
+use lnp::p2p::legacy::{Messages, Ping};
 use microservices::esb::{self, Handler};
 use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
@@ -378,11 +378,7 @@ impl Runtime {
         }
 
         match &request {
-            Request::Protocol(Msg::PingPeer) => self.ping()?,
-
-            Request::Protocol(Msg::Ping(message::Ping { pong_size, .. })) => {
-                self.pong(*pong_size)?
-            }
+            Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => self.pong(*pong_size)?,
 
             Request::Protocol(Msg::Pong(noise)) => {
                 match self.awaited_pong {
@@ -504,11 +500,12 @@ impl Runtime {
         }
         let mut rng = rand::thread_rng();
         let len: u16 = rng.gen_range(4, 32);
-        let noise = vec![0u8; len as usize].iter().map(|_| rng.gen()).collect();
+        let mut noise = vec![0u8; len as usize];
+        rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.sender.send_message(Msg::Ping(message::Ping {
-            ignored: noise,
+        self.sender.send_message(Msg::Ping(Ping {
+            ignored: noise.into(),
             pong_size,
         }))?;
         self.awaited_pong = Some(pong_size);

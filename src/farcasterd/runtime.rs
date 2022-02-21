@@ -55,7 +55,6 @@ use internet2::{
     addr::InetSocketAddr, NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum,
     UrlString,
 };
-use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
@@ -952,7 +951,7 @@ impl Runtime {
                         remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
                     };
                     let peer = daemon_service
-                        .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
+                        .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
                         .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                     // Connect

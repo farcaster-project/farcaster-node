@@ -34,7 +34,6 @@ use farcaster_core::swap::SwapId;
 use internet2::{
     presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
 };
-use lnp::{message, Messages, TempChannelId as TempSwapId};
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 

@@ -69,8 +69,7 @@ use farcaster_core::{
 };
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
-use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, Messages, TempChannelId as TempSwapId};
+use lnp::p2p::legacy::{Messages, Ping, TempChannelId as TempSwapId};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use strict_encoding::{
@@ -104,7 +103,7 @@ pub enum Msg {
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
     #[api(type = 29)]
     #[display(inner)]
-    Ping(message::Ping),
+    Ping(Ping),
     #[api(type = 31)]
     #[display("pong(...)")]
     Pong(Vec<u8>),
@@ -856,9 +855,9 @@ pub struct SwapInfo {
     //// FIXME serde::Serialize/Deserialize missing
     // #[serde_as(as = "Option<DisplayFromStr)>")]
     // pub params: Option<Params>,
-    pub local_keys: payment::channel::Keyset,
+    pub local_keys: lnp::channel::bolt::LocalKeyset,
     #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
-    pub remote_keys: BTreeMap<NodeAddr, payment::channel::Keyset>,
+    pub remote_keys: BTreeMap<NodeAddr, lnp::channel::bolt::RemoteKeyset>,
 }
 
 #[cfg(feature = "serde")]
