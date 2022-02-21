@@ -9,10 +9,9 @@ _peerd() {
     for i in ${COMP_WORDS[@]}
     do
         case "${i}" in
-            peerd)
+            "$1")
                 cmd="peerd"
                 ;;
-            
             *)
                 ;;
         esac
@@ -20,13 +19,12 @@ _peerd() {
 
     case "${cmd}" in
         peerd)
-            opts=" -h -V -L -C -p -o -d -v -T -m -x  --help --version --listen --connect --port --overlay --peer-secret-key --token --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  "
+            opts="-h -V -L -C -p -o -d -v -T -m -x --help --version --listen --connect --port --overlay --peer-secret-key --token --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
-                
                 --listen)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
@@ -106,7 +104,6 @@ _peerd() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        
     esac
 }
 

@@ -13,7 +13,6 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use bitcoin::Address as BtcAddress;
-use clap::{AppSettings, Clap};
 use monero::Address as XmrAddress;
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -32,14 +31,8 @@ use farcaster_core::{
 use crate::syncerd::Coin;
 
 /// Command-line tool for working with Farcaster node
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-#[clap(
-    name = "swap-cli",
-    bin_name = "swap-cli",
-    author,
-    version,
-    setting = AppSettings::ColoredHelp
-)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
+#[clap(name = "swap-cli", bin_name = "swap-cli", author, version)]
 pub struct Opts {
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
@@ -58,11 +51,10 @@ impl Opts {
 }
 
 /// Command-line commands:
-#[derive(Clap, Clone, PartialEq, Eq, Debug, Display)]
+#[derive(Subcommand, Clone, PartialEq, Eq, Debug, Display)]
 pub enum Command {
     /// General information about the running node
     #[display("info<{subject:?}>")]
-    #[clap(setting = AppSettings::ColoredHelp)]
     Info {
         /// Remote peer address or temporary/permanent/short channel id. If
         /// absent, returns information about the node itself
@@ -70,23 +62,21 @@ pub enum Command {
     },
 
     /// Lists existing peer connections
-    #[clap(setting = AppSettings::ColoredHelp)]
     Peers,
 
     /// Lists running swaps
-    #[clap(aliases = &["ls"], setting = AppSettings::ColoredHelp)]
+    #[clap(aliases = &["ls"])]
     ListSwaps,
 
     // TODO: only list offers matching list of OfferIds
     /// Lists public offers created by daemon
-    #[clap(aliases = &["lo"], setting = AppSettings::ColoredHelp)]
+    #[clap(aliases = &["lo"])]
     ListOffers,
 
     // /// Lists IDs of public offers created by daemon
-    // #[clap(setting = AppSettings::ColoredHelp)]
     // ListOfferIds,
     /// Lists listeners created by daemon
-    #[clap(aliases = &["ll"], setting = AppSettings::ColoredHelp)]
+    #[clap(aliases = &["ll"])]
     ListListens,
 
     /// Maker creates offer and start listening for incoming connections. Command used to to print
@@ -98,7 +88,6 @@ pub enum Command {
     /// make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq --xmr-addr
     /// 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt
     /// --btc-amount "0.0000135 BTC" --xmr-amount "0.001 XMR"
-    #[clap(setting = AppSettings::ColoredHelp)]
     Make {
         /// Bitcoin address used as destination or refund address.
         #[clap(long = "btc-addr")]
@@ -177,7 +166,6 @@ pub enum Command {
     },
 
     /// Taker accepts offer and connects to maker's daemon to start the trade.
-    #[clap(setting = AppSettings::ColoredHelp)]
     Take {
         /// Bitcoin address used as destination or refund address.
         #[clap(long = "btc-addr")]
@@ -198,7 +186,6 @@ pub enum Command {
 
     /// Request swap progress report.
     #[display("progress<{swapid}>")]
-    #[clap(setting = AppSettings::ColoredHelp)]
     Progress {
         /// The swap id requested.
         swapid: SwapId,

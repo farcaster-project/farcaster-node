@@ -14,12 +14,12 @@
 
 #[macro_use]
 extern crate amplify_derive;
+#[macro_use]
+extern crate clap;
 
 use clap::IntoApp;
-use clap_generate::{
-    generate_to,
-    generators::{Bash, PowerShell, Zsh},
-};
+use clap_generate::generate_to;
+use clap_generate::generators::*;
 
 pub mod opts {
     include!("src/opts.rs");
@@ -58,9 +58,9 @@ fn main() -> Result<(), configure_me_codegen::Error> {
     .iter_mut()
     {
         let name = app.get_name().to_string();
-        generate_to::<Bash, _, _>(app, &name, &outdir)?;
-        generate_to::<PowerShell, _, _>(app, &name, &outdir)?;
-        generate_to::<Zsh, _, _>(app, &name, &outdir)?;
+        generate_to(Bash, app, &name, &outdir)?;
+        generate_to(PowerShell, app, &name, &outdir)?;
+        generate_to(Zsh, app, &name, &outdir)?;
     }
 
     configure_me_codegen::build_script_auto()

@@ -12,8 +12,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use clap::{AppSettings, Clap};
-
 use farcaster_core::swap::SwapId;
 use farcaster_core::{negotiation::PublicOffer, role::TradeRole, swap::btcxmr::BtcXmr};
 use std::str::FromStr;
@@ -22,14 +20,8 @@ use std::str::FromStr;
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
 /// description)
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-#[clap(
-    name = "swapd",
-    bin_name = "swapd",
-    author,
-    version,
-    setting = AppSettings::ColoredHelp
-)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
+#[clap(name = "swapd", bin_name = "swapd", author, version)]
 pub struct Opts {
     /// Swap id
     #[clap(parse(try_from_str = SwapId::from_str))]

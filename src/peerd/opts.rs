@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use clap::{AppSettings, ArgGroup, Clap, ValueHint};
+use clap::{ArgGroup, ValueHint};
 use std::net::IpAddr;
 
 use crate::opts::TokenString;
@@ -30,14 +30,13 @@ use strict_encoding::{StrictDecode, StrictEncode};
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
 /// description)
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(
     name = "peerd",
     bin_name = "peerd",
     author,
     version,
     group = ArgGroup::new("action").required(true),
-    setting = AppSettings::ColoredHelp
 )]
 pub struct Opts {
     // These params are passed through command-line argument or environment
@@ -99,7 +98,7 @@ impl Opts {
 }
 
 /// Node key configuration
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
 pub struct PeerKeyOpts {
     #[clap(long)]
     pub peer_secret_key: String,
@@ -135,8 +134,11 @@ impl PeerKeyOpts {
             Some(secret_key) => secret_key,
             None => SecretKey::new(&mut rng),
         };
-        let ephemeral_secret_key = SecretKey::new(&mut rng);
-        let local_node = LocalNode::from_keys(secret_key, ephemeral_secret_key);
+        let curve = bitcoin::secp256k1::Secp256k1::new();
+        let local_node = LocalNode::with(
+            secret_key,
+            bitcoin::secp256k1::PublicKey::from_secret_key(&curve, &secret_key),
+        );
         PeerSecrets { local_node }
     }
 }

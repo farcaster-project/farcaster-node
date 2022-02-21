@@ -15,24 +15,24 @@ _peerd() {
 
     local context curcontext="$curcontext" state line
     _arguments "${_arguments_options[@]}" \
-'-L+[Start daemon in listening mode binding the provided local address]: :_hosts' \
-'--listen=[Start daemon in listening mode binding the provided local address]: :_hosts' \
-'-C+[Connect to a remote peer with the provided address after start]' \
-'--connect=[Connect to a remote peer with the provided address after start]' \
-'-p+[Customize port used by lightning peer network]' \
-'--port=[Customize port used by lightning peer network]' \
-'-o+[Overlay peer communications through different transport protocol]: :(tcp zmq http websocket smtp)' \
-'--overlay=[Overlay peer communications through different transport protocol]: :(tcp zmq http websocket smtp)' \
-'--peer-secret-key=[]' \
-'--token=[Token used to authentify calls]' \
-'-d+[Data directory path]: :_files -/' \
-'--data-dir=[Data directory path]: :_files -/' \
-'-T+[Use Tor]: :_hosts' \
-'--tor-proxy=[Use Tor]: :_hosts' \
-'-m+[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]: :_files' \
-'-x+[ZMQ socket name/address for daemon control interface]: :_files' \
-'--ctl-socket=[ZMQ socket name/address for daemon control interface]: :_files' \
+'-L+[Start daemon in listening mode binding the provided local address]:LISTEN:_hosts' \
+'--listen=[Start daemon in listening mode binding the provided local address]:LISTEN:_hosts' \
+'-C+[Connect to a remote peer with the provided address after start]:CONNECT: ' \
+'--connect=[Connect to a remote peer with the provided address after start]:CONNECT: ' \
+'-p+[Customize port used by lightning peer network]:PORT: ' \
+'--port=[Customize port used by lightning peer network]:PORT: ' \
+'-o+[Overlay peer communications through different transport protocol]:OVERLAY:(tcp zmq http websocket smtp)' \
+'--overlay=[Overlay peer communications through different transport protocol]:OVERLAY:(tcp zmq http websocket smtp)' \
+'--peer-secret-key=[]:PEER_SECRET_KEY: ' \
+'--token=[Token used to authentify calls]:TOKEN: ' \
+'-d+[Data directory path]:DATA_DIR:_files -/' \
+'--data-dir=[Data directory path]:DATA_DIR:_files -/' \
+'-T+[Use Tor]:TOR_PROXY:_hosts' \
+'--tor-proxy=[Use Tor]:TOR_PROXY:_hosts' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
+'-x+[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
+'--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '-V[Print version information]' \
@@ -40,7 +40,6 @@ _peerd() {
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 && ret=0
-    
 }
 
 (( $+functions[_peerd_commands] )) ||
