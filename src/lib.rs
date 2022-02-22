@@ -38,6 +38,7 @@ extern crate lnpbp;
 extern crate internet2;
 
 #[cfg(feature = "shell")]
+#[macro_use]
 extern crate clap;
 #[macro_use]
 extern crate log;

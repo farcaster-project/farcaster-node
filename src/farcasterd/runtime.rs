@@ -14,6 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
+    clap::Parser,
     error::SyncerError,
     rpc::request::{
         BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,

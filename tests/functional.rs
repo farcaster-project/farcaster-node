@@ -1,6 +1,6 @@
 use amplify::map;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
-use clap::Clap;
+use clap::Parser;
 use farcaster_node::rpc::Request;
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
@@ -1832,7 +1832,7 @@ fn get_request_from_message(message: Vec<Vec<u8>>) -> Request {
     let mut transcoder = PlainTranscoder {};
     let routed_message = recv_routed(message);
     let plain_message = transcoder.decrypt(routed_message.msg).unwrap();
-    (&*unmarshaller.unmarshall(&plain_message).unwrap()).clone()
+    (&*unmarshaller.unmarshall(&*plain_message).unwrap()).clone()
 }
 
 // as taken from the rust-internet2 crate - for now we only use the message
