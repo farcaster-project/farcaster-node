@@ -208,11 +208,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(
-        &mut self,
-        _: Endpoints,
-        _: esb::Error<ServiceId>,
-    ) -> Result<(), esb::Error<ServiceId>> {
+    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic

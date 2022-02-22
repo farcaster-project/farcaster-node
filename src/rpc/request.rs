@@ -159,7 +159,7 @@ lazy_static! {
 impl LightningDecode for Msg {
     fn lightning_decode<D: io::Read>(d: D) -> Result<Self, lightning_encoding::Error> {
         Ok((&*UNMARSHALLER
-            .unmarshall(&Vec::<u8>::lightning_decode(d)?)
+            .unmarshall(&*Vec::<u8>::lightning_decode(d)?)
             .map_err(|_| {
                 lightning_encoding::Error::DataIntegrityError(s!("can't unmarshall FWP message"))
             })?)
@@ -303,23 +303,23 @@ pub enum Request {
     // ======================================================
     /// Once authentication is complete, the first message reveals the features
     /// supported or required by this node, even if this is a reconnection.
-    #[api(type = 16)]
-    #[display(inner)]
-    Init(message::Init),
+    // #[api(type = 16)]
+    // #[display(inner)]
+    // Init(message::Init),
 
     /// For simplicity of diagnosis, it's often useful to tell a peer that
     /// something is incorrect.
-    #[api(type = 17)]
-    #[display(inner)]
-    Error(message::Error),
+    // #[api(type = 17)]
+    // #[display(inner)]
+    // Error(message::Error),
 
     /// In order to allow for the existence of long-lived TCP connections, at
     /// times it may be required that both ends keep alive the TCP connection
     /// at the application level. Such messages also allow obfuscation of
     /// traffic patterns.
-    #[api(type = 18)]
-    #[display(inner)]
-    Ping(message::Ping),
+    // #[api(type = 18)]
+    // #[display(inner)]
+    // Ping(message::Ping),
 
     /// The pong message is to be sent whenever a ping message is received. It
     /// serves as a reply and also serves to keep the connection alive, while

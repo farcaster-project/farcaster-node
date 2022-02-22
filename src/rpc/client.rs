@@ -158,12 +158,8 @@ impl esb::Handler<ServiceBus> for Handler {
         Ok(())
     }
 
-    fn handle_err(
-        &mut self,
-        _: Endpoints,
-        err: esb::Error<ServiceId>,
-    ) -> Result<(), esb::Error<ServiceId>> {
+    fn handle_err(&mut self, _: &mut Endpoints, err: esb::Error<ServiceId>) -> Result<(), Error> {
         // We simply propagate the error since it's already being reported
-        Err(err)
+        Err(Error::Esb(err))
     }
 }

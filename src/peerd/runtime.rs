@@ -12,7 +12,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::service::Endpoints;
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
 use std::{rc::Rc, thread::spawn};
@@ -31,7 +30,7 @@ use crate::rpc::{
     request::{self, Msg, PeerInfo, TakeCommit, Token},
     Request, ServiceBus,
 };
-use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
+use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -122,13 +121,9 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
         Ok(())
     }
 
-    fn handle_err(
-        &mut self,
-        _: &mut Endpoints,
-        err: esb::Error<ServiceId>,
-    ) -> Result<(), esb::Error<ServiceId>> {
+    fn handle_err(&mut self, _: &mut Endpoints, err: esb::Error<ServiceId>) -> Result<(), Error> {
         // We simply propagate the error since it's already being reported
-        Err(err)
+        Err(Error::Esb(err))
     }
 }
 
@@ -261,11 +256,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(
-        &mut self,
-        _: &mut Endpoints,
-        _: esb::Error<ServiceId>,
-    ) -> Result<(), esb::Error<ServiceId>> {
+    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
