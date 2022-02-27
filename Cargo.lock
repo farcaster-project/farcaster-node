@@ -980,7 +980,9 @@ checksum = "d9435d864e017c3c6afeac1654189b06cdb491cf2ff73dbf0d73b0f292f42ff8"
 
 [[package]]
 name = "farcaster_core"
-version = "0.4.3"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3f2ed93d1ef2cadf9ed3d81d6bdc3a6aba9cbfa8b430c547f824af26be20bd3"
 dependencies = [
  "amplify",
  "base58-monero",
