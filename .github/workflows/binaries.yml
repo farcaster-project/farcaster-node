@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         rust: [
-          1.55.0,
+          1.59.0,
           stable
         ]
         bin: [
