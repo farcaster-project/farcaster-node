@@ -11,7 +11,7 @@ jobs:
     if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install dependencies
         run: sudo apt-get install -y libssl-dev pkg-config build-essential cmake
@@ -66,7 +66,7 @@ jobs:
     needs: create_release
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Extract version from branch name
       id: extract-version
