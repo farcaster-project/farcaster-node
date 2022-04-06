@@ -42,7 +42,7 @@ jobs:
         uses: actions-rs/grcov@v0.1.6
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v3
         with:
           file: ${{ steps.coverage.outputs.report }}
           directory: ./coverage/reports/
