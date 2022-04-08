@@ -147,7 +147,7 @@ So maker must make sure her router allows external connections to that port to h
 The make command will output an encoded **public offer** that can be shared with potential takers. As a maker, your `farcasterd` registers this public offer, and waits for someone to connect through `peerd` and take the offer. A taker in her turn takes the offer and initiates a swap with the maker. 
 
 
-Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when the log asks for this. At the end coins are swapped successfully, or - less ideally - refunded. We currently offer no manual cancel functionallity. We offer progress through `swap-cli progress {swapid}`. To list the the swapids of the running swaps, use `swap-cli ls`.
+Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when the log asks for this. At the end coins are swapped successfully, or - less ideally - refunded. We currently offer no manual cancel functionality. We offer progress through `swap-cli progress {swapid}`. To list the the swapids of the running swaps, use `swap-cli ls`.
 
 ### :moneybag: Take the offer
 
