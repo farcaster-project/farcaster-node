@@ -1841,7 +1841,7 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
         "--monero-rpc-wallet",
         &format!("http://{}:18084", whost),
         "--monero-lws",
-        &format!("http://{}:8443", lhost),
+        &format!("http://{}:38084", lhost),
     ]));
 
     syncer
