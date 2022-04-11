@@ -36,7 +36,7 @@ jobs:
           dest: ubuntu-latest-bins.zip
 
       - name: Archive release bins
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: release-ubuntu-latest-bins
           path: ubuntu-latest-bins.zip

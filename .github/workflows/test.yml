@@ -127,7 +127,7 @@ jobs:
           MONERO_WALLET_HOST_2: monero-wallet-rpc-2
 
       - name: Archive farcasterd logs
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ matrix.logs }}
         with:
           name: faracsterd-logs
