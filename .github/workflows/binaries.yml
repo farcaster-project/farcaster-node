@@ -41,7 +41,7 @@ jobs:
           profile: minimal
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v1.3.0
+        uses: Swatinem/rust-cache@v1.4.0
         with:
           key: bin-${{ matrix.bin }}
 
