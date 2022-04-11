@@ -41,7 +41,7 @@ jobs:
           components: clippy
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v1.3.0
+        uses: Swatinem/rust-cache@v1.4.0
 
       - name: Run Clippy
         uses: actions-rs/cargo@v1

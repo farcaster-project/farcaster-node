@@ -25,7 +25,7 @@ jobs:
           override: true
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v1.3.0
+        uses: Swatinem/rust-cache@v1.4.0
 
       - name: Cargo test
         uses: actions-rs/cargo@v1
@@ -112,7 +112,7 @@ jobs:
         run: DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev pkg-config build-essential cmake
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v1.3.0
+        uses: Swatinem/rust-cache@v1.4.0
         with:
           key: test-${{ matrix.test }}
 
