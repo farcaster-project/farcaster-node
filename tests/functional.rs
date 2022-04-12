@@ -1235,6 +1235,8 @@ async fn monero_syncer_address_lws_test() {
     // let address5 = wallet.create_address(0, None).await.unwrap().0;
     let (address5, view_key5) = new_address(&wallet).await;
 
+    // TODO (TheCharlatan): from height is not implemented yet in monero-lws,
+    // re-add this test correctly once it is patched-in
     // send_monero(&wallet, address5, 1).await;
     let blocks = regtest.generate_blocks(5, address.address).await.unwrap();
 
