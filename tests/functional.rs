@@ -1331,8 +1331,6 @@ async fn monero_syncer_address_test() {
     };
     tx.send(watch_address_task_1).unwrap();
 
-    regtest.generate_blocks(1, address.address).await.unwrap();
-
     println!("\nwaiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received address transaction message");
@@ -1343,7 +1341,6 @@ async fn monero_syncer_address_test() {
     let (address2, view_key2) = new_address(&wallet).await;
     let tx_id2_1 = send_monero(&wallet, address2, 1).await;
     let tx_id2_2 = send_monero(&wallet, address2, 1).await;
-    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
 
     let addendum_2 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address2.public_spend,
@@ -1420,7 +1417,6 @@ async fn monero_syncer_address_test() {
         })
         .unwrap();
     }
-    regtest.generate_blocks(1, address.address).await.unwrap();
 
     for _ in 0..5 {
         println!("waiting for repeated address transaction message");
