@@ -75,7 +75,7 @@ make_polling_test!(bitcoin_syncer_transaction_test);
 make_polling_test!(bitcoin_syncer_broadcast_tx_test);
 
 #[test]
-#[timeout(300000)]
+#[timeout(600000)]
 #[ignore]
 fn bitcoin_syncer_retrieve_transaction_test() {
     let bitcoin_rpc = bitcoin_setup();
