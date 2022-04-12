@@ -1308,16 +1308,12 @@ async fn monero_syncer_address_test() {
     let (tx, rx_event) = create_monero_syncer("address", false);
 
     // Generate two addresses and watch them
-    let view_key = wallet
-        .query_key(monero_rpc::PrivateKeyType::View)
-        .await
-        .unwrap();
-    let address1 = wallet.create_address(0, None).await.unwrap().0;
+    let (address1, view_key1) = new_address(&wallet).await;
     let tx_id = send_monero(&wallet, address1, 1).await;
 
     let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address1.public_spend,
-        view_key,
+        view_key: view_key1,
         from_height: 10,
     });
     let watch_address_task_1 = SyncerdTask {
@@ -1372,7 +1368,7 @@ async fn monero_syncer_address_test() {
 
     let addendum_3 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address2.public_spend,
-        view_key,
+        view_key: view_key2,
         from_height: 0,
     });
     let watch_address_task_3 = SyncerdTask {
@@ -1397,12 +1393,12 @@ async fn monero_syncer_address_test() {
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
-    let address4 = wallet.create_address(0, None).await.unwrap().0;
+    let (address4, view_key4) = new_address(&wallet).await;
     let tx_id4 = send_monero(&wallet, address4, 1).await;
 
     let addendum_4 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address4.public_spend,
-        view_key,
+        view_key: view_key4,
         from_height: 0,
     });
     for i in 0..5 {
@@ -1426,13 +1422,13 @@ async fn monero_syncer_address_test() {
         assert_address_transaction(request, 1, vec![tx_id4.clone()]);
     }
 
-    let address5 = wallet.create_address(0, None).await.unwrap().0;
+    let (address5, view_key5) = new_address(&wallet).await;
     send_monero(&wallet, address5, 1).await;
     let blocks = regtest.generate_blocks(5, address.address).await.unwrap();
 
     let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address5.public_spend,
-        view_key,
+        view_key: view_key5,
         from_height: blocks,
     });
 
