@@ -1092,7 +1092,7 @@ the complete existing transaction history
 - Submit a WatchAddress task many times with the same address, ensure we receive
 many times the same event
 
-- Submit a WatchAddress task with a from height to an address with existing
+- Submit a WatchAddress task with a from_height to an address with existing
 transactions, ensure we receive only events for transactions after the from
 height
 
@@ -1140,7 +1140,7 @@ async fn monero_syncer_address_lws_test() {
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id]);
 
-    // Generate two addresses and watch them
+    // Generate two transactions for same address and watch them
     let (address2, view_key2) = new_address(&wallet).await;
     let tx_id2_1 = send_monero(&wallet, address2, 1).await;
     let tx_id2_2 = send_monero(&wallet, address2, 1).await;
@@ -1955,12 +1955,16 @@ size too big"
     RoutedFrame { hop, src, dst, msg }
 }
 
-fn assert_address_transaction(request: Request, expected_amount: u64, expected_txid: Vec<Vec<u8>>) {
+fn assert_address_transaction(
+    request: Request,
+    expected_amount: u64,
+    possible_txids: Vec<Vec<u8>>,
+) {
     match request {
         Request::SyncerdBridgeEvent(event) => match event.event {
             Event::AddressTransaction(address_transaction) => {
                 assert_eq!(address_transaction.amount, expected_amount);
-                assert!(expected_txid.contains(&address_transaction.hash));
+                assert!(possible_txids.contains(&address_transaction.hash));
             }
             _ => panic!("expected address transaction event"),
         },
