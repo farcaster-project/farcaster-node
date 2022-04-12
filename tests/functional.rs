@@ -967,7 +967,7 @@ async fn monero_syncer_block_height_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer("block_height");
+    let (tx, rx_event) = create_monero_syncer("block_height", false);
 
     // Send a WatchHeight task
     let task = SyncerdTask {
@@ -1034,7 +1034,7 @@ async fn monero_syncer_sweep_test() {
     let duration = std::time::Duration::from_secs(20);
     std::thread::sleep(duration);
 
-    let (tx, rx_event) = create_monero_syncer("sweep");
+    let (tx, rx_event) = create_monero_syncer("sweep", false);
 
     let spend_key = monero::PrivateKey::from_str(
         "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -1109,7 +1109,7 @@ async fn monero_syncer_address_lws_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer("lws_address");
+    let (tx, rx_event) = create_monero_syncer("lws_address", true);
 
     // Generate two addresses and watch them
     let (address1, view_key1) = new_address(&wallet).await;
@@ -1305,7 +1305,7 @@ async fn monero_syncer_address_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer("address");
+    let (tx, rx_event) = create_monero_syncer("address", false);
 
     // Generate two addresses and watch them
     let view_key = wallet
@@ -1333,7 +1333,7 @@ async fn monero_syncer_address_test() {
 
     regtest.generate_blocks(1, address.address).await.unwrap();
 
-    println!("waiting for address transaction message");
+    println!("\nwaiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
     println!("received address transaction message");
     let request = get_request_from_message(message);
@@ -1493,7 +1493,7 @@ async fn monero_syncer_transaction_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer("transaction");
+    let (tx, rx_event) = create_monero_syncer("transaction", false);
 
     let txid_1 = send_monero(&wallet, address, 1).await;
 
@@ -1659,7 +1659,7 @@ We test for the following scenarios in the abort tests:
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_abort_test() {
-    let (tx, rx_event) = create_monero_syncer("abort");
+    let (tx, rx_event) = create_monero_syncer("abort", false);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
@@ -1780,7 +1780,7 @@ async fn monero_syncer_broadcast_tx_test() {
     let address = wallet.get_address(0, None).await.unwrap();
     regtest.generate_blocks(1, address.address).await.unwrap();
 
-    let (tx, rx_event) = create_monero_syncer("broadcast");
+    let (tx, rx_event) = create_monero_syncer("broadcast", false);
 
     let task = SyncerdTask {
         task: Task::BroadcastTransaction(BroadcastTransaction {
@@ -1821,7 +1821,10 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
     (regtest, wallet)
 }
 
-fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+fn create_monero_syncer(
+    socket_name: &str,
+    lws: bool,
+) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
     let addr = format!("inproc://testmonerobridge-{}", socket_name);
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
@@ -1833,16 +1836,28 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
     let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
     let whost = env::var("MONERO_WALLET_HOST_2").unwrap_or("localhost".into());
     let lhost = env::var("MONERO_LWS_HOST").unwrap_or("localhost".into());
-    let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
-        "--coin",
-        "Monero",
-        "--monero-daemon",
-        &format!("http://{}:18081", dhost),
-        "--monero-rpc-wallet",
-        &format!("http://{}:18084", whost),
-        "--monero-lws",
-        &format!("http://{}:38884", lhost),
-    ]));
+
+    let lws_wallet = &format!("http://{}:38884", lhost);
+
+    let wallet_server = if lws {
+        vec!["--monero-lws", lws_wallet]
+    } else {
+        vec![]
+    };
+
+    let opts = Opts::parse_from(
+        vec!["syncerd"]
+            .into_iter()
+            .chain(vec![
+                "--coin",
+                "Monero",
+                "--monero-daemon",
+                &format!("http://{}:18081", dhost),
+                "--monero-rpc-wallet",
+                &format!("http://{}:18084", whost),
+            ])
+            .chain(wallet_server),
+    );
 
     syncer
         .run(
@@ -1853,7 +1868,7 @@ fn create_monero_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTa
             Network::Local,
             true,
         )
-        .expect("Valid monero syncer");
+        .expect("Invalid monero syncer");
     (tx, rx_event)
 }
 
