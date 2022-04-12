@@ -77,7 +77,7 @@ make_polling_test!(bitcoin_syncer_broadcast_tx_test);
 #[test]
 #[timeout(300000)]
 #[ignore]
-fn bicoin_syncer_retrieve_transaction_test() {
+fn bitcoin_syncer_retrieve_transaction_test() {
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
