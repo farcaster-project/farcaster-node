@@ -1097,7 +1097,7 @@ height
 
 */
 #[tokio::test]
-#[timeout(300000)]
+#[timeout(600000)]
 #[ignore]
 async fn monero_syncer_address_lws_test() {
     let (regtest, wallet) = setup_monero().await;
