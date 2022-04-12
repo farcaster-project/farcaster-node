@@ -1109,7 +1109,7 @@ async fn monero_syncer_address_lws_test() {
     std::thread::sleep(duration);
 
     // create a monero syncer
-    let (tx, rx_event) = create_monero_syncer("address");
+    let (tx, rx_event) = create_monero_syncer("lws_address");
 
     // Generate two addresses and watch them
     let (address1, view_key1) = new_address(&wallet).await;
