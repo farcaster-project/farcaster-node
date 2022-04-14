@@ -122,7 +122,7 @@ jobs:
           key: test-${{ matrix.test }}
 
       - name: Cargo functional test
-        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --test-threads=1
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --nocapture --test-threads=1
         env:
           BITCOIN_COOKIE: /data/regtest/.cookie
           BITCOIN_HOST: bitcoin-core
