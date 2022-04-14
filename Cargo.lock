@@ -967,6 +967,7 @@ dependencies = [
  "log",
  "microservices",
  "monero",
+ "monero-lws",
  "monero-rpc",
  "nix",
  "ntest",
@@ -1748,6 +1749,24 @@ dependencies = [
  "serde-big-array",
  "thiserror",
  "tiny-keccak",
+]
+
+[[package]]
+name = "monero-lws"
+version = "0.1.0"
+source = "git+https://github.com/TheCharlatan/monero-lws-rs?branch=main#714dc72d108cacc686ccddb2825248d19d898d3b"
+dependencies = [
+ "anyhow",
+ "fixed-hash",
+ "hex",
+ "http",
+ "jsonrpc-core",
+ "monero",
+ "reqwest",
+ "serde 1.0.127",
+ "serde_json",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

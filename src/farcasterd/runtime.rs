@@ -1429,6 +1429,7 @@ fn syncers_up(
             network.to_string(),
         ];
         args.append(&mut syncer_servers_args(config, coin, network)?);
+        info!("launching syncer with: {:?}", args);
         launch("syncerd", args)?;
         clients.insert(k, none!());
         spawning_services.insert(s, source);
@@ -1496,12 +1497,20 @@ fn syncer_servers_args(config: &Config, coin: Coin, net: Network) -> Result<Vec<
                 "--electrum-server".to_string(),
                 servers.electrum_server,
             ]),
-            Coin::Monero => Ok(vec![
-                "--monero-daemon".to_string(),
-                servers.monero_daemon,
-                "--monero-rpc-wallet".to_string(),
-                servers.monero_rpc_wallet,
-            ]),
+            Coin::Monero => {
+                let mut args: Vec<String> = vec![
+                    "--monero-daemon".to_string(),
+                    servers.monero_daemon,
+                    "--monero-rpc-wallet".to_string(),
+                    servers.monero_rpc_wallet,
+                ];
+                args.extend(
+                    servers
+                        .monero_lws
+                        .map_or(vec![], |v| vec!["--monero-lws".to_string(), v]),
+                );
+                Ok(args)
+            }
         },
         None => Err(SyncerError::InvalidConfig.into()),
     }

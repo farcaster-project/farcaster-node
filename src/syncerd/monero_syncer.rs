@@ -144,6 +144,31 @@ impl MoneroRpc {
         }
     }
 
+    async fn check_address_lws(
+        &mut self,
+        address_addendum: XmrAddressAddendum,
+        network: monero::Network,
+        monero_lws_url: String,
+    ) -> Result<AddressNotif, Error> {
+        let keypair = monero::ViewPair {
+            spend: address_addendum.spend_key,
+            view: address_addendum.view_key,
+        };
+        let address = monero::Address::from_viewpair(network, &keypair);
+        let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
+        let mut txs = daemon_client.get_address_txs(address, keypair.view).await?;
+        let address_txs: Vec<AddressTx> = txs
+            .transactions
+            .drain(..)
+            .map(|tx| AddressTx {
+                our_amount: tx.total_received.parse::<u64>().unwrap(),
+                tx_id: tx.hash.0.to_bytes().into(),
+                tx: vec![],
+            })
+            .collect();
+        Ok(AddressNotif { txs: address_txs })
+    }
+
     async fn check_address(
         &mut self,
         address_addendum: XmrAddressAddendum,
@@ -386,9 +411,7 @@ async fn run_syncerd_task_receiver(
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Monero(_) => {
                                 let mut state_guard = state.lock().await;
-                                state_guard
-                                    .watch_address(task, syncerd_task.source)
-                                    .expect("Monero Task::WatchAddress");
+                                state_guard.watch_address(task, syncerd_task.source);
                             }
                             _ => {
                                 error!("Aborting watch address task - unable to decode address addendum");
@@ -418,6 +441,33 @@ async fn run_syncerd_task_receiver(
     });
 }
 
+async fn subscribe_address_lws(
+    address_addendum: XmrAddressAddendum,
+    network: monero::Network,
+    monero_lws_url: String,
+) -> Result<(), Error> {
+    let keypair = monero::ViewPair {
+        spend: address_addendum.spend_key,
+        view: address_addendum.view_key,
+    };
+    let address = monero::Address::from_viewpair(network, &keypair);
+    let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
+    debug!("subscribing monero address: {}, {:?}", address, address);
+    let res = daemon_client
+        .login(address, keypair.view, true, true)
+        .await?;
+    debug!("account created: {:?}", res);
+    let res = daemon_client
+        .login(address, keypair.view, false, false)
+        .await?;
+    debug!("logged in to lws: {:?}", res);
+    let res = daemon_client
+        .import_request(address, keypair.view, Some(address_addendum.from_height))
+        .await?;
+    debug!("import request to lws: {:?}", res);
+    Ok(())
+}
+
 fn address_polling(
     state: Arc<Mutex<SyncerState>>,
     syncer_servers: MoneroSyncerServers,
@@ -429,22 +479,75 @@ fn address_polling(
         loop {
             let state_guard = state.lock().await;
             let mut addresses = state_guard.addresses.clone();
+            let subscribed_addresses = state_guard.subscribed_addresses.clone();
             drop(state_guard);
-            for (_, watched_address) in addresses.drain() {
-                let address_addendum = match watched_address.task.addendum {
+            let mut needs_resubscribe = false;
+            for (id, watched_address) in addresses.drain() {
+                let address_addendum = match watched_address.task.addendum.clone() {
                     AddressAddendum::Monero(address) => address,
                     _ => panic!("should never get an invalid address"),
                 };
-                // we cannot parallelize polling here, since we have to open and close the
-                // wallet
-                let address_transactions = match rpc
-                    .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
-                    .await
+                let address_transactions = if let Some(monero_lws) =
+                    syncer_servers.monero_lws.clone()
                 {
-                    Ok(address_transactions) => Some(address_transactions),
-                    Err(err) => {
-                        error!("error polling addresses: {:?}", err);
-                        None
+                    if needs_resubscribe {
+                        needs_resubscribe = false;
+                        let mut state_guard = state.lock().await;
+                        state_guard.subscribed_addresses = none!();
+                        drop(state_guard);
+                    }
+                    if !subscribed_addresses.contains(&watched_address.task.addendum) {
+                        let success = match subscribe_address_lws(
+                            address_addendum.clone(),
+                            network,
+                            monero_lws.clone(),
+                        )
+                        .await
+                        {
+                            Ok(res) => {
+                                debug!("success subscribing address to monero lws: {:?}", res);
+                                true
+                            }
+                            Err(err) => {
+                                warn!("error subscribing address to monero lws: {:?}", err);
+                                false
+                            }
+                        };
+                        if success {
+                            let mut state_guard = state.lock().await;
+                            state_guard.address_subscribed(id);
+                            drop(state_guard);
+                        } else {
+                            // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
+                            needs_resubscribe = true;
+                            continue;
+                        }
+                    }
+                    match rpc
+                        .check_address_lws(address_addendum.clone(), network, monero_lws)
+                        .await
+                    {
+                        Ok(address_transactions) => Some(address_transactions),
+                        Err(err) => {
+                            // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
+                            needs_resubscribe = true;
+                            error!("error polling addresses: {:?}", err);
+                            // the remote server may have disconnected, set the subscribed addresses to none
+                            None
+                        }
+                    }
+                } else {
+                    // we cannot parallelize polling here, since we have to open and close the
+                    // wallet
+                    match rpc
+                        .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
+                        .await
+                    {
+                        Ok(address_transactions) => Some(address_transactions),
+                        Err(err) => {
+                            error!("error polling addresses: {:?}", err);
+                            None
+                        }
                     }
                 };
                 if let Some(address_transactions) = address_transactions {
@@ -622,6 +725,9 @@ pub struct MoneroSyncerServers {
 
     /// Monero rpc wallet to use
     pub monero_rpc_wallet: String,
+
+    /// Monero lws to use
+    pub monero_lws: Option<String>,
 }
 
 impl Synclet for MoneroSyncer {
@@ -643,7 +749,9 @@ impl Synclet for MoneroSyncer {
                 let syncer_servers = MoneroSyncerServers {
                     monero_daemon: daemon.clone(),
                     monero_rpc_wallet: rpc_wallet.clone(),
+                    monero_lws: opts.monero_lws.clone(),
                 };
+                info!("monero syncer servers: {:?}", syncer_servers);
 
                 let _handle = std::thread::spawn(move || {
                     use tokio::runtime::Builder;
