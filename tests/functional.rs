@@ -19,6 +19,7 @@ use internet2::ZMQ_CONTEXT;
 use monero::Address;
 use monero_rpc::GetBlockHeaderSelector;
 use paste::paste;
+use rand::{distributions::Alphanumeric, Rng};
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -1200,7 +1201,6 @@ async fn monero_syncer_address_lws_test() {
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
-    // let address4 = wallet.create_address(0, None).await.unwrap().0;
     let (address4, view_key4) = new_address(&wallet).await;
 
     let tx_id4 = send_monero(&wallet, address4, 1).await;
@@ -1232,18 +1232,17 @@ async fn monero_syncer_address_lws_test() {
         assert_address_transaction(request, 1, vec![tx_id4.clone()]);
     }
 
-    // let address5 = wallet.create_address(0, None).await.unwrap().0;
+    // generate an address, send Monero to it and ensure that the first transaction sent to it does not show up
     let (address5, view_key5) = new_address(&wallet).await;
-
-    // TODO (TheCharlatan): from height is not implemented yet in monero-lws,
-    // re-add this test correctly once it is patched-in
-    // send_monero(&wallet, address5, 1).await;
-    let blocks = regtest.generate_blocks(5, address.address).await.unwrap();
+    send_monero(&wallet, address5, 1).await;
+    // this transaction should not generate an event, because the task's lifetime expired
+    send_monero(&wallet, address4, 1).await;
+    let blocks = regtest.generate_blocks(10, address.address).await.unwrap();
 
     let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address5.public_spend,
         view_key: view_key5,
-        from_height: blocks - 6,
+        from_height: blocks,
     });
 
     tx.send(SyncerdTask {
@@ -1867,14 +1866,16 @@ fn create_monero_syncer(
 }
 
 async fn new_address(wallet: &monero_rpc::WalletClient) -> (monero::Address, monero::PrivateKey) {
-    let address = wallet.create_address(0, None).await.unwrap().0;
+    // let address = wallet.create_address(0, None).await.unwrap().0;
+    let wallet_name: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect();
     let _ = wallet
-        .create_wallet(format!("{}", address), None, "English".to_string())
+        .create_wallet(wallet_name.clone(), None, "English".to_string())
         .await;
-    wallet
-        .open_wallet(format!("{}", address), None)
-        .await
-        .unwrap();
+    wallet.open_wallet(wallet_name, None).await.unwrap();
     let address = wallet.get_address(0, None).await.unwrap().address;
     let viewkey = wallet
         .query_key(monero_rpc::PrivateKeyType::View)
