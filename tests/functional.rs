@@ -1160,11 +1160,15 @@ async fn monero_syncer_address_lws_test() {
     // Generate two addresses and watch them
     let (address1, view_key1) = new_address(&wallet).await;
     let tx_id = send_monero(&wallet, address1, 1).await;
+    let blocks = regtest.generate_blocks(10, address.address).await.unwrap();
+
+    let duration = std::time::Duration::from_secs(20);
+    std::thread::sleep(duration);
 
     let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address1.public_spend,
         view_key: view_key1,
-        from_height: 10,
+        from_height: 0,
     });
     let watch_address_task_1 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
@@ -1177,11 +1181,15 @@ async fn monero_syncer_address_lws_test() {
     };
     tx.send(watch_address_task_1).unwrap();
 
-    regtest.generate_blocks(1, address.address).await.unwrap();
-
-    info!("waiting for address transaction message");
+    info!(
+        "waiting for address transaction message for address {}",
+        address1
+    );
     let message = rx_event.recv_multipart(0).unwrap();
-    info!("received address transaction message");
+    info!(
+        "received address transaction message for address {}",
+        address1
+    );
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id]);
 
