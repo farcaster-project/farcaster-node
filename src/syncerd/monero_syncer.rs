@@ -560,7 +560,7 @@ fn address_polling(
                         .await;
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
     })
 }
