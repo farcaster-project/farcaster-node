@@ -333,6 +333,9 @@ async fn sweep_address(
             })
             .collect();
 
+        // close the wallet since we are done with it now
+        wallet.close_wallet().await?;
+
         Ok(tx_ids)
     } else {
         debug!(
