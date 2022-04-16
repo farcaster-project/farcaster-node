@@ -889,6 +889,7 @@ impl SyncerState {
             view_key,
             spend_key,
             address,
+            minimum_balance: self.monero_amount,
         });
         let sweep_task = SweepAddress {
             id,
