@@ -1144,13 +1144,14 @@ height
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn monero_syncer_address_merged_test() {
+async fn monero_syncer_address_test() {
     for (socket_name, lws_bool) in [("address", false), ("lws_address", true)] {
         if lws_bool {
             setup_logging(Some(log::LevelFilter::Trace))
         } else {
             setup_logging(None)
         };
+        info!("testing {}", if lws_bool {"monero-lws"} else {"monero-wallet-rpc"});
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     regtest.generate_blocks(200, address.address).await.unwrap();
