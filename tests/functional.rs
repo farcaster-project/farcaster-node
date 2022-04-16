@@ -1148,7 +1148,7 @@ async fn monero_syncer_address_lws_test() {
     setup_logging(Some(log::LevelFilter::Trace));
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
-    let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
+    regtest.generate_blocks(200, address.address).await.unwrap();
 
     // allow some time for things to happen, like the wallet server catching up
     let duration = std::time::Duration::from_secs(20);
