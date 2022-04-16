@@ -38,6 +38,9 @@ use farcaster_node::syncerd::types::{
     GetTx, Task, WatchAddress, WatchHeight, WatchTransaction,
 };
 
+#[macro_use]
+extern crate log;
+
 const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
 const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 
@@ -79,6 +82,7 @@ make_polling_test!(bitcoin_syncer_broadcast_tx_test);
 #[timeout(600000)]
 #[ignore]
 fn bitcoin_syncer_retrieve_transaction_test() {
+    setup_logging(None);
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
@@ -110,7 +114,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
     tx.send(task).unwrap();
     let message = rx_event.recv_multipart(0).unwrap();
     let request = get_request_from_message(message);
-    println!("received request: {:?}", request);
+    info!("received request: {:?}", request);
     assert_transaction_received(request, txid);
 }
 
@@ -175,6 +179,7 @@ We test for the following scenarios in the block height tests:
 - Mine another block and receive two HeightChanged events
 */
 fn bitcoin_syncer_block_height_test(polling: bool) {
+    setup_logging(None);
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
@@ -194,17 +199,17 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
     tx.send(task).unwrap();
 
     // Receive the request and compare it to the actual block count
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
     // Generate a single height changed event
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
@@ -224,15 +229,15 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
 
     // generate another block - this should result in two height changed messages
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert_received_height_changed(request, blocks);
@@ -261,6 +266,7 @@ the minimum height
 
 */
 fn bitcoin_syncer_address_test(polling: bool) {
+    setup_logging(None);
     let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
@@ -319,17 +325,17 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let txid = bitcoin_rpc
         .send_to_address(&address1, amount, None, None, None, None, None, None)
         .unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
 
     // now generate a block for address1, then wait for the response and test it
     let block_hash = bitcoin_rpc.generate_to_address(1, &address1).unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     let block = bitcoin_rpc.get_block(&block_hash[0]).unwrap();
     let address_transaction_amount = find_coinbase_transaction_amount(block.txdata.clone());
@@ -347,9 +353,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let txid_2 = bitcoin_rpc
         .send_to_address(&address2, amount, None, None, None, None, None, None)
         .unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -357,9 +363,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
         vec![txid_1.to_vec(), txid_2.to_vec()],
     );
 
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -378,18 +384,18 @@ fn bitcoin_syncer_address_test(polling: bool) {
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_3).unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
         amount.as_sat(),
         vec![txid_1.to_vec(), txid_2.to_vec()],
     );
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(
         request,
@@ -420,9 +426,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
         .unwrap();
 
     for _ in 0..5 {
-        println!("waiting for repeated address transaction message");
+        info!("waiting for repeated address transaction message");
         let message = rx_event.recv_multipart(0).unwrap();
-        println!("received repeated address transaction message");
+        info!("received repeated address transaction message");
         let request = get_request_from_message(message);
         assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
     }
@@ -453,9 +459,9 @@ fn bitcoin_syncer_address_test(polling: bool) {
         .send_to_address(&address5, amount, None, None, None, None, None, None)
         .unwrap();
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
 }
@@ -474,6 +480,7 @@ the threshold confs are reached
 - Submit two WatchTransaction tasks in parallel with the same recipient address, receive confirmation events for both
 */
 fn bitcoin_syncer_transaction_test(polling: bool) {
+    setup_logging(None);
     let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
@@ -510,9 +517,9 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         source: SOURCE1.clone(),
     })
     .unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
@@ -527,27 +534,27 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     })
     .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
     let block_hash = bitcoin_rpc
         .generate_to_address(1, &reusable_address)
         .unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(1), block_hash[0].to_vec());
 
     bitcoin_rpc
         .generate_to_address(1, &reusable_address)
         .unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(2), block_hash[0].to_vec());
 
@@ -569,18 +576,18 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     })
     .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(1), block_hash[0].to_vec());
 
     bitcoin_rpc
         .generate_to_address(1, &reusable_address)
         .unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(2), block_hash[0].to_vec());
 
@@ -615,14 +622,14 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     })
     .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
@@ -670,20 +677,20 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     })
     .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, None, vec![0]);
 
-    println!("sending raw transaction");
+    info!("sending raw transaction");
     bitcoin_rpc
         .send_raw_transaction(&signed_tx.transaction().unwrap())
         .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 }
@@ -703,6 +710,7 @@ We test for the following scenarios in the abort tests:
 #[timeout(300000)]
 #[ignore]
 fn bitcoin_syncer_abort_test() {
+    setup_logging(None);
     let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
     let bitcoin_rpc = bitcoin_setup();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -717,9 +725,9 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for confirmation");
+    info!("waiting for confirmation");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, None, vec![0]);
 
@@ -731,9 +739,9 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(request, None, vec![0]);
 
@@ -745,9 +753,9 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
@@ -765,9 +773,9 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for confirmation");
+    info!("waiting for confirmation");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, None, vec![0]);
     let task = SyncerdTask {
@@ -780,9 +788,9 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for confirmation");
+    info!("waiting for confirmation");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, None, vec![0]);
     let task = SyncerdTask {
@@ -793,9 +801,9 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(request, None, vec![0, 1]);
 
@@ -807,9 +815,9 @@ fn bitcoin_syncer_abort_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
@@ -826,6 +834,7 @@ We test the following scenarios in the broadcast tx tests:
 - Submit a BroadcastTransaction task, receive a success event
 */
 fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
+    setup_logging(None);
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
@@ -856,9 +865,9 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     };
     tx.send(task).unwrap();
 
-    println!("waiting for transaction broadcasted message");
+    info!("waiting for transaction broadcasted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("transaction broadcasted");
+    info!("transaction broadcasted");
     let request = get_request_from_message(message);
     assert_transaction_broadcasted(request, true, None);
 
@@ -899,9 +908,9 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     };
     tx.send(task).unwrap();
 
-    println!("waiting for transaction broadcasted message");
+    info!("waiting for transaction broadcasted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("transaction broadcasted");
+    info!("transaction broadcasted");
     let request = get_request_from_message(message);
     assert_transaction_broadcasted(request, false, None);
 }
@@ -992,6 +1001,7 @@ We test for the following scenarios in the block height tests:
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_block_height_test() {
+    setup_logging(None);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
@@ -1014,16 +1024,16 @@ async fn monero_syncer_block_height_test() {
     tx.send(task).unwrap();
 
     // Receive the request and compare it to the actual block count
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     assert_received_height_changed(request, blocks);
     // Generate a single height changed event
     let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     // let blocks = regtest.get_block_count().await.unwrap();
     assert_received_height_changed(request, blocks);
@@ -1037,22 +1047,22 @@ async fn monero_syncer_block_height_test() {
         source: SOURCE1.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     assert_received_height_changed(request, blocks);
 
     // generate another block - this should result in two height changed messages
     let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     assert_received_height_changed(request, blocks);
-    println!("waiting for height changed");
+    info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("height changed");
+    info!("height changed");
     let request = get_request_from_message(message);
     assert_received_height_changed(request, blocks);
 }
@@ -1061,6 +1071,7 @@ async fn monero_syncer_block_height_test() {
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_sweep_test() {
+    setup_logging(None);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
@@ -1103,9 +1114,9 @@ async fn monero_syncer_sweep_test() {
 
     regtest.generate_blocks(20, address.address).await.unwrap();
 
-    println!("waiting for sweep address message");
+    info!("waiting for sweep address message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received sweep success message");
+    info!("received sweep success message");
     let request = get_request_from_message(message);
     assert_sweep_success(request, TaskId(0));
 }
@@ -1134,9 +1145,10 @@ height
 #[timeout(600000)]
 #[ignore]
 async fn monero_syncer_address_lws_test() {
+    setup_logging(Some(log::LevelFilter::Trace));
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
-    let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
+    regtest.generate_blocks(200, address.address).await.unwrap();
 
     // allow some time for things to happen, like the wallet server catching up
     let duration = std::time::Duration::from_secs(20);
@@ -1148,11 +1160,15 @@ async fn monero_syncer_address_lws_test() {
     // Generate two addresses and watch them
     let (address1, view_key1) = new_address(&wallet).await;
     let tx_id = send_monero(&wallet, address1, 1).await;
+    let blocks = regtest.generate_blocks(10, address.address).await.unwrap();
+
+    let duration = std::time::Duration::from_secs(20);
+    std::thread::sleep(duration);
 
     let addendum_1 = AddressAddendum::Monero(XmrAddressAddendum {
         spend_key: address1.public_spend,
         view_key: view_key1,
-        from_height: 10,
+        from_height: 0,
     });
     let watch_address_task_1 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
@@ -1165,11 +1181,15 @@ async fn monero_syncer_address_lws_test() {
     };
     tx.send(watch_address_task_1).unwrap();
 
-    regtest.generate_blocks(1, address.address).await.unwrap();
-
-    println!("waiting for address transaction message");
+    info!(
+        "waiting for address transaction message for address {}",
+        address1
+    );
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!(
+        "received address transaction message for address {}",
+        address1
+    );
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id]);
 
@@ -1195,15 +1215,15 @@ async fn monero_syncer_address_lws_test() {
     };
     tx.send(watch_address_task_2).unwrap();
 
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
@@ -1222,15 +1242,15 @@ async fn monero_syncer_address_lws_test() {
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_3).unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
@@ -1258,9 +1278,9 @@ async fn monero_syncer_address_lws_test() {
     }
 
     for i in 0..5 {
-        println!("waiting for repeated address transaction message {}", i);
+        info!("waiting for repeated address transaction message {}", i);
         let message = rx_event.recv_multipart(0).unwrap();
-        println!("received repeated address transaction message {}", i);
+        info!("received repeated address transaction message {}", i);
         let request = get_request_from_message(message);
         assert_address_transaction(request, 1, vec![tx_id4.clone()]);
     }
@@ -1291,17 +1311,17 @@ async fn monero_syncer_address_lws_test() {
 
     let tx_id5_2 = send_monero(&wallet, address5, 2).await;
     regtest.generate_blocks(1, address.address).await.unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 2, vec![tx_id5_2.clone()]);
 
     let tx_id5_2_3 = send_monero(&wallet, address5, 2).await;
     regtest.generate_blocks(1, address.address).await.unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 2, vec![tx_id5_2_3.clone()]);
 }
@@ -1330,6 +1350,7 @@ height
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_address_test() {
+    setup_logging(None);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
@@ -1361,9 +1382,9 @@ async fn monero_syncer_address_test() {
     };
     tx.send(watch_address_task_1).unwrap();
 
-    println!("\nwaiting for address transaction message");
+    info!("\nwaiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id]);
 
@@ -1388,15 +1409,15 @@ async fn monero_syncer_address_test() {
     };
     tx.send(watch_address_task_2).unwrap();
 
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
@@ -1415,15 +1436,15 @@ async fn monero_syncer_address_test() {
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_3).unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 1, vec![tx_id2_1.clone(), tx_id2_2.clone()]);
 
@@ -1449,9 +1470,9 @@ async fn monero_syncer_address_test() {
     }
 
     for _ in 0..5 {
-        println!("waiting for repeated address transaction message");
+        info!("waiting for repeated address transaction message");
         let message = rx_event.recv_multipart(0).unwrap();
-        println!("received repeated address transaction message");
+        info!("received repeated address transaction message");
         let request = get_request_from_message(message);
         assert_address_transaction(request, 1, vec![tx_id4.clone()]);
     }
@@ -1478,17 +1499,17 @@ async fn monero_syncer_address_test() {
     .unwrap();
 
     let tx_id5_2 = send_monero(&wallet, address5, 2).await;
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 2, vec![tx_id5_2.clone()]);
 
     let tx_id5_2_3 = send_monero(&wallet, address5, 2).await;
     regtest.generate_blocks(1, address.address).await.unwrap();
-    println!("waiting for address transaction message");
+    info!("waiting for address transaction message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received address transaction message");
+    info!("received address transaction message");
     let request = get_request_from_message(message);
     assert_address_transaction(request, 2, vec![tx_id5_2_3.clone()]);
 }
@@ -1510,6 +1531,7 @@ found confirmation event. Then relay and receive further events.
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_transaction_test() {
+    setup_logging(None);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap().address;
     let blocks = regtest.generate_blocks(200, address).await.unwrap();
@@ -1534,24 +1556,24 @@ async fn monero_syncer_transaction_test() {
     })
     .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
     let block_height = regtest.generate_blocks(1, address).await.unwrap();
     let block_hash = get_block_hash_from_height(&regtest, block_height).await;
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(1), block_hash.clone());
 
     regtest.generate_blocks(1, address).await.unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(2), block_hash);
 
@@ -1568,16 +1590,16 @@ async fn monero_syncer_transaction_test() {
         source: SOURCE1.clone(),
     })
     .unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(1), block_hash.clone());
 
     regtest.generate_blocks(1, address).await.unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(2), block_hash);
 
@@ -1605,14 +1627,14 @@ async fn monero_syncer_transaction_test() {
     })
     .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
@@ -1646,9 +1668,9 @@ async fn monero_syncer_transaction_test() {
     })
     .unwrap();
 
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, None, vec![0]);
 
@@ -1656,16 +1678,16 @@ async fn monero_syncer_transaction_test() {
         .relay_tx(hex::encode(transaction.tx_metadata.0))
         .await
         .unwrap();
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
     let block_height = regtest.generate_blocks(1, address).await.unwrap();
     let block_hash = get_block_hash_from_height(&regtest, block_height).await;
-    println!("awaiting confirmations");
+    info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("received confirmation");
+    info!("received confirmation");
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(1), block_hash);
 }
@@ -1685,6 +1707,7 @@ We test for the following scenarios in the abort tests:
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_abort_test() {
+    setup_logging(None);
     let (tx, rx_event) = create_monero_syncer("abort", false);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
@@ -1712,9 +1735,9 @@ async fn monero_syncer_abort_test() {
         source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(request, None, vec![0]);
 
@@ -1726,9 +1749,9 @@ async fn monero_syncer_abort_test() {
         source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
@@ -1770,9 +1793,9 @@ async fn monero_syncer_abort_test() {
         source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(request, None, vec![0, 1]);
 
@@ -1784,9 +1807,9 @@ async fn monero_syncer_abort_test() {
         source: SOURCE2.clone(),
     };
     tx.send(task).unwrap();
-    println!("waiting for task aborted message");
+    info!("waiting for task aborted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("task aborted");
+    info!("task aborted");
     let request = get_request_from_message(message);
     assert_task_aborted(
         request,
@@ -1802,6 +1825,7 @@ Check that a monero BroadcastTransaction task generates an error
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_broadcast_tx_test() {
+    setup_logging(None);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     regtest.generate_blocks(1, address.address).await.unwrap();
@@ -1817,9 +1841,9 @@ async fn monero_syncer_broadcast_tx_test() {
     };
     tx.send(task).unwrap();
 
-    println!("waiting for transaction broadcasted message");
+    info!("waiting for transaction broadcasted message");
     let message = rx_event.recv_multipart(0).unwrap();
-    println!("transaction broadcasted");
+    info!("transaction broadcasted");
     let request = get_request_from_message(message);
     assert_transaction_broadcasted(
         request,
@@ -2098,4 +2122,11 @@ fn assert_transaction_broadcasted(request: Request, has_error: bool, error_msg: 
             panic!("expected syncerd bridge event");
         }
     }
+}
+
+fn setup_logging(level: Option<log::LevelFilter>) {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(level.unwrap_or(log::LevelFilter::Info))
+        .try_init();
 }

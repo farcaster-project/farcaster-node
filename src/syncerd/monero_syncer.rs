@@ -156,7 +156,9 @@ impl MoneroRpc {
         };
         let address = monero::Address::from_viewpair(network, &keypair);
         let daemon_client = monero_lws::LwsRpcClient::new(monero_lws_url);
+        trace!("checking txs through lws for address {}", address);
         let mut txs = daemon_client.get_address_txs(address, keypair.view).await?;
+        trace!("received txs {:?} from lws for address {}", txs, address);
         let address_txs: Vec<AddressTx> = txs
             .transactions
             .drain(..)
@@ -504,8 +506,8 @@ fn address_polling(
                         )
                         .await
                         {
-                            Ok(res) => {
-                                debug!("success subscribing address to monero lws: {:?}", res);
+                            Ok(()) => {
+                                debug!("success subscribing address to monero lws.");
                                 true
                             }
                             Err(err) => {
@@ -560,7 +562,7 @@ fn address_polling(
                         .await;
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
     })
 }
