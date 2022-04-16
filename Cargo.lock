@@ -1772,7 +1772,7 @@ dependencies = [
 [[package]]
 name = "monero-rpc"
 version = "0.1.0"
-source = "git+https://github.com/monero-ecosystem/monero-rpc-rs?branch=master#dcda1161f279f345c95cde783f0d002ab2ae93cf"
+source = "git+https://github.com/monero-ecosystem/monero-rpc-rs?branch=master#29878ff67bba414cb0bbc334a7bbb15e7cd55e36"
 dependencies = [
  "anyhow",
  "chrono",

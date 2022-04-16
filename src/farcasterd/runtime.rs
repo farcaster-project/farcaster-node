@@ -1166,11 +1166,9 @@ impl Runtime {
                                 monero_rpc::RpcClient::new(host);
                             let wallet = wallet_client.wallet();
                             let options = monero_rpc::TransferOptions::default();
-                            let mut destination = HashMap::new();
-                            destination.insert(address, amount.as_pico());
                             match wallet
                                 .transfer(
-                                    destination.clone(),
+                                    HashMap::from([(address, amount)]),
                                     monero_rpc::TransferPriority::Default,
                                     options.clone(),
                                 )
