@@ -298,7 +298,6 @@ async fn sweep_address(
     wallet.refresh(restore_height).await?;
     let balance = wallet.get_balance(account, addrs).await?;
     // only sweep once all the balance is unlocked
-    // TODO: should check swap amount, otherwise counterparty could "grief" by sending an XMR amount smaller than swap amount first, which we then sweep and ignore the actual swap amount (in particular annoying if we delete the wallet post-sweeping).
     if balance.unlocked_balance != 0 {
         info!(
             "Sweeping address {} with unlocked balance {} into {}",
