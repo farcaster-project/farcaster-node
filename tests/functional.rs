@@ -19,7 +19,6 @@ use internet2::ZMQ_CONTEXT;
 use monero_rpc::GetBlockHeaderSelector;
 use paste::paste;
 use rand::{distributions::Alphanumeric, Rng};
-use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
@@ -1484,7 +1483,10 @@ async fn monero_syncer_transaction_test() {
     };
     let transaction = wallet
         .transfer(
-            HashMap::from([(address, monero::Amount::from_pico(1000))]),
+            [(address, monero::Amount::from_pico(1000))]
+                .iter()
+                .cloned()
+                .collect(),
             monero_rpc::TransferPriority::Default,
             options.clone(),
         )
@@ -1791,7 +1793,10 @@ async fn send_monero(
     };
     let transaction = wallet
         .transfer(
-            HashMap::from([(address, monero::Amount::from_pico(amount))]),
+            [(address, monero::Amount::from_pico(amount))]
+                .iter()
+                .cloned()
+                .collect(),
             monero_rpc::TransferPriority::Default,
             options.clone(),
         )

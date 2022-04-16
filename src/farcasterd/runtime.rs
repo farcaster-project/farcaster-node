@@ -1168,7 +1168,7 @@ impl Runtime {
                             let options = monero_rpc::TransferOptions::default();
                             match wallet
                                 .transfer(
-                                    HashMap::from([(address, amount)]),
+                                    [(address, amount)].iter().cloned().collect(),
                                     monero_rpc::TransferPriority::Default,
                                     options.clone(),
                                 )

@@ -1976,7 +1976,7 @@ async fn send_monero(
     wallet_lock.refresh(Some(1)).await.unwrap();
     let transaction = wallet_lock
         .transfer(
-            HashMap::from([(address, amount)]),
+            [(address, amount)].iter().cloned().collect(),
             monero_rpc::TransferPriority::Default,
             options.clone(),
         )
