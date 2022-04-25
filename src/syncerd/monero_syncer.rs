@@ -30,6 +30,7 @@ use monero_rpc::{
 use std::collections::HashMap;
 use std::fs;
 use std::ops::Range;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
@@ -257,7 +258,7 @@ async fn sweep_address(
     network: &monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
     restore_height: Option<u64>,
-    wallet_dir_path: Option<String>,
+    wallet_dir_path: Option<PathBuf>,
 ) -> Result<Vec<Vec<u8>>, Error> {
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
@@ -338,17 +339,26 @@ async fn sweep_address(
         // close the wallet since we are done with it now
         wallet.close_wallet().await?;
 
-        // delete the wallets if possible
+        // delete all the associated wallet data if possible
         if let Some(path) = wallet_dir_path {
-            let watch_wallet_filename = format!("watch:{}", address);
-            let sweep_wallet_filename = format!("sweep:{}", address);
-            fs::remove_file(path.clone() + &watch_wallet_filename)?;
-            fs::remove_file(path.clone() + &watch_wallet_filename + &".keys".to_string())?;
-            fs::remove_file(path.clone() + &sweep_wallet_filename)?;
-            fs::remove_file(path.clone() + &sweep_wallet_filename + &".address.txt".to_string())?;
-            fs::remove_file(path.clone() + &sweep_wallet_filename + &".keys".to_string())?;
+            if let Some(raw_path) = path.to_str() {
+                let watch_wallet_filename = format!("/watch:{}", address);
+                let sweep_wallet_filename = format!("/sweep:{}", address);
+                fs::remove_file(raw_path.to_string() + &watch_wallet_filename)?;
+                fs::remove_file(
+                    raw_path.to_string() + &watch_wallet_filename + &".keys".to_string(),
+                )?;
+                fs::remove_file(raw_path.to_string() + &sweep_wallet_filename)?;
+                fs::remove_file(
+                    raw_path.to_string() + &sweep_wallet_filename + &".address.txt".to_string(),
+                )?;
+                fs::remove_file(
+                    raw_path.to_string() + &sweep_wallet_filename + &".keys".to_string(),
+                )?;
+                info!("Successfully removed wallet data after completed sweep");
+            }
+            warn!("No associated wallet data cleaned up after sweep. The path used for the wallet directory is probably malformed");
         }
-
         Ok(tx_ids)
     } else {
         debug!(
@@ -635,7 +645,7 @@ fn sweep_polling(
     state: Arc<Mutex<SyncerState>>,
     wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     network: monero::Network,
-    wallet_dir_path: Option<String>,
+    wallet_dir_path: Option<PathBuf>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
@@ -772,7 +782,10 @@ impl Synclet for MoneroSyncer {
                     monero_lws: opts.monero_lws.clone(),
                 };
                 info!("monero syncer servers: {:?}", syncer_servers);
-                let wallet_dir = opts.monero_wallet_dir_path.clone();
+                let wallet_dir = opts
+                    .monero_wallet_dir_path
+                    .clone()
+                    .map(|wallet_dir| PathBuf::from(wallet_dir));
 
                 let _handle = std::thread::spawn(move || {
                     use tokio::runtime::Builder;
