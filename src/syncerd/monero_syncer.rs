@@ -358,6 +358,8 @@ async fn sweep_address(
                 info!("Successfully removed wallet data after completed sweep");
             }
             warn!("No associated wallet data cleaned up after sweep. The path used for the wallet directory is probably malformed");
+        } else {
+            info!("{}", format!("Completed operations on Monero wallets with address {} . These wallets can now be safely deleted", address));
         }
         Ok(tx_ids)
     } else {
