@@ -1507,6 +1507,11 @@ fn syncer_servers_args(config: &Config, coin: Coin, net: Network) -> Result<Vec<
                         .monero_lws
                         .map_or(vec![], |v| vec!["--monero-lws".to_string(), v]),
                 );
+                args.extend(
+                    servers
+                        .monero_wallet_dir
+                        .map_or(vec![], |v| vec!["--monero-wallet-dir".to_string(), v]),
+                );
                 Ok(args)
             }
         },
