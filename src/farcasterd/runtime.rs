@@ -1510,7 +1510,7 @@ fn syncer_servers_args(config: &Config, coin: Coin, net: Network) -> Result<Vec<
                 args.extend(
                     servers
                         .monero_wallet_dir
-                        .map_or(vec![], |v| vec!["--monero-wallet-dir".to_string(), v]),
+                        .map_or(vec![], |v| vec!["--monero-wallet-dir-path".to_string(), v]),
                 );
                 Ok(args)
             }

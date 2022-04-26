@@ -265,12 +265,6 @@ async fn sweep_address(
     let address = monero::Address::from_keypair(*network, &keypair);
     let wallet_filename = format!("sweep:{}", address);
 
-    // add some extra leeway for the wallet restore height
-    // let restore_height = match from_height {
-    //     Some(height) if height > 10 => Some(height - 10),
-    //     _ => None,
-    // };
-
     let wallet = wallet_mutex.lock().await;
     trace!("taking sweep wallet lock");
 
@@ -344,20 +338,31 @@ async fn sweep_address(
             if let Some(raw_path) = path.to_str() {
                 let watch_wallet_filename = format!("/watch:{}", address);
                 let sweep_wallet_filename = format!("/sweep:{}", address);
-                fs::remove_file(raw_path.to_string() + &watch_wallet_filename)?;
-                fs::remove_file(
-                    raw_path.to_string() + &watch_wallet_filename + &".keys".to_string(),
-                )?;
-                fs::remove_file(raw_path.to_string() + &sweep_wallet_filename)?;
-                fs::remove_file(
-                    raw_path.to_string() + &sweep_wallet_filename + &".address.txt".to_string(),
-                )?;
-                fs::remove_file(
-                    raw_path.to_string() + &sweep_wallet_filename + &".keys".to_string(),
-                )?;
-                info!("Successfully removed wallet data after completed sweep");
+                if let Err(error) = fs::remove_file(raw_path.to_string() + &sweep_wallet_filename)
+                    .and(fs::remove_file(
+                        raw_path.to_string() + &sweep_wallet_filename + &".keys".to_string(),
+                    ))
+                {
+                    warn!("Failed to clean sweep wallet data after successful sweep. {}. The path used for the wallet directory is probably malformed", error);
+                } else {
+                    info!("Successfully removed sweep wallet data after completed sweep.");
+                }
+
+                if let Err(error) = fs::remove_file(raw_path.to_string() + &watch_wallet_filename)
+                    .and(fs::remove_file(
+                        raw_path.to_string() + &watch_wallet_filename + &".address.txt".to_string(),
+                    ))
+                    .and(fs::remove_file(
+                        raw_path.to_string() + &watch_wallet_filename + &".keys".to_string(),
+                    ))
+                {
+                    debug!("Failed to clean watch-only wallet data after sweep. {}. The path used for the wallet directory is probably malformed", error);
+                } else {
+                    debug!("Successfully removed watch-only wallet data after completed sweep");
+                }
+            } else {
+                warn!("No associated wallet data cleaned up after sweep. The path used for the wallet directory is probably malformed");
             }
-            warn!("No associated wallet data cleaned up after sweep. The path used for the wallet directory is probably malformed");
         } else {
             info!("{}", format!("Completed operations on Monero wallets with address {} . These wallets can now be safely deleted", address));
         }
