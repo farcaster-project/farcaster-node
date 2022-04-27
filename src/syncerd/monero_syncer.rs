@@ -28,7 +28,9 @@ use monero_rpc::{
     PrivateKeyType, TransferType,
 };
 use std::collections::HashMap;
+use std::fs;
 use std::ops::Range;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
@@ -256,17 +258,12 @@ async fn sweep_address(
     network: &monero::Network,
     wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
     restore_height: Option<u64>,
+    wallet_dir_path: Option<PathBuf>,
 ) -> Result<Vec<Vec<u8>>, Error> {
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
     let address = monero::Address::from_keypair(*network, &keypair);
     let wallet_filename = format!("sweep:{}", address);
-
-    // add some extra leeway for the wallet restore height
-    // let restore_height = match from_height {
-    //     Some(height) if height > 10 => Some(height - 10),
-    //     _ => None,
-    // };
 
     let wallet = wallet_mutex.lock().await;
     trace!("taking sweep wallet lock");
@@ -333,6 +330,42 @@ async fn sweep_address(
             })
             .collect();
 
+        // close the wallet since we are done with it now
+        wallet.close_wallet().await?;
+
+        // delete all the associated wallet data if possible
+        if let Some(path) = wallet_dir_path {
+            if let Some(raw_path) = path.to_str() {
+                let watch_wallet_filename = format!("/watch:{}", address);
+                let sweep_wallet_filename = format!("/sweep:{}", address);
+                if let Err(error) = fs::remove_file(raw_path.to_string() + &sweep_wallet_filename)
+                    .and(fs::remove_file(
+                        raw_path.to_string() + &sweep_wallet_filename + &".keys".to_string(),
+                    ))
+                {
+                    warn!("Failed to clean sweep wallet data after successful sweep. {}. The path used for the wallet directory is probably malformed", error);
+                } else {
+                    info!("Successfully removed sweep wallet data after completed sweep.");
+                }
+
+                if let Err(error) = fs::remove_file(raw_path.to_string() + &watch_wallet_filename)
+                    .and(fs::remove_file(
+                        raw_path.to_string() + &watch_wallet_filename + &".address.txt".to_string(),
+                    ))
+                    .and(fs::remove_file(
+                        raw_path.to_string() + &watch_wallet_filename + &".keys".to_string(),
+                    ))
+                {
+                    debug!("Failed to clean watch-only wallet data after sweep. {}. The path used for the wallet directory is probably malformed", error);
+                } else {
+                    debug!("Successfully removed watch-only wallet data after completed sweep");
+                }
+            } else {
+                warn!("No associated wallet data cleaned up after sweep. The path used for the wallet directory is probably malformed");
+            }
+        } else {
+            info!("{}", format!("Completed operations on Monero wallets with address {} . These wallets can now be safely deleted", address));
+        }
         Ok(tx_ids)
     } else {
         debug!(
@@ -619,6 +652,7 @@ fn sweep_polling(
     state: Arc<Mutex<SyncerState>>,
     wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     network: monero::Network,
+    wallet_dir_path: Option<PathBuf>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
@@ -635,6 +669,7 @@ fn sweep_polling(
                         &network,
                         Arc::clone(&wallet),
                         sweep_address_task.from_height,
+                        wallet_dir_path.clone(),
                     )
                     .await
                     .unwrap_or_else(|err| {
@@ -754,6 +789,10 @@ impl Synclet for MoneroSyncer {
                     monero_lws: opts.monero_lws.clone(),
                 };
                 info!("monero syncer servers: {:?}", syncer_servers);
+                let wallet_dir = opts
+                    .monero_wallet_dir_path
+                    .clone()
+                    .map(|wallet_dir| PathBuf::from(wallet_dir));
 
                 let _handle = std::thread::spawn(move || {
                     use tokio::runtime::Builder;
@@ -796,8 +835,12 @@ impl Synclet for MoneroSyncer {
                         let unseen_transaction_handle =
                             unseen_transaction_polling(Arc::clone(&state), syncer_servers.clone());
 
-                        let sweep_handle =
-                            sweep_polling(Arc::clone(&state), Arc::clone(&wallet_mutex), network);
+                        let sweep_handle = sweep_polling(
+                            Arc::clone(&state),
+                            Arc::clone(&wallet_mutex),
+                            network,
+                            wallet_dir,
+                        );
 
                         let res = tokio::try_join!(
                             address_handle,

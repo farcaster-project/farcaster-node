@@ -65,6 +65,10 @@ pub struct Opts {
     /// Monero lws to use for Monero syncers
     #[clap(long)]
     pub monero_lws: Option<String>,
+
+    /// Wallet directory use by the monero-wallet-rpc
+    #[clap(long)]
+    pub monero_wallet_dir_path: Option<String>,
 }
 
 #[derive(Clap, Display, Copy, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]

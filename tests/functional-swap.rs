@@ -1959,8 +1959,6 @@ async fn send_monero(
     address: monero::Address,
     amount: monero::Amount,
 ) -> Vec<u8> {
-    let mut destination: HashMap<monero::Address, u64> = HashMap::new();
-    destination.insert(address, amount.as_pico());
     let options = monero_rpc::TransferOptions {
         account_index: None,
         subaddr_indices: None,
@@ -1978,7 +1976,7 @@ async fn send_monero(
     wallet_lock.refresh(Some(1)).await.unwrap();
     let transaction = wallet_lock
         .transfer(
-            destination.clone(),
+            [(address, amount)].iter().cloned().collect(),
             monero_rpc::TransferPriority::Default,
             options.clone(),
         )

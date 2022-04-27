@@ -150,6 +150,8 @@ pub struct SyncerServers {
     pub monero_rpc_wallet: String,
     /// Monero lws to use
     pub monero_lws: Option<String>,
+    /// Monero wallet directory
+    pub monero_wallet_dir: Option<String>,
 }
 
 impl Default for SyncersConfig {
@@ -160,12 +162,14 @@ impl Default for SyncersConfig {
                 monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),
                 monero_rpc_wallet: FARCASTER_MAINNET_MONERO_RPC_WALLET.into(),
                 monero_lws: None,
+                monero_wallet_dir: None,
             }),
             testnet: Some(SyncerServers {
                 electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
                 monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
                 monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
                 monero_lws: None,
+                monero_wallet_dir: None,
             }),
             local: None,
         }

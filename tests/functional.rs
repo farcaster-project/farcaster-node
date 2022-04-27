@@ -16,11 +16,9 @@ use internet2::Decrypt;
 use internet2::PlainTranscoder;
 use internet2::RoutedFrame;
 use internet2::ZMQ_CONTEXT;
-use monero::Address;
 use monero_rpc::GetBlockHeaderSelector;
 use paste::paste;
 use rand::{distributions::Alphanumeric, Rng};
-use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
@@ -1474,8 +1472,6 @@ async fn monero_syncer_transaction_test() {
     let request = get_request_from_message(message);
     assert_transaction_confirmations(request, Some(0), vec![0]);
 
-    let mut destination: HashMap<Address, u64> = HashMap::new();
-    destination.insert(address, 1000);
     let options = monero_rpc::TransferOptions {
         account_index: None,
         subaddr_indices: None,
@@ -1487,7 +1483,10 @@ async fn monero_syncer_transaction_test() {
     };
     let transaction = wallet
         .transfer(
-            destination.clone(),
+            [(address, monero::Amount::from_pico(1000))]
+                .iter()
+                .cloned()
+                .collect(),
             monero_rpc::TransferPriority::Default,
             options.clone(),
         )
@@ -1783,8 +1782,6 @@ async fn send_monero(
     address: monero::Address,
     amount: u64,
 ) -> Vec<u8> {
-    let mut destination: HashMap<Address, u64> = HashMap::new();
-    destination.insert(address, amount);
     let options = monero_rpc::TransferOptions {
         account_index: None,
         subaddr_indices: None,
@@ -1796,7 +1793,10 @@ async fn send_monero(
     };
     let transaction = wallet
         .transfer(
-            destination.clone(),
+            [(address, monero::Amount::from_pico(amount))]
+                .iter()
+                .cloned()
+                .collect(),
             monero_rpc::TransferPriority::Default,
             options.clone(),
         )
