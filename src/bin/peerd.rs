@@ -229,7 +229,7 @@ fn main() {
 
                     internal_id = NodeAddr::Remote(RemoteNodeAddr {
                         node_id: opts.peer_key_opts.internal_node().node_id(),
-                        remote_addr: RemoteSocketAddr::Ftcp(inet_addr),
+                        remote_addr: RemoteSocketAddr::Ftcp(remote_socket),
                     });
                     debug!(
                         "Session successfully established with new unique id: {}",
