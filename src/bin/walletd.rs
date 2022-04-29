@@ -51,14 +51,12 @@ fn main() {
     let wallet_token = Token(opts.wallet_token.token);
 
     let node_secrets = NodeSecrets::new(opts.key_opts.key_file.clone());
-    let node_id = node_secrets.node_id();
 
     debug!("Starting runtime ...");
     walletd::run(
         service_config,
         wallet_token,
         node_secrets,
-        node_id,
         opts.shared.data_dir,
     )
     .expect("Error running walletd runtime");
