@@ -1,3 +1,5 @@
+use lmdb::{Cursor, Transaction as LMDBTransaction};
+use std::path::PathBuf;
 use std::{
     any::Any,
     collections::{HashMap, HashSet},
@@ -67,6 +69,7 @@ pub fn run(
     wallet_token: Token,
     node_secrets: NodeSecrets,
     _node_id: bitcoin::secp256k1::PublicKey,
+    data_dir: PathBuf,
 ) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
@@ -76,6 +79,7 @@ pub fn run(
         swaps: none!(),
         btc_addrs: none!(),
         xmr_addrs: none!(),
+        checkpoints: CheckpointGetSet::new(data_dir),
     };
 
     Service::run(config, runtime, false)
@@ -89,6 +93,7 @@ pub struct Runtime {
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
     xmr_addrs: HashMap<SwapId, monero::Address>,
+    checkpoints: CheckpointGetSet,
 }
 
 impl Runtime {
@@ -1388,4 +1393,51 @@ pub fn create_funding(
 pub fn funding_update(funding: &mut FundingTx, tx: bitcoin::Transaction) -> Result<(), Error> {
     let funding_bundle = FundingTransaction::<Bitcoin<SegwitV0>> { funding: tx };
     Ok(funding.update(funding_bundle.funding)?)
+}
+
+struct CheckpointGetSet(lmdb::Environment);
+
+impl CheckpointGetSet {
+    fn new(path: PathBuf) -> CheckpointGetSet {
+        let env = lmdb::Environment::new().open(&path).unwrap();
+        env.create_db(None, lmdb::DatabaseFlags::empty()).unwrap();
+        CheckpointGetSet(env)
+    }
+
+    fn set_state(&mut self, key: &SwapId, val: &[u8]) {
+        let db = self.0.open_db(None).unwrap();
+        let mut tx = self.0.begin_rw_txn().unwrap();
+        if !tx.get(db, &key).is_err() {
+            tx.del(db, &key, None).unwrap();
+        }
+        tx.put(db, &key, &val, lmdb::WriteFlags::empty()).unwrap();
+        tx.commit().unwrap();
+    }
+
+    fn get_state(&mut self, key: &SwapId) -> Vec<u8> {
+        let db = self.0.open_db(None).unwrap();
+        let tx = self.0.begin_ro_txn().unwrap();
+        let val: Vec<u8> = tx.get(db, &key).unwrap().into();
+        tx.abort();
+        val
+    }
+}
+
+#[test]
+fn test_lmdb_state() {
+    let val1 = vec![0, 1];
+    let val2 = vec![2, 3, 4, 5];
+    let key1 = SwapId::random();
+    let key2 = SwapId::random();
+    let path = std::env::current_dir().unwrap();
+    let mut state = CheckpointGetSet::new(path.to_path_buf());
+    state.set_state(&key1, &val1);
+    let res = state.get_state(&key1);
+    assert_eq!(val1, res);
+    state.set_state(&key1, &val2);
+    let res = state.get_state(&key1);
+    assert_eq!(val2, res);
+    state.set_state(&key2, &val2);
+    let res = state.get_state(&key2);
+    assert_eq!(val2, res);
 }

@@ -54,8 +54,14 @@ fn main() {
     let node_id = node_secrets.node_id();
 
     debug!("Starting runtime ...");
-    walletd::run(service_config, wallet_token, node_secrets, node_id)
-        .expect("Error running walletd runtime");
+    walletd::run(
+        service_config,
+        wallet_token,
+        node_secrets,
+        node_id,
+        opts.shared.data_dir,
+    )
+    .expect("Error running walletd runtime");
 
     unreachable!()
 }

@@ -64,6 +64,7 @@ internet2 = "0.5.0-alpha.2"
 # Rust language
 lazy_static = "1.4"
 lightning_encoding = "0.5.0-beta.3"
+lmdb = "0.8.0"
 # lnp-core =  { path = "../ext/lnp-core" }
 # internet2 = { path = "../ext/rust-internet2" }
 lnp-core = "0.4.0-beta.3"
