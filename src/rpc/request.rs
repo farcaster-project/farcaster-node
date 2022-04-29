@@ -347,6 +347,10 @@ pub enum Request {
     #[display("terminate")]
     Terminate,
 
+    #[api(type = 4)]
+    #[display("peerd_terminated")]
+    PeerdTerminated,
+
     #[api(type = 32)]
     #[display("nodeid({0})")]
     NodeId(NodeId),

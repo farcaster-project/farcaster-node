@@ -393,8 +393,12 @@ impl Runtime {
 
             Request::Protocol(Msg::PeerdShutdown) => {
                 warn!("Exiting peerd");
-                // senders.send_to(ServiceBus::Msg, self.identity(), ServiceId::Farcasterd, Req)
-                // handle further side effects here, e.g. sending a message to farcasterd to cleanup the peer connection, before exiting.
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    Request::PeerdTerminated,
+                )?;
                 std::process::exit(0);
             }
 
