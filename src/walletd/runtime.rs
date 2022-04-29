@@ -68,7 +68,6 @@ pub fn run(
     config: ServiceConfig,
     wallet_token: Token,
     node_secrets: NodeSecrets,
-    _node_id: bitcoin::secp256k1::PublicKey,
     data_dir: PathBuf,
 ) -> Result<(), Error> {
     let runtime = Runtime {
