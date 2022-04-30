@@ -669,46 +669,27 @@ impl Runtime {
                 remote_commit,
                 funding_address,
             }) => {
-                let offerid = &public_offer.offer.id();
-                let listener = self.listens.get(&offerid);
-                let node_id = self.node_ids.get(&offerid);
-                let peerd_id = self.peerd_ids.get(&offerid);
-                let (node_id, peer_address) = match local_trade_role {
-                    // Maker has only one listener, MAYBE for more listeners self.listens may be a
-                    // HashMap<RemoteSocketAddr, Vec<OfferId>>
-                    TradeRole::Maker if listener.is_some() && node_id.is_some() => (
-                        node_id.cloned().unwrap(),
-                        // internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
-                        // internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
-                        listener.cloned().unwrap(),
-                    ),
-                    TradeRole::Taker => (
-                        public_offer.node_id,
-                        internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
-                    ),
+                let offerid = public_offer.offer.id();
+                let peerd_id = self.peerd_ids.get(&offerid); // Some for Maker after TakerCommit, None for Taker
+                let peer: ServiceId = match local_trade_role {
+                    TradeRole::Maker if peerd_id.is_some() => peerd_id.unwrap().clone(),
+                    TradeRole::Taker => internet2::RemoteNodeAddr {
+                        node_id: public_offer.node_id,
+                        remote_addr: internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
+                    }
+                    .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
+                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?
+                    .into(),
                     _ => {
-                        error!("Listener must exist!");
+                        error!("peerd_id must exist for Maker after TakerCommit msg!");
                         return Ok(());
                     }
                 };
                 if self.public_offers.remove(&public_offer) {
                     trace!(
-                        "{}, {}",
-                        "launching swapd with swap_id:",
+                        "launching swapd with swap_id: {}",
                         swap_id.bright_yellow_bold()
                     );
-                    let daemon_service = internet2::RemoteNodeAddr {
-                        node_id,
-                        remote_addr: peer_address,
-                    };
-                    let peer: ServiceId = if peerd_id.is_none() {
-                        daemon_service
-                            .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
-                            .ok_or(internet2::presentation::Error::InvalidEndpoint)?
-                            .into()
-                    } else {
-                        peerd_id.unwrap().clone()
-                    };
 
                     self.consumed_offers
                         .insert(public_offer.offer.id(), swap_id);
