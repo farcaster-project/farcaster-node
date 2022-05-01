@@ -117,7 +117,6 @@ parallel off
 
 m_swap --> m_swap : Checkpoint Alice 0
 m_swap -> m_syncer : Watch Accordant Lock
-m_swap -> m_syncer : Broadcast Accordant Lock
 
 parallel
 m_swap <- m_syncer : Accordant Lock final

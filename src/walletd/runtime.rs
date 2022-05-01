@@ -45,6 +45,7 @@ use farcaster_core::{
         FullySignedPunish, FullySignedRefund, FundingTransaction, Proof, SignedAdaptorBuy,
         SignedAdaptorRefund, SignedArbitratingLock,
     },
+    consensus::{self, CanonicalBytes, Decodable, Encodable},
     crypto::{ArbitratingKeyId, GenerateKey, SharedKeyId},
     crypto::{CommitmentEngine, ProveCrossGroupDleq},
     monero::{Monero, SHARED_VIEW_KEY_ID},
@@ -121,6 +122,26 @@ pub struct AliceState {
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
     alice_cancel_signature: Option<Signature>,
     adaptor_refund: Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
+}
+
+impl Encodable for AliceState {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut len = self.alice.consensus_encode(writer)?;
+        len += self.local_params.consensus_encode(writer)?;
+        len += self.local_proof.consensus_encode(writer)?;
+        len += self.key_manager.consensus_encode(writer)?;
+        len += self.pub_offer.consensus_encode(writer)?;
+        len += self.remote_commit.consensus_encode(writer)?;
+        len += self.remote_params.consensus_encode(writer)?;
+        len += self.remote_proof.consensus_encode(writer)?;
+        len += self.core_arb_setup.consensus_encode(writer)?;
+        len += self
+            .alice_cancel_signature
+            .as_canonical_bytes()
+            .consensus_encode(writer)?;
+        len += self.adaptor_refund.consensus_encode(writer)?;
+        Ok(len)
+    }
 }
 
 impl AliceState {
