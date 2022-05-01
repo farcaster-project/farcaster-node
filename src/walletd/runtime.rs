@@ -144,6 +144,26 @@ impl Encodable for AliceState {
     }
 }
 
+impl Decodable for AliceState {
+    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(AliceState {
+            alice: Decodable::consensus_decode(d)?,
+            local_params: Decodable::consensus_decode(d)?,
+            local_proof: Decodable::consensus_decode(d)?,
+            key_manager: Decodable::consensus_decode(d)?,
+            pub_offer: Decodable::consensus_decode(d)?,
+            remote_commit: Decodable::consensus_decode(d)?,
+            remote_params: Decodable::consensus_decode(d)?,
+            remote_proof: Decodable::consensus_decode(d)?,
+            core_arb_setup: Decodable::consensus_decode(d)?,
+            alice_cancel_signature: Option::<Signature>::from_canonical_bytes(
+                farcaster_core::unwrap_vec_ref!(d).as_ref(),
+            )?,
+            adaptor_refund: Decodable::consensus_decode(d)?,
+        })
+    }
+}
+
 impl AliceState {
     fn new(
         alice: Alice<BtcXmr>,
