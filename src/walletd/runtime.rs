@@ -203,6 +203,41 @@ pub struct BobState {
     adaptor_buy: Option<SignedAdaptorBuy<Bitcoin<SegwitV0>>>,
 }
 
+impl Encodable for BobState {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut len = self.bob.consensus_encode(writer)?;
+        len += self.local_params.consensus_encode(writer)?;
+        len += self.local_proof.consensus_encode(writer)?;
+        len += self.key_manager.consensus_encode(writer)?;
+        len += self.pub_offer.consensus_encode(writer)?;
+        len += self.funding_tx.consensus_encode(writer)?;
+        len += self.remote_commit_params.consensus_encode(writer)?;
+        len += self.remote_params.consensus_encode(writer)?;
+        len += self.remote_proof.consensus_encode(writer)?;
+        len += self.core_arb_setup.consensus_encode(writer)?;
+        len += self.adaptor_buy.consensus_encode(writer)?;
+        Ok(len)
+    }
+}
+
+impl Decodable for BobState {
+    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(BobState {
+            bob: Decodable::consensus_decode(d)?,
+            local_params: Decodable::consensus_decode(d)?,
+            local_proof: Decodable::consensus_decode(d)?,
+            key_manager: Decodable::consensus_decode(d)?,
+            pub_offer: Decodable::consensus_decode(d)?,
+            funding_tx: Decodable::consensus_decode(d)?,
+            remote_commit_params: Decodable::consensus_decode(d)?,
+            remote_params: Decodable::consensus_decode(d)?,
+            remote_proof: Decodable::consensus_decode(d)?,
+            core_arb_setup: Decodable::consensus_decode(d)?,
+            adaptor_buy: Decodable::consensus_decode(d)?,
+        })
+    }
+}
+
 impl BobState {
     fn new(
         bob: Bob<BtcXmr>,
