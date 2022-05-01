@@ -335,7 +335,7 @@ async fn sweep_address(
         Ok(tx_ids)
     } else {
         debug!(
-            "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}. Expected balance {:?}",
+            "retrying sweep, balance not unlocked yet. Unlocked balance {:?}. Total balance {:?}. Expected balance {:?}.",
             balance.unlocked_balance, balance.balance, minimum_balance
         );
         trace!("releasing sweep wallet lock");
