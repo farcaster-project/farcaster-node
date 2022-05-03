@@ -229,8 +229,9 @@ impl esb::Handler<ServiceBus> for Runtime {
     ) -> Result<(), Error> {
         if self.connect {
             info!(
-                "{} with the remote peer",
-                "Initializing connection".bright_blue_bold()
+                "{} with the remote peer {}",
+                "Initializing connection".bright_blue_bold(),
+                self.remote_socket
             );
             // self.send_ctl(senders, ServiceId::Wallet, request::PeerSecret)
 
@@ -392,7 +393,12 @@ impl Runtime {
 
             Request::Protocol(Msg::PeerdShutdown) => {
                 warn!("Exiting peerd");
-                // handle further side effects here, e.g. sending a message to farcasterd to cleanup the peer connection, before exiting.
+                senders.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    Request::PeerdTerminated,
+                )?;
                 std::process::exit(0);
             }
 

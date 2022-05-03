@@ -229,7 +229,7 @@ fn main() {
 
                     internal_id = NodeAddr::Remote(RemoteNodeAddr {
                         node_id: opts.peer_key_opts.internal_node().node_id(),
-                        remote_addr: RemoteSocketAddr::Ftcp(inet_addr),
+                        remote_addr: RemoteSocketAddr::Ftcp(remote_socket),
                     });
                     debug!(
                         "Session successfully established with new unique id: {}",
@@ -257,6 +257,20 @@ fn main() {
     };
 
     debug!("Starting runtime ...");
+
+    /* A maker / listener passes the following content
+        internal_id: local key and remote address
+        remote_id: None
+        local_socket: local inet address
+        remote_socket: address of the remote socket
+        connect: false
+
+    A taker / connecter passes the following content
+        internal_id: remote key and remote address
+        remote_id: remote peer id
+        local_socket: None
+        remote_socket: remote node addr
+        connect: true */
     peerd::run(
         service_config,
         connection,

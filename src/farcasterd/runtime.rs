@@ -1284,6 +1284,17 @@ impl Runtime {
                 )?;
             }
 
+            Request::PeerdTerminated => {
+                if let ServiceId::Peer(addr) = source {
+                    if self.connections.remove(&addr) {
+                        debug!(
+                            "removed connection {} from farcasterd registered connections",
+                            addr
+                        );
+                    }
+                }
+            }
+
             req => {
                 error!("Ignoring unsupported request: {}", req.err());
             }
