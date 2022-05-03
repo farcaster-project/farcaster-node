@@ -1104,6 +1104,7 @@ async fn monero_syncer_sweep_test() {
                 spend_key,
                 view_key,
                 address: dest_address,
+                minimum_balance: monero::Amount::from_pico(1000000000000),
             }),
         }),
         source: SOURCE2.clone(),

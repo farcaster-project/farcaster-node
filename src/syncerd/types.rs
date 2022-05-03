@@ -93,6 +93,7 @@ pub struct SweepXmrAddress {
     pub spend_key: monero::PrivateKey,
     pub view_key: monero::PrivateKey,
     pub address: monero::Address,
+    pub minimum_balance: monero::Amount,
 }
 
 impl StrictEncode for SweepXmrAddress {
@@ -108,9 +109,14 @@ impl StrictEncode for SweepXmrAddress {
             .view_key
             .consensus_encode(&mut e)
             .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
+        len += self
+            .address
+            .consensus_encode(&mut e)
+            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
         Ok(len
             + self
-                .address
+                .minimum_balance
+                .as_pico()
                 .consensus_encode(&mut e)
                 .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
     }
@@ -125,6 +131,10 @@ impl StrictDecode for SweepXmrAddress {
                 .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
             address: monero::Address::consensus_decode(&mut d)
                 .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            minimum_balance: monero::Amount::from_pico(
+                u64::consensus_decode(&mut d)
+                    .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
+            ),
         })
     }
 }

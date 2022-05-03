@@ -997,6 +997,7 @@ async fn syncer_state_sweep_addresses() {
                 "51qzspbPiQ9Z9Wq3hR8HRhPmVcE3URCK8b8A9ypHHzyvhigWTefCapoG1MXVZQQi7B5t4DpJYrHZyaFjHSb5QqLe8YEaBpo"
             )
             .unwrap(),
+            minimum_balance: monero::Amount::from_pico(1),
         }),
     };
     let source1 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
