@@ -786,6 +786,24 @@ impl Runtime {
             })) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
+                // let j = self.wallets.get(&swap_id).unwrap();
+                // let k: Result<BobState, _> = (*j).try_into();
+                let mut writer = vec![];
+                // TODO: checkpointing before .get_mut call for now, but should do this later
+                if let Some(Wallet::Bob(state)) = self.wallets.get(&swap_id) {
+                    let state_size = state.consensus_encode(&mut writer);
+                    // info!("writer content: {:?}", writer);
+                    info!("state size: {:?}", state_size);
+                    let path = std::env::current_dir().unwrap();
+                    let mut state = CheckpointGetSet::new(path.to_path_buf());
+                    state.set_state(&swap_id, &writer);
+                } else {
+                    error!(
+                        "{:#} | Unknown wallet and swap_id {:#}",
+                        swap_id.bright_blue_italic(),
+                        swap_id.bright_white_bold(),
+                    );
+                };
                 if let Some(Wallet::Bob(BobState {
                     bob,
                     local_params,
@@ -809,24 +827,49 @@ impl Runtime {
                     )?;
 
                     // *refund_sigs = Some(refund_proc_sigs);
-                    {
-                        let signed_arb_lock =
-                            bob.sign_arbitrating_lock(key_manager, core_arb_txs)?;
-                        let sig = signed_arb_lock.lock_sig;
-                        let tx = core_arb_setup.lock.clone();
-                        let mut lock_tx = LockTx::from_partial(tx);
-                        let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
-                        lock_tx.add_witness(lock_pubkey, sig)?;
-                        let finalized_lock_tx =
-                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
+                    let signed_arb_lock = bob.sign_arbitrating_lock(key_manager, core_arb_txs)?;
+                    let sig = signed_arb_lock.lock_sig;
+                    let tx = core_arb_setup.lock.clone();
+                    let mut lock_tx = LockTx::from_partial(tx);
+                    let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
+                    lock_tx.add_witness(lock_pubkey, sig)?;
+                    let finalized_lock_tx: bitcoin::Transaction =
+                        Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
 
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(), // destination swapd
-                            Request::Tx(request::Tx::Lock(finalized_lock_tx)),
-                        )?;
-                    }
+                    // TODO: checkpoint here
+                    // {
+                    //     struct RecoveryState {
+                    //         swap_index: u32,
+                    //         params: (AliceParameters<BtcXmr>, BobParameters<BtcXmr>),
+                    //         txs: (
+                    //             PartiallySignedTransaction,
+                    //             PartiallySignedTransaction,
+                    //             bitcoin::Transaction,
+                    //         ),
+                    //     }
+
+                    //     let state = RecoveryState {
+                    //         swap_index: key_manager.get_swap_index(),
+                    //         params: (remote_params.clone(), local_params.clone()),
+                    //         txs: (
+                    //             core_arb_txs.lock.clone(),
+                    //             core_arb_txs.cancel.clone(),
+                    //             finalized_lock_tx.clone(),
+                    //         ),
+                    //     };
+
+                    //     {
+                    //         let _recovered_key_manager =
+                    //             KeyManager::new(self.node_secrets.wallet_seed, state.swap_index);
+                    //     }
+                    // }
+
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        my_id.clone(),
+                        source.clone(), // destination swapd
+                        Request::Tx(request::Tx::Lock(finalized_lock_tx)),
+                    )?;
 
                     {
                         if adaptor_buy.is_some() {
@@ -953,10 +996,11 @@ impl Runtime {
                         signed_adaptor_refund,
                     ));
                     *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
+                    // NOTE: if this is the right spot for the Ctl message, it should also be replayed upon state recovery
                     {
                         // cancel
-                        let tx = core_arb_setup.as_ref().unwrap().cancel.clone();
-                        let mut cancel_tx = CancelTx::from_partial(tx);
+                        let partial_cancel_tx = core_arb_setup.as_ref().unwrap().cancel.clone();
+                        let mut cancel_tx = CancelTx::from_partial(partial_cancel_tx);
                         cancel_tx
                             .add_witness(local_params.cancel, alice_cancel_signature.unwrap())?;
                         cancel_tx.add_witness(
@@ -972,6 +1016,7 @@ impl Runtime {
                             Request::Tx(Tx::Cancel(finalized_cancel_tx)),
                         )?;
                     }
+                    // NOTE: if this is the right spot for the Ctl message, it should also be replayed upon state recovery
                     {
                         let FullySignedPunish { punish, punish_sig } = alice.fully_sign_punish(
                             key_manager,
@@ -992,6 +1037,25 @@ impl Runtime {
                             Request::Tx(Tx::Punish(tx)),
                         )?;
                     }
+
+                    // struct RecoveryState {
+                    //     swap_index: u32,
+                    //     params: (AliceParameters<BtcXmr>, BobParameters<BtcXmr>),
+                    //     txs:
+                    // }
+                    let state = (
+                        // swap_index
+                        // key_manager.get_swap_index(),
+                        // params
+                        (bob_parameters.clone(), local_params.clone()),
+                        // txs
+                        (
+                            core_arb_txs.lock.clone(),
+                            core_arb_txs.cancel.clone(),
+                            // finalized_lock_tx.clone(),
+                            // tx
+                        ),
+                    );
 
                     let refund_proc_signatures =
                         Msg::RefundProcedureSignatures(refund_proc_signatures);
