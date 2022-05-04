@@ -1542,14 +1542,14 @@ impl Runtime {
             Request::Protocol(Msg::Reveal(reveal))
                 if self.state.commit() && self.state.remote_commit().is_some() =>
             {
-                let local_params = self
-                    .state
-                    .local_params()
-                    .expect("commit state has local_params");
                 let reveal_proof = Msg::Reveal(reveal);
                 let swap_id = reveal_proof.swap_id();
                 self.send_peer(endpoints, reveal_proof)?;
                 trace!("sent reveal_proof to peerd");
+                let local_params = self
+                    .state
+                    .local_params()
+                    .expect("commit state has local_params");
                 let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                 self.send_peer(endpoints, Msg::Reveal(reveal_params))?;
                 trace!("sent reveal_proof to peerd");
