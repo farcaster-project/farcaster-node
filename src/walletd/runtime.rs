@@ -1420,6 +1420,25 @@ impl CheckpointGetSet {
         tx.abort();
         val
     }
+
+    fn clear_state(&mut self, key: &SwapId) {
+        let db = self.0.open_db(None).unwrap();
+        let mut tx = self.0.begin_rw_txn().unwrap();
+        if !tx.get(db, &key).is_err() {
+            tx.del(db, &key, None).unwrap();
+        }
+        tx.commit().unwrap();
+    }
+
+    fn get_swapids(&mut self) -> Vec<SwapId> {
+        let db = self.0.open_db(None).unwrap();
+        let tx = self.0.begin_ro_txn().unwrap();
+        let mut cursor = tx.open_ro_cursor(db).unwrap();
+        cursor
+            .iter()
+            .map(|(swap_id, _)| SwapId(swap_id.try_into().unwrap()))
+            .collect::<Vec<SwapId>>()
+    }
 }
 
 #[test]
@@ -1439,4 +1458,10 @@ fn test_lmdb_state() {
     state.set_state(&key2, &val2);
     let res = state.get_state(&key2);
     assert_eq!(val2, res);
+    let swapids = state.get_swapids();
+    assert_eq!(2, swapids.len());
+    state.clear_state(&key1);
+    state.clear_state(&key2);
+    let swapids = state.get_swapids();
+    assert_eq!(0, swapids.len());
 }
