@@ -230,6 +230,10 @@ pub struct Token(pub String);
 pub struct GetKeys(pub Token, pub RequestId);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display("reconnect peer(node addr({0})))")]
+pub struct ReconnectPeer(pub NodeAddr, pub Option<SecretKey>);
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("launch_swap")]
 pub struct LaunchSwap {
     pub local_trade_role: TradeRole,
@@ -359,6 +363,22 @@ pub enum Request {
     #[display("peerd_terminated")]
     PeerdTerminated,
 
+    #[api(type = 5)]
+    #[display("send_message({0})")]
+    Protocol(Msg),
+
+    #[api(type = 6)]
+    #[display("peerd_unreachable")]
+    PeerdUnreachable(ServiceId),
+
+    #[api(type = 7)]
+    #[display("reconnect_peer")]
+    ReconnectPeer(ReconnectPeer),
+
+    #[api(type = 8)]
+    #[display("peerd_reconnected")]
+    PeerdReconnected,
+
     #[api(type = 32)]
     #[display("nodeid({0})")]
     NodeId(NodeId),
@@ -382,10 +402,6 @@ pub enum Request {
     #[api(type = 46)]
     #[display("swap_success()")]
     SwapOutcome(Outcome),
-
-    #[api(type = 5)]
-    #[display("send_message({0})")]
-    Protocol(Msg),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]

@@ -13,6 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::farcasterd::runtime::request::ReconnectPeer;
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -105,6 +106,8 @@ pub fn run(
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
+        broken_connections: none!(),
+        report_peerd_reconnect: none!(),
         running_swaps: none!(),
         spawning_services: none!(),
         making_swaps: none!(),
@@ -135,6 +138,8 @@ pub struct Runtime {
     listens: HashMap<OfferId, RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
+    broken_connections: HashSet<NodeAddr>,
+    report_peerd_reconnect: HashMap<NodeAddr, ServiceId>,
     running_swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
     making_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
@@ -142,9 +147,9 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashMap<OfferId, SwapId>,
-    node_ids: HashMap<OfferId, PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
-    peerd_ids: HashMap<OfferId, ServiceId>,
+    consumed_offers: HashMap<OfferId, (SwapId, ServiceId)>,
+    node_ids: HashMap<OfferId, PublicKey>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
+    peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncer_services: HashMap<(Coin, Network), ServiceId>,
@@ -285,9 +290,9 @@ impl Runtime {
         self.consumed_offers = self
             .consumed_offers
             .drain()
-            .filter_map(|(k, v)| {
-                if swapid != &v {
-                    Some((k, v))
+            .filter_map(|(k, (swap_id, service_id))| {
+                if swapid != &swap_id {
+                    Some((k, (swap_id, service_id)))
                 } else {
                     offerid = Some(k);
                     None
@@ -496,6 +501,18 @@ impl Runtime {
                                 connection_id.bright_blue_italic(),
                                 self.connections.len().bright_blue_bold()
                             );
+                            if self.broken_connections.remove(connection_id) {
+                                if let Some(swap_service_id) =
+                                    self.report_peerd_reconnect.remove(connection_id)
+                                {
+                                    senders.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        swap_service_id,
+                                        Request::PeerdReconnected,
+                                    )?;
+                                }
+                            }
                         } else {
                             warn!(
                                 "Connection {} was already registered; the service probably was relaunched",
@@ -694,7 +711,7 @@ impl Runtime {
                     );
 
                     self.consumed_offers
-                        .insert(public_offer.offer.id(), swap_id);
+                        .insert(public_offer.offer.id(), (swap_id, peer.clone()));
                     self.stats.incr_initiated();
                     launch_swapd(
                         self,
@@ -726,6 +743,9 @@ impl Runtime {
                     } else if let Request::TakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
                         Ok(Request::TakeOffer(req))
+                    } else if let Request::ReconnectPeer(mut req) = request {
+                        req.1 = Some(sk);
+                        Ok(Request::ReconnectPeer(req))
                     } else {
                         Err(Error::Farcaster(s!(
                             "Unexpected request: calling back from Keypair handling"
@@ -1295,8 +1315,75 @@ impl Runtime {
                             "removed connection {} from farcasterd registered connections",
                             addr
                         );
+
+                        // add to broken connection if a swap running over this
+                        // connection is not completed, and thus present in
+                        // consumed_offers
+                        let peerd_id = ServiceId::Peer(addr.clone());
+                        if self
+                            .consumed_offers
+                            .iter()
+                            .find_map(|(_, (_, service_id))| {
+                                if service_id.clone() == peerd_id {
+                                    Some(0)
+                                } else {
+                                    None
+                                }
+                            })
+                            .is_some()
+                        {
+                            self.broken_connections.insert(addr.clone());
+                            // if we are the taker/connector of the swap, attempt to
+                            // re-connect. The taker does not populate the
+                            // peerd_ids.
+                            if self
+                                .peerd_ids
+                                .iter()
+                                .find_map(|(_, service_id)| {
+                                    if service_id.clone() == peerd_id {
+                                        Some(0)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .is_none()
+                            {
+                                // add re-connect procedure, prepare request for
+                                // getkeys, then get keys recurses into actual
+                                // handle on success
+                                let request = Request::ReconnectPeer(ReconnectPeer(addr, None));
+                                self.get_secret(senders, ServiceId::Farcasterd, request)?;
+                            }
+                        }
                     }
                 }
+            }
+
+            Request::ReconnectPeer(reconnect) => match reconnect {
+                ReconnectPeer(node_addr, Some(sk)) => {
+                    self.connect_peer(ServiceId::Farcasterd, &node_addr, sk)?;
+                }
+                _ => {
+                    debug!("lol");
+                }
+            },
+
+            Request::PeerdUnreachable(ServiceId::Peer(addr)) => {
+                if self.connections.contains(&addr) {
+                    warn!(
+                        "Peerd {} was reported to be unreachable, attempting to
+                        terminate to kick-off re-connect procedure, if we are
+                        taker and the swap is still running.",
+                        addr
+                    );
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Peer(addr.clone()),
+                        Request::Terminate,
+                    )?;
+                }
+                self.report_peerd_reconnect.insert(addr, source);
             }
 
             req => {
