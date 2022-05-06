@@ -505,6 +505,10 @@ impl Runtime {
                                 if let Some(swap_service_id) =
                                     self.report_peerd_reconnect.remove(connection_id)
                                 {
+                                    debug!(
+                                        "Letting {} know of peer reconnection.",
+                                        swap_service_id
+                                    );
                                     senders.send_to(
                                         ServiceBus::Ctl,
                                         self.identity(),
@@ -732,7 +736,7 @@ impl Runtime {
             }
 
             Request::Keys(Keys(sk, pk, id)) if self.pending_requests.contains_key(&id) => {
-                trace!("received peerd keys");
+                debug!("received peerd keys {}", sk);
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
                     trace!("Received expected peer keys, injecting key in request");
@@ -1491,7 +1495,7 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        trace!(
+        debug!(
             "Peer keys not available yet - waiting to receive them on Request::Keypair\
                 and then proceed with parent request"
         );

@@ -105,7 +105,7 @@ use bitcoin::secp256k1::PublicKey;
 use farcaster_node::peerd::{self, Opts};
 use farcaster_node::LogStyle;
 use farcaster_node::ServiceConfig;
-use internet2::{session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr};
+use internet2::{session, FramingProtocol, RemoteNodeAddr, RemoteSocketAddr};
 use microservices::peer::PeerConnection;
 
 /*
@@ -187,7 +187,6 @@ fn main() {
     let peer_socket = PeerSocket::from(opts.clone());
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
-    let internal_id: NodeAddr;
     let mut local_socket: Option<InetSocketAddr> = None;
     let mut remote_id: Option<PublicKey> = None;
     let mut remote_socket: InetSocketAddr;
@@ -228,14 +227,8 @@ fn main() {
                         session::Raw::with_brontide(stream, local_node.private_key(), inet_addr)
                             .expect("Unable to establish session with the remote peer");
 
-                    internal_id = NodeAddr::Remote(RemoteNodeAddr {
-                        node_id: opts.peer_key_opts.internal_node().node_id(),
-                        remote_addr: RemoteSocketAddr::Ftcp(remote_socket),
-                    });
-                    debug!(
-                        "Session successfully established with new unique id: {}",
-                        internal_id
-                    );
+                    debug!("Session successfully established with {}", remote_socket);
+
                     break PeerConnection::with(session);
                 }
                 debug!("Child forked; returning into main listener event loop");
@@ -246,7 +239,6 @@ fn main() {
             debug!("Running in CONNECT mode");
 
             connect = true;
-            internal_id = NodeAddr::Remote(remote_node_addr.clone());
             remote_id = Some(remote_node_addr.node_id);
             remote_socket = remote_node_addr.remote_addr.into();
 
@@ -260,14 +252,12 @@ fn main() {
     debug!("Starting runtime ...");
 
     /* A maker / listener passes the following content
-        internal_id: local key and remote address
         remote_id: None
         local_socket: local inet address
         remote_socket: address of the remote socket
         connect: false
 
     A taker / connecter passes the following content
-        internal_id: remote key and remote address
         remote_id: remote peer id
         local_socket: None
         remote_socket: remote node addr
@@ -275,7 +265,6 @@ fn main() {
     peerd::run(
         service_config,
         connection,
-        internal_id,
         local_id,
         remote_id,
         local_socket,

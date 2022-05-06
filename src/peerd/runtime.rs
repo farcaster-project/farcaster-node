@@ -12,6 +12,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use internet2::RemoteNodeAddr;
+use internet2::RemoteSocketAddr;
+use microservices::peer::RecvMessage;
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
 use std::{rc::Rc, thread::spawn};
@@ -36,7 +39,6 @@ use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, Servi
 pub fn run(
     config: ServiceConfig,
     connection: PeerConnection,
-    internal_id: NodeAddr,
     local_id: PublicKey,
     remote_id: Option<PublicKey>,
     local_socket: Option<InetSocketAddr>,
@@ -44,15 +46,39 @@ pub fn run(
     connect: bool,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
-    let (receiver, sender) = connection.split();
+    let (mut receiver, mut sender) = connection.split();
+
+    // this is hella hacky, but it serves the purpose of keeping peerd's service
+    // id constant accross reconnects: <REMOTE_NODE_ID>:<REMOTE_ADDR> for taker,
+    // <REMOTE_NODE_ID>:<LOCAL_ADDR> for maker
+    let internal_identity = if connect {
+        sender.send_message(Msg::Identity(local_id)).unwrap();
+        debug!("sent message with local_id {} to the maker", local_id);
+        ServiceId::Peer(NodeAddr::Remote(RemoteNodeAddr {
+            node_id: remote_id.unwrap(),
+            remote_addr: RemoteSocketAddr::Ftcp(remote_socket),
+        }))
+    } else {
+        let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
+        let msg: &Msg = &*receiver.recv_message(&unmarshaller).unwrap();
+        let id = match msg {
+            Msg::Identity(id) => {
+                info!("Received the following local_id from the taker {}", id);
+                Some(id)
+            }
+            _ => None,
+        };
+        ServiceId::Peer(NodeAddr::Remote(RemoteNodeAddr {
+            node_id: *id.unwrap(),
+            remote_addr: RemoteSocketAddr::Ftcp(local_socket.unwrap()),
+        }))
+    };
 
     debug!("Opening bridge between runtime and peer listener threads");
     let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     let rx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     tx.connect("inproc://bridge")?;
     rx.bind("inproc://bridge")?;
-
-    let internal_identity = ServiceId::Peer(internal_id);
 
     debug!("Starting thread listening for messages from the remote peer");
     let bridge_handler = ListenerRuntime {
