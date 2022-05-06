@@ -1336,6 +1336,7 @@ impl Runtime {
                             })
                             .is_some()
                         {
+                            info!("a swap is still running over the terminated peer {}, attempting to restart it.", addr);
                             self.broken_connections.insert(addr.clone());
                             // if we are the taker/connector of the swap, attempt to
                             // re-connect. The taker does not populate the

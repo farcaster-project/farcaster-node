@@ -67,6 +67,48 @@ async fn swap_bob_maker_normal() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
+async fn swap_bob_maker_kill_peerd_before_funding_should_reconnect_success() {
+    let execution_mutex = Arc::new(Mutex::new(0));
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_farcaster_clients().await;
+
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    kill_connected_peerd();
+
+    run_swap(
+        swap_id,
+        data_dir_taker,
+        data_dir_maker,
+        Arc::clone(&bitcoin_rpc),
+        bitcoin_address,
+        monero_regtest,
+        Arc::clone(&monero_wallet),
+        xmr_dest_wallet_name,
+        execution_mutex,
+    )
+    .await;
+
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
 async fn swap_bob_maker_refund_race_cancel() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -1453,6 +1495,28 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
     farcasterds
         .iter_mut()
         .for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
+}
+
+fn kill_connected_peerd() {
+    println!("killing peerd");
+    let sys = System::new_all();
+    let proc = sys
+        .get_processes()
+        .iter()
+        .filter(|(_, process)| {
+            process.name() == "peerd" && process.cmd().contains(&"--listen".to_string())
+        })
+        .map(|(id, process)| {
+            println!("process: {:?}", process.cmd());
+            id
+        })
+        .reduce(|max_id, id| if max_id >= id { max_id } else { id })
+        .expect("No peerd process to be killed found");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(*proc),
+        nix::sys::signal::Signal::SIGINT,
+    )
+    .expect("Sending CTR-C to peerd failed");
 }
 
 fn reusable_btc_address() -> bitcoin::Address {
