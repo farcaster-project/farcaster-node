@@ -1,0 +1,23 @@
+title Peer Reconnect Procedure
+
+participant t_wallet
+participant t_swapd
+participant t_farcasterd
+participant t_peerd
+participant m_peerd
+participant m_farcasterd
+participant m_swapd
+
+==Peer reconnect procedure==
+m_swapd -> m_farcasterd : Ctl PeerdUnreachable
+m_farcasterd -> m_peerd :Ctl Terminate
+m_peerd -> m_farcasterd: Ctl PeerdTerminated
+t_peerd -> t_farcasterd: Ctl PeerdTerminated
+t_wallet <- t_farcasterd : Ctl GetKeys (with ReconnectPeer deferred)
+t_wallet -> t_farcasterd : Ctl Keys
+t_farcasterd <- t_farcasterd : Ctl ReconnectPeer (continues)
+t_farcasterd -> t_farcasterd : launch\npeerd connect
+==Taker peerd restarted, connects to maker forked peerd==
+t_peerd -> m_peerd : NodeId (raw)
+m_peerd -> m_farcasterd: Ctl Hello
+m_farcasterd -> m_swapd: Ctl PeerdReconnected
