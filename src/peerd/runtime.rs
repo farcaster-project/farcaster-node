@@ -51,6 +51,8 @@ pub fn run(
     // this is hella hacky, but it serves the purpose of keeping peerd's service
     // id constant accross reconnects: <REMOTE_NODE_ID>:<REMOTE_ADDR> for taker,
     // <REMOTE_NODE_ID>:<LOCAL_ADDR> for maker
+    // TODO: It is privacy/security critical that once the
+    // connection is encrypted, this should be replaced by a proper handshake.
     let internal_identity = if connect {
         sender.send_message(Msg::Identity(local_id)).unwrap();
         debug!("sent message with local_id {} to the maker", local_id);
