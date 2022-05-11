@@ -17,5 +17,5 @@ mod opts;
 mod runtime;
 
 #[cfg(feature = "shell")]
-pub use opts::{KeyOpts, NodeSecrets, Opts};
+pub use opts::Opts;
 pub use runtime::run;

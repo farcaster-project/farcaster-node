@@ -655,6 +655,11 @@ pub enum Request {
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     SweepXmrAddress(SweepXmrAddress),
+
+    #[api(type = 1304)]
+    #[display("checkpoint({0})", alt = "{0:#}")]
+    #[from]
+    Checkpoint(Checkpoint),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -671,6 +676,13 @@ pub enum Outcome {
 pub enum FundingInfo {
     Bitcoin(BitcoinFundingInfo),
     Monero(MoneroFundingInfo),
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("checkpoint")]
+pub enum Checkpoint {
+    CheckpointWalletAlicePreBuy,
+    CheckpointSwapAlicePreBuy,
 }
 
 impl FromStr for BitcoinFundingInfo {

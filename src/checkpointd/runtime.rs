@@ -67,8 +67,6 @@ use request::{LaunchSwap, NodeId};
 
 pub fn run(
     config: ServiceConfig,
-    wallet_token: Token,
-    node_secrets: NodeSecrets,
     data_dir: PathBuf,
 ) -> Result<(), Error> {
     let runtime = Runtime {
@@ -176,20 +174,28 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             Request::Hello => match &source {
-                ServiceId::Swap(swap_id) => {
-                    if let Some(option_req) = self.swaps.get_mut(swap_id) {
-                        trace!("Known swapd, you launched it");
-                        if let Some(req) = option_req {
-                            let request = req.clone();
-                            *option_req = None;
-                            self.send_ctl(senders, source, request)?
-                        }
-                    }
-                }
+                // ServiceId::Swap(swap_id) => {
+                //     if let Some(option_req) = self.swaps.get_mut(swap_id) {
+                //         trace!("Known swapd, you launched it");
+                //         if let Some(req) = option_req {
+                //             let request = req.clone();
+                //             *option_req = None;
+                //             self.send_ctl(senders, source, request)?
+                //         }
+                //     }
+                // }
                 source => {
                     debug!("Received Hello from {}", source);
                 }
             },
+
+            Request::Checkpoint(CheckpointWalletAlicePreBuy) => {
+                todo!();
+            }
+
+            Request::Checkpoint(CheckpointWalletAlicePreBuy) => {
+                todo!();
+            }
 
             _ => {
                 error!(
