@@ -684,6 +684,7 @@ pub enum FundingInfo {
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display("checkpoint")]
 pub enum Checkpoint {
+    // TODO: use RFC 2363 once stabilized: https://github.com/rust-lang/rust/issues/60553
     CheckpointWalletAlicePreBuy(AliceState),
     // CheckpointSwapAlicePreBuy(SwapState),
 }

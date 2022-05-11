@@ -185,6 +185,8 @@ impl Runtime {
                 }
             },
 
+            // TODO: use RFC 2363 once stabilized: https://github.com/rust-lang/rust/issues/60553
+            // then, instead of explicitly matching on checkpoint variant, can use index as with fieldless enums, so have one generic request match for all originating services & checkpoint indices
             Request::Checkpoint(request::Checkpoint::CheckpointWalletAlicePreBuy(wallet_state)) => {
                 let key = (get_swap_id(&source)?, self.identity.clone()).into();
                 let mut state_encoded = vec![];
