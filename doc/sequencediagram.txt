@@ -91,33 +91,33 @@ t_swap -> t_wallet : if Bob, SEND PENDING Msg Reveal (maker is sender)
 ==Commit-Reveal Complete==
 ==Changing semantics: On Commit-Reveal, Maker and Taker were the key roles. From now on Bob or Alice are the key roles. Now t_ is bob_ on the left and m_ is alice_ on the right.==
 ==Swap setup: Bob is left, Alice right==
-t_wallet -> t_checkpoint: CheckpointWalletBobPrelockBob
+t_wallet -> t_checkpoint: Ctl CheckpointWalletBobPrelockBob
 t_wallet -> t_swap : Ctl CoreArbitratingSetup
-t_swap -> t_checkpoint: CheckpointSwapBobPrelockBob
-// TODO: During replay of Checkpoint Bob 0, Bob has to rewatch these 3 txs
+t_swap -> t_checkpoint: Ctl CheckpointSwapBobPrelockBob
+// TODO: During replay of CheckpointSwapBobPrelockBob, Bob has to rewatch these 3 txs
 t_syncer <- t_swap : Watch Arbitrating Lock
 t_syncer <- t_swap : Watch Cancel
 t_syncer <- t_swap : Watch Refund
 peerd <- t_swap : Msg CoreArbitratingSetup
 m_swap <- peerd : Msg CoreArbitratingSetup
 m_swap -> m_syncer : Watch Arbitrating Lock
-// TODO: During replay of Checkpoint Alice 0, Alice has to rewatch these 2 txs (arbitrating already final then)
+// TODO: During replay of CheckpointWalletAlicePrelockBob, Alice has to rewatch these 2 txs (arbitrating already final then)
 m_swap -> m_syncer : Watch Cancel
 m_swap -> m_syncer : Watch Refund
 
 m_wallet <- m_swap : Msg CoreArbitratingSetup
-m_wallet -> m_checkpoint : CheckpointWalletAlicePrelockBob
+m_wallet -> m_checkpoint : Ctl CheckpointWalletAlicePrelockBob
 m_wallet -> m_swap : Ctl RefundProcedureSignatures
-m_swap -> m_checkpoint : CheckpointSwapAlicePrelockBob
+m_swap -> m_checkpoint : Ctl CheckpointSwapAlicePrelockBob
 m_swap -> peerd : Msg RefundProcedureSignatures
 peerd -> t_swap : Msg RefundProcedureSignatures
 t_wallet <- t_swap : Msg RefundProcedureSignatures
 t_wallet -> t_swap:Ctl Datum::SignedArbitratingLock
 // DONE: do we know that same inputs are being used in case of replay?
 // -> yes, but create different sig
-t_wallet -> t_checkpoint : CheckpointWalletBobPreBuySig
+t_wallet -> t_checkpoint : Ctl CheckpointWalletBobPreBuySig
 t_wallet -> t_swap : Ctl BuyProcedureSignature
-t_swap -> t_checkpoint : CheckpointSwapBobPreBuySig
+t_swap -> t_checkpoint : Ctl CheckpointSwapBobPreBuySig
 t_syncer <- t_swap : Broadcast Arbitrating Lock
 t_swap -> t_syncer : Watch Accordant Lock
 t_swap -> t_syncer : Watch Buy
@@ -137,10 +137,10 @@ parallel off
 
 peerd <- t_swap : Msg BuyProcedureSignature
 m_swap <- peerd : Msg BuyProcedureSignature
-m_swap -> m_checkpoint : CheckpointSwapAlicePreBuy
+m_swap -> m_checkpoint : Ctl CheckpointSwapAlicePreBuy
 m_swap -> m_syncer:Watch Buy
 m_swap -> m_wallet : Msg BuyProcedureSignature
-m_wallet -> m_checkpoint : CheckpointWalletAlicePreBuy
+m_wallet -> m_checkpoint : Ctl CheckpointWalletAlicePreBuy
 ==Swap Setup Complete==
 ==Buy Procedure: Bob is left, Alice right==
 
