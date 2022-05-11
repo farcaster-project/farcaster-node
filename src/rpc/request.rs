@@ -14,11 +14,14 @@
 
 #![allow(clippy::clone_on_copy)]
 
-use crate::{farcasterd, syncerd::{
-    types::{Event, Task},
-    Coin, SweepXmrAddress,
-}};
-use crate::walletd::{NodeSecrets, runtime::AliceState};
+use crate::walletd::{runtime::AliceState, NodeSecrets};
+use crate::{
+    farcasterd,
+    syncerd::{
+        types::{Event, Task},
+        Coin, SweepXmrAddress,
+    },
+};
 use amplify::{Holder, ToYamlString, Wrapper};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};

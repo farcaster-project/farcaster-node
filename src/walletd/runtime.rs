@@ -34,7 +34,6 @@ use bitcoin::{
 };
 use colored::Colorize;
 use farcaster_core::{
-    impl_strict_encoding,
     bitcoin::{
         segwitv0::{BuyTx, CancelTx, FundingTx, PunishTx, RefundTx},
         segwitv0::{LockTx, SegwitV0},
@@ -49,6 +48,7 @@ use farcaster_core::{
     consensus::{self, CanonicalBytes, Decodable, Encodable},
     crypto::{ArbitratingKeyId, GenerateKey, SharedKeyId},
     crypto::{CommitmentEngine, ProveCrossGroupDleq},
+    impl_strict_encoding,
     monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::PublicOffer,
     protocol_message::{

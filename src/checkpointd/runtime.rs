@@ -195,7 +195,6 @@ impl Runtime {
             // Request::Checkpoint(request::Checkpoint::CheckpointSwapAlicePreBuy(_)) => {
             //     todo!();
             // }
-
             _ => {
                 error!(
                     "Request {:?} is not supported by the CTL interface",

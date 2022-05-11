@@ -31,8 +31,8 @@ extern crate log;
 
 use clap::Clap;
 
-use farcaster_node::ServiceConfig;
 use farcaster_node::checkpointd::{self, Opts};
+use farcaster_node::ServiceConfig;
 
 fn main() {
     let mut opts = Opts::parse();
@@ -46,11 +46,7 @@ fn main() {
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
     debug!("Starting runtime ...");
-    checkpointd::run(
-        service_config,
-        opts.shared.data_dir,
-    )
-    .expect("Error running walletd runtime");
+    checkpointd::run(service_config, opts.shared.data_dir).expect("Error running walletd runtime");
 
     unreachable!()
 }

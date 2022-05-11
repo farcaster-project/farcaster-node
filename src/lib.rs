@@ -60,6 +60,8 @@ pub mod opts;
 pub mod rpc;
 
 #[cfg(feature = "node")]
+pub mod checkpointd;
+#[cfg(feature = "node")]
 pub mod farcasterd;
 #[cfg(feature = "node")]
 pub mod grpcd;
@@ -73,8 +75,6 @@ pub mod swapd;
 pub mod syncerd;
 #[cfg(feature = "node")]
 pub mod walletd;
-#[cfg(feature = "node")]
-pub mod checkpointd;
 
 #[cfg(feature = "_rpc")]
 pub use crate::config::Config;
