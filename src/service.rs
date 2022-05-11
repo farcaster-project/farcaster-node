@@ -129,6 +129,9 @@ pub enum ServiceId {
     #[display("grpcd")]
     Grpcd,
 
+    #[display("checkpointd")]
+    Checkpoint,
+
     #[display("other<{0}>")]
     Other(ClientName),
 }

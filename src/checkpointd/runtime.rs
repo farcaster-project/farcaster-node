@@ -65,10 +65,7 @@ use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::esb::{self, Handler};
 use request::{LaunchSwap, NodeId};
 
-pub fn run(
-    config: ServiceConfig,
-    data_dir: PathBuf,
-) -> Result<(), Error> {
+pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
         checkpoints: CheckpointGetSet::new(data_dir),
@@ -82,8 +79,7 @@ pub struct Runtime {
     checkpoints: CheckpointGetSet,
 }
 
-impl Runtime {
-}
+impl Runtime {}
 
 impl CtlServer for Runtime {}
 
@@ -189,11 +185,14 @@ impl Runtime {
                 }
             },
 
-            // Request::Checkpoint(CheckpointWalletAlicePreBuy(wallet_state)) => {
-            //     todo!();
-            // }
+            Request::Checkpoint(request::Checkpoint::CheckpointWalletAlicePreBuy(wallet_state)) => {
+                let key = (get_swap_id(&source)?, self.identity.clone()).into();
+                let mut state_encoded = vec![];
+                let _state_size = wallet_state.consensus_encode(&mut state_encoded);
+                self.checkpoints.set_state(&key, &state_encoded);
+            }
 
-            // Request::Checkpoint(CheckpointSwapAlicePreBuy) => {
+            // Request::Checkpoint(request::Checkpoint::CheckpointSwapAlicePreBuy(_)) => {
             //     todo!();
             // }
 
@@ -208,6 +207,21 @@ impl Runtime {
     }
 }
 
+// TODO: replace this ugly temp structure
+struct CheckpointKey(Vec<u8>);
+
+impl From<(SwapId, ServiceId)> for CheckpointKey {
+    fn from((swapid, serviceid): (SwapId, ServiceId)) -> Self {
+        CheckpointKey(
+            Into::<[u8; 32]>::into(swapid)
+                .iter()
+                .cloned()
+                .chain(Into::<Vec<u8>>::into(serviceid).iter().cloned())
+                .collect(),
+        )
+    }
+}
+
 struct CheckpointGetSet(lmdb::Environment);
 
 impl CheckpointGetSet {
@@ -217,20 +231,20 @@ impl CheckpointGetSet {
         CheckpointGetSet(env)
     }
 
-    fn set_state(&mut self, key: &SwapId, val: &[u8]) {
+    fn set_state(&mut self, key: &CheckpointKey, val: &[u8]) {
         let db = self.0.open_db(None).unwrap();
         let mut tx = self.0.begin_rw_txn().unwrap();
-        if !tx.get(db, &key).is_err() {
-            tx.del(db, &key, None).unwrap();
+        if !tx.get(db, &key.0).is_err() {
+            tx.del(db, &key.0, None).unwrap();
         }
-        tx.put(db, &key, &val, lmdb::WriteFlags::empty()).unwrap();
+        tx.put(db, &key.0, &val, lmdb::WriteFlags::empty()).unwrap();
         tx.commit().unwrap();
     }
 
-    fn get_state(&mut self, key: &SwapId) -> Vec<u8> {
+    fn get_state(&mut self, key: &CheckpointKey) -> Vec<u8> {
         let db = self.0.open_db(None).unwrap();
         let tx = self.0.begin_ro_txn().unwrap();
-        let val: Vec<u8> = tx.get(db, &key).unwrap().into();
+        let val: Vec<u8> = tx.get(db, &key.0).unwrap().into();
         tx.abort();
         val
     }
@@ -240,8 +254,8 @@ impl CheckpointGetSet {
 fn test_lmdb_state() {
     let val1 = vec![0, 1];
     let val2 = vec![2, 3, 4, 5];
-    let key1 = SwapId::random();
-    let key2 = SwapId::random();
+    let key1 = (SwapId::random(), ServiceId::Checkpoint).into();
+    let key2 = (SwapId::random(), ServiceId::Checkpoint).into();
     let path = std::env::current_dir().unwrap();
     let mut state = CheckpointGetSet::new(path.to_path_buf());
     state.set_state(&key1, &val1);
