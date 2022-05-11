@@ -14,11 +14,11 @@
 
 #![allow(clippy::clone_on_copy)]
 
-use crate::syncerd::{
+use crate::{farcasterd, syncerd::{
     types::{Event, Task},
     Coin, SweepXmrAddress,
-};
-use crate::walletd::NodeSecrets;
+}};
+use crate::walletd::{NodeSecrets, runtime::AliceState};
 use amplify::{Holder, ToYamlString, Wrapper};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
@@ -681,8 +681,8 @@ pub enum FundingInfo {
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display("checkpoint")]
 pub enum Checkpoint {
-    CheckpointWalletAlicePreBuy,
-    CheckpointSwapAlicePreBuy,
+    CheckpointWalletAlicePreBuy(AliceState),
+    // CheckpointSwapAlicePreBuy(SwapState),
 }
 
 impl FromStr for BitcoinFundingInfo {

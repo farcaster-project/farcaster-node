@@ -14,7 +14,7 @@
 
 #[cfg(feature = "shell")]
 mod opts;
-mod runtime;
+pub mod runtime;
 
 #[cfg(feature = "shell")]
 pub use opts::{KeyOpts, NodeSecrets, Opts};

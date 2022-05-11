@@ -189,13 +189,13 @@ impl Runtime {
                 }
             },
 
-            Request::Checkpoint(CheckpointWalletAlicePreBuy) => {
-                todo!();
-            }
+            // Request::Checkpoint(CheckpointWalletAlicePreBuy(wallet_state)) => {
+            //     todo!();
+            // }
 
-            Request::Checkpoint(CheckpointWalletAlicePreBuy) => {
-                todo!();
-            }
+            // Request::Checkpoint(CheckpointSwapAlicePreBuy) => {
+            //     todo!();
+            // }
 
             _ => {
                 error!(

@@ -34,6 +34,7 @@ use bitcoin::{
 };
 use colored::Colorize;
 use farcaster_core::{
+    impl_strict_encoding,
     bitcoin::{
         segwitv0::{BuyTx, CancelTx, FundingTx, PunishTx, RefundTx},
         segwitv0::{LockTx, SegwitV0},
@@ -110,6 +111,7 @@ pub enum Wallet {
     Bob(BobState),
 }
 
+#[derive(Clone, Debug)]
 pub struct AliceState {
     alice: Alice<BtcXmr>,
     local_params: AliceParameters<BtcXmr>,
@@ -163,6 +165,8 @@ impl Decodable for AliceState {
         })
     }
 }
+
+impl_strict_encoding!(AliceState);
 
 impl AliceState {
     fn new(

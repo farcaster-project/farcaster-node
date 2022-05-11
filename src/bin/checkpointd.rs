@@ -32,10 +32,7 @@ extern crate log;
 use clap::Clap;
 
 use farcaster_node::ServiceConfig;
-use farcaster_node::{
-    rpc::request::Token,
-    checkpointd::{self, Opts},
-};
+use farcaster_node::checkpointd::{self, Opts};
 
 fn main() {
     let mut opts = Opts::parse();
