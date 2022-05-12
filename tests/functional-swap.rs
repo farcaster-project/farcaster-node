@@ -1500,20 +1500,21 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
 fn kill_connected_peerd() {
     println!("killing peerd");
     let sys = System::new_all();
-    let proc = sys
+    let proc: Vec<&sysinfo::Process> = sys
         .get_processes()
         .iter()
         .filter(|(_, process)| {
             process.name() == "peerd" && process.cmd().contains(&"--listen".to_string())
         })
-        .map(|(id, process)| {
-            println!("process: {:?}", process.cmd());
-            id
-        })
-        .reduce(|max_id, id| if max_id >= id { max_id } else { id })
-        .expect("No peerd process to be killed found");
+        .map(|(id, process)| process.clone())
+        .collect();
+    let peerd_proc = if proc[0].parent().unwrap() == proc[1].pid() {
+        proc[0]
+    } else {
+        proc[1]
+    };
     nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(*proc),
+        nix::unistd::Pid::from_raw(peerd_proc.pid().into()),
         nix::sys::signal::Signal::SIGINT,
     )
     .expect("Sending CTR-C to peerd failed");
