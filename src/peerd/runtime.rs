@@ -300,7 +300,7 @@ impl Runtime {
     /// send messages over the bridge
     fn handle_rpc_msg(
         &mut self,
-        _endpoints: &mut Endpoints,
+        endpoints: &mut Endpoints,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -314,7 +314,10 @@ impl Runtime {
                     &request.get_type()
                 );
                 self.messages_sent += 1;
-                self.peer_sender.send_message(message)?;
+                if self.peer_sender.send_message(message.clone()).is_err() {
+                    self.reconnect_peer(endpoints)?;
+                    self.peer_sender.send_message(message)?;
+                }
             }
             _ => {
                 error!("MSG RPC can be only used for forwarding Protocol Messages");
@@ -377,6 +380,52 @@ impl Runtime {
         }
         Ok(())
     }
+    fn reconnect_peer(
+        &mut self,
+        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+    ) -> Result<(), Error> {
+        // If this is the listener-forked peerd, terminate it.
+        if !self.connect {
+            senders.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                ServiceId::Farcasterd,
+                Request::PeerdTerminated,
+            )?;
+            warn!("Exiting peerd");
+            std::process::exit(0);
+        }
+        info!("Attempting to reconnect to remote peerd");
+        // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
+        // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
+        let mut connection =
+            PeerConnection::connect(self.remote_node_addr.clone().unwrap(), &self.local_node);
+        let mut attempt = 0;
+        while connection.is_err() {
+            attempt += 1;
+            warn!("reconnect failed attempting again in {} seconds", attempt);
+            std::thread::sleep(std::time::Duration::from_secs(attempt));
+            connection =
+                PeerConnection::connect(self.remote_node_addr.clone().unwrap(), &self.local_node);
+        }
+        let (peer_receiver, peer_sender) = connection.unwrap().split();
+        self.peer_sender = peer_sender;
+        // send the local id to the maker(listener) again
+        self.peer_sender
+            .send_message(Msg::Identity(self.local_id))
+            .unwrap();
+
+        let identity = self.identity.clone();
+        let old_thread_flag_tx = self.thread_flag_tx.clone();
+        let (thread_flag_tx, thread_flag_rx) = std::sync::mpsc::channel();
+        info!("Peerd reconnect successfull, launching peerd receiver runtime");
+        spawn(move || {
+            restart_receiver_runtime(identity, peer_receiver, old_thread_flag_tx, thread_flag_rx)
+                .unwrap_or(())
+        });
+        self.thread_flag_tx = thread_flag_tx;
+        Ok(())
+    }
     /// receive messages arriving over the bridge
     fn handle_bridge(
         &mut self,
@@ -408,55 +457,7 @@ impl Runtime {
 
             Request::Protocol(Msg::PeerReceiverRuntimeShutdown) => {
                 warn!("Exiting peerd receiver runtime");
-                // If this is the listener-forked peerd, terminate it.
-                if !self.connect {
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        ServiceId::Farcasterd,
-                        Request::PeerdTerminated,
-                    )?;
-                    warn!("Exiting peerd");
-                    std::process::exit(0);
-                }
-                info!("Attempting to reconnect to remote peerd");
-                // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
-                // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
-                let mut connection = PeerConnection::connect(
-                    self.remote_node_addr.clone().unwrap(),
-                    &self.local_node,
-                );
-                let mut attempt = 0;
-                while connection.is_err() {
-                    attempt += 1;
-                    warn!("reconnect failed attempting again in {} seconds", attempt);
-                    std::thread::sleep(std::time::Duration::from_secs(attempt));
-                    connection = PeerConnection::connect(
-                        self.remote_node_addr.clone().unwrap(),
-                        &self.local_node,
-                    );
-                }
-                let (peer_receiver, peer_sender) = connection.unwrap().split();
-                self.peer_sender = peer_sender;
-                // send the local id to the maker(listener) again
-                self.peer_sender
-                    .send_message(Msg::Identity(self.local_id))
-                    .unwrap();
-
-                let identity = self.identity.clone();
-                let old_thread_flag_tx = self.thread_flag_tx.clone();
-                let (thread_flag_tx, thread_flag_rx) = std::sync::mpsc::channel();
-                info!("Peerd reconnect successfull, launching peerd receiver runtime");
-                spawn(move || {
-                    restart_receiver_runtime(
-                        identity,
-                        peer_receiver,
-                        old_thread_flag_tx,
-                        thread_flag_rx,
-                    )
-                    .unwrap_or(())
-                });
-                self.thread_flag_tx = thread_flag_tx;
+                self.reconnect_peer(senders)?;
             }
 
             // swap initiation message
