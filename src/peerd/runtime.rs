@@ -69,7 +69,7 @@ pub fn run(
         let msg: &Msg = &*peer_receiver.recv_message(&unmarshaller).unwrap();
         let id = match msg {
             Msg::Identity(id) => {
-                info!("Received the following local_id from the taker {}", id);
+                debug!("Received the following local_id from the taker {}", id);
                 Some(id)
             }
             _ => None,
@@ -554,6 +554,6 @@ fn restart_receiver_runtime(
         bridge_handler,
         unmarshaller,
     );
-    info!("entering peerd receiver runtime loop");
+    debug!("entering peerd receiver runtime loop");
     peer_receiver_runtime.try_run_loop()
 }
