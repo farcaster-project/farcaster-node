@@ -1506,7 +1506,7 @@ fn kill_connected_peerd() {
         .filter(|(_, process)| {
             process.name() == "peerd" && process.cmd().contains(&"--listen".to_string())
         })
-        .map(|(_id, process)| process.clone())
+        .map(|(_id, process)| process)
         .collect();
     let peerd_proc = if proc[0].parent().unwrap() == proc[1].pid() {
         proc[0]
