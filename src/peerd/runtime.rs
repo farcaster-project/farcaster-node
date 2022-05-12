@@ -42,10 +42,8 @@ use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, Servi
 pub fn run(
     config: ServiceConfig,
     connection: PeerConnection,
-    local_id: PublicKey,
     remote_node_addr: Option<RemoteNodeAddr>,
     local_socket: Option<InetSocketAddr>,
-    remote_socket: InetSocketAddr,
     local_node: LocalNode,
     connect: bool,
 ) -> Result<(), Error> {
@@ -58,18 +56,20 @@ pub fn run(
     // TODO: It is privacy/security critical that once the
     // connection is encrypted, this should be replaced by a proper handshake.
     let internal_identity = if connect {
-        peer_sender.send_message(Msg::Identity(local_id)).unwrap();
-        debug!("sent message with local_id {} to the maker", local_id);
-        ServiceId::Peer(NodeAddr::Remote(RemoteNodeAddr {
-            node_id: remote_node_addr.clone().unwrap().node_id,
-            remote_addr: RemoteSocketAddr::Ftcp(remote_socket),
-        }))
+        peer_sender
+            .send_message(Msg::Identity(local_node.node_id()))
+            .unwrap();
+        debug!(
+            "sent message with local node id {} to the maker",
+            local_node.node_id()
+        );
+        ServiceId::Peer(NodeAddr::Remote(remote_node_addr.clone().unwrap()))
     } else {
         let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
         let msg: &Msg = &*peer_receiver.recv_message(&unmarshaller).unwrap();
         let id = match msg {
             Msg::Identity(id) => {
-                debug!("Received the following local_id from the taker {}", id);
+                debug!("Received the following local node id from the taker {}", id);
                 Some(id)
             }
             _ => None,
@@ -119,10 +119,8 @@ pub fn run(
     );
     let runtime = Runtime {
         identity: internal_identity,
-        local_id,
         remote_node_addr,
         local_socket,
-        remote_socket,
         local_node,
         routing: empty!(),
         peer_sender,
@@ -235,10 +233,8 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
 
 pub struct Runtime {
     identity: ServiceId,
-    local_id: PublicKey,
     remote_node_addr: Option<RemoteNodeAddr>,
     local_socket: Option<InetSocketAddr>,
-    remote_socket: InetSocketAddr,
     local_node: LocalNode,
 
     routing: HashMap<ServiceId, ServiceId>,
@@ -268,7 +264,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             info!(
                 "{} with the remote peer {}",
                 "Initializing connection".bright_blue_bold(),
-                self.remote_socket
+                self.remote_node_addr.clone().unwrap().remote_addr,
             );
         }
         Ok(())
@@ -349,14 +345,18 @@ impl Runtime {
 
             Request::GetInfo => {
                 let info = PeerInfo {
-                    local_id: self.local_id,
+                    local_id: self.local_node.node_id(),
                     remote_id: self
                         .remote_node_addr
                         .clone()
                         .map(|addr| vec![addr.node_id])
                         .unwrap_or_default(),
                     local_socket: self.local_socket,
-                    remote_socket: vec![self.remote_socket],
+                    remote_socket: self
+                        .remote_node_addr
+                        .clone()
+                        .map(|addr| vec![addr.remote_addr.into()])
+                        .unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or_else(|_| Duration::from_secs(0)),
@@ -412,7 +412,7 @@ impl Runtime {
         self.peer_sender = peer_sender;
         // send the local id to the maker(listener) again
         self.peer_sender
-            .send_message(Msg::Identity(self.local_id))
+            .send_message(Msg::Identity(self.local_node.node_id()))
             .unwrap();
 
         let identity = self.identity.clone();

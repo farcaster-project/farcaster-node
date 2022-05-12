@@ -176,18 +176,16 @@ fn main() {
      */
 
     let local_node = opts.peer_key_opts.local_node();
-    let local_id = local_node.node_id();
     info!(
         "{}: {}",
         "Local node id".bright_green_bold(),
-        local_id.bright_yellow_bold()
+        local_node.node_id().bright_yellow_bold()
     );
 
     let peer_socket = PeerSocket::from(opts.clone());
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
     let mut local_socket: Option<InetSocketAddr> = None;
-    let mut remote_socket: InetSocketAddr;
     let mut remote_node_addr: Option<RemoteNodeAddr> = None;
     let connect: bool;
     let connection = match peer_socket {
@@ -211,8 +209,6 @@ fn main() {
                     .expect("Error accepting incoming peer connection");
                 debug!("New connection from {}", remote_socket_addr);
 
-                remote_socket = remote_socket_addr.into();
-
                 // TODO: Support multithread mode
                 debug!("Forking child process");
                 if let ForkResult::Child = unsafe { fork().expect("Unable to fork child process") }
@@ -226,7 +222,10 @@ fn main() {
                         session::Raw::with_brontide(stream, local_node.private_key(), inet_addr)
                             .expect("Unable to establish session with the remote peer");
 
-                    debug!("Session successfully established with {}", remote_socket);
+                    debug!(
+                        "Session successfully established with {}",
+                        remote_socket_addr
+                    );
 
                     break PeerConnection::with(session);
                 }
@@ -239,7 +238,6 @@ fn main() {
 
             connect = true;
             remote_node_addr = Some(remote_node.clone());
-            remote_socket = remote_node.remote_addr.into();
 
             info!("Connecting to {}", &remote_node.addr());
             PeerConnection::connect(remote_node, &local_node)
@@ -253,21 +251,17 @@ fn main() {
     /* A maker / listener passes the following content
         remote_node_addr: none
         local_socket: local inet address
-        remote_socket: address of the remote socket
         connect: false
 
     A taker / connecter passes the following content
         remote_node_addr: full internet2 remote node address
         local_socket: None
-        remote_socket: remote node addr
         connect: true */
     peerd::run(
         service_config,
         connection,
-        local_id,
         remote_node_addr,
         local_socket,
-        remote_socket,
         local_node,
         connect,
     )
