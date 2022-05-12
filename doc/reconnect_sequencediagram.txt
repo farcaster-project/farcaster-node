@@ -15,10 +15,10 @@ m_peerd_recv -> m_peerd_recv: terminate
 m_peerd_run -> m_peerd_run: terminate
 t_peerd_recv -> t_peerd_run : Ctl PeerdListenerRuntimeShutdown
 t_peerd_recv -> t_peerd_recv: terminate
-t_peerd_run -> t_peerd_recv: spawn
-==Taker peerd restarted, connects to maker forked peerd==
+==Taker peerd restarts connection, connects to maker forked peerd==
 m_peerd_run -> m_peerd_run : forked from listener
 t_peerd_run -> m_peerd_run : NodeId (raw)
+t_peerd_run -> t_peerd_recv: spawn
 m_peerd_run -> m_farcasterd: Ctl Hello
 m_farcasterd -> m_swapd: Ctl PeerdReconnected
 
