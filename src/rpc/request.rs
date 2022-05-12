@@ -112,7 +112,7 @@ pub enum Msg {
     PingPeer,
     #[api(type = 34)]
     #[display("error_shutdown")]
-    PeerdShutdown,
+    PeerReceiverRuntimeShutdown,
     #[api(type = 35)]
     #[display("identity")]
     Identity(bitcoin::secp256k1::PublicKey),
@@ -142,7 +142,11 @@ impl Msg {
             Msg::BuyProcedureSignature(protocol_message::BuyProcedureSignature {
                 swap_id, ..
             }) => *swap_id,
-            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer | Msg::PeerdShutdown | Msg::Identity(_) => {
+            Msg::Ping(_)
+            | Msg::Pong(_)
+            | Msg::PingPeer
+            | Msg::PeerReceiverRuntimeShutdown
+            | Msg::Identity(_) => {
                 unreachable!(
                     "Ping, Pong, PingPeer, PeerdShutdown and Identity does not contain swapid"
                 )

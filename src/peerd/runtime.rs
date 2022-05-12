@@ -12,9 +12,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use internet2::LocalNode;
 use internet2::RemoteNodeAddr;
 use internet2::RemoteSocketAddr;
+use microservices::peer::PeerReceiver;
 use microservices::peer::RecvMessage;
+use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
 use std::{rc::Rc, thread::spawn};
@@ -40,13 +43,14 @@ pub fn run(
     config: ServiceConfig,
     connection: PeerConnection,
     local_id: PublicKey,
-    remote_id: Option<PublicKey>,
+    remote_node_addr: Option<RemoteNodeAddr>,
     local_socket: Option<InetSocketAddr>,
     remote_socket: InetSocketAddr,
+    local_node: LocalNode,
     connect: bool,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
-    let (mut receiver, mut sender) = connection.split();
+    let (mut peer_receiver, mut peer_sender) = connection.split();
 
     // this is hella hacky, but it serves the purpose of keeping peerd's service
     // id constant accross reconnects: <REMOTE_NODE_ID>:<REMOTE_ADDR> for taker,
@@ -54,15 +58,15 @@ pub fn run(
     // TODO: It is privacy/security critical that once the
     // connection is encrypted, this should be replaced by a proper handshake.
     let internal_identity = if connect {
-        sender.send_message(Msg::Identity(local_id)).unwrap();
+        peer_sender.send_message(Msg::Identity(local_id)).unwrap();
         debug!("sent message with local_id {} to the maker", local_id);
         ServiceId::Peer(NodeAddr::Remote(RemoteNodeAddr {
-            node_id: remote_id.unwrap(),
+            node_id: remote_node_addr.clone().unwrap().node_id,
             remote_addr: RemoteSocketAddr::Ftcp(remote_socket),
         }))
     } else {
         let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
-        let msg: &Msg = &*receiver.recv_message(&unmarshaller).unwrap();
+        let msg: &Msg = &*peer_receiver.recv_message(&unmarshaller).unwrap();
         let id = match msg {
             Msg::Identity(id) => {
                 info!("Received the following local_id from the taker {}", id);
@@ -76,14 +80,16 @@ pub fn run(
         }))
     };
 
-    debug!("Opening bridge between runtime and peer listener threads");
+    debug!("Opening bridge between runtime and peer receiver threads");
     let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     let rx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     tx.connect("inproc://bridge")?;
     rx.bind("inproc://bridge")?;
 
+    let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
+
     debug!("Starting thread listening for messages from the remote peer");
-    let bridge_handler = ListenerRuntime {
+    let bridge_handler = PeerReceiverRuntime {
         internal_identity: internal_identity.clone(),
         bridge: esb::Controller::with(
             map! {
@@ -96,11 +102,15 @@ pub fn run(
             BridgeHandler,
             ZmqType::Rep,
         )?,
+        _thread_flag_rx,
     };
     let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
-    let listener =
-        peer::Listener::<ListenerRuntime, Msg>::with(receiver, bridge_handler, unmarshaller);
-    spawn(move || listener.run_or_panic("peerd-listener"));
+    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, Msg>::with(
+        peer_receiver,
+        bridge_handler,
+        unmarshaller,
+    );
+    spawn(move || peer_receiver_runtime.try_run_loop().unwrap_or(()));
     // TODO: Use the handle returned by spawn to track the child process
 
     debug!(
@@ -110,16 +120,18 @@ pub fn run(
     let runtime = Runtime {
         identity: internal_identity,
         local_id,
-        remote_id,
+        remote_node_addr,
         local_socket,
         remote_socket,
+        local_node,
         routing: empty!(),
-        sender,
+        peer_sender,
         connect,
         started: SystemTime::now(),
         messages_sent: 0,
         messages_received: 0,
         awaited_pong: None,
+        thread_flag_tx,
     };
     let mut service = Service::service(config, runtime)?;
     service.add_loopback(rx)?;
@@ -155,12 +167,14 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
     }
 }
 
-pub struct ListenerRuntime {
+// PeerReceiverRuntime handles incoming messages only
+pub struct PeerReceiverRuntime {
     internal_identity: ServiceId,
     bridge: esb::Controller<ServiceBus, Request, BridgeHandler>,
+    _thread_flag_rx: std::sync::mpsc::Receiver<()>,
 }
 
-impl ListenerRuntime {
+impl PeerReceiverRuntime {
     /// send msgs over bridge from remote to local runtime
     fn send_over_bridge(
         &mut self,
@@ -177,7 +191,7 @@ impl ListenerRuntime {
 }
 
 use std::fmt::{Debug, Display};
-impl peer::Handler<Msg> for ListenerRuntime {
+impl peer::Handler<Msg> for PeerReceiverRuntime {
     type Error = crate::Error;
     fn handle(
         &mut self,
@@ -206,11 +220,11 @@ impl peer::Handler<Msg> for ListenerRuntime {
                     "The remote peer has hung up, notifying that peerd has halted: {}",
                     err
                 );
-                self.send_over_bridge(Arc::new(Msg::PeerdShutdown))?;
+                self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
                 // park this thread, the process exit is supposed to be handled by the parent
                 //  the socket will continue spamming this error until peerd is shutdown, this ensures it is only handled once
-                std::thread::park();
-                Ok(())
+                // std::thread::park();
+                Err(err)
             }
             // for all other error types, indicating internal errors, we
             // propagate error to the upper level
@@ -225,18 +239,21 @@ impl peer::Handler<Msg> for ListenerRuntime {
 pub struct Runtime {
     identity: ServiceId,
     local_id: PublicKey,
-    remote_id: Option<PublicKey>,
+    remote_node_addr: Option<RemoteNodeAddr>,
     local_socket: Option<InetSocketAddr>,
     remote_socket: InetSocketAddr,
+    local_node: LocalNode,
 
     routing: HashMap<ServiceId, ServiceId>,
-    sender: PeerSender,
+    peer_sender: PeerSender,
     connect: bool,
 
     started: SystemTime,
     messages_sent: usize,
     messages_received: usize,
     awaited_pong: Option<u16>,
+
+    thread_flag_tx: std::sync::mpsc::Sender<()>,
 }
 
 impl CtlServer for Runtime {}
@@ -265,7 +282,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             //     unknown_tlvs: none!(),
             // }))?;
 
-            self.connect = false;
+            // self.connect = false;
         }
         Ok(())
     }
@@ -324,7 +341,7 @@ impl Runtime {
                     &request.get_type()
                 );
                 self.messages_sent += 1;
-                self.sender.send_message(message)?;
+                self.peer_sender.send_message(message)?;
             }
             _ => {
                 error!("MSG RPC can be only used for forwarding Protocol Messages");
@@ -357,7 +374,11 @@ impl Runtime {
             Request::GetInfo => {
                 let info = PeerInfo {
                     local_id: self.local_id,
-                    remote_id: self.remote_id.map(|id| vec![id]).unwrap_or_default(),
+                    remote_id: self
+                        .remote_node_addr
+                        .clone()
+                        .map(|addr| vec![addr.node_id])
+                        .unwrap_or_default(),
                     local_socket: self.local_socket,
                     remote_socket: vec![self.remote_socket],
                     uptime: SystemTime::now()
@@ -412,15 +433,57 @@ impl Runtime {
                 self.awaited_pong = None;
             }
 
-            Request::Protocol(Msg::PeerdShutdown) => {
-                warn!("Exiting peerd");
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    ServiceId::Farcasterd,
-                    Request::PeerdTerminated,
-                )?;
-                std::process::exit(0);
+            Request::Protocol(Msg::PeerReceiverRuntimeShutdown) => {
+                warn!("Exiting peerd receiver runtime");
+                // If this is the listener-forked peerd, terminate it.
+                if !self.connect {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Farcasterd,
+                        Request::PeerdTerminated,
+                    )?;
+                    warn!("Exiting peerd");
+                    std::process::exit(0);
+                }
+                info!("Attempting to reconnect to remote peerd");
+                // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
+                // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
+                let mut connection = PeerConnection::connect(
+                    self.remote_node_addr.clone().unwrap(),
+                    &self.local_node,
+                );
+                let mut attempt = 0;
+                while connection.is_err() {
+                    attempt += 1;
+                    warn!("reconnect failed attempting again in {} seconds", attempt);
+                    std::thread::sleep(std::time::Duration::from_secs(attempt));
+                    connection = PeerConnection::connect(
+                        self.remote_node_addr.clone().unwrap(),
+                        &self.local_node,
+                    );
+                }
+                let (peer_receiver, peer_sender) = connection.unwrap().split();
+                self.peer_sender = peer_sender;
+                // send the local id to the maker(listener) again
+                self.peer_sender
+                    .send_message(Msg::Identity(self.local_id))
+                    .unwrap();
+
+                let identity = self.identity.clone();
+                let old_thread_flag_tx = self.thread_flag_tx.clone();
+                let (thread_flag_tx, thread_flag_rx) = std::sync::mpsc::channel();
+                info!("Peerd reconnect successfull, launching peerd receiver runtime");
+                spawn(move || {
+                    restart_receiver_runtime(
+                        identity,
+                        peer_receiver,
+                        old_thread_flag_tx,
+                        thread_flag_rx,
+                    )
+                    .unwrap_or(())
+                });
+                self.thread_flag_tx = thread_flag_tx;
             }
 
             // swap initiation message
@@ -525,8 +588,13 @@ impl Runtime {
         rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
+<<<<<<< HEAD
         self.sender.send_message(Msg::Ping(Ping {
             ignored: noise.into(),
+=======
+        self.peer_sender.send_message(Msg::Ping(message::Ping {
+            ignored: noise,
+>>>>>>> 34b075f... Taker reconnect: Move reconnect procedure to peerd Runtime
             pong_size,
         }))?;
         self.awaited_pong = Some(pong_size);
@@ -541,7 +609,47 @@ impl Runtime {
             .map(|_| rng.gen())
             .collect();
         self.messages_sent += 1;
-        self.sender.send_message(Msg::Pong(noise))?;
+        self.peer_sender.send_message(Msg::Pong(noise))?;
         Ok(())
     }
+}
+
+fn restart_receiver_runtime(
+    internal_identity: ServiceId,
+    peer_receiver: PeerReceiver,
+    thread_flag_tx: std::sync::mpsc::Sender<()>,
+    _thread_flag_rx: std::sync::mpsc::Receiver<()>,
+) -> Result<(), Error> {
+    // flag_rx on the old receiver thread goes out of scope, thus making
+    // the send fail as soon as the old receiver thread exited.
+    while thread_flag_tx.send(()).is_ok() {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
+    tx.connect("inproc://bridge")?;
+
+    debug!("Starting thread listening for messages from the remote peer");
+    let bridge_handler = PeerReceiverRuntime {
+        internal_identity: internal_identity.clone(),
+        bridge: esb::Controller::with(
+            map! {
+                ServiceBus::Bridge => esb::BusConfig {
+                    carrier: zmqsocket::Carrier::Socket(tx),
+                    router: None,
+                    queued: true,
+                }
+            },
+            BridgeHandler,
+            ZmqType::Rep,
+        )?,
+        _thread_flag_rx,
+    };
+    let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
+    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, Msg>::with(
+        peer_receiver,
+        bridge_handler,
+        unmarshaller,
+    );
+    info!("entering peerd receiver runtime loop");
+    peer_receiver_runtime.try_run_loop()
 }

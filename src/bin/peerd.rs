@@ -101,7 +101,6 @@ use std::net::TcpListener;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use bitcoin::secp256k1::PublicKey;
 use farcaster_node::peerd::{self, Opts};
 use farcaster_node::LogStyle;
 use farcaster_node::ServiceConfig;
@@ -188,8 +187,8 @@ fn main() {
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
     let mut local_socket: Option<InetSocketAddr> = None;
-    let mut remote_id: Option<PublicKey> = None;
     let mut remote_socket: InetSocketAddr;
+    let mut remote_node_addr: Option<RemoteNodeAddr> = None;
     let connect: bool;
     let connection = match peer_socket {
         PeerSocket::Listen(RemoteSocketAddr::Ftcp(inet_addr)) => {
@@ -235,15 +234,15 @@ fn main() {
                 continue;
             }
         }
-        PeerSocket::Connect(remote_node_addr) => {
-            debug!("Running in CONNECT mode");
+        PeerSocket::Connect(remote_node) => {
+            info!("Peerd running in CONNECT mode");
 
             connect = true;
-            remote_id = Some(remote_node_addr.node_id);
-            remote_socket = remote_node_addr.remote_addr.into();
+            remote_node_addr = Some(remote_node.clone());
+            remote_socket = remote_node.remote_addr.into();
 
-            debug!("Connecting to {}", &remote_node_addr.addr());
-            PeerConnection::connect(remote_node_addr, &local_node)
+            info!("Connecting to {}", &remote_node.addr());
+            PeerConnection::connect(remote_node, &local_node)
                 .expect("Unable to connect to the remote peer")
         }
         _ => unimplemented!(),
@@ -252,13 +251,13 @@ fn main() {
     debug!("Starting runtime ...");
 
     /* A maker / listener passes the following content
-        remote_id: None
+        remote_node_addr: none
         local_socket: local inet address
         remote_socket: address of the remote socket
         connect: false
 
     A taker / connecter passes the following content
-        remote_id: remote peer id
+        remote_node_addr: full internet2 remote node address
         local_socket: None
         remote_socket: remote node addr
         connect: true */
@@ -266,9 +265,10 @@ fn main() {
         service_config,
         connection,
         local_id,
-        remote_id,
+        remote_node_addr,
         local_socket,
         remote_socket,
+        local_node,
         connect,
     )
     .expect("Error running peerd runtime");

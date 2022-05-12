@@ -13,7 +13,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::farcasterd::runtime::request::ReconnectPeer;
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -747,9 +746,6 @@ impl Runtime {
                     } else if let Request::TakeOffer(mut req) = request {
                         req.peer_secret_key = Some(sk);
                         Ok(Request::TakeOffer(req))
-                    } else if let Request::ReconnectPeer(mut req) = request {
-                        req.1 = Some(sk);
-                        Ok(Request::ReconnectPeer(req))
                     } else {
                         Err(Error::Farcaster(s!(
                             "Unexpected request: calling back from Keypair handling"
@@ -1338,40 +1334,10 @@ impl Runtime {
                         {
                             info!("a swap is still running over the terminated peer {}, attempting to restart it.", addr);
                             self.broken_connections.insert(addr.clone());
-                            // if we are the taker/connector of the swap, attempt to
-                            // re-connect. The taker does not populate the
-                            // peerd_ids.
-                            if self
-                                .peerd_ids
-                                .iter()
-                                .find_map(|(_, service_id)| {
-                                    if service_id.clone() == peerd_id {
-                                        Some(0)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .is_none()
-                            {
-                                // add re-connect procedure, prepare request for
-                                // getkeys, then get keys recurses into actual
-                                // handle on success
-                                let request = Request::ReconnectPeer(ReconnectPeer(addr, None));
-                                self.get_secret(senders, ServiceId::Farcasterd, request)?;
-                            }
                         }
                     }
                 }
             }
-
-            Request::ReconnectPeer(reconnect) => match reconnect {
-                ReconnectPeer(node_addr, Some(sk)) => {
-                    self.connect_peer(ServiceId::Farcasterd, &node_addr, sk)?;
-                }
-                _ => {
-                    debug!("lol");
-                }
-            },
 
             Request::PeerdUnreachable(ServiceId::Peer(addr)) => {
                 if self.connections.contains(&addr) {
