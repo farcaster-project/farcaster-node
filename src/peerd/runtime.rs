@@ -110,8 +110,8 @@ pub fn run(
         bridge_handler,
         unmarshaller,
     );
+    // We use the _thread_flag_rx to determine when the thread had terminated
     spawn(move || peer_receiver_runtime.try_run_loop().unwrap_or(()));
-    // TODO: Use the handle returned by spawn to track the child process
 
     debug!(
         "Starting main service runtime with identity: {}",
@@ -209,7 +209,6 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
                 trace!("Time to ping the remote peer");
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
-                //
                 self.send_over_bridge(Arc::new(Msg::PingPeer))?;
                 Ok(())
             }
@@ -221,13 +220,11 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
                     err
                 );
                 self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
-                // park this thread, the process exit is supposed to be handled by the parent
-                //  the socket will continue spamming this error until peerd is shutdown, this ensures it is only handled once
-                // std::thread::park();
                 Err(err)
             }
             // for all other error types, indicating internal errors, we
-            // propagate error to the upper level
+            // propagate error to the upper level (currently not handled, will
+            // result in a broken peerd state)
             _ => {
                 error!("Unrecoverable peer error {}, halting", err);
                 Err(err)
@@ -273,16 +270,6 @@ impl esb::Handler<ServiceBus> for Runtime {
                 "Initializing connection".bright_blue_bold(),
                 self.remote_socket
             );
-            // self.send_ctl(endpoints, ServiceId::Wallet, request::PeerSecret)
-
-            // self.sender.send_message(Messages::Init(message::Init {
-            //     global_features: none!(),
-            //     local_features: none!(),
-            //     assets: none!(),
-            //     unknown_tlvs: none!(),
-            // }))?;
-
-            // self.connect = false;
         }
         Ok(())
     }
@@ -317,20 +304,6 @@ impl Runtime {
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        // match &request {
-        //     Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
-        //         channel_id,
-        //         ..
-        //     })) => {
-        //         debug!(
-        //             "Renaming channeld service from temporary id {:#} to channel id
-        // #{:#}",             source, channel_id
-        //         );
-        //         self.routing.remove(&source);
-        //         self.routing.insert(channel_id.clone().into(), source);
-        //     }
-        //     _ => {}
-        // }
         match request.clone() {
             Request::Protocol(message) => {
                 // 1. Check permissions
@@ -503,71 +476,6 @@ impl Runtime {
                     request,
                 )?;
             }
-            // }
-            // Request::PeerMessage(Messages::OpenChannel(_)) => {
-            //     endpoints.send_to(
-            //         ServiceBus::Msg,
-            //         self.identity(),
-            //         ServiceId::Farcasterd,
-            //         request,
-            //     )?;
-            // }
-
-            // Request::PeerMessage(Messages::AcceptChannel(accept_channel)) => {
-            //     let channeld: ServiceId = accept_channel.temporary_channel_id.into();
-            //     self.routing.insert(channeld.clone(), channeld.clone());
-            //     endpoints.send_to(ServiceBus::Msg, self.identity(), channeld, request)?;
-            // }
-
-            // Request::PeerMessage(Messages::FundingCreated(message::FundingCreated {
-            //     temporary_channel_id,
-            //     ..
-            // })) => {
-            //     endpoints.send_to(
-            //         ServiceBus::Msg,
-            //         self.identity(),
-            //         temporary_channel_id.clone().into(),
-            //         request,
-            //     )?;
-            // }
-
-            // Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::FundingLocked(message::FundingLocked {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateAddHtlc(message::UpdateAddHtlc {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateFulfillHtlc(message::UpdateFulfillHtlc {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateFailHtlc(message::UpdateFailHtlc {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateFailMalformedHtlc(
-            //     message::UpdateFailMalformedHtlc { channel_id, .. },
-            // )) => {
-            //     let channeld: ServiceId = channel_id.clone().into();
-            //     endpoints.send_to(
-            //         ServiceBus::Msg,
-            //         self.identity(),
-            //         self.routing.get(&channeld).cloned().unwrap_or(channeld),
-            //         request,
-            //     )?;
-            // }
-
-            // Request::PeerMessage(message) => {
-            //     // 1. Check permissions
-            //     // 2. Forward to the corresponding daemon
-            //     debug!("Got peer FWP message {}", message);
-            // }
             other => {
                 error!("Request is not supported by the BRIDGE interface");
                 dbg!(other);
@@ -588,13 +496,8 @@ impl Runtime {
         rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-<<<<<<< HEAD
-        self.sender.send_message(Msg::Ping(Ping {
-            ignored: noise.into(),
-=======
         self.peer_sender.send_message(Msg::Ping(message::Ping {
             ignored: noise,
->>>>>>> 34b075f... Taker reconnect: Move reconnect procedure to peerd Runtime
             pong_size,
         }))?;
         self.awaited_pong = Some(pong_size);
