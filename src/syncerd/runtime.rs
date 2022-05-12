@@ -93,7 +93,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         polling,
     )?;
     let mut service = Service::service(config, runtime)?;
-    service.add_loopback(rx_event)?;
+    service.add_service_bus(rx_event)?;
     service.run_loop()?;
     unreachable!()
 }

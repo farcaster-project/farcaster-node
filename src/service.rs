@@ -228,7 +228,7 @@ where
         self.broker
     }
 
-    pub fn add_loopback(&mut self, socket: zmq::Socket) -> Result<(), esb::Error<ServiceId>> {
+    pub fn add_service_bus(&mut self, socket: zmq::Socket) -> Result<(), esb::Error<ServiceId>> {
         self.esb.add_service_bus(
             ServiceBus::Bridge,
             esb::BusConfig {
