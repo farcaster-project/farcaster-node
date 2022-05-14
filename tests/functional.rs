@@ -1093,7 +1093,7 @@ async fn monero_syncer_sweep_test() {
     };
     let to_be_sweeped_address = monero::Address::from_keypair(monero::Network::Mainnet, &keypair);
     let dest_address = monero::Address::from_str("43qHP7gSJJf8HZw1G3ZmpWVyYnbxkKdfta34Qj2nuRENjAsXBtj9JcMWcYMeT3n4NyTZqxhUkKgsTS6P2TNgM6ksM32czSp").unwrap();
-    send_monero(&wallet, to_be_sweeped_address, 1000000000000).await;
+    send_monero(&wallet, to_be_sweeped_address, 500000000000).await;
 
     let task = SyncerdTask {
         task: Task::SweepAddress(SweepAddress {
@@ -1111,6 +1111,12 @@ async fn monero_syncer_sweep_test() {
     };
     tx.send(task).unwrap();
 
+    // the minimum amount is not reached, so let it mature and later check that no sweep has been executed
+    regtest.generate_blocks(20, address.address).await.unwrap();
+    let duration = std::time::Duration::from_secs(20);
+    std::thread::sleep(duration);
+
+    send_monero(&wallet, to_be_sweeped_address, 500000000000).await;
     regtest.generate_blocks(20, address.address).await.unwrap();
 
     info!("waiting for sweep address message");
@@ -1118,6 +1124,9 @@ async fn monero_syncer_sweep_test() {
     info!("received sweep success message");
     let request = get_request_from_message(message);
     assert_sweep_success(request, TaskId(0));
+
+    // check that only a single sweep message has been received
+    assert!(rx_event.recv_multipart(1).is_err());
 }
 
 /*
