@@ -953,30 +953,31 @@ impl Runtime {
                         match (self.connections.contains(&peer), peer_secret_key) {
                             (false, None) => return self.get_secret(endpoints, source, request),
                             (false, Some(sk)) => {
-                                trace!(
+                                debug!(
                                     "{} to remote peer {}",
                                     "Connecting".bright_blue_bold(),
                                     peer.bright_blue_italic()
                                 );
-                                let peer_connected = self.connect_peer(source.clone(), &peer, sk);
-
-                                let peer_connected_is_ok = peer_connected.is_ok();
-
-                                report_to.push((
-                                    Some(source.clone()),
-                                    peer_connected.into_progress_or_failure(),
-                                ));
-                                peer_connected_is_ok
+                                match self.connect_peer(source.clone(), &peer, sk) {
+                                    Err(err) => {
+                                        report_to.push((
+                                            Some(source.clone()),
+                                            Request::Failure(Failure {
+                                                code: 1,
+                                                info: err.to_string(),
+                                            }),
+                                        ));
+                                        false
+                                    }
+                                    Ok(()) => true,
+                                }
                             }
                             (true, _) => {
                                 let msg = format!(
                                     "Already connected to remote peer {}",
                                     peer.bright_blue_italic()
                                 );
-
                                 warn!("{}", &msg);
-
-                                report_to.push((Some(source.clone()), Request::Progress(msg)));
                                 true
                             }
                         };
@@ -1352,7 +1353,7 @@ impl Runtime {
         source: ServiceId,
         node_addr: &NodeAddr,
         sk: SecretKey,
-    ) -> Result<String, Error> {
+    ) -> Result<(), Error> {
         debug!("Instantiating peerd...");
         if self.connections.contains(node_addr) {
             return Err(Error::Other(format!(
@@ -1384,14 +1385,13 @@ impl Runtime {
             return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
         }
 
-        let msg = format!("New instance of peerd launched with PID {}", child.id());
-        debug!("{}", msg);
+        debug!("New instance of peerd launched with PID {}", child.id());
 
         self.spawning_services
             .insert(ServiceId::Peer(node_addr.clone()), source);
         debug!("Awaiting for peerd to connect...");
 
-        Ok(msg)
+        Ok(())
     }
 
     fn get_secret(
