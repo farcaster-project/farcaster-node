@@ -67,7 +67,7 @@ use farcaster_core::{
 };
 
 use crate::farcasterd::Opts;
-use crate::rpc::request::{GetKeys, IntoProgressOrFalure, Msg, NodeInfo, OptionDetails};
+use crate::rpc::request::{GetKeys, IntoProgressOrFailure, Msg, NodeInfo, OptionDetails};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
@@ -859,59 +859,56 @@ impl Runtime {
                         self.node_ids.insert(offer.id(), pk);
                         let msg = format!("Already listening on {}", &bind_addr);
                         debug!("{}", &msg);
-                        Ok(msg)
+                        Ok(())
                     }
                     _ => unreachable!(),
                 };
-                match resp {
-                    Ok(_) => info!(
-                        "Connection daemon {} for incoming peer connections on {}",
-                        "listens".bright_green_bold(),
-                        bind_addr
-                    ),
+                let res = match resp {
+                    Ok(_) => {
+                        info!(
+                            "Connection daemon {} for incoming peer connections on {}",
+                            "listens".bright_green_bold(),
+                            bind_addr
+                        );
+                        let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
+                        let public_offer = offer.to_public_v1(node_id, public_addr.into());
+                        let pub_offer_id = public_offer.id();
+                        let serialized_offer = public_offer.to_string();
+                        if !self.public_offers.insert(public_offer) {
+                            let msg = s!("This Public offer was previously registered");
+                            error!("{}", msg.err());
+                            return Err(Error::Other(msg));
+                        }
+                        let msg = format!(
+                            "{} {}",
+                            "Public offer registered, please share with taker: ".bright_blue_bold(),
+                            serialized_offer.bright_yellow_bold()
+                        );
+                        info!(
+                            "{}: {:#}",
+                            "Public offer registered".bright_green_bold(),
+                            pub_offer_id.bright_yellow_bold()
+                        );
+                        report_to.push((
+                            Some(source.clone()),
+                            Request::Success(OptionDetails(Some(msg))),
+                        ));
+                        self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
+                        self.acc_addrs
+                            .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
+                        Ok(())
+                    }
                     Err(err) => {
                         error!("{}", err.err());
-                        return Err(err);
+                        Err(err)
                     }
-                }
-                report_to.push((
-                    Some(source.clone()),
-                    resp.into_progress_or_failure(),
-                    // Request::Progress(format!(
-                    //     "Node {} listens for connections on {}",
-                    //     self.node_id, remote_addr
-                    // )),
-                ));
-                let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
-                let public_offer = offer.to_public_v1(node_id, public_addr.into());
-                let pub_offer_id = public_offer.id();
-                let serialized_offer = public_offer.to_string();
-                if self.public_offers.insert(public_offer) {
-                    let msg = format!(
-                        "{} {}",
-                        "Public offer registered, please share with taker: ".bright_blue_bold(),
-                        serialized_offer.bright_yellow_bold()
-                    );
-                    info!(
-                        "{}: {:#}",
-                        "Public offer registered".bright_green_bold(),
-                        pub_offer_id.bright_yellow_bold()
-                    );
-                    report_to.push((
-                        Some(source.clone()),
-                        Request::Success(OptionDetails(Some(msg))),
-                    ));
-                    self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
-                    self.acc_addrs
-                        .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
-                } else {
-                    let msg = "This Public offer was previously registered";
-                    warn!("{}", msg.err());
+                };
+                if res.is_err() {
                     report_to.push((
                         Some(source.clone()),
                         Request::Failure(Failure {
                             code: 1,
-                            info: msg.to_string(),
+                            info: res.err().unwrap().to_string(),
                         }),
                     ));
                 }
@@ -1321,7 +1318,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn listen(&mut self, addr: &RemoteSocketAddr, sk: SecretKey) -> Result<String, Error> {
+    fn listen(&mut self, addr: &RemoteSocketAddr, sk: SecretKey) -> Result<(), Error> {
         if let RemoteSocketAddr::Ftcp(inet) = *addr {
             let socket_addr = SocketAddr::try_from(inet)?;
             let ip = socket_addr.ip();
@@ -1341,9 +1338,8 @@ impl Runtime {
                     &self.wallet_token.clone().to_string(),
                 ],
             )?;
-            let msg = format!("New instance of peerd launched with PID {}", child.id());
-            debug!("{}", msg);
-            Ok(msg)
+            debug!("New instance of peerd launched with PID {}", child.id());
+            Ok(())
         } else {
             Err(Error::Other(s!(
                 "Only TCP is supported for now as an overlay protocol"
