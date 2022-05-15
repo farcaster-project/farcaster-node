@@ -123,7 +123,11 @@ pub struct AutoFundingServers {
     /// The host and port with scheme for connecting to bitcoin-core node
     pub bitcoin_rpc: String,
     /// Path to the cookie file to connect to the bitcoin-core node
-    pub bitcoin_cookie_path: String,
+    pub bitcoin_cookie_path: Option<String>,
+    /// RPC user to connect to the bitcoin-core node
+    pub bitcoin_rpc_user: Option<String>,
+    /// RPC pass to connect to the bitcoin-core node
+    pub bitcoin_rpc_pass: Option<String>,
     /// The monero wallet rpc url to auto-fund monero
     pub monero_rpc_wallet: String,
 }

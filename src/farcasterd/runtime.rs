@@ -1080,15 +1080,36 @@ impl Runtime {
                             auto_fund_config
                         );
 
-                        use bitcoincore_rpc::{Auth, Client, RpcApi};
+                        use bitcoincore_rpc::{Auth, Client, Error, RpcApi};
                         use std::env;
                         use std::path::PathBuf;
                         use std::str::FromStr;
 
-                        let cookie = auto_fund_config.bitcoin_cookie_path;
-                        let path = PathBuf::from_str(&shellexpand::tilde(&cookie)).unwrap();
                         let host = auto_fund_config.bitcoin_rpc;
-                        let bitcoin_rpc = Client::new(&host, Auth::CookieFile(path)).unwrap();
+                        let bitcoin_rpc = match auto_fund_config.bitcoin_cookie_path {
+                            Some(cookie) => {
+                                let path = PathBuf::from_str(&shellexpand::tilde(&cookie)).unwrap();
+                                debug!("{} | bitcoin-rpc connecting with cookie auth",
+                                       swap_id.bright_blue_italic());
+                                Client::new(&host, Auth::CookieFile(path))
+                            }
+                            None => {
+                                match (auto_fund_config.bitcoin_rpc_user, auto_fund_config.bitcoin_rpc_pass) {
+                                    (Some(rpc_user), Some(rpc_pass)) => {
+                                        debug!("{} | bitcoin-rpc connecting with userpass auth",
+                                               swap_id.bright_blue_italic());
+                                        Client::new(&host, Auth::UserPass(rpc_user, rpc_pass))
+                                    }
+                                    _ => {
+                                        error!(
+                                            "{} | Couldn't instantiate Bitcoin RPC - provide either `bitcoin_cookie_path` or `bitcoin_rpc_user` AND `bitcoin_rpc_pass` configuration parameters",
+                                            swap_id.bright_blue_italic()
+                                        );
+
+                                        Err(Error::InvalidCookieFile)}
+                                }
+                            }
+                        }.unwrap();
 
                         match bitcoin_rpc
                             .send_to_address(&address, amount, None, None, None, None, None, None)
