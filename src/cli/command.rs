@@ -218,7 +218,8 @@ impl Exec for Command {
 
             Command::Progress { swapid } => {
                 runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
-                runtime.report_progress()?;
+                // runtime.report_progress()?;
+                runtime.report_response()?;
             }
 
             Command::NeedsFunding { coin } => {

@@ -505,10 +505,17 @@ pub enum Request {
     #[api(type = 1004)]
     #[display("{0}")]
     String(String),
+
     #[api(type = 1002)]
     #[display("progress({0})")]
     Progress(String),
 
+    #[api(type = 1005)]
+    #[display("swap_progress({0})", alt = "{0:#}")]
+    SwapProgress(SwapProgress),
+    // #[api(type = 207)]
+    // #[display("took_offer({0})", alt = "{0:#}")]
+    // TookOffer(TookOffer),
     #[api(type = 1003)]
     #[display("read_progress({0})")]
     ReadProgress(SwapId),
@@ -860,6 +867,20 @@ pub struct TookOffer {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, Default, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(SwapProgress::to_yaml_string)]
+pub struct SwapProgress {
+    pub failure: Option<String>,
+    pub state_transitions: Vec<String>,
+    pub messages: Vec<String>,
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[cfg_attr(
     feature = "serde",
@@ -938,6 +959,8 @@ impl ToYamlString for SyncerInfo {}
 impl ToYamlString for MadeOffer {}
 #[cfg(feature = "serde")]
 impl ToYamlString for TookOffer {}
+#[cfg(feature = "serde")]
+impl ToYamlString for SwapProgress {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]
