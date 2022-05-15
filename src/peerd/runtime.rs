@@ -106,6 +106,7 @@ pub fn run(
             ZmqType::Rep,
         )?,
         _thread_flag_rx,
+        awaiting_pong: false,
     };
     let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
     let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, Msg>::with(
@@ -172,6 +173,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 pub struct PeerReceiverRuntime {
     internal_identity: ServiceId,
     bridge: esb::Controller<ServiceBus, Request, BridgeHandler>,
+    awaiting_pong: bool,
     _thread_flag_rx: std::sync::mpsc::Receiver<()>,
 }
 
@@ -200,6 +202,9 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
     ) -> Result<(), Self::Error> {
         // Forwarding all received messages to the runtime
         trace!("FWP message details: {:?}", message);
+        if let Msg::Pong(_) = *Arc::clone(&message) {
+            self.awaiting_pong = false;
+        }
         self.send_over_bridge(message)
     }
 
@@ -208,9 +213,17 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
         match err {
             Error::Peer(presentation::Error::Transport(transport::Error::TimedOut)) => {
                 trace!("Time to ping the remote peer");
+                if self.awaiting_pong {
+                    error!(
+                        "The ping has failed, probably the connection is down. Will shutdown the receiver runtime and attempt to reconnect"
+                    );
+                    self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
+                    return Err(Error::NotResponding);
+                }
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
                 self.send_over_bridge(Arc::new(Msg::PingPeer))?;
+                self.awaiting_pong = true;
                 Ok(())
             }
             Error::Peer(presentation::Error::Transport(transport::Error::SocketIo(
@@ -423,7 +436,7 @@ impl Runtime {
         let identity = self.identity.clone();
         let old_thread_flag_tx = self.thread_flag_tx.clone();
         let (thread_flag_tx, thread_flag_rx) = std::sync::mpsc::channel();
-        info!("Peerd reconnect successfull, launching peerd receiver runtime");
+        info!("Peerd reconnect successful, launching peerd receiver runtime");
         spawn(move || {
             restart_receiver_runtime(identity, peer_receiver, old_thread_flag_tx, thread_flag_rx)
                 .unwrap_or(())
@@ -493,9 +506,6 @@ impl Runtime {
 
     fn ping(&mut self) -> Result<(), Error> {
         trace!("Sending ping to the remote peer");
-        if self.awaited_pong.is_some() {
-            return Err(Error::NotResponding);
-        }
         let mut rng = rand::thread_rng();
         let len: u16 = rng.gen_range(4, 32);
         let mut noise = vec![0u8; len as usize];
@@ -551,6 +561,7 @@ fn restart_receiver_runtime(
             BridgeHandler,
             ZmqType::Rep,
         )?,
+        awaiting_pong: false,
         _thread_flag_rx,
     };
     let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
