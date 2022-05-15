@@ -451,6 +451,14 @@ pub enum Request {
     #[display("proto_puboffer({0:#})")]
     MakeOffer(ProtoPublicOffer),
 
+    #[api(type = 206)]
+    #[display("made_offer({0})", alt = "{0:#}")]
+    MadeOffer(MadeOffer),
+
+    #[api(type = 207)]
+    #[display("took_offer({0})", alt = "{0:#}")]
+    TookOffer(TookOffer),
+
     #[api(type = 197)]
     #[display("params({0:#})")]
     Params(Params),
@@ -809,6 +817,32 @@ pub struct ProtoPublicOffer {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
+#[display(MadeOffer::to_yaml_string)]
+pub struct MadeOffer {
+    pub offer: String,
+    pub message: String,
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(TookOffer::to_yaml_string)]
+pub struct TookOffer {
+    pub offerid: PublicOfferId,
+    pub message: String,
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(SyncerInfo::to_yaml_string)]
 pub struct SyncerInfo {
     #[serde_as(as = "DurationSeconds")]
@@ -877,6 +911,10 @@ impl ToYamlString for PeerInfo {}
 impl ToYamlString for SwapInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for SyncerInfo {}
+#[cfg(feature = "serde")]
+impl ToYamlString for MadeOffer {}
+#[cfg(feature = "serde")]
+impl ToYamlString for TookOffer {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]
