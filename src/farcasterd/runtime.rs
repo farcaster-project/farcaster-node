@@ -14,6 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::farcasterd::runtime::request::MadeOffer;
+use crate::farcasterd::runtime::request::SwapProgress;
 use crate::farcasterd::runtime::request::TookOffer;
 use crate::{
     clap::Parser,
@@ -1030,22 +1031,40 @@ impl Runtime {
 
             Request::ReadProgress(swapid) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swapid)) {
-                    let n = queue.len();
+                    // let n = queue.len();
 
-                    for (i, req) in queue.iter().enumerate() {
-                        let x = match req {
-                            Request::Progress(x)
-                            | Request::Success(OptionDetails(Some(x)))
-                            | Request::Failure(Failure { code: _, info: x }) => x,
+                    let mut swap_progress = SwapProgress {
+                        failure: None,
+                        messages: vec![],
+                        state_transitions: vec![],
+                    };
+                    for (_i, req) in queue.iter().enumerate() {
+                        match req {
+                            Request::Progress(x) | Request::Success(OptionDetails(Some(x))) => {
+                                if x.contains("State") {
+                                    swap_progress.state_transitions.push(x.clone());
+                                } else {
+                                    swap_progress.messages.push(x.clone());
+                                }
+                            }
+                            Request::Failure(Failure { code: _, info: x }) => {
+                                swap_progress.failure = Some(x.clone());
+                            }
                             _ => unreachable!("not handled here"),
                         };
-                        let req = if i < n - 1 {
-                            Request::Progress(x.clone())
-                        } else {
-                            Request::Success(OptionDetails(Some(x.clone())))
-                        };
-                        report_to.push((Some(source.clone()), req));
+                        // let req = if i < n - 1 {
+                        // Request::Progress(x.clone())
+                        // } else {
+                        // Request::Success(OptionDetails(Some(x.clone())))
+                        // };
+                        // report_to.push((Some(source.clone()), req));
                     }
+                    senders.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        Request::SwapProgress(swap_progress),
+                    )?;
                 } else {
                     let info = if self.making_swaps.contains_key(&ServiceId::Swap(swapid))
                         || self.taking_swaps.contains_key(&ServiceId::Swap(swapid))
