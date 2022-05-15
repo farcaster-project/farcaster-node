@@ -13,8 +13,15 @@ auto_fund = false
 # The bitcoin node to use to auto-send funds when swap funding is required
 # the node should have a wallet with spendable funds
 bitcoin_rpc = "http://localhost:18334"
-# The path to the cookie file to connect to the bitcoin node
+# Optional: the path to the cookie file to connect to the bitcoin node.
+# Default if {`bitcoin_rpc_user`, `bitcoin_rpc_pass`} tuple is provided too.
 bitcoin_cookie_path = "~/.bitcoin/testnet3/.cookie"
+# Optional: the RPC user to connect to the bitcoin node
+# Ignored if `bitcoin_cookie_path` is provided too.
+# bitcoin_rpc_user = "rpcuser"
+# Optional: the RPC password to the bitcoin node
+# Ignored if `bitcoin_cookie_path` is provided too.
+# bitcoin_rpc_pass = "rpcpass"
 # The monero wallet to use to auto-send funds when swap funding is required
 # the wallet should have spendable funds
 monero_rpc_wallet = "http://localhost:38084"
