@@ -187,12 +187,12 @@ fn main() {
 
     let mut local_socket: Option<InetSocketAddr> = None;
     let mut remote_node_addr: Option<RemoteNodeAddr> = None;
-    let connect: bool;
+    let forked_from_listener: bool;
     let connection = match peer_socket {
         PeerSocket::Listen(RemoteSocketAddr::Ftcp(inet_addr)) => {
             debug!("Running in LISTEN mode");
 
-            connect = false;
+            forked_from_listener = true;
             local_socket = Some(inet_addr);
 
             debug!("Binding TCP socket {}", inet_addr);
@@ -236,7 +236,7 @@ fn main() {
         PeerSocket::Connect(remote_node) => {
             info!("Peerd running in CONNECT mode");
 
-            connect = true;
+            forked_from_listener = false;
             remote_node_addr = Some(remote_node.clone());
 
             info!("Connecting to {}", &remote_node.addr());
@@ -263,7 +263,7 @@ fn main() {
         remote_node_addr,
         local_socket,
         local_node,
-        connect,
+        forked_from_listener,
     )
     .expect("Error running peerd runtime");
 

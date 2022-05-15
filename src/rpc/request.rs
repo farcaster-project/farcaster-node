@@ -148,7 +148,7 @@ impl Msg {
             | Msg::PeerReceiverRuntimeShutdown
             | Msg::Identity(_) => {
                 unreachable!(
-                    "Ping, Pong, PingPeer, PeerdShutdown and Identity does not contain swapid"
+                    "Ping, Pong, PingPeer, PeerdShutdown and Identity do not contain swapid"
                 )
             }
         }
@@ -863,7 +863,7 @@ pub struct PeerInfo {
     pub since: u64,
     pub messages_sent: usize,
     pub messages_received: usize,
-    pub connected: bool,
+    pub forked_from_listener: bool,
     pub awaits_pong: bool,
 }
 pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;

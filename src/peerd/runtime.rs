@@ -45,17 +45,19 @@ pub fn run(
     remote_node_addr: Option<RemoteNodeAddr>,
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
-    connect: bool,
+    // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
+    forked_from_listener: bool,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
     let (mut peer_receiver, mut peer_sender) = connection.split();
 
     // this is hella hacky, but it serves the purpose of keeping peerd's service
-    // id constant accross reconnects: <REMOTE_NODE_ID>:<REMOTE_ADDR> for taker,
+    // id constant across reconnects: <REMOTE_NODE_ID>:<REMOTE_ADDR> for taker,
     // <REMOTE_NODE_ID>:<LOCAL_ADDR> for maker
     // TODO: It is privacy/security critical that once the
     // connection is encrypted, this should be replaced by a proper handshake.
-    let internal_identity = if connect {
+    let internal_identity = if !forked_from_listener {
+        // taker's case
         peer_sender
             .send_message(Msg::Identity(local_node.node_id()))
             .unwrap();
@@ -65,6 +67,7 @@ pub fn run(
         );
         ServiceId::Peer(NodeAddr::Remote(remote_node_addr.clone().unwrap()))
     } else {
+        // maker's case
         let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
         let msg: &Msg = &*peer_receiver.recv_message(&unmarshaller).unwrap();
         let id = match msg {
@@ -124,7 +127,7 @@ pub fn run(
         local_node,
         routing: empty!(),
         peer_sender,
-        connect,
+        forked_from_listener,
         started: SystemTime::now(),
         messages_sent: 0,
         messages_received: 0,
@@ -239,7 +242,8 @@ pub struct Runtime {
 
     routing: HashMap<ServiceId, ServiceId>,
     peer_sender: PeerSender,
-    connect: bool,
+    // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
+    forked_from_listener: bool,
 
     started: SystemTime,
     messages_sent: usize,
@@ -260,7 +264,8 @@ impl esb::Handler<ServiceBus> for Runtime {
     }
 
     fn on_ready(&mut self, _endpoints: &mut Endpoints) -> Result<(), Error> {
-        if self.connect {
+        // log iff taker
+        if !self.forked_from_listener {
             info!(
                 "{} with the remote peer {}",
                 "Initializing connection".bright_blue_bold(),
@@ -367,7 +372,7 @@ impl Runtime {
                         .as_secs(),
                     messages_sent: self.messages_sent,
                     messages_received: self.messages_received,
-                    connected: !self.connect,
+                    forked_from_listener: self.forked_from_listener,
                     awaits_pong: self.awaited_pong.is_some(),
                 };
                 self.send_ctl(endpoints, source, Request::PeerInfo(info))?;
@@ -384,8 +389,8 @@ impl Runtime {
         &mut self,
         senders: &mut esb::SenderList<ServiceBus, ServiceId>,
     ) -> Result<(), Error> {
-        // If this is the listener-forked peerd, terminate it.
-        if !self.connect {
+        // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
+        if self.forked_from_listener {
             senders.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
