@@ -2734,7 +2734,7 @@ impl Runtime {
         params: &Params,
     ) -> Result<request::Commit, Error> {
         let msg = format!(
-            "{} {} as Maker from Taker remote peer {}",
+            "{} {} as Maker from Taker through peerd {}",
             "Accepting swap".bright_white_bold(),
             swap_id.bright_blue_italic(),
             peerd.bright_blue_italic()
@@ -2755,14 +2755,6 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
-
-        let msg = format!(
-            "{} swap {:#} from remote peer Taker {}",
-            "Making".bright_green_bold(),
-            swap_id.bright_green_italic(),
-            peerd.bright_green_italic()
-        );
-        let _ = self.report_success_to(endpoints, &enquirer, Some(msg));
         Ok(commitment)
     }
 }
