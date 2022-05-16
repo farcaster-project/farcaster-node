@@ -2683,7 +2683,7 @@ impl Runtime {
 
             Request::PeerdReconnected => {
                 for msg in self.pending_peer_request.clone().iter() {
-                    self.send_peer(senders, msg.clone())?;
+                    self.send_peer(endpoints, msg.clone())?;
                 }
                 self.pending_peer_request.clear();
             }

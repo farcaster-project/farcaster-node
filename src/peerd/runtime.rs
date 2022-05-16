@@ -115,7 +115,14 @@ pub fn run(
         unmarshaller,
     );
     // We use the _thread_flag_rx to determine when the thread had terminated
-    spawn(move || peer_receiver_runtime.try_run_loop().unwrap_or(()));
+    spawn(move || {
+        if let Err(err) = peer_receiver_runtime.try_run_loop() {
+            error!(
+                "Error encountered in peer receiver runtime, receiver runtime is stopped: {}",
+                err
+            );
+        }
+    });
 
     debug!(
         "Starting main service runtime with identity: {}",
@@ -231,7 +238,7 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
             // handled, will result in a broken peerd state)
             _ => {
                 error!(
-                    "The remote peer has hung up, notifying that peerd receiver runtime has halted: {}",
+                    "The remote connection is broken; notifying peerd that its receiver runtime is halting: {}",
                     err
                 );
                 self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
@@ -392,13 +399,10 @@ impl Runtime {
         }
         Ok(())
     }
-    fn reconnect_peer(
-        &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-    ) -> Result<(), Error> {
+    fn reconnect_peer(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
         if self.forked_from_listener {
-            senders.send_to(
+            endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
                 ServiceId::Farcasterd,
@@ -433,7 +437,6 @@ impl Runtime {
         info!("Peerd reconnect successful, launching peerd receiver runtime");
         spawn(move || {
             restart_receiver_runtime(identity, peer_receiver, old_thread_flag_tx, thread_flag_rx)
-                .unwrap_or(())
         });
         self.thread_flag_tx = thread_flag_tx;
         Ok(())
@@ -454,7 +457,10 @@ impl Runtime {
         match &request {
             Request::Protocol(Msg::PingPeer) => self.ping()?,
 
-            Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => self.pong(*pong_size)?,
+            Request::Protocol(Msg::Ping(message::Ping { pong_size, .. })) => {
+                debug!("receiving ping, ponging back");
+                self.pong(*pong_size)?
+            }
 
             Request::Protocol(Msg::Pong(noise)) => {
                 match self.awaited_pong {
@@ -469,7 +475,7 @@ impl Runtime {
 
             Request::Protocol(Msg::PeerReceiverRuntimeShutdown) => {
                 warn!("Exiting peerd receiver runtime");
-                self.reconnect_peer(senders)?;
+                self.reconnect_peer(endpoints)?;
             }
 
             // swap initiation message
@@ -532,14 +538,17 @@ fn restart_receiver_runtime(
     peer_receiver: PeerReceiver,
     thread_flag_tx: std::sync::mpsc::Sender<()>,
     _thread_flag_rx: std::sync::mpsc::Receiver<()>,
-) -> Result<(), Error> {
+) {
     // flag_rx on the old receiver thread goes out of scope, thus making
     // the send fail as soon as the old receiver thread exited.
     while thread_flag_tx.send(()).is_ok() {
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    tx.connect("inproc://bridge")?;
+    let tx = ZMQ_CONTEXT
+        .socket(zmq::PAIR)
+        .expect("unable to create new bridge zmq socket");
+    tx.connect("inproc://bridge")
+        .expect("unable to connec to zmq bridge");
 
     debug!("Starting thread listening for messages from the remote peer");
     let bridge_handler = PeerReceiverRuntime {
@@ -554,7 +563,8 @@ fn restart_receiver_runtime(
             },
             BridgeHandler,
             ZmqType::Rep,
-        )?,
+        )
+        .expect("error re-creating receiver runtime bridge"),
         awaiting_pong: false,
         _thread_flag_rx,
     };
@@ -565,5 +575,10 @@ fn restart_receiver_runtime(
         unmarshaller,
     );
     debug!("entering peerd receiver runtime loop");
-    peer_receiver_runtime.try_run_loop()
+    if let Err(err) = peer_receiver_runtime.try_run_loop() {
+        error!(
+            "Error encountered in peer receiver runtime, receiver runtime is stopped: {}",
+            err
+        )
+    }
 }

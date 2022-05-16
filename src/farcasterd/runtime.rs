@@ -508,7 +508,7 @@ impl Runtime {
                                         "Letting {} know of peer reconnection.",
                                         swap_service_id
                                     );
-                                    senders.send_to(
+                                    endpoints.send_to(
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         swap_service_id,
@@ -735,7 +735,7 @@ impl Runtime {
             }
 
             Request::Keys(Keys(sk, pk, id)) if self.pending_requests.contains_key(&id) => {
-                debug!("received peerd keys {}", sk);
+                debug!("received peerd keys {}", sk.display_secret());
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
                     trace!("Received expected peer keys, injecting key in request");
@@ -1347,7 +1347,7 @@ impl Runtime {
                         taker and the swap is still running.",
                         addr
                     );
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd,
                         ServiceId::Peer(addr.clone()),
