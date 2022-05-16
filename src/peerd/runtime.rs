@@ -215,7 +215,7 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
                 trace!("Time to ping the remote peer");
                 if self.awaiting_pong {
                     error!(
-                        "The ping has failed, probably the connection is down. Will shutdown the receiver runtime and attempt to reconnect"
+                        "The ping has failed, probably the connection is down. Will shutdown the receiver runtime."
                     );
                     self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
                     return Err(Error::NotResponding);
@@ -226,21 +226,15 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
                 self.awaiting_pong = true;
                 Ok(())
             }
-            Error::Peer(presentation::Error::Transport(transport::Error::SocketIo(
-                std::io::ErrorKind::UnexpectedEof,
-            ))) => {
+            // for all other error types, indicating internal errors and broken
+            // connections, we propagate error to the upper level (currently not
+            // handled, will result in a broken peerd state)
+            _ => {
                 error!(
-                    "The remote peer has hung up, notifying that peerd has halted: {}",
+                    "The remote peer has hung up, notifying that peerd receiver runtime has halted: {}",
                     err
                 );
                 self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
-                Err(err)
-            }
-            // for all other error types, indicating internal errors, we
-            // propagate error to the upper level (currently not handled, will
-            // result in a broken peerd state)
-            _ => {
-                error!("Unrecoverable peer error {}, halting", err);
                 Err(err)
             }
         }
