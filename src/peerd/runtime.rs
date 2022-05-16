@@ -191,12 +191,16 @@ impl PeerReceiverRuntime {
         req: <Unmarshaller<Msg> as Unmarshall>::Data,
     ) -> Result<(), Error> {
         debug!("Forwarding FWP message over BRIDGE interface to the runtime");
-        self.bridge.send_to(
+        if let Err(err) = self.bridge.send_to(
             ServiceBus::Bridge,
             self.internal_identity.clone(),
             Request::Protocol((&*req).clone()),
-        )?;
-        Ok(())
+        ) {
+            error!("Error sending over bridge: {}", err);
+            Err(err.into())
+        } else {
+            Ok(())
+        }
     }
 }
 
