@@ -369,6 +369,8 @@ impl Runtime {
         }
 
         match &request {
+            Request::Protocol(Msg::PingPeer) => self.ping()?,
+
             Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => self.pong(*pong_size)?,
 
             Request::Protocol(Msg::Pong(noise)) => {
@@ -384,7 +386,7 @@ impl Runtime {
 
             Request::Protocol(Msg::PeerdShutdown) => {
                 warn!("Exiting peerd");
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     ServiceId::Farcasterd,
