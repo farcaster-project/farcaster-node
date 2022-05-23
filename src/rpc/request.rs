@@ -248,12 +248,21 @@ pub struct TakeCommit {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
-#[display("keypair(sk:({0}),pk:({1})),id:({2})")]
+#[display(format_keys)]
 pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
     pub bitcoin::secp256k1::PublicKey,
     pub RequestId,
 );
+
+fn format_keys(keys: &Keys) -> String {
+    format!(
+        "sk: {}, pk: {}, id: {}",
+        keys.0.display_secret(),
+        keys.1,
+        keys.2
+    )
+}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("reveal")]

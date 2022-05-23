@@ -1336,7 +1336,7 @@ impl Runtime {
                     "--port",
                     &port.to_string(),
                     "--peer-secret-key",
-                    &format!("{:x}", sk),
+                    &format!("{}", sk.display_secret()),
                     "--token",
                     &self.wallet_token.clone().to_string(),
                 ],
@@ -1372,7 +1372,7 @@ impl Runtime {
                 "--connect",
                 &node_addr.to_string(),
                 "--peer-secret-key",
-                &format!("{:x}", sk),
+                &format!("{}", sk.display_secret()),
                 "--token",
                 &self.wallet_token.clone().to_string(),
             ],
@@ -1538,7 +1538,7 @@ pub fn launch(
     name: &str,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> io::Result<process::Child> {
-    let app = Opts::into_app();
+    let app = Opts::command();
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
         err

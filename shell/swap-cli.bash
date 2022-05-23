@@ -95,7 +95,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__help)
-            opts="-d -v -T -m -x --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-d -v -T -m -x --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SUBCOMMAND>..."
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

@@ -18,8 +18,8 @@ extern crate amplify_derive;
 extern crate clap;
 
 use clap::IntoApp;
-use clap_generate::generate_to;
-use clap_generate::generators::*;
+use clap_complete::generate_to;
+use clap_complete::shells::*;
 
 pub mod opts {
     include!("src/opts.rs");
@@ -48,12 +48,12 @@ fn main() -> Result<(), configure_me_codegen::Error> {
     let outdir = "./shell";
 
     for app in [
-        farcasterd::Opts::into_app(),
-        peerd::Opts::into_app(),
-        swapd::Opts::into_app(),
-        cli::Opts::into_app(),
-        walletd::Opts::into_app(),
-        syncerd::Opts::into_app(),
+        farcasterd::Opts::command(),
+        peerd::Opts::command(),
+        swapd::Opts::command(),
+        cli::Opts::command(),
+        walletd::Opts::command(),
+        syncerd::Opts::command(),
     ]
     .iter_mut()
     {

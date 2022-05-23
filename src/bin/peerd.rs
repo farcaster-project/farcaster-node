@@ -224,7 +224,7 @@ fn main() {
                         .expect("Unable to set up timeout for TCP connection");
 
                     debug!("Establishing session with the remote");
-                    let session = session::Raw::with_ftcp_unencrypted(stream, inet_addr)
+                    let session = session::Raw::with_ftcp(stream, inet_addr)
                         .expect("Unable to establish session with the remote peer");
 
                     internal_id = NodeAddr::Remote(RemoteNodeAddr {
