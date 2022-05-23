@@ -331,25 +331,18 @@ pub enum AliceState {
         remote_commit: Commit,
         remote_params: Option<Params>,
     }, // local, remote, remote
-    // #[display("RefundProcSigs: {0}")]
-    #[display("RefundSigs({0})")]
-    RefundSigA(RefundSigA),
+    #[display("RefundSigs(xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen}))")]
+    RefundSigA {
+        xmr_locked: bool,
+        buy_published: bool,
+        cancel_seen: bool,
+        refund_seen: bool,
+        remote_params: Params,
+        /* #[display("local_view_share({0})")]
+         * local_params: Params */
+    },
     #[display("Finish({0})")]
     FinishA(Outcome),
-}
-
-#[derive(Clone, Display)]
-#[display("xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen})")]
-pub struct RefundSigA {
-    #[display("xmr_locked({0})")]
-    xmr_locked: bool,
-    #[display("buy_published({0})")]
-    buy_published: bool,
-    cancel_seen: bool,
-    refund_seen: bool,
-    remote_params: Params,
-    /* #[display("local_view_share({0})")]
-     * local_params: Params */
 }
 
 #[derive(Display, Clone)]
@@ -420,7 +413,7 @@ impl State {
             | State::Bob(BobState::CommitB { remote_params, .. })
             | State::Bob(BobState::RevealB { remote_params, .. }) => remote_params.clone(),
 
-            State::Alice(AliceState::RefundSigA(RefundSigA { remote_params, .. }))
+            State::Alice(AliceState::RefundSigA { remote_params, .. })
             | State::Bob(BobState::CorearbB(_, _, remote_params)) => Some(remote_params.clone()),
 
             _ => None,
@@ -441,21 +434,21 @@ impl State {
         }
     }
     fn a_xmr_locked(&self) -> bool {
-        if let State::Alice(AliceState::RefundSigA(RefundSigA { xmr_locked, .. })) = self {
+        if let State::Alice(AliceState::RefundSigA { xmr_locked, .. }) = self {
             *xmr_locked
         } else {
             false
         }
     }
     fn a_buy_published(&self) -> bool {
-        if let State::Alice(AliceState::RefundSigA(RefundSigA { buy_published, .. })) = self {
+        if let State::Alice(AliceState::RefundSigA { buy_published, .. }) = self {
             *buy_published
         } else {
             false
         }
     }
     fn a_refund_seen(&self) -> bool {
-        if let State::Alice(AliceState::RefundSigA(RefundSigA { refund_seen, .. })) = self {
+        if let State::Alice(AliceState::RefundSigA { refund_seen, .. }) = self {
             *refund_seen
         } else {
             false
@@ -463,7 +456,7 @@ impl State {
     }
     fn cancel_seen(&self) -> bool {
         if let State::Bob(BobState::CorearbB(_, cancel_seen, _))
-        | State::Alice(AliceState::RefundSigA(RefundSigA { cancel_seen, .. })) = self
+        | State::Alice(AliceState::RefundSigA { cancel_seen, .. }) = self
         {
             *cancel_seen
         } else {
@@ -472,7 +465,7 @@ impl State {
     }
     fn sup_cancel_seen(&mut self) -> bool {
         match self {
-            State::Alice(AliceState::RefundSigA(RefundSigA { cancel_seen, .. }))
+            State::Alice(AliceState::RefundSigA { cancel_seen, .. })
             | State::Bob(BobState::CorearbB(_, cancel_seen, _)) => {
                 *cancel_seen = true;
                 true
@@ -538,7 +531,7 @@ impl State {
         )
     }
     fn a_refundsig(&self) -> bool {
-        matches!(self, State::Alice(AliceState::RefundSigA(..)))
+        matches!(self, State::Alice(AliceState::RefundSigA { .. }))
     }
     fn b_buy_tx_seen(&self) -> bool {
         if !self.b_buy_sig() {
@@ -710,7 +703,7 @@ impl State {
     }
     /// Update Alice RefundSig state from XMR unlocked to locked state
     fn a_sup_refundsig_xmrlocked(&mut self) -> bool {
-        if let State::Alice(AliceState::RefundSigA(RefundSigA { xmr_locked, .. })) = self {
+        if let State::Alice(AliceState::RefundSigA { xmr_locked, .. }) = self {
             if !*xmr_locked {
                 trace!("setting xmr_locked");
                 *xmr_locked = true;
@@ -725,7 +718,7 @@ impl State {
         }
     }
     fn a_sup_refundsig_refund_seen(&mut self) -> bool {
-        if let State::Alice(AliceState::RefundSigA(RefundSigA { refund_seen, .. })) = self {
+        if let State::Alice(AliceState::RefundSigA { refund_seen, .. }) = self {
             if !*refund_seen {
                 trace!("setting refund_seen");
                 *refund_seen = true;
@@ -2178,13 +2171,13 @@ impl Runtime {
                                     self.txs.remove_entry(&TxLabel::Buy)
                                 {
                                     self.broadcast(buy_tx, txlabel, senders)?;
-                                    self.state = State::Alice(AliceState::RefundSigA(RefundSigA {
+                                    self.state = State::Alice(AliceState::RefundSigA {
                                         buy_published: true,
                                         xmr_locked,
                                         cancel_seen: false,
                                         refund_seen: false,
                                         remote_params: self.state.remote_params().unwrap(),
-                                    }));
+                                    });
                                 } else {
                                     warn!(
                                         "Alice doesn't have the buy tx, probably didnt receive \
@@ -2586,13 +2579,13 @@ impl Runtime {
             {
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 trace!("sent peer RefundProcedureSignatures msg");
-                let next_state = State::Alice(AliceState::RefundSigA(RefundSigA {
+                let next_state = State::Alice(AliceState::RefundSigA {
                     xmr_locked: false,
                     buy_published: false,
                     cancel_seen: false,
                     refund_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
-                }));
+                });
                 self.state_update(senders, next_state)?;
             }
 
