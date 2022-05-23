@@ -380,15 +380,9 @@ pub enum BobState {
         remote_params: Params,
     }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
-    BuySigB(BuySigB),
+    BuySigB { buy_tx_seen: bool },
     #[display("Finish({0})")]
     FinishB(Outcome),
-}
-
-#[derive(Display, Clone)]
-#[display("BuySigB(buy_tx_seen({buy_tx_seen}))")]
-pub struct BuySigB {
-    buy_tx_seen: bool,
 }
 
 #[derive(Display, Clone)]
@@ -481,7 +475,7 @@ impl State {
         matches!(self, State::Bob(BobState::CorearbB { .. }))
     }
     fn b_buy_sig(&self) -> bool {
-        matches!(self, State::Bob(BobState::BuySigB(..)))
+        matches!(self, State::Bob(BobState::BuySigB { .. }))
     }
     fn remote_commit(&self) -> Option<&Commit> {
         match self {
@@ -542,7 +536,7 @@ impl State {
             return false;
         }
         match self {
-            State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) => *buy_tx_seen,
+            State::Bob(BobState::BuySigB { buy_tx_seen }) => *buy_tx_seen,
             _ => unreachable!("conditional early return"),
         }
     }
@@ -699,9 +693,7 @@ impl State {
             return;
         }
         match self {
-            State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen })) if !(*buy_tx_seen) => {
-                *buy_tx_seen = true
-            }
+            State::Bob(BobState::BuySigB { buy_tx_seen }) if !(*buy_tx_seen) => *buy_tx_seen = true,
             _ => unreachable!("checked state"),
         }
     }
@@ -1843,8 +1835,7 @@ impl Runtime {
                         {
                             senders.send_to(bus_id, self.identity(), dest, request)?;
                             debug!("sent buyproceduresignature at state {}", &self.state);
-                            let next_state =
-                                State::Bob(BobState::BuySigB(BuySigB { buy_tx_seen: false }));
+                            let next_state = State::Bob(BobState::BuySigB { buy_tx_seen: false });
                             self.state_update(senders, next_state)?;
                         } else {
                             error!(
