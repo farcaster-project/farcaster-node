@@ -495,7 +495,7 @@ impl State {
             _ => None,
         }
     }
-    fn puboffer(&self) -> Option<&PublicOffer<BtcXmr>> {
+    fn public_offer(&self) -> Option<&PublicOffer<BtcXmr>> {
         match self {
             State::Alice(AliceState::StartA { public_offer, .. })
             | State::Bob(BobState::StartB { public_offer, .. }) => Some(public_offer),
@@ -1534,7 +1534,7 @@ impl Runtime {
                 );
                 let public_offer = self
                     .state
-                    .puboffer()
+                    .public_offer()
                     .map(|offer| offer.to_string())
                     .expect("state Start has puboffer");
                 let take_swap = TakeCommit {
