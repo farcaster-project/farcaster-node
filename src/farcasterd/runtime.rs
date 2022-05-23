@@ -1062,8 +1062,6 @@ impl Runtime {
 
             Request::ReadProgress(swapid) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swapid)) {
-                    // let n = queue.len();
-
                     let mut swap_progress = SwapProgress {
                         failure: None,
                         messages: vec![],
@@ -1083,12 +1081,6 @@ impl Runtime {
                             }
                             _ => unreachable!("not handled here"),
                         };
-                        // let req = if i < n - 1 {
-                        // Request::Progress(x.clone())
-                        // } else {
-                        // Request::Success(OptionDetails(Some(x.clone())))
-                        // };
-                        // report_to.push((Some(source.clone()), req));
                     }
                     senders.send_to(
                         ServiceBus::Ctl,
