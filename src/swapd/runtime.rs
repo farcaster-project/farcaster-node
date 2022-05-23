@@ -107,8 +107,14 @@ pub fn run(
     };
 
     let init_state = match local_swap_role {
-        SwapRole::Alice => State::Alice(AliceState::StartA(local_trade_role, public_offer)),
-        SwapRole::Bob => State::Bob(BobState::StartB(local_trade_role, public_offer)),
+        SwapRole::Alice => State::Alice(AliceState::StartA {
+            local_trade_role,
+            public_offer,
+        }),
+        SwapRole::Bob => State::Bob(BobState::StartB {
+            local_trade_role,
+            public_offer,
+        }),
     };
     let sweep_monero_thr = 10;
     info!(
@@ -305,7 +311,10 @@ struct SyncerState {
 pub enum AliceState {
     // #[display("Start: {0:#?} {1:#?}")]
     #[display("Start")]
-    StartA(TradeRole, PublicOffer<BtcXmr>), // local, both
+    StartA {
+        local_trade_role: TradeRole,
+        public_offer: PublicOffer<BtcXmr>,
+    }, // local, both
     // #[display("Commit: {0}")]
     #[display("Commit")]
     CommitA(CommitC), // local, local, local, remote
@@ -348,7 +357,10 @@ pub struct RefundSigA {
 pub enum BobState {
     // #[display("Start {0:#?} {1:#?}")]
     #[display("Start")]
-    StartB(TradeRole, PublicOffer<BtcXmr>), // local, both
+    StartB {
+        local_trade_role: TradeRole,
+        public_offer: PublicOffer<BtcXmr>,
+    }, // local, both
     // #[display("Commit {0} {1}")]
     #[display("Commit")]
     CommitB(CommitC, bitcoin::Address),
@@ -484,8 +496,8 @@ impl State {
     }
     fn puboffer(&self) -> Option<&PublicOffer<BtcXmr>> {
         match self {
-            State::Alice(AliceState::StartA(_, puboffer))
-            | State::Bob(BobState::StartB(_, puboffer)) => Some(puboffer),
+            State::Alice(AliceState::StartA { public_offer, .. })
+            | State::Bob(BobState::StartB { public_offer, .. }) => Some(public_offer),
             _ => None,
         }
     }
@@ -548,7 +560,7 @@ impl State {
     fn start(&self) -> bool {
         matches!(
             self,
-            State::Alice(AliceState::StartA(..)) | State::Bob(BobState::StartB(..))
+            State::Alice(AliceState::StartA { .. }) | State::Bob(BobState::StartB { .. })
         )
     }
     fn finish(&self) -> bool {
@@ -559,8 +571,8 @@ impl State {
     }
     fn trade_role(&self) -> Option<TradeRole> {
         match self {
-            State::Alice(AliceState::StartA(trade_role, ..))
-            | State::Bob(BobState::StartB(trade_role, ..))
+            State::Alice(AliceState::StartA { local_trade_role: trade_role, .. })
+            | State::Bob(BobState::StartB { local_trade_role: trade_role, .. })
             | State::Alice(AliceState::CommitA(CommitC { trade_role, .. }))
             | State::Bob(BobState::CommitB(CommitC { trade_role, .. }, ..))
             | State::Bob(BobState::RevealB(.., trade_role, _)) => Some(*trade_role),
@@ -580,7 +592,7 @@ impl State {
         }
         let remote_params = None;
         match (self, funding_address) {
-            (State::Bob(BobState::StartB(trade_role, _)), Some(addr)) => {
+            (State::Bob(BobState::StartB{local_trade_role: trade_role, ..}), Some(addr)) => {
                 State::Bob(BobState::CommitB(
                     CommitC {
                         trade_role,
@@ -592,7 +604,7 @@ impl State {
                     addr,
                 ))
             }
-            (State::Alice(AliceState::StartA(trade_role, _)), None) => {
+            (State::Alice(AliceState::StartA{local_trade_role: trade_role, ..}), None) => {
                 State::Alice(AliceState::CommitA(CommitC {
                     trade_role,
                     local_params,
