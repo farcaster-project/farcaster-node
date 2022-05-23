@@ -374,7 +374,11 @@ pub enum BobState {
     }, // local, remote, local, ..missing, remote
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
-    CorearbB(CoreArbitratingSetup<BtcXmr>, bool, Params), // lock (not signed), cancel_seen
+    CorearbB {
+        core_arb_setup: CoreArbitratingSetup<BtcXmr>,
+        cancel_seen: bool,
+        remote_params: Params,
+    }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
     BuySigB(BuySigB),
     #[display("Finish({0})")]
@@ -414,7 +418,7 @@ impl State {
             | State::Bob(BobState::RevealB { remote_params, .. }) => remote_params.clone(),
 
             State::Alice(AliceState::RefundSigA { remote_params, .. })
-            | State::Bob(BobState::CorearbB(_, _, remote_params)) => Some(remote_params.clone()),
+            | State::Bob(BobState::CorearbB { remote_params, .. }) => Some(remote_params.clone()),
 
             _ => None,
         }
@@ -455,7 +459,7 @@ impl State {
         }
     }
     fn cancel_seen(&self) -> bool {
-        if let State::Bob(BobState::CorearbB(_, cancel_seen, _))
+        if let State::Bob(BobState::CorearbB { cancel_seen, .. })
         | State::Alice(AliceState::RefundSigA { cancel_seen, .. }) = self
         {
             *cancel_seen
@@ -466,7 +470,7 @@ impl State {
     fn sup_cancel_seen(&mut self) -> bool {
         match self {
             State::Alice(AliceState::RefundSigA { cancel_seen, .. })
-            | State::Bob(BobState::CorearbB(_, cancel_seen, _)) => {
+            | State::Bob(BobState::CorearbB { cancel_seen, .. }) => {
                 *cancel_seen = true;
                 true
             }
@@ -474,7 +478,7 @@ impl State {
         }
     }
     fn b_core_arb(&self) -> bool {
-        matches!(self, State::Bob(BobState::CorearbB(..)))
+        matches!(self, State::Bob(BobState::CorearbB { .. }))
     }
     fn b_buy_sig(&self) -> bool {
         matches!(self, State::Bob(BobState::BuySigB(..)))
@@ -2504,11 +2508,11 @@ impl Runtime {
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
-                let next_state = State::Bob(BobState::CorearbB(
+                let next_state = State::Bob(BobState::CorearbB {
                     core_arb_setup,
-                    false,
-                    self.state.remote_params().unwrap(),
-                ));
+                    cancel_seen: false,
+                    remote_params: self.state.remote_params().unwrap(),
+                });
                 self.state_update(senders, next_state)?;
             }
 
