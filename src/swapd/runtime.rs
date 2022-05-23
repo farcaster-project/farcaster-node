@@ -176,7 +176,6 @@ pub fn run(
         pending_requests: none!(),
         txs: none!(),
         local_params: None,
-        remote_params: None,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -198,8 +197,7 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    local_params: Option<Params>,  // FIXME this should be removed
-    remote_params: Option<Params>, // FIXME this should be removed
+    local_params: Option<Params>, // FIXME this should be removed
 }
 
 struct TemporalSafety {
@@ -313,7 +311,7 @@ pub enum AliceState {
     CommitA(CommitC), // local, local, local, remote
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealA(Params, Commit), // local, remote
+    RevealA(Params, Commit, Option<Params>), // local, remote, remote
     // #[display("RefundProcSigs: {0}")]
     #[display("RefundSigs({0})")]
     RefundSigA(RefundSigA),
@@ -327,6 +325,7 @@ pub enum AliceState {
 pub struct CommitC {
     trade_role: TradeRole,
     local_params: Params,
+    remote_params: Option<Params>,
     local_commit: Commit,
     remote_commit: Option<Commit>,
 }
@@ -340,6 +339,7 @@ pub struct RefundSigA {
     buy_published: bool,
     cancel_seen: bool,
     refund_seen: bool,
+    remote_params: Params,
     /* #[display("local_view_share({0})")]
      * local_params: Params */
 }
@@ -354,10 +354,10 @@ pub enum BobState {
     CommitB(CommitC, bitcoin::Address),
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealB(Params, Commit, bitcoin::Address, TradeRole), // local, remote, local
+    RevealB(Params, Commit, bitcoin::Address, TradeRole, Option<Params>), // local, remote, local, ..missing, remote
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
-    CorearbB(CoreArbitratingSetup<BtcXmr>, bool), // lock (not signed), cancel_seen
+    CorearbB(CoreArbitratingSetup<BtcXmr>, bool, Params), // lock (not signed), cancel_seen
     #[display("BuySig")]
     BuySigB(BuySigB),
     #[display("Finish({0})")]
@@ -389,6 +389,33 @@ impl State {
             State::Bob(_) => SwapRole::Bob,
         }
     }
+    fn remote_params(&self) -> Option<Params> {
+        match self {
+            State::Alice(AliceState::CommitA(CommitC { remote_params, .. }))
+            | State::Alice(AliceState::RevealA(_, _, remote_params))
+            | State::Bob(BobState::CommitB(CommitC { remote_params, .. }, ..))
+            | State::Bob(BobState::RevealB(.., remote_params)) => remote_params.clone(),
+
+            State::Alice(AliceState::RefundSigA(RefundSigA { remote_params, .. }))
+            | State::Bob(BobState::CorearbB(_, _, remote_params)) => Some(remote_params.clone()),
+
+            _ => None,
+        }
+    }
+    fn sup_remote_params(&mut self, params: Params) -> bool {
+        match self {
+            State::Alice(AliceState::CommitA(CommitC { remote_params, .. }))
+            | State::Alice(AliceState::RevealA(_, _, remote_params))
+            | State::Bob(BobState::CommitB(CommitC { remote_params, .. }, ..))
+            | State::Bob(BobState::RevealB(.., remote_params))
+                if remote_params.is_none() =>
+            {
+                *remote_params = Some(params);
+                true
+            }
+            _ => false,
+        }
+    }
     fn a_xmr_locked(&self) -> bool {
         if let State::Alice(AliceState::RefundSigA(RefundSigA { xmr_locked, .. })) = self {
             *xmr_locked
@@ -411,7 +438,7 @@ impl State {
         }
     }
     fn cancel_seen(&self) -> bool {
-        if let State::Bob(BobState::CorearbB(_, cancel_seen))
+        if let State::Bob(BobState::CorearbB(_, cancel_seen, _))
         | State::Alice(AliceState::RefundSigA(RefundSigA { cancel_seen, .. })) = self
         {
             *cancel_seen
@@ -422,7 +449,7 @@ impl State {
     fn sup_cancel_seen(&mut self) -> bool {
         match self {
             State::Alice(AliceState::RefundSigA(RefundSigA { cancel_seen, .. }))
-            | State::Bob(BobState::CorearbB(_, cancel_seen)) => {
+            | State::Bob(BobState::CorearbB(_, cancel_seen, _)) => {
                 *cancel_seen = true;
                 true
             }
@@ -441,7 +468,7 @@ impl State {
             | State::Bob(BobState::CommitB(CommitC { remote_commit, .. }, _)) => {
                 remote_commit.as_ref()
             }
-            State::Alice(AliceState::RevealA(_, remote_commit))
+            State::Alice(AliceState::RevealA(_, remote_commit, _))
             | State::Bob(BobState::RevealB(_, remote_commit, ..)) => Some(remote_commit),
             _ => None,
         }
@@ -536,7 +563,7 @@ impl State {
             | State::Bob(BobState::StartB(trade_role, ..))
             | State::Alice(AliceState::CommitA(CommitC { trade_role, .. }))
             | State::Bob(BobState::CommitB(CommitC { trade_role, .. }, ..))
-            | State::Bob(BobState::RevealB(.., trade_role)) => Some(*trade_role),
+            | State::Bob(BobState::RevealB(.., trade_role, _)) => Some(*trade_role),
             _ => None,
         }
     }
@@ -551,6 +578,7 @@ impl State {
             error!("Not on Start state, not updating state");
             return self;
         }
+        let remote_params = None;
         match (self, funding_address) {
             (State::Bob(BobState::StartB(trade_role, _)), Some(addr)) => {
                 State::Bob(BobState::CommitB(
@@ -559,6 +587,7 @@ impl State {
                         local_params,
                         local_commit,
                         remote_commit,
+                        remote_params,
                     },
                     addr,
                 ))
@@ -569,6 +598,7 @@ impl State {
                     local_params,
                     local_commit,
                     remote_commit,
+                    remote_params,
                 }))
 
             }
@@ -590,14 +620,20 @@ impl State {
             State::Alice(AliceState::CommitA(CommitC {
                 local_params,
                 remote_commit: Some(remote_commit),
+                remote_params,
                 ..
-            })) => State::Alice(AliceState::RevealA(local_params, remote_commit)),
+            })) => State::Alice(AliceState::RevealA(
+                local_params,
+                remote_commit,
+                remote_params,
+            )),
 
             State::Bob(BobState::CommitB(
                 CommitC {
                     local_params,
                     remote_commit: Some(remote_commit),
                     trade_role,
+                    remote_params,
                     ..
                 },
                 addr,
@@ -606,6 +642,7 @@ impl State {
                 remote_commit,
                 addr,
                 trade_role,
+                remote_params,
             )),
 
             _ => unreachable!("checked state on pattern to be Commit"),
@@ -1163,7 +1200,7 @@ impl Runtime {
                             remote_params_candidate(reveal, remote_commit)
                         {
                             debug!("{:?} sets remote_params", self.state.swap_role());
-                            self.remote_params = Some(remote_params_candidate)
+                            self.state.sup_remote_params(remote_params_candidate);
                         }
 
                         // Specific to swap roles
@@ -2044,13 +2081,13 @@ impl Runtime {
                                 if self.state.a_refundsig()
                                     && !self.state.a_xmr_locked()
                                     && !self.state.a_buy_published()
-                                    && self.remote_params.is_some()
+                                    && self.state.remote_params().is_some()
                                     && !self.syncer_state.acc_lock_watched() =>
                             {
                                 if let (
                                     Some(Params::Alice(alice_params)),
                                     Some(Params::Bob(bob_params)),
-                                ) = (&self.local_params, &self.remote_params)
+                                ) = (&self.local_params, &self.state.remote_params())
                                 {
                                     let (spend, view) =
                                         aggregate_xmr_spend_view(alice_params, bob_params);
@@ -2114,7 +2151,8 @@ impl Runtime {
                                     && self.state.a_refundsig()
                                     && !self.state.a_buy_published()
                                     && !self.state.cancel_seen()
-                                    && self.txs.contains_key(&TxLabel::Buy) =>
+                                    && self.txs.contains_key(&TxLabel::Buy)
+                                    && self.state.remote_params().is_some() =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
                                 if let Some((txlabel, buy_tx)) =
@@ -2126,6 +2164,7 @@ impl Runtime {
                                         xmr_locked,
                                         cancel_seen: false,
                                         refund_seen: false,
+                                        remote_params: self.state.remote_params().unwrap(),
                                     }));
                                 } else {
                                     warn!(
@@ -2425,7 +2464,9 @@ impl Runtime {
                     }
                 }
             }
-            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) if self.state.reveal() => {
+            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup))
+                if self.state.reveal() && self.state.remote_params().is_some() =>
+            {
                 let CoreArbitratingSetup {
                     swap_id: _,
                     lock,
@@ -2451,7 +2492,11 @@ impl Runtime {
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
-                let next_state = State::Bob(BobState::CorearbB(core_arb_setup, false));
+                let next_state = State::Bob(BobState::CorearbB(
+                    core_arb_setup,
+                    false,
+                    self.state.remote_params().unwrap(),
+                ));
                 self.state_update(senders, next_state)?;
             }
 
@@ -2459,7 +2504,7 @@ impl Runtime {
                 log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, senders)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
-                    (&self.local_params, &self.remote_params)
+                    (&self.local_params, &self.state.remote_params())
                 {
                     let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
 
@@ -2518,7 +2563,7 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs))
-                if self.state.reveal() =>
+                if self.state.reveal() && self.state.remote_params().is_some() =>
             {
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 trace!("sent peer RefundProcedureSignatures msg");
@@ -2527,6 +2572,7 @@ impl Runtime {
                     buy_published: false,
                     cancel_seen: false,
                     refund_seen: false,
+                    remote_params: self.state.remote_params().unwrap(),
                 }));
                 self.state_update(senders, next_state)?;
             }
