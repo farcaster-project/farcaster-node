@@ -326,7 +326,11 @@ pub enum AliceState {
     }, // local, local, local, remote
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealA(Params, Commit, Option<Params>), // local, remote, remote
+    RevealA {
+        local_params: Params,
+        remote_commit: Commit,
+        remote_params: Option<Params>,
+    }, // local, remote, remote
     // #[display("RefundProcSigs: {0}")]
     #[display("RefundSigs({0})")]
     RefundSigA(RefundSigA),
@@ -368,7 +372,13 @@ pub enum BobState {
     },
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
-    RevealB(Params, Commit, bitcoin::Address, TradeRole, Option<Params>), // local, remote, local, ..missing, remote
+    RevealB {
+        local_params: Params,
+        remote_commit: Commit,
+        b_address: bitcoin::Address,
+        trade_role: TradeRole,
+        remote_params: Option<Params>,
+    }, // local, remote, local, ..missing, remote
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB(CoreArbitratingSetup<BtcXmr>, bool, Params), // lock (not signed), cancel_seen
@@ -406,9 +416,9 @@ impl State {
     fn remote_params(&self) -> Option<Params> {
         match self {
             State::Alice(AliceState::CommitA { remote_params, .. })
-            | State::Alice(AliceState::RevealA(_, _, remote_params))
+            | State::Alice(AliceState::RevealA { remote_params, .. })
             | State::Bob(BobState::CommitB { remote_params, .. })
-            | State::Bob(BobState::RevealB(.., remote_params)) => remote_params.clone(),
+            | State::Bob(BobState::RevealB { remote_params, .. }) => remote_params.clone(),
 
             State::Alice(AliceState::RefundSigA(RefundSigA { remote_params, .. }))
             | State::Bob(BobState::CorearbB(_, _, remote_params)) => Some(remote_params.clone()),
@@ -419,9 +429,9 @@ impl State {
     fn sup_remote_params(&mut self, params: Params) -> bool {
         match self {
             State::Alice(AliceState::CommitA { remote_params, .. })
-            | State::Alice(AliceState::RevealA(_, _, remote_params))
+            | State::Alice(AliceState::RevealA { remote_params, .. })
             | State::Bob(BobState::CommitB { remote_params, .. })
-            | State::Bob(BobState::RevealB(.., remote_params))
+            | State::Bob(BobState::RevealB { remote_params, .. })
                 if remote_params.is_none() =>
             {
                 *remote_params = Some(params);
@@ -480,8 +490,8 @@ impl State {
         match self {
             State::Alice(AliceState::CommitA { remote_commit, .. })
             | State::Bob(BobState::CommitB { remote_commit, .. }) => remote_commit.as_ref(),
-            State::Alice(AliceState::RevealA(_, remote_commit, _))
-            | State::Bob(BobState::RevealB(_, remote_commit, ..)) => Some(remote_commit),
+            State::Alice(AliceState::RevealA { remote_commit, .. })
+            | State::Bob(BobState::RevealB { remote_commit, .. }) => Some(remote_commit),
             _ => None,
         }
     }
@@ -489,8 +499,8 @@ impl State {
         match self {
             State::Alice(AliceState::CommitA { local_params, .. })
             | State::Bob(BobState::CommitB { local_params, .. })
-            | State::Alice(AliceState::RevealA(local_params, ..))
-            | State::Bob(BobState::RevealB(local_params, ..)) => Some(local_params),
+            | State::Alice(AliceState::RevealA { local_params, .. })
+            | State::Bob(BobState::RevealB { local_params, .. }) => Some(local_params),
             _ => None,
         }
     }
@@ -504,7 +514,7 @@ impl State {
     fn b_address(&self) -> Option<&bitcoin::Address> {
         match self {
             State::Bob(BobState::CommitB { b_address, .. })
-            | State::Bob(BobState::RevealB(_, _, b_address, ..)) => Some(b_address),
+            | State::Bob(BobState::RevealB { b_address, .. }) => Some(b_address),
             _ => None,
         }
     }
@@ -524,7 +534,7 @@ impl State {
     fn reveal(&self) -> bool {
         matches!(
             self,
-            State::Alice(AliceState::RevealA(..)) | State::Bob(BobState::RevealB(..))
+            State::Alice(AliceState::RevealA { .. }) | State::Bob(BobState::RevealB { .. })
         )
     }
     fn a_refundsig(&self) -> bool {
@@ -577,7 +587,7 @@ impl State {
             })
             | State::Alice(AliceState::CommitA { trade_role, .. })
             | State::Bob(BobState::CommitB { trade_role, .. })
-            | State::Bob(BobState::RevealB(.., trade_role, _)) => Some(*trade_role),
+            | State::Bob(BobState::RevealB { trade_role, .. }) => Some(*trade_role),
             _ => None,
         }
     }
@@ -635,11 +645,11 @@ impl State {
                 remote_commit: Some(remote_commit),
                 remote_params,
                 ..
-            }) => State::Alice(AliceState::RevealA(
+            }) => State::Alice(AliceState::RevealA {
                 local_params,
                 remote_commit,
                 remote_params,
-            )),
+            }),
 
             State::Bob(BobState::CommitB {
                 local_params,
@@ -648,13 +658,13 @@ impl State {
                 remote_params,
                 b_address,
                 ..
-            }) => State::Bob(BobState::RevealB(
+            }) => State::Bob(BobState::RevealB {
                 local_params,
                 remote_commit,
                 b_address,
                 trade_role,
                 remote_params,
-            )),
+            }),
 
             _ => unreachable!("checked state on pattern to be Commit"),
         }
