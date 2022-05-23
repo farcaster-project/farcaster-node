@@ -1,0 +1,15 @@
+syntax = "proto3";
+package farcaster;
+
+service Farcaster {
+    rpc MakeSwap(MakeSwapRequest) returns (MakeSwapResponse){}
+}
+
+message MakeSwapRequest {
+    int32 id = 1;
+}
+
+message MakeSwapResponse {
+    int32 id = 1;
+}
+

@@ -38,6 +38,10 @@ required-features = ["server"]
 name = "syncerd"
 required-features = ["server"]
 
+[[bin]]
+name = "grpcd"
+required-features = ["server"]
+
 [dependencies]
 # Farcaster crates
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
@@ -93,10 +97,13 @@ strict_encoding_derive = "1.7.6"
 sysinfo = { version = "0.18.2" }
 rustc-hex = "2.1.0"
 # Async
-tokio = { version = "1.12.0", features = ["full"] }
+tokio = { version = "1.18.2", features = ["full"] }
 toml = { version = "0.5", optional = true }
 # IPC
 zmq = { version = "0.9.2", features = ["vendored"] }
+# GRPC
+tonic = "0.7.2"
+prost = "0.10.3"
 
 [build-dependencies]
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
@@ -128,6 +135,8 @@ log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug
 shellexpand = "2"
 configure_me_codegen = "0.4"
 electrum-client = "0.10.0"
+# GRPC
+tonic-build = "0.7"
 
 [dependencies.microservices]
 # path = '../ext/rust-internet2'

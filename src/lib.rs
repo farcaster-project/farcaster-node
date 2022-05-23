@@ -62,6 +62,8 @@ pub mod rpc;
 #[cfg(feature = "node")]
 pub mod farcasterd;
 #[cfg(feature = "node")]
+pub mod grpcd;
+#[cfg(feature = "node")]
 pub mod peerd;
 #[cfg(feature = "_rpc")]
 mod service;
