@@ -318,7 +318,7 @@ pub enum AliceState {
     // #[display("Commit: {0}")]
     #[display("Commit")]
     CommitA {
-        trade_role: TradeRole,
+        local_trade_role: TradeRole,
         local_params: Params,
         remote_params: Option<Params>,
         local_commit: Commit,
@@ -356,7 +356,7 @@ pub enum BobState {
     // #[display("Commit {0} {1}")]
     #[display("Commit")]
     CommitB {
-        trade_role: TradeRole,
+        local_trade_role: TradeRole,
         local_params: Params,
         remote_params: Option<Params>,
         local_commit: Commit,
@@ -369,7 +369,7 @@ pub enum BobState {
         local_params: Params,
         remote_commit: Commit,
         b_address: bitcoin::Address,
-        trade_role: TradeRole,
+        local_trade_role: TradeRole,
         remote_params: Option<Params>,
     }, // local, remote, local, ..missing, remote
     // #[display("CoreArb: {0:#?}")]
@@ -569,16 +569,20 @@ impl State {
     fn trade_role(&self) -> Option<TradeRole> {
         match self {
             State::Alice(AliceState::StartA {
-                local_trade_role: trade_role,
-                ..
+                local_trade_role, ..
             })
             | State::Bob(BobState::StartB {
-                local_trade_role: trade_role,
-                ..
+                local_trade_role, ..
             })
-            | State::Alice(AliceState::CommitA { trade_role, .. })
-            | State::Bob(BobState::CommitB { trade_role, .. })
-            | State::Bob(BobState::RevealB { trade_role, .. }) => Some(*trade_role),
+            | State::Alice(AliceState::CommitA {
+                local_trade_role, ..
+            })
+            | State::Bob(BobState::CommitB {
+                local_trade_role, ..
+            })
+            | State::Bob(BobState::RevealB {
+                local_trade_role, ..
+            }) => Some(*local_trade_role),
             _ => None,
         }
     }
@@ -595,9 +599,9 @@ impl State {
         }
         let remote_params = None;
         match (self, funding_address) {
-            (State::Bob(BobState::StartB{local_trade_role: trade_role, ..}), Some(b_address)) => {
+            (State::Bob(BobState::StartB{local_trade_role, ..}), Some(b_address)) => {
                 State::Bob(BobState::CommitB {
-                        trade_role,
+                        local_trade_role,
                         local_params,
                         local_commit,
                         remote_commit,
@@ -606,9 +610,9 @@ impl State {
                     },
                 )
             }
-            (State::Alice(AliceState::StartA{local_trade_role: trade_role, ..}), None) => {
+            (State::Alice(AliceState::StartA{local_trade_role, ..}), None) => {
                 State::Alice(AliceState::CommitA{
-                    trade_role,
+                    local_trade_role,
                     local_params,
                     local_commit,
                     remote_commit,
@@ -645,7 +649,7 @@ impl State {
             State::Bob(BobState::CommitB {
                 local_params,
                 remote_commit: Some(remote_commit),
-                trade_role,
+                local_trade_role,
                 remote_params,
                 b_address,
                 ..
@@ -653,7 +657,7 @@ impl State {
                 local_params,
                 remote_commit,
                 b_address,
-                trade_role,
+                local_trade_role,
                 remote_params,
             }),
 
