@@ -224,8 +224,9 @@ fn main() {
                         .expect("Unable to set up timeout for TCP connection");
 
                     debug!("Establishing session with the remote");
-                    let session = session::Raw::with_ftcp(stream, inet_addr)
-                        .expect("Unable to establish session with the remote peer");
+                    let session =
+                        session::Raw::with_brontide(stream, local_node.private_key(), inet_addr)
+                            .expect("Unable to establish session with the remote peer");
 
                     internal_id = NodeAddr::Remote(RemoteNodeAddr {
                         node_id: opts.peer_key_opts.internal_node().node_id(),
