@@ -372,7 +372,6 @@ pub enum BobState {
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB {
-        core_arb_setup: CoreArbitratingSetup<BtcXmr>,
         local_params: Params,
         cancel_seen: bool,
         remote_params: Params,
@@ -2511,7 +2510,6 @@ impl Runtime {
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
                 let next_state = State::Bob(BobState::CorearbB {
                     local_params: self.state.local_params().cloned().unwrap(),
-                    core_arb_setup,
                     cancel_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
                 });
