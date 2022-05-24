@@ -1,7 +1,7 @@
 version: "3.7"
 services:
-    bitcoin-core:
-        image: ghcr.io/farcaster-project/containers/bitcoin-core:0.21.1
+    bitcoind:
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:22.0
         environment:
             NETWORK: regtest
             RPC_PORT: 18443
@@ -15,46 +15,45 @@ services:
         image: ghcr.io/farcaster-project/containers/electrs:0.8.11
         environment:
             NETWORK: regtest
-            DAEMON_RPC_ADDR: bitcoin-core:18443
-            ELECTRUM_RPC_PORT: 50001
+            DAEMON_RPC_ADDR: bitcoind:18443
+            ELECTRUM_RPC_PORT: 60401
         depends_on:
-            - "bitcoin-core"
+            - "bitcoind"
         volumes:
             - ./data_dir:/data
         ports:
-            - 50001:50001
+            - 60401:60401
     monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monerod:0.17.3.2
         environment:
             NETWORK: regtest
-            MONEROD_RPC_PORT: 18081
             OFFLINE: --offline
             DIFFICULTY: 1
         ports:
             - 18081:18081
             - 18082:18082
     monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         environment:
-            MONEROD_ADDRESS: monerod:18081
+            MONERO_DAEMON_ADDRESS: monerod:18081
             WALLET_RPC_PORT: 18083
         depends_on:
             - "monerod"
         ports:
             - 18083:18083
     monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         environment:
-            MONEROD_ADDRESS: monerod:18081
+            MONERO_DAEMON_ADDRESS: monerod:18081
             WALLET_RPC_PORT: 18083
         depends_on:
             - "monerod"
         ports:
             - 18084:18083
     monero-wallet-rpc-3:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         environment:
-            MONEROD_ADDRESS: monerod:18081
+            MONERO_DAEMON_ADDRESS: monerod:18081
             WALLET_RPC_PORT: 18083
         depends_on:
             - "monerod"
@@ -63,10 +62,9 @@ services:
     monero-lws-daemon:
         image: ghcr.io/farcaster-project/containers/monero-lws:latest
         environment:
-            MONERO_DAEMON_ADDRESS: monerod:18082
             NETWORK: main
+            MONERO_DAEMON_ADDRESS: monerod:18082
         depends_on:
             - "monerod"
         ports:
             - 38884:38884
-

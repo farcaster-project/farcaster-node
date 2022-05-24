@@ -3,6 +3,7 @@
 Start needed containers for supporting the tests with:
 
 ```
+docker-compose pull
 docker-compose up -d
 sudo chown -R $USER data_dir
 ```
@@ -10,19 +11,19 @@ sudo chown -R $USER data_dir
 Run `bitcoin` tests:
 
 ```
-cargo test bitcoin --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+cargo test bitcoin --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1 --nocapture
 ```
 
 Run `monero` tests:
 
 ```
-cargo test monero --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+cargo test monero --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1 --nocapture
 ```
 
 Run `swap` tests:
 
 ```
-cargo test swap --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+cargo test swap --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1 --nocapture
 ```
 
 ## Steps
@@ -37,6 +38,6 @@ Alternatively, the regtest setup can be run directly on the host, with the tests
 
 - Bitcoind rpc cookie at `./tests/data_dir/regtest/.cookie`
 - Bitcoind at `http://localhost:18443`
-- Electrs at `tcp://localhost:50001`
+- Electrs at `tcp://localhost:60401`
 - Monerod at `http://localhost:18081` run with arguments `--regtest --offline --fixed-difficulty 1`
-- Two instances of Monero-wallet-rpc at `http://localhost:18083` and `htp://localhost:18084` run with arguments `--disable-rpc-login --wallet-dir wallets`
+- Three instances of Monero-wallet-rpc at `http://localhost:18083|18084|18085` run with arguments `--disable-rpc-login --wallet-dir wallets`
