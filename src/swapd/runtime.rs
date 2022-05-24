@@ -181,7 +181,6 @@ pub fn run(
         )?),
         pending_requests: none!(),
         txs: none!(),
-        local_params: None,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -203,7 +202,6 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    local_params: Option<Params>, // FIXME this should be removed
 }
 
 struct TemporalSafety {
@@ -338,8 +336,7 @@ pub enum AliceState {
         cancel_seen: bool,
         refund_seen: bool,
         remote_params: Params,
-        /* #[display("local_view_share({0})")]
-         * local_params: Params */
+        local_params: Params,
     },
     #[display("Finish({0})")]
     FinishA(Outcome),
@@ -376,6 +373,7 @@ pub enum BobState {
     #[display("CoreArb")]
     CorearbB {
         core_arb_setup: CoreArbitratingSetup<BtcXmr>,
+        local_params: Params,
         cancel_seen: bool,
         remote_params: Params,
     }, // lock (not signed), cancel_seen, remote
@@ -491,7 +489,9 @@ impl State {
             State::Alice(AliceState::CommitA { local_params, .. })
             | State::Bob(BobState::CommitB { local_params, .. })
             | State::Alice(AliceState::RevealA { local_params, .. })
-            | State::Bob(BobState::RevealB { local_params, .. }) => Some(local_params),
+            | State::Bob(BobState::RevealB { local_params, .. })
+            | State::Bob(BobState::CorearbB { local_params, .. })
+            | State::Alice(AliceState::RefundSigA { local_params, .. }) => Some(local_params),
             _ => None,
         }
     }
@@ -1509,7 +1509,6 @@ impl Runtime {
                 };
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
-                self.local_params = Some(local_params.clone());
 
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
@@ -1576,7 +1575,6 @@ impl Runtime {
                     self.maker_peer = Some(addr.clone());
                 }
                 self.enquirer = report_to.clone();
-                self.local_params = Some(local_params.clone());
                 let local_commit = self
                     .maker_commit(senders, &peerd, swap_id, &local_params)
                     .map_err(|err| {
@@ -2093,12 +2091,13 @@ impl Runtime {
                                     && !self.state.a_xmr_locked()
                                     && !self.state.a_buy_published()
                                     && self.state.remote_params().is_some()
+                                    && self.state.remote_params().is_some()
                                     && !self.syncer_state.acc_lock_watched() =>
                             {
                                 if let (
                                     Some(Params::Alice(alice_params)),
                                     Some(Params::Bob(bob_params)),
-                                ) = (&self.local_params, &self.state.remote_params())
+                                ) = (&self.state.local_params(), &self.state.remote_params())
                                 {
                                     let (spend, view) =
                                         aggregate_xmr_spend_view(alice_params, bob_params);
@@ -2144,7 +2143,10 @@ impl Runtime {
                                         )?;
                                     }
                                 } else {
-                                    error!("remote_params not set for Bob, state {}", self.state)
+                                    error!(
+                                        "local_params or remote_params not set for Alice, state {}",
+                                        self.state
+                                    )
                                 }
                             }
                             TxLabel::Lock
@@ -2163,7 +2165,8 @@ impl Runtime {
                                     && !self.state.a_buy_published()
                                     && !self.state.cancel_seen()
                                     && self.txs.contains_key(&TxLabel::Buy)
-                                    && self.state.remote_params().is_some() =>
+                                    && self.state.remote_params().is_some()
+                                    && self.state.local_params().is_some() =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
                                 if let Some((txlabel, buy_tx)) =
@@ -2171,6 +2174,7 @@ impl Runtime {
                                 {
                                     self.broadcast(buy_tx, txlabel, senders)?;
                                     self.state = State::Alice(AliceState::RefundSigA {
+                                        local_params: self.state.local_params().cloned().unwrap(),
                                         buy_published: true,
                                         xmr_locked,
                                         cancel_seen: false,
@@ -2476,7 +2480,9 @@ impl Runtime {
                 }
             }
             Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup))
-                if self.state.reveal() && self.state.remote_params().is_some() =>
+                if self.state.reveal()
+                    && self.state.remote_params().is_some()
+                    && self.state.local_params().is_some() =>
             {
                 let CoreArbitratingSetup {
                     swap_id: _,
@@ -2504,6 +2510,7 @@ impl Runtime {
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
                 let next_state = State::Bob(BobState::CorearbB {
+                    local_params: self.state.local_params().cloned().unwrap(),
                     core_arb_setup,
                     cancel_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
@@ -2515,7 +2522,7 @@ impl Runtime {
                 log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, senders)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
-                    (&self.local_params, &self.state.remote_params())
+                    (&self.state.local_params(), &self.state.remote_params())
                 {
                     let (spend, view) = aggregate_xmr_spend_view(alice_params, bob_params);
 
@@ -2574,11 +2581,14 @@ impl Runtime {
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs))
-                if self.state.reveal() && self.state.remote_params().is_some() =>
+                if self.state.reveal()
+                    && self.state.remote_params().is_some()
+                    && self.state.local_params().is_some() =>
             {
                 self.send_peer(senders, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 trace!("sent peer RefundProcedureSignatures msg");
                 let next_state = State::Alice(AliceState::RefundSigA {
+                    local_params: self.state.local_params().cloned().unwrap(),
                     xmr_locked: false,
                     buy_published: false,
                     cancel_seen: false,
