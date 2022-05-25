@@ -1,4 +1,9 @@
+use crate::internet2::Duplex;
+use crate::internet2::Encrypt;
 use crate::service::Endpoints;
+use internet2::zmqsocket::Connection;
+use internet2::PlainTranscoder;
+use std::sync::Arc;
 use std::{
     any::Any,
     collections::{HashMap, HashSet},
@@ -7,6 +12,7 @@ use std::{
     ptr::swap_nonoverlapping,
     str::FromStr,
 };
+use tokio::sync::Mutex;
 
 use crate::rpc::{
     request::{self},
@@ -56,8 +62,10 @@ pub mod farcaster {
     tonic::include_proto!("farcaster");
 }
 
-#[derive(Default)]
-pub struct FarcasterService {}
+pub struct FarcasterService {
+    tokio_tx_request: tokio::sync::mpsc::Sender<Request>,
+    pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
+}
 
 #[tonic::async_trait]
 impl Farcaster for FarcasterService {
@@ -68,11 +76,59 @@ impl Farcaster for FarcasterService {
         println!("Got a request: {:?}", request);
         let reply = farcaster::MakeSwapResponse { id: 10 };
 
+        self.tokio_tx_request.send(Request::GetInfo).await;
+
+        let (oneshot_tx, oneshot_rx) = tokio::sync::oneshot::channel::<Request>();
+        let pending_requests = self.pending_requests.lock().await;
+        pending_requests.insert(0, oneshot_tx);
+        drop(pending_requests);
+        let response = oneshot_rx.await;
+
         Ok(GrpcResponse::new(reply))
     }
 }
 
 pub struct GrpcServer {}
+
+fn request_loop(
+    tokio_rx_request: tokio::sync::mpsc::Receiver<Request>,
+    tx_request: zmq::Socket,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx_request);
+        while let Some(request) = tokio_rx_request.recv().await {
+            let mut transcoder = PlainTranscoder {};
+            let writer = connection.as_sender();
+            debug!("sending request over syncerd bridge: {:?}", request);
+            let syncer_address: Vec<u8> = ServiceId::Grpcd.into();
+
+            writer
+                .send_routed(
+                    &syncer_address,
+                    &syncer_address,
+                    &syncer_address,
+                    &transcoder.encrypt(request.serialize()),
+                )
+                .expect("failed to send from bitcoin syncer to syncerd bridge");
+        }
+    })
+}
+
+fn response_loop(
+    mpsc_rx_response: Receiver<Request>,
+    pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        loop {
+            let response = mpsc_rx_response.try_recv();
+            if let Ok(response) = response {
+                // match response id to pending requests and one shot!
+                continue;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    })
+}
 
 impl GrpcServer {
     fn run(
@@ -91,12 +147,24 @@ impl GrpcServer {
                 let addr = "[::1]:50051"
                     .parse()
                     .expect("invalid grpc server bind address");
-                let server = FarcasterService::default();
+                let (tokio_tx_request, tokio_rx_request) = tokio::sync::mpsc::channel(1000);
 
-                let res = Server::builder()
+                let pending_requests: Arc<
+                    Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>,
+                > = Arc::new(Mutex::new(map![]));
+                let request_handle = request_loop(tokio_rx_request, tx_request);
+                let response_handle = response_loop(rx_response, Arc::clone(&pending_requests));
+
+                let server = FarcasterService {
+                    tokio_tx_request,
+                    pending_requests,
+                };
+
+                let server_handle = Server::builder()
                     .add_service(FarcasterServer::new(server))
-                    .serve(addr)
-                    .await;
+                    .serve(addr);
+
+                let res = tokio::try_join!(request_handle, server_handle);
                 warn!("exiting grpc server run routine with: {:?}", res);
             });
         });
