@@ -873,13 +873,13 @@ impl Runtime {
                     }
                 }
                 report_to.push((
-                        Some(source.clone()),
-                        resp.into_progress_or_failure()
-                        // Request::Progress(format!(
-                        //     "Node {} listens for connections on {}",
-                        //     self.node_id, remote_addr
-                        // )),
-                    ));
+                    Some(source.clone()),
+                    resp.into_progress_or_failure(),
+                    // Request::Progress(format!(
+                    //     "Node {} listens for connections on {}",
+                    //     self.node_id, remote_addr
+                    // )),
+                ));
                 let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
                 let public_offer = offer.to_public_v1(node_id, public_addr.into());
                 let pub_offer_id = public_offer.id();
