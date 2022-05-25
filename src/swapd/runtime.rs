@@ -1037,7 +1037,7 @@ impl Runtime {
         }
     }
 
-    fn state_update(&mut self, endpoints: &mut Senders, next_state: State) -> Result<(), Error> {
+    fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
         info!(
             "{} | State transition: {} -> {}",
             self.swap_id.bright_blue_italic(),
@@ -2700,7 +2700,7 @@ impl Runtime {
         // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();
         let msg = format!("Proposing to take swap to Maker remote peer",);
-        let _ = self.report_progress_to(senders, &enquirer, msg);
+        let _ = self.report_progress_to(endpoints, &enquirer, msg);
 
         Ok(commitment)
     }
