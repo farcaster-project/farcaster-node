@@ -67,7 +67,7 @@ You need to have access to Bitcoin (testnet) and Monero (stagenet) test coins, u
 
 ## Make the offer
 
-Maker creates offer and start listening. Command used to print a serialized representation of the offer that shall be shared with taker. Additionally it spins up the listener awaiting for connection related to this offer (binded on `0.0.0.0:9735` by default with an offer public address of `127.0.0.1:9735` by default).
+Maker creates offer and start listening. Command used to print a serialized representation of the offer that shall be shared with taker. Additionally it spins up the listener awaiting for connection related to this offer (bound on `0.0.0.0:9735` by default, with an offer public address of `127.0.0.1:9735` by default).
 
 ```
 swap1-cli make --btc-addr tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq\
@@ -94,9 +94,9 @@ swap2-cli take --btc-addr tb1qt3r3t6yultt8ne88ffgvgyym0sstj4apwsz05j\
     --offer Offer:...
 ```
 
-The `--btc-addr` argument is the Bitcoin destination address in case the bitcoins needs to be refunded or if the swap completes (depending on the swap role), the `--xmr-addr` for Monero, and finally the offer with `--offer` or `-o`.
+The `--btc-addr` argument is the Bitcoin destination address in case the bitcoins need to be refunded or if the swap completes (depending on the swap role), the `--xmr-addr` for Monero, and finally the offer with `--offer` or `-o`.
 
-Upon taking the public offer is printed and user is asked for validation with `y` or `n`.
+Upon taking the public offer, its deserialized content is printed and the user is asked for validation with `y` or `n`.
 
 :mag_right: Flag of interest: `--without-validation` or `-w`, for externally validated automated setups (skip validation in cli).
 
@@ -104,7 +104,7 @@ Upon taking the public offer is printed and user is asked for validation with `y
 
 If you want to use your full nodes and infrastructure you can change the configuration to the following.
 
-Farcaster needs to connect to tree services to do actions on-chain and track on-chain events. Needed services are: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
+Farcaster needs to connect to three services to do actions on-chain and track on-chain events. Needed services are: an `electrum server`, a `monero daemon`, and a `monero rpc wallet`.
 
 You can launch all the needed services locally by running the following commands:
 
