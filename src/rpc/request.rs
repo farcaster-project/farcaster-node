@@ -32,7 +32,7 @@ use lazy_static::lazy_static;
 use lightning_encoding::{strategies::AsStrict, LightningDecode, LightningEncode};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 #[cfg(feature = "serde")]
-use serde_with::{DisplayFromStr, DurationSeconds, Same};
+use serde_with::{skip_serializing_none, DisplayFromStr, DurationSeconds, Same};
 use std::{collections::BTreeMap, convert::TryInto};
 use std::{
     fmt::{self, Debug, Display, Formatter},
@@ -875,6 +875,7 @@ pub struct TookOffer {
 )]
 #[display(SwapProgress::to_yaml_string)]
 pub struct SwapProgress {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
     pub state_transitions: Vec<String>,
     pub messages: Vec<String>,

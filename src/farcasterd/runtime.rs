@@ -1082,7 +1082,7 @@ impl Runtime {
                             _ => unreachable!("not handled here"),
                         };
                     }
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
