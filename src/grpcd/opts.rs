@@ -28,6 +28,10 @@ pub struct Opts {
     /// command-line args or environment variables
     #[clap(flatten)]
     pub shared: crate::opts::Opts,
+
+    /// Trade role of participant (Maker or Taker)
+    #[clap(long)]
+    pub grpc_port: u64,
 }
 
 impl Opts {

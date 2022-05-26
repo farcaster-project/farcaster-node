@@ -98,6 +98,21 @@ pub fn run(
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
+    if config.is_grpc_port_set() {
+        let _grpcd = launch(
+            "grpcd",
+            &[
+                "--grpc-port",
+                &config
+                    .farcasterd
+                    .clone()
+                    .unwrap()
+                    .grpc_port
+                    .unwrap()
+                    .to_string(),
+            ],
+        )?;
+    }
 
     if config.is_auto_funding_enable() {
         info!("farcasterd will attempt to fund automatically");

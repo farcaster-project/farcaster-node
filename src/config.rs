@@ -47,7 +47,19 @@ impl Config {
         match &self.farcasterd {
             Some(FarcasterdConfig {
                 auto_funding: Some(AutoFundingConfig { auto_fund, .. }),
+                grpc_port: _,
             }) => *auto_fund,
+            _ => false,
+        }
+    }
+
+    /// Returns if grpc port is set
+    pub fn is_grpc_port_set(&self) -> bool {
+        match &self.farcasterd {
+            Some(FarcasterdConfig {
+                auto_funding: _,
+                grpc_port: Some(_),
+            }) => true,
             _ => false,
         }
     }
@@ -64,6 +76,7 @@ impl Config {
                         testnet,
                         local,
                     }),
+                grpc_port: _,
             }) if *auto_fund => match network {
                 Network::Mainnet => mainnet.clone(),
                 Network::Testnet => testnet.clone(),
@@ -96,11 +109,16 @@ impl Default for Config {
 pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
+    /// Sets the grpc server port, if none is given, no grpc server is run
+    pub grpc_port: Option<u64>,
 }
 
 impl Default for FarcasterdConfig {
     fn default() -> Self {
-        FarcasterdConfig { auto_funding: None }
+        FarcasterdConfig {
+            auto_funding: None,
+            grpc_port: None,
+        }
     }
 }
 

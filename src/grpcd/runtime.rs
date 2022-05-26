@@ -42,7 +42,7 @@ impl IdCounter {
     }
 }
 
-pub fn run(config: ServiceConfig) -> Result<(), Error> {
+pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
     let (tx_response, rx_response): (Sender<Request>, Receiver<Request>) =
         std::sync::mpsc::channel();
 
@@ -51,7 +51,7 @@ pub fn run(config: ServiceConfig) -> Result<(), Error> {
     tx_request.connect("inproc://grpcdbridge")?;
     rx_request.bind("inproc://grpcdbridge")?;
 
-    let mut server = GrpcServer {};
+    let mut server = GrpcServer { grpc_port };
     server.run(rx_response, tx_request)?;
 
     let runtime = Runtime {
@@ -131,7 +131,9 @@ impl Farcaster for FarcasterService {
     }
 }
 
-pub struct GrpcServer {}
+pub struct GrpcServer {
+    grpc_port: u64,
+}
 
 fn request_loop(
     mut tokio_rx_request: tokio::sync::mpsc::Receiver<Request>,
@@ -194,6 +196,10 @@ impl GrpcServer {
         rx_response: Receiver<Request>,
         tx_request: zmq::Socket,
     ) -> Result<(), Error> {
+        let addr = format!("[::1]:{}", self.grpc_port)
+            .parse()
+            .expect("invalid grpc server bind address");
+
         std::thread::spawn(move || {
             use tokio::runtime::Builder;
             let rt = Builder::new_multi_thread()
@@ -202,9 +208,6 @@ impl GrpcServer {
                 .build()
                 .unwrap();
             rt.block_on(async {
-                let addr = "[::1]:50051"
-                    .parse()
-                    .expect("invalid grpc server bind address");
                 let (tokio_tx_request, tokio_rx_request) = tokio::sync::mpsc::channel(1000);
 
                 let pending_requests: Arc<

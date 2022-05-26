@@ -46,7 +46,7 @@ fn main() {
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
     debug!("Starting runtime ...");
-    grpcd::run(service_config).expect("Error running walletd runtime");
+    grpcd::run(service_config, opts.grpc_port).expect("Error running walletd runtime");
 
     unreachable!()
 }
