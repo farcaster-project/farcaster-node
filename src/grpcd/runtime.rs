@@ -91,42 +91,42 @@ impl Farcaster for FarcasterService {
         let id = id_counter.increment();
         drop(id_counter);
 
-        self.tokio_tx_request
-            .send(Request::GetInfo(Some(id)))
-            .await
-            .unwrap();
+        if let Err(error) = self.tokio_tx_request.send(Request::GetInfo(Some(id))).await {
+            return Err(Status::internal(format!("{}", error)));
+        }
 
         let (oneshot_tx, oneshot_rx) = tokio::sync::oneshot::channel::<Request>();
         let mut pending_requests = self.pending_requests.lock().await;
         pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
-        let response = oneshot_rx.await.unwrap();
-        if let Request::NodeInfo(info) = response {
-            let reply = farcaster::InfoResponse {
-                id: request.into_inner().id,
-                node_ids: info
-                    .node_ids
-                    .iter()
-                    .map(|node_id| format!("{}", node_id))
-                    .collect(),
-                listens: info
-                    .listens
-                    .iter()
-                    .map(|listen| format!("{}", listen))
-                    .collect(),
-                uptime: info.uptime.as_secs(),
-                since: info.since,
-                peers: info.peers.iter().map(|peer| format!("{}", peer)).collect(),
-                swaps: info.swaps.iter().map(|swap| format!("{}", swap)).collect(),
-                offers: info
-                    .offers
-                    .iter()
-                    .map(|offer| format!("{}", offer))
-                    .collect(),
-            };
-            Ok(GrpcResponse::new(reply))
-        } else {
-            Err(Status::invalid_argument("received invalid response"))
+        match oneshot_rx.await {
+            Ok(Request::NodeInfo(info)) => {
+                let reply = farcaster::InfoResponse {
+                    id: request.into_inner().id,
+                    node_ids: info
+                        .node_ids
+                        .iter()
+                        .map(|node_id| format!("{}", node_id))
+                        .collect(),
+                    listens: info
+                        .listens
+                        .iter()
+                        .map(|listen| format!("{}", listen))
+                        .collect(),
+                    uptime: info.uptime.as_secs(),
+                    since: info.since,
+                    peers: info.peers.iter().map(|peer| format!("{}", peer)).collect(),
+                    swaps: info.swaps.iter().map(|swap| format!("{}", swap)).collect(),
+                    offers: info
+                        .offers
+                        .iter()
+                        .map(|offer| format!("{}", offer))
+                        .collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Err(error) => Err(Status::internal(format!("{}", error))),
+            _ => Err(Status::invalid_argument("received invalid response")),
         }
     }
 }
@@ -154,7 +154,7 @@ fn request_loop(
                     &syncer_address,
                     &transcoder.encrypt(request.serialize()),
                 )
-                .expect("failed to send from bitcoin syncer to syncerd bridge");
+                .expect("failed to send from grpc server to grpc runtime over bridge");
         }
     })
 }
@@ -166,15 +166,27 @@ fn response_loop(
     tokio::task::spawn(async move {
         loop {
             let response = mpsc_rx_response.try_recv();
-            if let Ok(response) = response {
-                if let Request::NodeInfo(info) = response {
+            match response {
+                Ok(Request::NodeInfo(request::NodeInfo { id: Some(id), .. })) => {
                     let mut pending_requests = pending_requests_lock.lock().await;
-                    let sender = pending_requests.remove(&info.id.unwrap()).unwrap();
-                    sender.send(Request::NodeInfo(info)).unwrap();
+                    if pending_requests.contains_key(&id) {
+                        let sender = pending_requests.remove(&id).unwrap();
+                        sender.send(response.clone().unwrap()).expect(
+                            "unable to send response from grpc resposne loop to its handler",
+                        );
+                    } else {
+                        error!("id {} not found in pending grpc requests", id);
+                    }
                 }
-                // match response id to pending requests and one shot!
-                continue;
+                Ok(response) => {
+                    error!(
+                        "received unexpected response in grpc response loop: {:?}",
+                        response
+                    );
+                }
+                _ => {}
             }
+
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     })
@@ -203,10 +215,10 @@ impl GrpcServer {
         std::thread::spawn(move || {
             use tokio::runtime::Builder;
             let rt = Builder::new_multi_thread()
-                .worker_threads(2)
+                .worker_threads(3)
                 .enable_all()
                 .build()
-                .unwrap();
+                .expect("failed to build new tokio runtime");
             rt.block_on(async {
                 let (tokio_tx_request, tokio_rx_request) = tokio::sync::mpsc::channel(1000);
 
@@ -291,18 +303,18 @@ impl Runtime {
 
     fn handle_rpc_ctl(
         &mut self,
-        endpoints: &mut Endpoints,
+        _endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => match &source {
-                source => {
-                    debug!("Received Hello from {}", source);
-                }
-            },
+            Request::Hello => {
+                debug!("Received Hello from {}", source);
+            }
             _ => {
-                self.tx_response.send(request).unwrap();
+                self.tx_response
+                    .send(request)
+                    .expect("could not send response from grpc runtime to server");
             }
         }
         Ok(())
