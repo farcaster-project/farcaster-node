@@ -3,6 +3,7 @@ use crate::internet2::Encrypt;
 use crate::service::Endpoints;
 use internet2::zmqsocket::Connection;
 use internet2::PlainTranscoder;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::{
     any::Any,
@@ -30,6 +31,17 @@ use microservices::esb::{self, Handler};
 use request::{LaunchSwap, NodeId};
 use std::sync::mpsc::{Receiver, Sender};
 
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
+#[display(Debug)]
+pub struct IdCounter(u64);
+
+impl IdCounter {
+    fn increment(&mut self) -> u64 {
+        self.0 += 1;
+        self.0
+    }
+}
+
 pub fn run(config: ServiceConfig) -> Result<(), Error> {
     let (tx_response, rx_response): (Sender<Request>, Receiver<Request>) =
         std::sync::mpsc::channel();
@@ -44,7 +56,6 @@ pub fn run(config: ServiceConfig) -> Result<(), Error> {
 
     let runtime = Runtime {
         identity: ServiceId::Grpcd,
-        server,
         tx_response,
     };
 
@@ -55,7 +66,7 @@ pub fn run(config: ServiceConfig) -> Result<(), Error> {
 }
 
 use farcaster::farcaster_server::{Farcaster, FarcasterServer};
-use farcaster::{MakeSwapRequest, MakeSwapResponse};
+use farcaster::{InfoRequest, InfoResponse};
 use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
 
 pub mod farcaster {
@@ -65,33 +76,65 @@ pub mod farcaster {
 pub struct FarcasterService {
     tokio_tx_request: tokio::sync::mpsc::Sender<Request>,
     pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
+    id_counter: Arc<Mutex<IdCounter>>,
 }
 
 #[tonic::async_trait]
 impl Farcaster for FarcasterService {
-    async fn make_swap(
+    async fn info(
         &self,
-        request: GrpcRequest<MakeSwapRequest>,
-    ) -> Result<GrpcResponse<MakeSwapResponse>, Status> {
+        request: GrpcRequest<InfoRequest>,
+    ) -> Result<GrpcResponse<InfoResponse>, Status> {
         println!("Got a request: {:?}", request);
-        let reply = farcaster::MakeSwapResponse { id: 10 };
 
-        self.tokio_tx_request.send(Request::GetInfo).await;
+        let mut id_counter = self.id_counter.lock().await;
+        let id = id_counter.increment();
+        drop(id_counter);
+
+        self.tokio_tx_request
+            .send(Request::GetInfo(Some(id)))
+            .await
+            .unwrap();
 
         let (oneshot_tx, oneshot_rx) = tokio::sync::oneshot::channel::<Request>();
-        let pending_requests = self.pending_requests.lock().await;
-        pending_requests.insert(0, oneshot_tx);
+        let mut pending_requests = self.pending_requests.lock().await;
+        pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
-        let response = oneshot_rx.await;
-
-        Ok(GrpcResponse::new(reply))
+        let response = oneshot_rx.await.unwrap();
+        if let Request::NodeInfo(info) = response {
+            let reply = farcaster::InfoResponse {
+                id: request.into_inner().id,
+                node_ids: info
+                    .node_ids
+                    .iter()
+                    .map(|node_id| format!("{}", node_id))
+                    .collect(),
+                listens: info
+                    .listens
+                    .iter()
+                    .map(|listen| format!("{}", listen))
+                    .collect(),
+                uptime: info.uptime.as_secs(),
+                since: info.since,
+                peers: info.peers.iter().map(|peer| format!("{}", peer)).collect(),
+                swaps: info.swaps.iter().map(|swap| format!("{}", swap)).collect(),
+                offers: info
+                    .offers
+                    .iter()
+                    .map(|offer| format!("{}", offer))
+                    .collect(),
+            };
+            Ok(GrpcResponse::new(reply))
+        } else {
+            Err(Status::invalid_argument("received invalid response"))
+        }
     }
 }
 
 pub struct GrpcServer {}
 
 fn request_loop(
-    tokio_rx_request: tokio::sync::mpsc::Receiver<Request>,
+    mut tokio_rx_request: tokio::sync::mpsc::Receiver<Request>,
     tx_request: zmq::Socket,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
@@ -116,17 +159,32 @@ fn request_loop(
 
 fn response_loop(
     mpsc_rx_response: Receiver<Request>,
-    pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
+    pending_requests_lock: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
             let response = mpsc_rx_response.try_recv();
             if let Ok(response) = response {
+                if let Request::NodeInfo(info) = response {
+                    let mut pending_requests = pending_requests_lock.lock().await;
+                    let sender = pending_requests.remove(&info.id.unwrap()).unwrap();
+                    sender.send(Request::NodeInfo(info)).unwrap();
+                }
                 // match response id to pending requests and one shot!
                 continue;
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
+    })
+}
+
+fn server_loop(service: FarcasterService, addr: SocketAddr) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        Server::builder()
+            .add_service(FarcasterServer::new(service))
+            .serve(addr)
+            .await
+            .expect("error running grpc server");
     })
 }
 
@@ -155,16 +213,16 @@ impl GrpcServer {
                 let request_handle = request_loop(tokio_rx_request, tx_request);
                 let response_handle = response_loop(rx_response, Arc::clone(&pending_requests));
 
-                let server = FarcasterService {
+                let service = FarcasterService {
+                    id_counter: Arc::new(Mutex::new(IdCounter(0))),
                     tokio_tx_request,
                     pending_requests,
                 };
 
-                let server_handle = Server::builder()
-                    .add_service(FarcasterServer::new(server))
-                    .serve(addr);
+                let server_handle = server_loop(service, addr);
 
-                let res = tokio::try_join!(request_handle, server_handle);
+                // this drives the tokio execution
+                let res = tokio::try_join!(request_handle, response_handle, server_handle);
                 warn!("exiting grpc server run routine with: {:?}", res);
             });
         });
@@ -176,7 +234,6 @@ impl GrpcServer {
 pub struct Runtime {
     identity: ServiceId,
     tx_response: Sender<Request>,
-    server: GrpcServer,
 }
 
 impl CtlServer for Runtime {}
@@ -199,7 +256,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
             ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
-            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
+            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
         }
     }
 
@@ -228,16 +285,19 @@ impl Runtime {
 
     fn handle_rpc_msg(
         &mut self,
-        endpoints: &mut Endpoints,
-        source: ServiceId,
+        _endpoints: &mut Endpoints,
+        _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         match request {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
+            // _ => {
+            // error!("Request is not supported by the MSG interface");
+            // }
             _ => {
-                error!("Request is not supported by the MSG interface");
+                self.tx_response.send(request).unwrap();
             }
         }
         Ok(())
@@ -259,6 +319,17 @@ impl Runtime {
                 error!("Request is not supported by the CTL interface");
             }
         }
+        Ok(())
+    }
+
+    fn handle_bridge(
+        &mut self,
+        endpoints: &mut Endpoints,
+        _source: ServiceId,
+        request: Request,
+    ) -> Result<(), Error> {
+        trace!("GRPCD BRIDGE RPC request: {}", request);
+        self.send_farcasterd(endpoints, request)?;
         Ok(())
     }
 }

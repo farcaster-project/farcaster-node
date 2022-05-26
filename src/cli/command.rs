@@ -48,9 +48,9 @@ impl Exec for Command {
             Command::Info { subject } => {
                 if let Some(subj) = subject {
                     if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                        runtime.request(ServiceId::Peer(node_addr), Request::GetInfo)?;
+                        runtime.request(ServiceId::Peer(node_addr), Request::GetInfo(None))?;
                     } else if let Ok(swap_id) = SwapId::from_str(&subj) {
-                        runtime.request(ServiceId::Swap(swap_id), Request::GetInfo)?;
+                        runtime.request(ServiceId::Swap(swap_id), Request::GetInfo(None))?;
                     } else {
                         let err = format!(
                             "{}",
@@ -62,7 +62,7 @@ impl Exec for Command {
                     }
                 } else {
                     // subject is none
-                    runtime.request(ServiceId::Farcasterd, Request::GetInfo)?;
+                    runtime.request(ServiceId::Farcasterd, Request::GetInfo(None))?;
                 }
                 match runtime.response()? {
                     Request::NodeInfo(info) => println!("{}", info),

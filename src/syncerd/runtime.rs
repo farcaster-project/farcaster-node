@@ -180,7 +180,7 @@ impl Runtime {
                     Err(e) => error!("Failed to send task with error: {}", e.to_string()),
                 };
             }
-            (Request::GetInfo, _) => {
+            (Request::GetInfo(_), _) => {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),

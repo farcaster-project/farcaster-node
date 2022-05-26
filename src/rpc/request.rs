@@ -390,7 +390,7 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
     #[display("get_info()")]
-    GetInfo,
+    GetInfo(Option<u64>),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 101)]
@@ -749,6 +749,8 @@ pub struct InitSwap {
 )]
 #[display(NodeInfo::to_yaml_string)]
 pub struct NodeInfo {
+    #[serde(skip_serializing)]
+    pub id: Option<u64>,
     pub node_ids: Vec<secp256k1::PublicKey>,
     pub listens: Vec<RemoteSocketAddr>,
     #[serde_as(as = "DurationSeconds")]

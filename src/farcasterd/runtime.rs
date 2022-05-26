@@ -742,12 +742,13 @@ impl Runtime {
                 }
             }
 
-            Request::GetInfo => {
+            Request::GetInfo(id) => {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
+                        id,
                         node_ids: self.node_ids(),
                         listens: self.listens.values().into_iter().cloned().collect(),
                         uptime: SystemTime::now()

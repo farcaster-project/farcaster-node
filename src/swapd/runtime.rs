@@ -1419,7 +1419,7 @@ impl Runtime {
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
             ) => {}
-            (Request::GetInfo, ServiceId::Client(_)) => {}
+            (Request::GetInfo(_), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
@@ -2630,7 +2630,7 @@ impl Runtime {
                 };
             }
 
-            Request::GetInfo => {
+            Request::GetInfo(_) => {
                 fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
                 where
                     T: Clone,

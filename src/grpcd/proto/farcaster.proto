@@ -2,14 +2,21 @@ syntax = "proto3";
 package farcaster;
 
 service Farcaster {
-    rpc MakeSwap(MakeSwapRequest) returns (MakeSwapResponse){}
+    rpc Info(InfoRequest) returns (InfoResponse){}
 }
 
-message MakeSwapRequest {
-    int32 id = 1;
+message InfoRequest {
+    uint32 id = 1;
 }
 
-message MakeSwapResponse {
-    int32 id = 1;
+message InfoResponse {
+    uint32 id = 1;
+    repeated string node_ids = 2;
+    repeated string listens = 3;
+    uint64 uptime = 4;
+    uint64 since = 5;
+    repeated string peers = 6;
+    repeated string swaps = 7;
+    repeated string offers = 8;
 }
 
