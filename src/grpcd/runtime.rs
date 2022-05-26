@@ -272,20 +272,6 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_farcasterd(
-        &self,
-        endpoints: &mut Endpoints,
-        message: request::Request,
-    ) -> Result<(), Error> {
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            self.identity(),
-            ServiceId::Farcasterd,
-            message,
-        )?;
-        Ok(())
-    }
-
     fn handle_rpc_msg(
         &mut self,
         _endpoints: &mut Endpoints,
@@ -296,11 +282,8 @@ impl Runtime {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
-            // _ => {
-            // error!("Request is not supported by the MSG interface");
-            // }
             _ => {
-                self.tx_response.send(request).unwrap();
+                error!("Request is not supported by the MSG interface");
             }
         }
         Ok(())
@@ -319,7 +302,7 @@ impl Runtime {
                 }
             },
             _ => {
-                error!("Request is not supported by the CTL interface");
+                self.tx_response.send(request).unwrap();
             }
         }
         Ok(())
@@ -331,8 +314,13 @@ impl Runtime {
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        trace!("GRPCD BRIDGE RPC request: {}", request);
-        self.send_farcasterd(endpoints, request)?;
+        debug!("GRPCD BRIDGE RPC request: {}", request);
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            self.identity(),
+            ServiceId::Farcasterd,
+            request,
+        )?;
         Ok(())
     }
 }

@@ -418,6 +418,7 @@ impl Runtime {
     ) -> Result<(), Error> {
         match (&request, &source) {
             (Request::Hello, _) => {
+                debug!("Hello farcasterd from {}", source);
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 

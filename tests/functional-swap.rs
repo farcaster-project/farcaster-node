@@ -80,7 +80,7 @@ use farcaster::InfoRequest;
 async fn grpc_server_functional_test() {
     let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     let channel = Endpoint::from_static("http://[::1]:50051")
@@ -91,7 +91,8 @@ async fn grpc_server_functional_test() {
     let mut farcaster_client = FarcasterClient::new(channel.clone());
     let request = tonic::Request::new(InfoRequest { id: 0 });
     let response = farcaster_client.info(request).await;
-    println!("{:?}", response);
+    assert_eq!(response.unwrap().into_inner().id, 0);
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
 #[tokio::test]
@@ -1456,7 +1457,7 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["swapd", "walletd", "syncerd", "peerd"].contains(&process.name())
+            ["swapd", "grpcd", "walletd", "syncerd", "peerd"].contains(&process.name())
                 && procs
                     .iter()
                     .map(|proc| proc.0)
