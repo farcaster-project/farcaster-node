@@ -105,7 +105,7 @@ jobs:
       monero-lws:
         image: ghcr.io/farcaster-project/containers/monero-lws:latest
         env:
-          MONEROD_ADDRESS: monerod:18082
+          MONERO_DAEMON_ADDRESS: monerod:18082
           NETWORK: main
 
     steps:
