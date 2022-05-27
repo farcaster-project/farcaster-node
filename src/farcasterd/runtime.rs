@@ -903,12 +903,12 @@ impl Runtime {
                         Err(err)
                     }
                 };
-                if res.is_err() {
+                if let Err(err) = res {
                     report_to.push((
                         Some(source.clone()),
                         Request::Failure(Failure {
                             code: 1,
-                            info: res.err().unwrap().to_string(),
+                            info: err.to_string(),
                         }),
                     ));
                 }
