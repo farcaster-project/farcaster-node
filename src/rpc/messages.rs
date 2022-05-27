@@ -5,7 +5,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io;
 
 use bitcoin::hashes::{sha256, Hmac};
-use bitcoin::secp256k1::{PublicKey, Signature};
+use bitcoin::secp256k1::PublicKey;
 use bitcoin::{Script, Txid};
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lightning_encoding::{self, LightningDecode, LightningEncode};
