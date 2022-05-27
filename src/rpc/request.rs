@@ -69,8 +69,7 @@ use farcaster_core::{
 };
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
-use lnp::payment::{self, AssetsBalance, Lifecycle};
-use lnp::{message, Messages, TempChannelId as TempSwapId};
+use lnp::p2p::legacy::{Messages, Ping, TempChannelId as TempSwapId};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use strict_encoding::{
@@ -104,7 +103,7 @@ pub enum Msg {
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
     #[api(type = 29)]
     #[display(inner)]
-    Ping(message::Ping),
+    Ping(Ping),
     #[api(type = 31)]
     #[display("pong(...)")]
     Pong(Vec<u8>),
@@ -160,7 +159,7 @@ lazy_static! {
 impl LightningDecode for Msg {
     fn lightning_decode<D: io::Read>(d: D) -> Result<Self, lightning_encoding::Error> {
         Ok((&*UNMARSHALLER
-            .unmarshall(&Vec::<u8>::lightning_decode(d)?)
+            .unmarshall(&*Vec::<u8>::lightning_decode(d)?)
             .map_err(|_| {
                 lightning_encoding::Error::DataIntegrityError(s!("can't unmarshall FWP message"))
             })?)
@@ -249,12 +248,21 @@ pub struct TakeCommit {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
-#[display("keypair(sk:({0}),pk:({1})),id:({2})")]
+#[display(format_keys)]
 pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
     pub bitcoin::secp256k1::PublicKey,
     pub RequestId,
 );
+
+fn format_keys(keys: &Keys) -> String {
+    format!(
+        "sk: {}, pk: {}, id: {}",
+        keys.0.display_secret(),
+        keys.1,
+        keys.2
+    )
+}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("reveal")]
@@ -304,23 +312,23 @@ pub enum Request {
     // ======================================================
     /// Once authentication is complete, the first message reveals the features
     /// supported or required by this node, even if this is a reconnection.
-    #[api(type = 16)]
-    #[display(inner)]
-    Init(message::Init),
+    // #[api(type = 16)]
+    // #[display(inner)]
+    // Init(message::Init),
 
     /// For simplicity of diagnosis, it's often useful to tell a peer that
     /// something is incorrect.
-    #[api(type = 17)]
-    #[display(inner)]
-    Error(message::Error),
+    // #[api(type = 17)]
+    // #[display(inner)]
+    // Error(message::Error),
 
     /// In order to allow for the existence of long-lived TCP connections, at
     /// times it may be required that both ends keep alive the TCP connection
     /// at the application level. Such messages also allow obfuscation of
     /// traffic patterns.
-    #[api(type = 18)]
-    #[display(inner)]
-    Ping(message::Ping),
+    // #[api(type = 18)]
+    // #[display(inner)]
+    // Ping(message::Ping),
 
     /// The pong message is to be sent whenever a ping message is received. It
     /// serves as a reply and also serves to keep the connection alive, while
@@ -856,9 +864,9 @@ pub struct SwapInfo {
     //// FIXME serde::Serialize/Deserialize missing
     // #[serde_as(as = "Option<DisplayFromStr)>")]
     // pub params: Option<Params>,
-    pub local_keys: payment::channel::Keyset,
+    pub local_keys: lnp::channel::bolt::LocalKeyset,
     #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
-    pub remote_keys: BTreeMap<NodeAddr, payment::channel::Keyset>,
+    pub remote_keys: BTreeMap<NodeAddr, lnp::channel::bolt::RemoteKeyset>,
 }
 
 #[cfg(feature = "serde")]

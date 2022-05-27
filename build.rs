@@ -14,12 +14,12 @@
 
 #[macro_use]
 extern crate amplify_derive;
+#[macro_use]
+extern crate clap;
 
 use clap::IntoApp;
-use clap_generate::{
-    generate_to,
-    generators::{Bash, PowerShell, Zsh},
-};
+use clap_complete::generate_to;
+use clap_complete::shells::*;
 
 pub mod opts {
     include!("src/opts.rs");
@@ -48,19 +48,19 @@ fn main() -> Result<(), configure_me_codegen::Error> {
     let outdir = "./shell";
 
     for app in [
-        farcasterd::Opts::into_app(),
-        peerd::Opts::into_app(),
-        swapd::Opts::into_app(),
-        cli::Opts::into_app(),
-        walletd::Opts::into_app(),
-        syncerd::Opts::into_app(),
+        farcasterd::Opts::command(),
+        peerd::Opts::command(),
+        swapd::Opts::command(),
+        cli::Opts::command(),
+        walletd::Opts::command(),
+        syncerd::Opts::command(),
     ]
     .iter_mut()
     {
         let name = app.get_name().to_string();
-        generate_to::<Bash, _, _>(app, &name, &outdir)?;
-        generate_to::<PowerShell, _, _>(app, &name, &outdir)?;
-        generate_to::<Zsh, _, _>(app, &name, &outdir)?;
+        generate_to(Bash, app, &name, &outdir)?;
+        generate_to(PowerShell, app, &name, &outdir)?;
+        generate_to(Zsh, app, &name, &outdir)?;
     }
 
     configure_me_codegen::build_script_auto()

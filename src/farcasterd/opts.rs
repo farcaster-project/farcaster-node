@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use clap::{AppSettings, Clap, ValueHint};
+use clap::ValueHint;
 
 pub const FARCASTER_CONFIG: &str = "{data_dir}/farcasterd.toml";
 
@@ -20,14 +20,8 @@ pub const FARCASTER_CONFIG: &str = "{data_dir}/farcasterd.toml";
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
 /// description)
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-#[clap(
-    name = "farcasterd",
-    bin_name = "farcasterd",
-    author,
-    version,
-    setting = AppSettings::ColoredHelp
-)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
+#[clap(name = "farcasterd", bin_name = "farcasterd", author, version)]
 pub struct Opts {
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables

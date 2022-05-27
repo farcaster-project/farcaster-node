@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use clap::{Clap, ValueHint};
+use clap::ValueHint;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -41,7 +41,7 @@ pub const FARCASTER_TOR_PROXY: &str = "127.0.0.1:9050";
 pub const FARCASTER_KEY_FILE: &str = "{data_dir}/key.dat";
 
 /// Shared options used by different binaries
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
 pub struct Opts {
     /// Data directory path
     ///
@@ -109,7 +109,7 @@ pub struct Opts {
 }
 
 /// Token used in services
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
 pub struct TokenString {
     /// Token used to authentify calls
     #[clap(long, env = "FARCASTER_TOKEN")]

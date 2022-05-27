@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::opts::FARCASTER_KEY_FILE;
-use clap::{AppSettings, Clap, ValueHint};
+use clap::ValueHint;
 use std::path::PathBuf;
 use std::{fs, io::Read};
 
@@ -25,14 +25,8 @@ use bitcoin::secp256k1::{
 use strict_encoding::{StrictDecode, StrictEncode};
 
 /// Walletd daemon; part of Farcaster Node
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-#[clap(
-    name = "walletd",
-    bin_name = "walletd",
-    author,
-    version,
-    setting = AppSettings::ColoredHelp
-)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
+#[clap(name = "walletd", bin_name = "walletd", author, version)]
 pub struct Opts {
     /// Node key configuration
     #[clap(flatten)]
@@ -56,7 +50,7 @@ impl Opts {
 }
 
 /// Node key configuration
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
 pub struct KeyOpts {
     /// Node key file
     ///

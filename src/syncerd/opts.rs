@@ -12,7 +12,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use clap::{AppSettings, Clap};
 use farcaster_core::blockchain::Network;
 use std::str::FromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
@@ -21,14 +20,8 @@ use strict_encoding::{StrictDecode, StrictEncode};
 ///
 /// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
 /// description)
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-#[clap(
-    name = "syncerd",
-    bin_name = "syncerd",
-    author,
-    version,
-    setting = AppSettings::ColoredHelp
-)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
+#[clap(name = "syncerd", bin_name = "syncerd", author, version)]
 pub struct Opts {
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables
@@ -71,7 +64,7 @@ pub struct Opts {
     pub monero_wallet_dir_path: Option<String>,
 }
 
-#[derive(Clap, Display, Copy, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
+#[derive(Parser, Display, Copy, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
 #[display(Debug)]
 pub enum Coin {
     /// Launches a bitcoin syncer

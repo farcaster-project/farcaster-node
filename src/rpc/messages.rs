@@ -1,5 +1,5 @@
 use amplify::DumbDefault;
-use lnp::ChannelId as SwapId;
+use lnp::p2p::legacy::ChannelId as SwapId;
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 use std::io;

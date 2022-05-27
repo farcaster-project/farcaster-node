@@ -21,7 +21,6 @@ use std::{
 use std::{str::FromStr, thread::sleep};
 
 use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
-use lnp::{message, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::shell::Exec;
 
 use farcaster_core::{

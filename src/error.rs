@@ -23,6 +23,7 @@ use microservices::{esb, rpc};
 
 #[cfg(feature = "_rpc")]
 use crate::rpc::ServiceBus;
+use crate::service::ServiceId;
 
 #[derive(Debug, Display, From, Error)]
 #[display(doc_comments)]
@@ -48,7 +49,7 @@ pub enum Error {
     /// ESB error: {0}
     #[cfg(feature = "_rpc")]
     #[from]
-    Esb(esb::Error),
+    Esb(esb::Error<ServiceId>),
 
     /// RPC error: {0}
     #[cfg(feature = "_rpc")]
@@ -122,7 +123,7 @@ pub enum SyncerError {
 impl microservices::error::Error for Error {}
 
 #[cfg(feature = "_rpc")]
-impl From<Error> for esb::Error {
+impl From<Error> for esb::Error<ServiceId> {
     fn from(err: Error) -> Self {
         match err {
             Error::Esb(err) => err,

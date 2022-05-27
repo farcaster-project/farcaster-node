@@ -9,10 +9,9 @@ _swapd() {
     for i in ${COMP_WORDS[@]}
     do
         case "${i}" in
-            swapd)
+            "$1")
                 cmd="swapd"
                 ;;
-            
             *)
                 ;;
         esac
@@ -20,13 +19,12 @@ _swapd() {
 
     case "${cmd}" in
         swapd)
-            opts=" -h -V -d -v -T -m -x  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket  <SWAP_ID> <PUBLIC_OFFER> <TRADE_ROLE> "
+            opts="-h -V -d -v -T -m -x --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SWAP_ID> <PUBLIC_OFFER> <TRADE_ROLE>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
-                
                 --data-dir)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
@@ -66,7 +64,6 @@ _swapd() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        
     esac
 }
 

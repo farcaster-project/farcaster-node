@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::service::Endpoints;
 use std::convert::TryInto;
 use std::thread::sleep;
 use std::time::Duration;
@@ -140,7 +141,6 @@ pub struct Handler {
 
 impl esb::Handler<ServiceBus> for Handler {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -149,7 +149,7 @@ impl esb::Handler<ServiceBus> for Handler {
 
     fn handle(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _endpoints: &mut Endpoints,
         _bus: ServiceBus,
         _addr: ServiceId,
         _request: Request,
@@ -158,8 +158,8 @@ impl esb::Handler<ServiceBus> for Handler {
         Ok(())
     }
 
-    fn handle_err(&mut self, err: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, err: esb::Error<ServiceId>) -> Result<(), Error> {
         // We simply propagate the error since it's already being reported
-        Err(err)
+        Err(Error::Esb(err))
     }
 }

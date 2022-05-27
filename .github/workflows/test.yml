@@ -34,7 +34,7 @@ jobs:
           args: --workspace --all-targets --all-features --no-fail-fast --verbose
         env:
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Coverflow-checks=off'
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
       - id: coverage
@@ -105,7 +105,7 @@ jobs:
       monero-lws:
         image: ghcr.io/farcaster-project/containers/monero-lws:latest
         env:
-          MONEROD_ADDRESS: monerod:18082
+          MONERO_DAEMON_ADDRESS: monerod:18082
           NETWORK: main
 
     steps:

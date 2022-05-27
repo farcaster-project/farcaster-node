@@ -14,18 +14,18 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::{
+    clap::Parser,
     error::SyncerError,
     rpc::request::{
         BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
         MoneroFundingInfo, Outcome, PubOffer, RequestId, Reveal, Token,
     },
+    service::Endpoints,
     swapd::get_swap_id,
     syncerd::opts::Coin,
     walletd::NodeSecrets,
-    Senders,
 };
 use amplify::Wrapper;
-use clap::Clap;
 use clap::IntoApp;
 use request::{Commit, List, Params};
 use std::io;
@@ -56,7 +56,6 @@ use internet2::{
     addr::InetSocketAddr, NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum,
     UrlString,
 };
-use lnp::{message, Messages, TempChannelId as TempSwapId, LIGHTNING_P2P_DEFAULT_PORT};
 use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
@@ -240,7 +239,6 @@ impl Stats {
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -249,19 +247,19 @@ impl esb::Handler<ServiceBus> for Runtime {
 
     fn handle(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
+            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
+            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
             _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
-    fn handle_err(&mut self, _: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
@@ -273,10 +271,10 @@ impl Runtime {
     fn clean_up_after_swap(
         &mut self,
         swapid: &SwapId,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
         if self.running_swaps.remove(swapid) {
-            senders.send_to(
+            endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
                 ServiceId::Swap(*swapid),
@@ -316,7 +314,7 @@ impl Runtime {
                     });
 
                     if self.connections.remove(&connectionid) {
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             identity.clone(),
                             ServiceId::Peer(connectionid),
@@ -337,7 +335,7 @@ impl Runtime {
                 } else {
                     let service_id = ServiceId::Syncer(coin, network);
                     info!("Terminating {}", service_id);
-                    if senders
+                    if endpoints
                         .send_to(
                             ServiceBus::Ctl,
                             identity.clone(),
@@ -368,8 +366,12 @@ impl Runtime {
         self.consumed_offers.contains_key(offerid)
     }
 
-    fn _send_walletd(&self, senders: &mut Senders, message: request::Request) -> Result<(), Error> {
-        senders.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
+    fn _send_walletd(
+        &self,
+        endpoints: &mut Endpoints,
+        message: request::Request,
+    ) -> Result<(), Error> {
+        endpoints.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
         Ok(())
     }
     fn node_ids(&self) -> Vec<PublicKey> {
@@ -392,7 +394,7 @@ impl Runtime {
     }
     fn handle_rpc_msg(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -427,7 +429,7 @@ impl Runtime {
                     if let Some(arb_addr) = self.arb_addrs.remove(&public_offer.id()) {
                         let btc_addr_req =
                             Request::BitcoinAddress(BitcoinAddress(*swap_id, arb_addr));
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Msg,
                             self.identity(),
                             ServiceId::Wallet,
@@ -439,7 +441,7 @@ impl Runtime {
                     if let Some(acc_addr) = self.acc_addrs.remove(&public_offer.id()) {
                         let xmr_addr_req =
                             Request::MoneroAddress(MoneroAddress(*swap_id, acc_addr));
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Msg,
                             self.identity(),
                             ServiceId::Wallet,
@@ -452,7 +454,7 @@ impl Runtime {
                     self.peerd_ids
                         .insert(public_offer.offer.id(), source.clone());
 
-                    senders.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?;
+                    endpoints.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?;
                 }
                 return Ok(());
             }
@@ -466,7 +468,7 @@ impl Runtime {
 
     fn handle_rpc_ctl(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -574,7 +576,7 @@ impl Runtime {
                         &self.config,
                     )?;
                     // FIXME msgs should go to walletd?
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
@@ -621,7 +623,7 @@ impl Runtime {
                         &self.config,
                     )?;
                     // FIXME msgs should go to walletd?
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source.clone(),
@@ -645,7 +647,7 @@ impl Runtime {
 
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
-                self.clean_up_after_swap(&swapid, senders)?;
+                self.clean_up_after_swap(&swapid, endpoints)?;
                 self.stats.incr_outcome(&success);
                 match success {
                     Outcome::Buy => {
@@ -731,14 +733,14 @@ impl Runtime {
                     }?;
                     trace!("Procede executing pending request");
                     // recurse with request containing key
-                    self.handle_rpc_ctl(senders, source, req)?
+                    self.handle_rpc_ctl(endpoints, source, req)?
                 } else {
                     error!("Received unexpected peer keys");
                 }
             }
 
             Request::GetInfo => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
@@ -761,7 +763,7 @@ impl Runtime {
             }
 
             Request::ListPeers => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
@@ -770,7 +772,7 @@ impl Runtime {
             }
 
             Request::ListSwaps => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
@@ -786,7 +788,7 @@ impl Runtime {
                     .filter(|k| !self.consumed_offers_contains(&k.offer.id()))
                     .cloned()
                     .collect();
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
@@ -795,7 +797,7 @@ impl Runtime {
             }
 
             // Request::ListOfferIds => {
-            //     senders.send_to(
+            //     endpoints.send_to(
             //         ServiceBus::Ctl,
             //         ServiceId::Farcasterd, // source
             //         source,                // destination
@@ -809,7 +811,7 @@ impl Runtime {
                         .values()
                         .map(|listen| listen.to_url_string()),
                 );
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
@@ -839,7 +841,7 @@ impl Runtime {
                 let resp = match (bindaddr, peer_secret_key, peer_public_key) {
                     (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
-                        return self.get_secret(senders, source, request);
+                        return self.get_secret(endpoints, source, request);
                     }
                     (None, Some(sk), Some(pk)) => {
                         self.listens.insert(offer.id(), bind_addr);
@@ -946,13 +948,13 @@ impl Runtime {
                         remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
                     };
                     let peer = daemon_service
-                        .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
+                        .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
                         .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                     // Connect
                     let peer_connected_is_ok =
                         match (self.connections.contains(&peer), peer_secret_key) {
-                            (false, None) => return self.get_secret(senders, source, request),
+                            (false, None) => return self.get_secret(endpoints, source, request),
                             (false, Some(sk)) => {
                                 trace!(
                                     "{} to remote peer {}",
@@ -1004,7 +1006,7 @@ impl Runtime {
                             internal_address,
                             peer_secret_key: None,
                         });
-                        senders.send_to(
+                        endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
                             ServiceId::Wallet,
@@ -1048,7 +1050,7 @@ impl Runtime {
                     } else {
                         s!("Unknown swapd")
                     };
-                    senders.send_to(
+                    endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
@@ -1249,7 +1251,7 @@ impl Runtime {
                         res
                     })
                     .collect();
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     source,
@@ -1278,7 +1280,7 @@ impl Runtime {
                         res
                     })
                     .collect();
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     source,
@@ -1312,7 +1314,7 @@ impl Runtime {
                     respond_to.bright_yellow_bold(),
                     resp.bright_blue_bold(),
                 );
-                senders.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
+                endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
             }
         }
         debug!("processed all cli notifications");
@@ -1334,7 +1336,7 @@ impl Runtime {
                     "--port",
                     &port.to_string(),
                     "--peer-secret-key",
-                    &format!("{:x}", sk),
+                    &format!("{}", sk.display_secret()),
                     "--token",
                     &self.wallet_token.clone().to_string(),
                 ],
@@ -1370,7 +1372,7 @@ impl Runtime {
                 "--connect",
                 &node_addr.to_string(),
                 "--peer-secret-key",
-                &format!("{:x}", sk),
+                &format!("{}", sk.display_secret()),
                 "--token",
                 &self.wallet_token.clone().to_string(),
             ],
@@ -1398,7 +1400,7 @@ impl Runtime {
 
     fn get_secret(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -1410,7 +1412,7 @@ impl Runtime {
         self.pending_requests
             .insert(req_id.clone(), (request, source));
         let wallet_token = GetKeys(self.wallet_token.clone(), req_id);
-        senders.send_to(
+        endpoints.send_to(
             ServiceBus::Ctl,
             ServiceId::Farcasterd,
             ServiceId::Wallet,
@@ -1536,7 +1538,7 @@ pub fn launch(
     name: &str,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> io::Result<process::Child> {
-    let app = Opts::into_app();
+    let app = Opts::command();
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
         err

@@ -63,7 +63,7 @@ services:
     monero-lws-daemon:
         image: ghcr.io/farcaster-project/containers/monero-lws:latest
         environment:
-            MONEROD_ADDRESS: monerod:18082
+            MONERO_DAEMON_ADDRESS: monerod:18082
             NETWORK: main
         depends_on:
             - "monerod"

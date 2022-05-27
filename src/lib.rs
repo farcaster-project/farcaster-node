@@ -38,6 +38,7 @@ extern crate lnpbp;
 extern crate internet2;
 
 #[cfg(feature = "shell")]
+#[macro_use]
 extern crate clap;
 #[macro_use]
 extern crate log;
@@ -77,4 +78,4 @@ pub use crate::config::Config;
 pub use crate::service::ServiceConfig;
 pub use error::Error;
 #[cfg(feature = "_rpc")]
-pub use service::{CtlServer, LogStyle, Senders, Service, ServiceId, TryToServiceId};
+pub use service::{CtlServer, Endpoints, LogStyle, Service, ServiceId, TryToServiceId};

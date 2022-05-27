@@ -33,7 +33,7 @@ use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1::rand::thread_rng;
 use bitcoin::secp256k1::rand::RngCore;
 
-use clap::Clap;
+use clap::Parser;
 
 use farcaster_node::Error;
 use farcaster_node::ServiceConfig;

@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::{Coin, Opts};
@@ -33,7 +34,6 @@ use farcaster_core::swap::SwapId;
 use internet2::{
     presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
 };
-use lnp::{message, Messages, TempChannelId as TempSwapId};
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
@@ -108,7 +108,6 @@ pub struct Runtime {
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -117,19 +116,19 @@ impl esb::Handler<ServiceBus> for Runtime {
 
     fn handle(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            ServiceBus::Bridge => self.handle_bridge(senders, source, request),
+            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
+            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
+            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
         }
     }
 
-    fn handle_err(&mut self, _: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
@@ -140,7 +139,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 impl Runtime {
     fn handle_rpc_msg(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _endpoints: &mut Endpoints,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -158,7 +157,7 @@ impl Runtime {
     }
     fn handle_rpc_ctl(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -182,7 +181,7 @@ impl Runtime {
                 };
             }
             (Request::GetInfo, _) => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     source,
@@ -201,7 +200,7 @@ impl Runtime {
             }
 
             (Request::ListTasks, ServiceId::Client(_)) => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     source.clone(),
@@ -224,21 +223,21 @@ impl Runtime {
         }
 
         if let Some((Some(respond_to), resp)) = notify_cli {
-            senders.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
+            endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
         }
 
         Ok(())
     }
     fn handle_bridge(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         debug!("Syncerd BRIDGE RPC request: {}", request);
         match request {
             Request::SyncerdBridgeEvent(syncerd_bridge_event) => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     syncerd_bridge_event.source,

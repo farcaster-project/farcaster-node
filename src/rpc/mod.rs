@@ -17,6 +17,7 @@ pub mod messages;
 mod reply;
 pub mod request;
 
+use crate::ServiceId;
 pub use client::Client;
 pub use reply::Reply;
 pub use request::Request;
@@ -34,7 +35,9 @@ pub enum ServiceBus {
     Bridge,
 }
 
-impl BusId for ServiceBus {}
+impl BusId for ServiceBus {
+    type Address = ServiceId;
+}
 
 pub struct Rpc {}
 

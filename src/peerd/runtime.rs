@@ -17,11 +17,11 @@ use std::{collections::HashMap, sync::Arc};
 use std::{rc::Rc, thread::spawn};
 
 use amplify::Bipolar;
-use bitcoin::secp256k1::rand::{self, Rng};
+use bitcoin::secp256k1::rand::{self, Rng, RngCore};
 use bitcoin::secp256k1::PublicKey;
 use internet2::{addr::InetSocketAddr, CreateUnmarshaller, Unmarshall, Unmarshaller};
 use internet2::{presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType, ZMQ_CONTEXT};
-use lnp::{message, Messages};
+use lnp::p2p::legacy::{Messages, Ping};
 use microservices::esb::{self, Handler};
 use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
@@ -30,7 +30,7 @@ use crate::rpc::{
     request::{self, Msg, PeerInfo, TakeCommit, Token},
     Request, ServiceBus,
 };
-use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
+use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -103,7 +103,6 @@ pub struct BridgeHandler;
 
 impl esb::Handler<ServiceBus> for BridgeHandler {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -112,7 +111,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 
     fn handle(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _endpoints: &mut Endpoints,
         _bus: ServiceBus,
         _addr: ServiceId,
         request: Request,
@@ -122,9 +121,9 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
         Ok(())
     }
 
-    fn handle_err(&mut self, err: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, err: esb::Error<ServiceId>) -> Result<(), Error> {
         // We simply propagate the error since it's already being reported
-        Err(err)
+        Err(Error::Esb(err))
     }
 }
 
@@ -216,24 +215,20 @@ impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
         self.identity.clone()
     }
 
-    fn on_ready(
-        &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
-    ) -> Result<(), Error> {
+    fn on_ready(&mut self, _endpoints: &mut Endpoints) -> Result<(), Error> {
         if self.connect {
             info!(
                 "{} with the remote peer {}",
                 "Initializing connection".bright_blue_bold(),
                 self.remote_socket
             );
-            // self.send_ctl(senders, ServiceId::Wallet, request::PeerSecret)
+            // self.send_ctl(endpoints, ServiceId::Wallet, request::PeerSecret)
 
             // self.sender.send_message(Messages::Init(message::Init {
             //     global_features: none!(),
@@ -249,19 +244,19 @@ impl esb::Handler<ServiceBus> for Runtime {
 
     fn handle(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
-            ServiceBus::Bridge => self.handle_bridge(senders, source, request),
+            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
+            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
+            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
         }
     }
 
-    fn handle_err(&mut self, _: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
@@ -273,7 +268,7 @@ impl Runtime {
     /// send messages over the bridge
     fn handle_rpc_msg(
         &mut self,
-        _senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        _endpoints: &mut Endpoints,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -313,7 +308,7 @@ impl Runtime {
 
     fn handle_rpc_ctl(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -350,7 +345,7 @@ impl Runtime {
                     connected: !self.connect,
                     awaits_pong: self.awaited_pong.is_some(),
                 };
-                self.send_ctl(senders, source, Request::PeerInfo(info))?;
+                self.send_ctl(endpoints, source, Request::PeerInfo(info))?;
             }
 
             _ => {
@@ -363,7 +358,7 @@ impl Runtime {
     /// receive messages arriving over the bridge
     fn handle_bridge(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -376,9 +371,7 @@ impl Runtime {
         match &request {
             Request::Protocol(Msg::PingPeer) => self.ping()?,
 
-            Request::Protocol(Msg::Ping(message::Ping { pong_size, .. })) => {
-                self.pong(*pong_size)?
-            }
+            Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => self.pong(*pong_size)?,
 
             Request::Protocol(Msg::Pong(noise)) => {
                 match self.awaited_pong {
@@ -393,7 +386,7 @@ impl Runtime {
 
             Request::Protocol(Msg::PeerdShutdown) => {
                 warn!("Exiting peerd");
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     ServiceId::Farcasterd,
@@ -404,7 +397,7 @@ impl Runtime {
 
             // swap initiation message
             Request::Protocol(Msg::TakerCommit(_)) => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
                     ServiceId::Farcasterd,
@@ -412,7 +405,7 @@ impl Runtime {
                 )?;
             }
             Request::Protocol(msg) => {
-                senders.send_to(
+                endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
                     ServiceId::Swap(msg.swap_id()),
@@ -421,7 +414,7 @@ impl Runtime {
             }
             // }
             // Request::PeerMessage(Messages::OpenChannel(_)) => {
-            //     senders.send_to(
+            //     endpoints.send_to(
             //         ServiceBus::Msg,
             //         self.identity(),
             //         ServiceId::Farcasterd,
@@ -432,14 +425,14 @@ impl Runtime {
             // Request::PeerMessage(Messages::AcceptChannel(accept_channel)) => {
             //     let channeld: ServiceId = accept_channel.temporary_channel_id.into();
             //     self.routing.insert(channeld.clone(), channeld.clone());
-            //     senders.send_to(ServiceBus::Msg, self.identity(), channeld, request)?;
+            //     endpoints.send_to(ServiceBus::Msg, self.identity(), channeld, request)?;
             // }
 
             // Request::PeerMessage(Messages::FundingCreated(message::FundingCreated {
             //     temporary_channel_id,
             //     ..
             // })) => {
-            //     senders.send_to(
+            //     endpoints.send_to(
             //         ServiceBus::Msg,
             //         self.identity(),
             //         temporary_channel_id.clone().into(),
@@ -471,7 +464,7 @@ impl Runtime {
             //     message::UpdateFailMalformedHtlc { channel_id, .. },
             // )) => {
             //     let channeld: ServiceId = channel_id.clone().into();
-            //     senders.send_to(
+            //     endpoints.send_to(
             //         ServiceBus::Msg,
             //         self.identity(),
             //         self.routing.get(&channeld).cloned().unwrap_or(channeld),
@@ -500,11 +493,12 @@ impl Runtime {
         }
         let mut rng = rand::thread_rng();
         let len: u16 = rng.gen_range(4, 32);
-        let noise = vec![0u8; len as usize].iter().map(|_| rng.gen()).collect();
+        let mut noise = vec![0u8; len as usize];
+        rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.sender.send_message(Msg::Ping(message::Ping {
-            ignored: noise,
+        self.sender.send_message(Msg::Ping(Ping {
+            ignored: noise.into(),
             pong_size,
         }))?;
         self.awaited_pong = Some(pong_size);

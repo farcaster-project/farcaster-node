@@ -9,10 +9,9 @@ _farcasterd() {
     for i in ${COMP_WORDS[@]}
     do
         case "${i}" in
-            farcasterd)
+            "$1")
                 cmd="farcasterd"
                 ;;
-            
             *)
                 ;;
         esac
@@ -20,13 +19,12 @@ _farcasterd() {
 
     case "${cmd}" in
         farcasterd)
-            opts=" -h -V -d -v -T -m -x -c  --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket --config  "
+            opts="-h -V -d -v -T -m -x -c --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket --config"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
-                
                 --data-dir)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
@@ -74,7 +72,6 @@ _farcasterd() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        
     esac
 }
 
