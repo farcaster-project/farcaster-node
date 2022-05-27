@@ -1,7 +1,7 @@
 ARG BUILDER_DIR=/srv/farcaster
 
 
-FROM rust:1.55.0-slim-buster as builder
+FROM rust:bullseye as builder
 
 ARG SRC_DIR=/usr/local/src/farcaster
 ARG BUILDER_DIR
@@ -28,7 +28,7 @@ RUN mkdir "${BUILDER_DIR}"
 RUN cargo install --path . --root "${BUILDER_DIR}" --bins --all-features --locked
 
 
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 
 ARG BUILDER_DIR
 ARG BIN_DIR=/usr/local/bin
