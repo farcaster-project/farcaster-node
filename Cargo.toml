@@ -4,6 +4,7 @@ version = "0.2.0"
 authors = ["Farcaster Devs", "Dr. Maxim Orlovsky <orlovsky@pandoracore.com>"]
 build = "build.rs"
 edition = "2018"
+rust-version = "1.58.1"
 exclude = [".github", "/test", "Dockerfile"]
 keywords = ["bitcoin", "monero", "node", "atomic swaps"]
 license = "MIT"
