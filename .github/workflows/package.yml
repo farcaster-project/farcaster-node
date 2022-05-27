@@ -3,6 +3,8 @@ name: Create packages
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   faracsterd_container:
@@ -23,4 +25,5 @@ jobs:
       run: docker build -f $GITHUB_WORKSPACE/Dockerfile -t ghcr.io/farcaster-project/farcaster-node/farcasterd:main $GITHUB_WORKSPACE
 
     - name: Docker push to GitHub Packages
+      if: github.event_name == 'push'
       run: docker push ghcr.io/farcaster-project/farcaster-node/farcasterd:main
