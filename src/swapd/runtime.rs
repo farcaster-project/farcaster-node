@@ -2507,7 +2507,7 @@ impl Runtime {
                     }
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
-                self.send_peer(senders, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
+                self.send_peer(endpoints, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
                 let next_state = State::Bob(BobState::CorearbB {
                     local_params: self.state.local_params().cloned().unwrap(),
                     cancel_seen: false,
