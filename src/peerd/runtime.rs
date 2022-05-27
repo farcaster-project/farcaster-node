@@ -461,7 +461,7 @@ impl Runtime {
         match &request {
             Request::Protocol(Msg::PingPeer) => self.ping()?,
 
-            Request::Protocol(Msg::Ping(message::Ping { pong_size, .. })) => {
+            Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => {
                 debug!("receiving ping, ponging back");
                 self.pong(*pong_size)?
             }
@@ -516,7 +516,7 @@ impl Runtime {
         rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.peer_sender.send_message(Msg::Ping(message::Ping {
+        self.peer_sender.send_message(Msg::Ping(Ping {
             ignored: noise,
             pong_size,
         }))?;
