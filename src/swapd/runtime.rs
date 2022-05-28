@@ -45,13 +45,9 @@ use bitcoin::{
     Txid,
 };
 use bitcoin::{
-    util::{
-        bip143::SigHashCache,
-        psbt::{serialize::Deserialize, PartiallySignedTransaction},
-    },
+    util::psbt::{serialize::Deserialize, PartiallySignedTransaction},
     Script,
 };
-use bitcoin::{OutPoint, SigHashType};
 
 use crate::syncerd::types::{
     AddressAddendum, AddressTransaction, Boolean, BroadcastTransaction, BtcAddressAddendum, Event,

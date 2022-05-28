@@ -23,7 +23,7 @@ use crate::{
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use bitcoin::{
     hashes::hex::FromHex,
-    secp256k1::{self, rand::thread_rng, PublicKey, Secp256k1, SecretKey, Signature},
+    secp256k1::{self, ecdsa::Signature, rand::thread_rng, PublicKey, Secp256k1, SecretKey},
     util::{
         bip32::{DerivationPath, ExtendedPrivKey},
         psbt::serialize::Deserialize,
