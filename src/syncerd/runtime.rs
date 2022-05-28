@@ -68,8 +68,8 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
 
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    tx_event.connect("inproc://syncerdbridge")?;
     rx_event.bind("inproc://syncerdbridge")?;
+    tx_event.connect("inproc://syncerdbridge")?;
 
     let syncer: Box<dyn Synclet> = match coin {
         Coin::Monero => Box::new(MoneroSyncer::new()),

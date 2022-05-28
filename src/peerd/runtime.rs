@@ -86,8 +86,8 @@ pub fn run(
     debug!("Opening bridge between runtime and peer receiver threads");
     let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     let rx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    tx.connect("inproc://bridge")?;
     rx.bind("inproc://bridge")?;
+    tx.connect("inproc://bridge")?;
 
     let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
 
@@ -421,6 +421,7 @@ impl Runtime {
         let mut connection =
             PeerConnection::connect(self.remote_node_addr.clone().unwrap(), &self.local_node);
         let mut attempt = 0;
+
         while connection.is_err() {
             attempt += 1;
             warn!("reconnect failed attempting again in {} seconds", attempt);
