@@ -1061,7 +1061,7 @@ async fn run_swaps_parallel(
         .await;
     }
 
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
