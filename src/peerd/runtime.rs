@@ -84,9 +84,9 @@ pub fn run(
     };
 
     debug!("Opening bridge between runtime and peer receiver threads");
-    let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     let rx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     rx.bind("inproc://bridge")?;
+    let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     tx.connect("inproc://bridge")?;
 
     let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
@@ -204,7 +204,6 @@ impl PeerReceiverRuntime {
     }
 }
 
-use std::fmt::{Debug, Display};
 impl peer::Handler<Msg> for PeerReceiverRuntime {
     type Error = crate::Error;
     fn handle(
@@ -307,10 +306,11 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, err: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
+        error!("peerd runtime received an error: {}", err);
         Ok(())
     }
 }
@@ -333,9 +333,9 @@ impl Runtime {
                     &request.get_type()
                 );
                 self.messages_sent += 1;
-                if self.peer_sender.send_message(message.clone()).is_err() {
+                while let Err(err) = self.peer_sender.send_message(message.clone()) {
+                    debug!("Error sending to remote peer in peerd runtime: {}", err);
                     self.reconnect_peer(endpoints)?;
-                    self.peer_sender.send_message(message)?;
                 }
             }
             _ => {
