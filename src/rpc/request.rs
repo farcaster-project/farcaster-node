@@ -947,14 +947,14 @@ impl From<crate::Error> for Request {
     }
 }
 
-pub trait IntoProgressOrFalure {
+pub trait IntoProgressOrFailure {
     fn into_progress_or_failure(self) -> Request;
 }
 pub trait IntoSuccessOrFailure {
     fn into_success_or_failure(self) -> Request;
 }
 
-impl IntoProgressOrFalure for Result<String, crate::Error> {
+impl IntoProgressOrFailure for Result<String, crate::Error> {
     fn into_progress_or_failure(self) -> Request {
         match self {
             Ok(val) => Request::Progress(val),

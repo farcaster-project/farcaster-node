@@ -37,7 +37,7 @@ use internet2::{
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
 
-use crate::rpc::request::{IntoProgressOrFalure, OptionDetails, SyncerInfo};
+use crate::rpc::request::{IntoProgressOrFailure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::syncerd::*;
 use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
