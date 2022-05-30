@@ -951,7 +951,6 @@ impl Runtime {
                     .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                 // Connect
-                info!("going twice?????????????");
                 let res = match (self.connections.contains(&peer), peer_secret_key) {
                     (false, None) => {
                         return self.get_secret(endpoints, source, request);
