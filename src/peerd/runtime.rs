@@ -85,8 +85,12 @@ pub fn run(
 
     debug!("Opening bridge between runtime and peer receiver threads");
     let rx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
+    rx.set_linger(0)?;
+    rx.set_immediate(true)?;
     rx.bind("inproc://bridge")?;
     let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
+    tx.set_linger(0)?;
+    tx.set_immediate(true)?;
     tx.connect("inproc://bridge")?;
 
     let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
@@ -552,6 +556,9 @@ fn restart_receiver_runtime(
     let tx = ZMQ_CONTEXT
         .socket(zmq::PAIR)
         .expect("unable to create new bridge zmq socket");
+    tx.set_linger(0).unwrap();
+    // set immediate to true to report errors in case the connection cannot actually send
+    tx.set_immediate(true).unwrap();
     tx.connect("inproc://bridge")
         .expect("unable to connec to zmq bridge");
 
