@@ -105,7 +105,6 @@ pub fn run(
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
-        broken_connections: none!(),
         report_peerd_reconnect: none!(),
         running_swaps: none!(),
         spawning_services: none!(),
@@ -137,7 +136,6 @@ pub struct Runtime {
     listens: HashMap<OfferId, RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
-    broken_connections: HashSet<NodeAddr>,
     report_peerd_reconnect: HashMap<NodeAddr, ServiceId>,
     running_swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
@@ -500,21 +498,16 @@ impl Runtime {
                                 connection_id.bright_blue_italic(),
                                 self.connections.len().bright_blue_bold()
                             );
-                            if self.broken_connections.remove(connection_id) {
-                                if let Some(swap_service_id) =
-                                    self.report_peerd_reconnect.remove(connection_id)
-                                {
-                                    debug!(
-                                        "Letting {} know of peer reconnection.",
-                                        swap_service_id
-                                    );
-                                    endpoints.send_to(
-                                        ServiceBus::Ctl,
-                                        self.identity(),
-                                        swap_service_id,
-                                        Request::PeerdReconnected,
-                                    )?;
-                                }
+                            if let Some(swap_service_id) =
+                                self.report_peerd_reconnect.remove(connection_id)
+                            {
+                                debug!("Letting {} know of peer reconnection.", swap_service_id);
+                                endpoints.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    swap_service_id,
+                                    Request::PeerdReconnected,
+                                )?;
                             }
                         } else {
                             warn!(
@@ -1332,8 +1325,7 @@ impl Runtime {
                             })
                             .is_some()
                         {
-                            info!("a swap is still running over the terminated peer {}, attempting to restart it.", addr);
-                            self.broken_connections.insert(addr.clone());
+                            info!("a swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr);
                         }
                     }
                 }
@@ -1462,7 +1454,7 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        debug!(
+        trace!(
             "Peer keys not available yet - waiting to receive them on Request::Keypair\
                 and then proceed with parent request"
         );

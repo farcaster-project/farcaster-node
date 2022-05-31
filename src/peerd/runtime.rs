@@ -60,16 +60,20 @@ pub fn run(
         // taker's case
         peer_sender
             .send_message(Msg::Identity(local_node.node_id()))
-            .unwrap();
+            .expect("failed to send taker identity to maker");
         debug!(
             "sent message with local node id {} to the maker",
             local_node.node_id()
         );
-        ServiceId::Peer(NodeAddr::Remote(remote_node_addr.clone().unwrap()))
+        ServiceId::Peer(NodeAddr::Remote(remote_node_addr.clone().expect(
+            "remote node addr should never be None in taker (connect) case",
+        )))
     } else {
         // maker's case
         let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
-        let msg: &Msg = &*peer_receiver.recv_message(&unmarshaller).unwrap();
+        let msg: &Msg = &*peer_receiver
+            .recv_message(&unmarshaller)
+            .expect("failed to receive identity message from maker");
         let id = match msg {
             Msg::Identity(id) => {
                 debug!("Received the following local node id from the taker {}", id);
@@ -78,7 +82,7 @@ pub fn run(
             _ => None,
         };
         ServiceId::Peer(NodeAddr::Remote(RemoteNodeAddr {
-            node_id: *id.unwrap(),
+            node_id: *id.expect("remote id should always be some in maker's case"),
             remote_addr: RemoteSocketAddr::Ftcp(local_socket.unwrap()),
         }))
     };
@@ -286,7 +290,10 @@ impl esb::Handler<ServiceBus> for Runtime {
             info!(
                 "{} with the remote peer {}",
                 "Initializing connection".bright_blue_bold(),
-                self.remote_node_addr.clone().unwrap().remote_addr,
+                self.remote_node_addr
+                    .clone()
+                    .expect("remote node addr is never None if forked from listener")
+                    .remote_addr,
             );
         }
         Ok(())
@@ -335,7 +342,22 @@ impl Runtime {
                 self.messages_sent += 1;
                 while let Err(err) = self.peer_sender.send_message(message.clone()) {
                     debug!("Error sending to remote peer in peerd runtime: {}", err);
-                    self.reconnect_peer(endpoints)?;
+                    // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
+                    if self.forked_from_listener {
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::PeerdTerminated,
+                        )?;
+                        warn!("Exiting peerd");
+                        std::process::exit(0);
+                    }
+
+                    if let Err(err) = self.reconnect_peer() {
+                        warn!("error during reconnection attempt: {}", err);
+                        continue;
+                    }
                 }
             }
             _ => {
@@ -403,49 +425,53 @@ impl Runtime {
         }
         Ok(())
     }
-    fn reconnect_peer(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
-        if self.forked_from_listener {
-            endpoints.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                ServiceId::Farcasterd,
-                Request::PeerdTerminated,
-            )?;
-            warn!("Exiting peerd");
-            std::process::exit(0);
-        }
+
+    fn reconnect_peer(&mut self) -> Result<(), Error> {
         info!("Attempting to reconnect to remote peerd");
         // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
         // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
-        let mut connection =
-            PeerConnection::connect(self.remote_node_addr.clone().unwrap(), &self.local_node);
+        let mut connection = PeerConnection::connect(
+            self.remote_node_addr
+                .clone()
+                .expect("is some if not forked from listener"),
+            &self.local_node,
+        );
         let mut attempt = 0;
 
-        while connection.is_err() {
+        while let Err(err) = connection {
+            trace!("failed to re-establish tcp connection: {}", err);
             attempt += 1;
             warn!("reconnect failed attempting again in {} seconds", attempt);
             std::thread::sleep(std::time::Duration::from_secs(attempt));
-            connection =
-                PeerConnection::connect(self.remote_node_addr.clone().unwrap(), &self.local_node);
+            connection = PeerConnection::connect(
+                self.remote_node_addr
+                    .clone()
+                    .expect("is some if not forked from listener"),
+                &self.local_node,
+            );
         }
-        let (peer_receiver, peer_sender) = connection.unwrap().split();
+        let (peer_receiver, peer_sender) = connection.expect("checked with is_err()").split();
         self.peer_sender = peer_sender;
         // send the local id to the maker(listener) again
         self.peer_sender
-            .send_message(Msg::Identity(self.local_node.node_id()))
-            .unwrap();
+            .send_message(Msg::Identity(self.local_node.node_id()))?;
 
         let identity = self.identity.clone();
-        let old_thread_flag_tx = self.thread_flag_tx.clone();
+        let dying_thread_flag_tx = self.thread_flag_tx.clone();
         let (thread_flag_tx, thread_flag_rx) = std::sync::mpsc::channel();
         info!("Peerd reconnect successful, launching peerd receiver runtime");
         spawn(move || {
-            restart_receiver_runtime(identity, peer_receiver, old_thread_flag_tx, thread_flag_rx)
+            restart_receiver_runtime(
+                identity,
+                peer_receiver,
+                dying_thread_flag_tx,
+                thread_flag_rx,
+            )
         });
         self.thread_flag_tx = thread_flag_tx;
         Ok(())
     }
+
     /// receive messages arriving over the bridge
     fn handle_bridge(
         &mut self,
@@ -480,7 +506,19 @@ impl Runtime {
 
             Request::Protocol(Msg::PeerReceiverRuntimeShutdown) => {
                 warn!("Exiting peerd receiver runtime");
-                self.reconnect_peer(endpoints)?;
+                // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
+                if self.forked_from_listener {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Farcasterd,
+                        Request::PeerdTerminated,
+                    )?;
+                    warn!("Exiting peerd");
+                    std::process::exit(0);
+                }
+
+                self.reconnect_peer()?;
             }
 
             // swap initiation message
@@ -541,20 +579,17 @@ impl Runtime {
 fn restart_receiver_runtime(
     internal_identity: ServiceId,
     peer_receiver: PeerReceiver,
-    thread_flag_tx: std::sync::mpsc::Sender<()>,
+    dying_thread_flag_tx: std::sync::mpsc::Sender<()>,
     _thread_flag_rx: std::sync::mpsc::Receiver<()>,
 ) {
     // flag_rx on the old receiver thread goes out of scope, thus making
     // the send fail as soon as the old receiver thread exited.
-    while thread_flag_tx.send(()).is_ok() {
+    while dying_thread_flag_tx.send(()).is_ok() {
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
     let tx = ZMQ_CONTEXT
         .socket(zmq::PUSH)
         .expect("unable to create new bridge zmq socket");
-    // tx.set_linger(0).unwrap();
-    // set immediate to true to report errors in case the connection cannot actually send
-    // tx.set_immediate(true).unwrap();
     tx.connect("inproc://bridge")
         .expect("unable to connec to zmq bridge");
 

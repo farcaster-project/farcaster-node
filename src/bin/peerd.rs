@@ -234,12 +234,12 @@ fn main() {
             }
         }
         PeerSocket::Connect(remote_node) => {
-            info!("Peerd running in CONNECT mode");
+            debug!("Peerd running in CONNECT mode");
 
             forked_from_listener = false;
             remote_node_addr = Some(remote_node.clone());
 
-            info!("Connecting to {}", &remote_node.addr());
+            debug!("Connecting to {}", &remote_node.addr());
             PeerConnection::connect(remote_node, &local_node)
                 .expect("Unable to connect to the remote peer")
         }
