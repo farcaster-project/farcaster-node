@@ -147,7 +147,7 @@ pub fn run(
         thread_flag_tx,
     };
     let mut service = Service::service(config, runtime)?;
-    service.add_service_bus(rx)?;
+    service.add_bridge_service_bus(rx)?;
     service.run_loop()?;
     unreachable!()
 }
