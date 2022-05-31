@@ -931,7 +931,7 @@ fn create_bitcoin_syncer(
         "--coin",
         "Bitcoin",
         "--electrum-server",
-        &format!("tcp://{}:50001", ehost),
+        &format!("tcp://{}:60401", ehost),
     ]));
 
     syncer

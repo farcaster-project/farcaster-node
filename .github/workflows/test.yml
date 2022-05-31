@@ -59,13 +59,13 @@ jobs:
             logs: true
     runs-on: ubuntu-latest
     container:
-      image: rust:slim-buster
+      image: rust:slim-bullseye
       volumes:
         - bitcoind-data:/data
 
     services:
-      bitcoin-core:
-        image: ghcr.io/farcaster-project/containers/bitcoin-core:0.21.1
+      bitcoind:
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:22.0
         env:
           NETWORK: regtest
           RPC_PORT: 18443
@@ -76,37 +76,36 @@ jobs:
         image: ghcr.io/farcaster-project/containers/electrs:0.8.11
         env:
           NETWORK: regtest
-          DAEMON_RPC_ADDR: bitcoin-core:18443
-          ELECTRUM_RPC_PORT: 50001
+          DAEMON_RPC_ADDR: bitcoind:18443
+          ELECTRUM_RPC_PORT: 60401
         volumes:
           - bitcoind-data:/data
       monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monerod:0.17.3.2
         env:
           NETWORK: regtest
-          MONEROD_RPC_PORT: 18081
           OFFLINE: --offline
           DIFFICULTY: 1
       monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         env:
-          MONEROD_ADDRESS: monerod:18081
+          MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         env:
-          MONEROD_ADDRESS: monerod:18081
+          MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18084
       monero-wallet-rpc-3:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         env:
-          MONEROD_ADDRESS: monerod:18081
-          WALLET_RPC_PORT: 18085
+          MONERO_DAEMON_ADDRESS: monerod:18081
+          WALLET_RPC_PORT: 18083
       monero-lws:
         image: ghcr.io/farcaster-project/containers/monero-lws:latest
         env:
-          MONERO_DAEMON_ADDRESS: monerod:18082
           NETWORK: main
+          MONERO_DAEMON_ADDRESS: monerod:18082
 
     steps:
       - uses: actions/checkout@v3
@@ -125,7 +124,7 @@ jobs:
         run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --nocapture --test-threads=1
         env:
           BITCOIN_COOKIE: /data/regtest/.cookie
-          BITCOIN_HOST: bitcoin-core
+          BITCOIN_HOST: bitcoind
           ELECTRS_HOST: electrs
           MONERO_DAEMON_HOST: monerod
           MONERO_WALLET_HOST_1: monero-wallet-rpc-1
