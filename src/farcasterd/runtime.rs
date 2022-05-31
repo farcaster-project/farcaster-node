@@ -1309,9 +1309,8 @@ impl Runtime {
                             addr
                         );
 
-                        // add to broken connection if a swap running over this
-                        // connection is not completed, and thus present in
-                        // consumed_offers
+                        // log a message if a swap running over this connection
+                        // is not completed, and thus present in consumed_offers
                         let peerd_id = ServiceId::Peer(addr.clone());
                         if self
                             .consumed_offers
