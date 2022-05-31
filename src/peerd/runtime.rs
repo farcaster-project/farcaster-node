@@ -137,7 +137,6 @@ pub fn run(
         remote_node_addr,
         local_socket,
         local_node,
-        routing: empty!(),
         peer_sender,
         forked_from_listener,
         started: SystemTime::now(),
@@ -265,7 +264,6 @@ pub struct Runtime {
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
 
-    routing: HashMap<ServiceId, ServiceId>,
     peer_sender: PeerSender,
     // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
     forked_from_listener: bool,
@@ -378,14 +376,6 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::UpdateSwapId(channel_id) => {
-                debug!(
-                    "Renaming swapd service from temporary id {:#} to swap id #{:#}",
-                    source, channel_id
-                );
-                self.routing.remove(&source);
-                self.routing.insert(channel_id.into(), source);
-            }
             Request::Terminate if source == ServiceId::Farcasterd => {
                 info!("Terminating {}", self.identity().bright_white_bold());
                 std::process::exit(0);
