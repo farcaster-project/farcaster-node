@@ -13,6 +13,7 @@ use std::{
     ptr::swap_nonoverlapping,
     str::FromStr,
 };
+use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 
 use crate::rpc::{
@@ -30,6 +31,14 @@ use internet2::{
 use microservices::esb::{self, Handler};
 use request::{LaunchSwap, NodeId};
 use std::sync::mpsc::{Receiver, Sender};
+
+use farcaster::farcaster_server::{Farcaster, FarcasterServer};
+use farcaster::{InfoRequest, InfoResponse};
+use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
+
+pub mod farcaster {
+    tonic::include_proto!("farcaster");
+}
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
 #[display(Debug)]
@@ -63,14 +72,6 @@ pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
     service.add_loopback(rx_request)?;
     service.run_loop()?;
     unreachable!()
-}
-
-use farcaster::farcaster_server::{Farcaster, FarcasterServer};
-use farcaster::{InfoRequest, InfoResponse};
-use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
-
-pub mod farcaster {
-    tonic::include_proto!("farcaster");
 }
 
 pub struct FarcasterService {
@@ -213,7 +214,6 @@ impl GrpcServer {
             .expect("invalid grpc server bind address");
 
         std::thread::spawn(move || {
-            use tokio::runtime::Builder;
             let rt = Builder::new_multi_thread()
                 .worker_threads(3)
                 .enable_all()
