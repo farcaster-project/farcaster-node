@@ -47,19 +47,19 @@ impl Config {
         match &self.farcasterd {
             Some(FarcasterdConfig {
                 auto_funding: Some(AutoFundingConfig { auto_fund, .. }),
-                grpc_port: _,
+                grpc: _,
             }) => *auto_fund,
             _ => false,
         }
     }
 
     /// Returns if grpc port is set
-    pub fn is_grpc_port_set(&self) -> bool {
+    pub fn is_grpc_enable(&self) -> bool {
         match &self.farcasterd {
             Some(FarcasterdConfig {
                 auto_funding: _,
-                grpc_port: Some(_),
-            }) => true,
+                grpc: Some(GrpcConfig { use_grpc, .. }),
+            }) => *use_grpc,
             _ => false,
         }
     }
@@ -76,7 +76,7 @@ impl Config {
                         testnet,
                         local,
                     }),
-                grpc_port: _,
+                grpc: _,
             }) if *auto_fund => match network {
                 Network::Mainnet => mainnet.clone(),
                 Network::Testnet => testnet.clone(),
@@ -110,16 +110,25 @@ pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
     /// Sets the grpc server port, if none is given, no grpc server is run
-    pub grpc_port: Option<u64>,
+    pub grpc: Option<GrpcConfig>,
 }
 
 impl Default for FarcasterdConfig {
     fn default() -> Self {
         FarcasterdConfig {
             auto_funding: None,
-            grpc_port: None,
+            grpc: None,
         }
     }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct GrpcConfig {
+    /// Use grpc functionality
+    pub use_grpc: bool,
+    /// Grpc port configuration
+    pub port: u64,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

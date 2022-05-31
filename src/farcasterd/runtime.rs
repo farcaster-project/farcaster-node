@@ -98,7 +98,7 @@ pub fn run(
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
-    if config.is_grpc_port_set() {
+    if config.is_grpc_enable() {
         let _grpcd = launch(
             "grpcd",
             &[
@@ -107,8 +107,9 @@ pub fn run(
                     .farcasterd
                     .clone()
                     .unwrap()
-                    .grpc_port
+                    .grpc
                     .unwrap()
+                    .port
                     .to_string(),
             ],
         )?;
