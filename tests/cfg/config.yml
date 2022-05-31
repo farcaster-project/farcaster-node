@@ -1,0 +1,62 @@
+---
+# Top level CI configuration, this is used when tests are
+# run with an environment variable `CI` set to `true`.
+ci:
+  bitcoin:
+    daemon:
+      host: "bitcoind"
+      port: 18443
+    auth:
+      cookie: "/data/regtest/.cookie"
+
+  electrs:
+    host: "electrs"
+    port: 60401
+
+  monero:
+    daemon:
+      host: "monerod"
+      port: 60401
+    wallets:
+    - host: "monero-wallet-rpc-1"
+      port: 12345
+    - host: "monero-wallet-rpc-2"
+      port: 12326
+    lws:
+      host: "monero-lws"
+      port: 12343
+
+        #swap:
+        #  alice:
+        #  bob:
+
+# Top level configuration for (docker-)compose setup, used
+# if no `CI` environment variable is found.
+compose:
+  bitcoin:
+    daemon:
+      host: "localhost"
+      port: 18443
+    auth:
+      user: "test"
+      pass: "cEl2o3tHHgzYeuu3CiiZ2FjdgSiw9wNeMFzoNbFmx9k="
+      #cookie: "tests/data_dir/regtest/.cookie"
+
+  electrs:
+    host: "localhost"
+    port: 60401
+
+  monero:
+    daemon:
+      host: "localhost"
+      port: 18081
+    wallets:
+    - host: "localhost"
+      port: 18083
+    - host: "localhost"
+      port: 18084
+    - host: "localhost"
+      port: 18085
+    lws:
+      host: "localhost"
+      port: 38884

@@ -1,5 +1,5 @@
 use amplify::map;
-use bitcoincore_rpc::{Auth, Client, RpcApi};
+use bitcoincore_rpc::{Client, RpcApi};
 use clap::Parser;
 use farcaster_node::rpc::Request;
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
@@ -26,8 +26,6 @@ use ntest::timeout;
 
 use bitcoin::hashes::Hash;
 use internet2::{CreateUnmarshaller, Unmarshall};
-use std::env;
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use farcaster_core::blockchain::Network;
@@ -36,8 +34,23 @@ use farcaster_node::syncerd::types::{
     GetTx, Task, WatchAddress, WatchHeight, WatchTransaction,
 };
 
+use utils::config;
+
 #[macro_use]
 extern crate log;
+
+mod utils;
+
+#[test]
+#[timeout(600000)]
+#[ignore]
+fn test_config() {
+    let conf = config::TestConfig::parse();
+    println!("{:#?}", conf);
+    println!("{}", conf.bitcoin.daemon);
+    println!("{:#?}", conf.bitcoin.get_auth());
+    assert!(false);
+}
 
 const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
 const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
@@ -926,12 +939,12 @@ fn create_bitcoin_syncer(
     rx_event.bind(&addr).unwrap();
     let mut syncer = BitcoinSyncer::new();
 
-    let ehost = env::var("ELECTRS_HOST").unwrap_or("localhost".into());
+    let conf = config::TestConfig::parse();
     let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
         "--coin",
         "Bitcoin",
         "--electrum-server",
-        &format!("tcp://{}:60401", ehost),
+        &format!("tcp://{}", conf.electrs),
     ]));
 
     syncer
@@ -968,11 +981,8 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let cookie = env::var("BITCOIN_COOKIE").unwrap_or("tests/data_dir/regtest/.cookie".into());
-    let path = PathBuf::from_str(&cookie).unwrap();
-    let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
-    let bitcoin_rpc =
-        Client::new(&format!("http://{}:18443", host), Auth::CookieFile(path)).unwrap();
+    let conf = config::TestConfig::parse();
+    let bitcoin_rpc = Client::new(&format!("http://{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -1698,13 +1708,14 @@ async fn monero_syncer_broadcast_tx_test() {
 }
 
 async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletClient) {
-    let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
-    let daemon_client = monero_rpc::RpcClient::new(format!("http://{}:18081", dhost));
-    let daemon = daemon_client.daemon();
-    let regtest = daemon.regtest();
-    let whost = env::var("MONERO_WALLET_HOST_1").unwrap_or("localhost".into());
-    let wallet_client = monero_rpc::RpcClient::new(format!("http://{}:18083", whost));
-    let wallet = wallet_client.wallet();
+    let conf = config::TestConfig::parse();
+
+    let client = monero_rpc::RpcClient::new(format!("http://{}", conf.monero.daemon));
+    let regtest = client.daemon().regtest();
+
+    let client = monero_rpc::RpcClient::new(format!("http://{}", conf.monero.get_wallet(config::WalletIndex::Primary)));
+    let wallet = client.wallet();
+
     // Ignore if fails, maybe the wallet already exists
     let _ = wallet
         .create_wallet("test".to_string(), None, "English".to_string())
@@ -1728,12 +1739,8 @@ fn create_monero_syncer(
     rx_event.bind(&addr).unwrap();
     let mut syncer = MoneroSyncer::new();
 
-    let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
-    let whost = env::var("MONERO_WALLET_HOST_2").unwrap_or("localhost".into());
-    let lhost = env::var("MONERO_LWS_HOST").unwrap_or("localhost".into());
-
-    let lws_wallet = &format!("http://{}:38884", lhost);
-
+    let conf = config::TestConfig::parse();
+    let lws_wallet = &format!("http://{}", conf.monero.lws);
     let wallet_server = if lws {
         vec!["--monero-lws", lws_wallet]
     } else {
@@ -1747,9 +1754,9 @@ fn create_monero_syncer(
                 "--coin",
                 "Monero",
                 "--monero-daemon",
-                &format!("http://{}:18081", dhost),
+                &format!("http://{}", conf.monero.daemon),
                 "--monero-rpc-wallet",
-                &format!("http://{}:18084", whost),
+                &format!("http://{}", conf.monero.get_wallet(config::WalletIndex::Secondary)),
             ])
             .chain(wallet_server),
     );

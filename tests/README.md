@@ -5,7 +5,6 @@ Start needed containers for supporting the tests with:
 ```
 docker-compose pull
 docker-compose up -d
-sudo chown -R $USER data_dir
 ```
 
 Run `bitcoin` tests:
@@ -24,6 +23,12 @@ Run `swap` tests:
 
 ```
 cargo test swap --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1 --nocapture
+```
+
+Stop the tests and remove the volume
+
+```
+docker-compose down -v
 ```
 
 ## Steps

@@ -351,8 +351,8 @@ async fn swap_parallel_execution() {
 
 async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
     // data directories
-    let data_dir_maker = vec!["-d".to_string(), "tests/.farcaster_1".to_string()];
-    let data_dir_taker = vec!["-d".to_string(), "tests/.farcaster_2".to_string()];
+    let data_dir_maker = vec!["-d".to_string(), "tests/fc1".to_string()];
+    let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
 
     // If we are in CI we use .ci.toml files, otherwise .toml
     let ctx = env::var("CI").unwrap_or("false".into());
@@ -360,13 +360,13 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
 
     let farcasterd_maker_args = farcasterd_args(
         data_dir_maker.clone(),
-        vec!["-vvv", "--config", &format!("tests/.farcasterd_1{}", ext)],
-        vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_1.log"],
+        vec!["-vvv", "--config", &format!("tests/cfg/fc1{}", ext)],
+        vec!["2>&1", "|", "tee", "-a", "tests/fc1.log"],
     );
     let farcasterd_taker_args = farcasterd_args(
         data_dir_taker.clone(),
-        vec!["-vvv", "--config", &format!("tests/.farcasterd_2{}", ext)],
-        vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_2.log"],
+        vec!["-vvv", "--config", &format!("tests/cfg/fc2{}", ext)],
+        vec!["2>&1", "|", "tee", "-a", "tests/fc2.log"],
     );
 
     let farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
