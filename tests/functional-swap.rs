@@ -1801,11 +1801,12 @@ async fn retry_until_finish_state_transition(
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let cookie = env::var("BITCOIN_COOKIE").unwrap_or("tests/data_dir/regtest/.cookie".into());
-    let path = PathBuf::from_str(&cookie).unwrap();
-    let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
-    let bitcoin_rpc =
-        Client::new(&format!("http://{}:18443", host), Auth::CookieFile(path)).unwrap();
+    let conf = config::TestConfig::parse();
+    let bitcoin_rpc = Client::new(
+        &format!("http://{}", conf.bitcoin.daemon),
+        conf.bitcoin.get_auth(),
+    )
+    .unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -1824,13 +1825,14 @@ async fn monero_setup() -> (
     monero_rpc::RegtestDaemonClient,
     Arc<Mutex<monero_rpc::WalletClient>>,
 ) {
-    let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
-    let daemon_client = monero_rpc::RpcClient::new(format!("http://{}:18081", dhost));
-    let daemon = daemon_client.daemon();
-    let regtest = daemon.regtest();
-    let whost = env::var("MONERO_WALLET_HOST_1").unwrap_or("localhost".into());
-    let wallet_client = monero_rpc::RpcClient::new(format!("http://{}:18083", whost));
-    let wallet = wallet_client.wallet();
+    let conf = config::TestConfig::parse();
+    let client = monero_rpc::RpcClient::new(format!("http://{}", conf.monero.daemon));
+    let regtest = client.daemon().regtest();
+    let client = monero_rpc::RpcClient::new(format!(
+        "http://{}",
+        conf.monero.get_wallet(config::WalletIndex::Primary)
+    ));
+    let wallet = client.wallet();
 
     if wallet.open_wallet("test".to_string(), None).await.is_err() {
         // TODO: investigate this error in monero-rpc-rs
