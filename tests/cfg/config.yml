@@ -16,7 +16,7 @@ ci:
   monero:
     daemon:
       host: "monerod"
-      port: 60401
+      port: 18081
     wallets:
     - host: "monero-wallet-rpc-1"
       port: 18083
