@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use bitcoincore_rpc::{Auth, Client, RpcApi};
+use bitcoincore_rpc::{Client, RpcApi};
 use farcaster_core::swap::SwapId;
 use farcaster_node::rpc::request::BitcoinFundingInfo;
 use farcaster_node::rpc::request::MoneroFundingInfo;
@@ -18,11 +18,14 @@ use tokio::sync::Mutex;
 
 use std::collections::HashMap;
 use std::env;
-use std::path::PathBuf;
 use std::str;
 use std::str::FromStr;
 
 use ntest::timeout;
+
+use utils::config;
+
+mod utils;
 
 const ALLOWED_RETRIES: u32 = 180;
 
