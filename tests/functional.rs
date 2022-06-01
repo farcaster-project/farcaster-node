@@ -41,17 +41,6 @@ extern crate log;
 
 mod utils;
 
-#[test]
-#[timeout(600000)]
-#[ignore]
-fn test_config() {
-    let conf = config::TestConfig::parse();
-    println!("{:#?}", conf);
-    println!("{}", conf.bitcoin.daemon);
-    println!("{:#?}", conf.bitcoin.get_auth());
-    assert!(false);
-}
-
 const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
 const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 
@@ -982,7 +971,11 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let conf = config::TestConfig::parse();
-    let bitcoin_rpc = Client::new(&format!("http://{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
+    let bitcoin_rpc = Client::new(
+        &format!("http://{}", conf.bitcoin.daemon),
+        conf.bitcoin.get_auth(),
+    )
+    .unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -1713,7 +1706,10 @@ async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletC
     let client = monero_rpc::RpcClient::new(format!("http://{}", conf.monero.daemon));
     let regtest = client.daemon().regtest();
 
-    let client = monero_rpc::RpcClient::new(format!("http://{}", conf.monero.get_wallet(config::WalletIndex::Primary)));
+    let client = monero_rpc::RpcClient::new(format!(
+        "http://{}",
+        conf.monero.get_wallet(config::WalletIndex::Primary)
+    ));
     let wallet = client.wallet();
 
     // Ignore if fails, maybe the wallet already exists
@@ -1756,7 +1752,10 @@ fn create_monero_syncer(
                 "--monero-daemon",
                 &format!("http://{}", conf.monero.daemon),
                 "--monero-rpc-wallet",
-                &format!("http://{}", conf.monero.get_wallet(config::WalletIndex::Secondary)),
+                &format!(
+                    "http://{}",
+                    conf.monero.get_wallet(config::WalletIndex::Secondary)
+                ),
             ])
             .chain(wallet_server),
     );

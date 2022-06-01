@@ -4,14 +4,14 @@
 //! tests. It allows to parse the configuration from a yaml file and get the correct configuration
 //! based on the context: ci or (docker-)compose.
 
+use amplify::Display;
+use bitcoincore_rpc::Auth;
+use serde::{Deserialize, Serialize};
+use serde_crate as serde;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
-use amplify::Display;
-use serde_crate as serde;
-use serde::{Serialize, Deserialize};
-use bitcoincore_rpc::Auth;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
@@ -23,16 +23,17 @@ struct FullConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
 pub struct TestConfig {
-    pub bitcoin: BitcoinTestConfig,
-    pub electrs: TestNodeConfig,
-    pub monero: MoneroTestConfig,
-    //swap: SwapTestConfig,
+    pub bitcoin: BitcoinConfig,
+    pub electrs: NodeConfig,
+    pub monero: MoneroConfig,
 }
 
 impl TestConfig {
     pub fn parse() -> Self {
-        let s = fs::read_to_string("./tests/cfg/config.yml").expect("Invalid configuration path provided!");
-        let conf: FullConfig = serde_yaml::from_str(&s).expect("Invalid configuration format used!");
+        let s = fs::read_to_string("./tests/cfg/config.yml")
+            .expect("Invalid configuration path provided!");
+        let conf: FullConfig =
+            serde_yaml::from_str(&s).expect("Invalid configuration format used!");
 
         let ctx = env::var("CI").unwrap_or("false".into());
         if ctx == "true" {
@@ -48,19 +49,19 @@ impl TestConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize, Display)]
 #[serde(crate = "serde_crate")]
 #[display("{host}:{port}")]
-pub struct TestNodeConfig {
+pub struct NodeConfig {
     pub host: String,
     pub port: u16,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
-pub struct BitcoinTestConfig {
-    pub daemon: TestNodeConfig,
+pub struct BitcoinConfig {
+    pub daemon: NodeConfig,
     pub auth: BitcoinAuthConfig,
 }
 
-impl BitcoinTestConfig {
+impl BitcoinConfig {
     /// Returns an `Auth` based on values provided in the configuration file. If all values are
     /// provided the Cookie method is prefered.
     pub fn get_auth(&self) -> Auth {
@@ -96,21 +97,23 @@ impl BitcoinAuthConfig {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
-pub struct MoneroTestConfig {
-    pub daemon: TestNodeConfig,
-    pub wallets: Vec<TestNodeConfig>,
-    pub lws: TestNodeConfig,
+pub struct MoneroConfig {
+    pub daemon: NodeConfig,
+    pub wallets: Vec<NodeConfig>,
+    pub lws: NodeConfig,
 }
 
-impl MoneroTestConfig {
+impl MoneroConfig {
     /// Utility function to directly retreive a type of wallet, panic if the wallet is not found in
     /// the configuration.
     ///
     /// ## SAFETY
     /// This function is intended to be used in tests context, if the node config is not found in
     /// the list the function will panic, failing the test.
-    pub fn get_wallet(&self, idx: WalletIndex) -> &TestNodeConfig {
-        self.wallets.get(usize::from(idx)).expect("The wallet requested does not exists in the config file!")
+    pub fn get_wallet(&self, idx: WalletIndex) -> &NodeConfig {
+        self.wallets
+            .get(usize::from(idx))
+            .expect("The wallet requested does not exists in the config file!")
     }
 }
 

@@ -95,7 +95,7 @@ jobs:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
-          WALLET_RPC_PORT: 18084
+          WALLET_RPC_PORT: 18083
       monero-wallet-rpc-3:
         image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
         env:
@@ -122,14 +122,6 @@ jobs:
 
       - name: Cargo functional test
         run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --nocapture --test-threads=1
-        env:
-          BITCOIN_COOKIE: /data/regtest/.cookie
-          BITCOIN_HOST: bitcoind
-          ELECTRS_HOST: electrs
-          MONERO_DAEMON_HOST: monerod
-          MONERO_WALLET_HOST_1: monero-wallet-rpc-1
-          MONERO_WALLET_HOST_2: monero-wallet-rpc-2
-          MONERO_LWS_HOST: monero-lws
 
       - name: Archive farcasterd logs
         uses: actions/upload-artifact@v3

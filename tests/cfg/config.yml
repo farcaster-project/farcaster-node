@@ -1,6 +1,6 @@
 ---
-# Top level CI configuration, this is used when tests are
-# run with an environment variable `CI` set to `true`.
+# Top level CI configuration, this is used when tests are run with an
+# environment variable `CI` set to `true`.
 ci:
   bitcoin:
     daemon:
@@ -19,19 +19,17 @@ ci:
       port: 60401
     wallets:
     - host: "monero-wallet-rpc-1"
-      port: 12345
+      port: 18083
     - host: "monero-wallet-rpc-2"
-      port: 12326
+      port: 18083
+    - host: "monero-wallet-rpc-3"
+      port: 18083
     lws:
       host: "monero-lws"
-      port: 12343
+      port: 38884
 
-        #swap:
-        #  alice:
-        #  bob:
-
-# Top level configuration for (docker-)compose setup, used
-# if no `CI` environment variable is found.
+# Top level configuration for (docker-)compose setup, used if no `CI`
+# environment variable is found.
 compose:
   bitcoin:
     daemon:
@@ -40,7 +38,6 @@ compose:
     auth:
       user: "test"
       pass: "cEl2o3tHHgzYeuu3CiiZ2FjdgSiw9wNeMFzoNbFmx9k="
-      #cookie: "tests/data_dir/regtest/.cookie"
 
   electrs:
     host: "localhost"
