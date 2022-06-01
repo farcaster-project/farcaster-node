@@ -29,7 +29,7 @@
 #[macro_use]
 extern crate log;
 
-use clap::Clap;
+use clap::Parser;
 
 use farcaster_node::checkpointd::{self, Opts};
 use farcaster_node::ServiceConfig;

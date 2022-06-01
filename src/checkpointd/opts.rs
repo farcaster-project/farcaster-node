@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::opts::FARCASTER_KEY_FILE;
-use clap::{AppSettings, Clap, ValueHint};
+use clap::{AppSettings, Parser, ValueHint};
 use std::path::PathBuf;
 use std::{fs, io::Read};
 
@@ -25,14 +25,8 @@ use bitcoin::secp256k1::{
 use strict_encoding::{StrictDecode, StrictEncode};
 
 /// checkpoint daemon; part of Farcaster Node
-#[derive(Clap, Clone, PartialEq, Eq, Debug)]
-#[clap(
-    name = "checkpointd",
-    bin_name = "checkpointd",
-    author,
-    version,
-    setting = AppSettings::ColoredHelp
-)]
+#[derive(Parser, Clone, PartialEq, Eq, Debug)]
+#[clap(name = "checkpointd", bin_name = "checkpointd", author, version)]
 pub struct Opts {
     /// These params can be read also from the configuration file, not just
     /// command-line args or environment variables

@@ -1,3 +1,5 @@
+use crate::farcaster_core::consensus::Encodable;
+use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use std::path::PathBuf;
 use std::{
@@ -11,8 +13,8 @@ use std::{
 
 use crate::swapd::get_swap_id;
 use crate::walletd::NodeSecrets;
+use crate::Endpoints;
 use crate::LogStyle;
-use crate::Senders;
 use crate::{
     rpc::{
         request::{
@@ -23,45 +25,8 @@ use crate::{
     syncerd::SweepXmrAddress,
 };
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use bitcoin::{
-    hashes::hex::FromHex,
-    secp256k1::{self, rand::thread_rng, PublicKey, Secp256k1, SecretKey, Signature},
-    util::{
-        bip32::{DerivationPath, ExtendedPrivKey},
-        psbt::serialize::Deserialize,
-    },
-    Address,
-};
 use colored::Colorize;
-use farcaster_core::{
-    bitcoin::{
-        segwitv0::{BuyTx, CancelTx, FundingTx, PunishTx, RefundTx},
-        segwitv0::{LockTx, SegwitV0},
-        Bitcoin, BitcoinSegwitV0,
-    },
-    blockchain::FeePriority,
-    bundle::{
-        AliceParameters, BobParameters, CoreArbitratingTransactions, FullySignedBuy,
-        FullySignedPunish, FullySignedRefund, FundingTransaction, Proof, SignedAdaptorBuy,
-        SignedAdaptorRefund, SignedArbitratingLock,
-    },
-    consensus::{self, CanonicalBytes, Decodable, Encodable},
-    crypto::{ArbitratingKeyId, GenerateKey, SharedKeyId},
-    crypto::{CommitmentEngine, ProveCrossGroupDleq},
-    monero::{Monero, SHARED_VIEW_KEY_ID},
-    negotiation::PublicOffer,
-    protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures,
-    },
-    role::{Alice, Bob, SwapRole, TradeRole},
-    swap::btcxmr::{BtcXmr, KeyManager},
-    swap::SwapId,
-    syncer::{AddressTransaction, Boolean, Event},
-    transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
-};
-use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
-// use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
+use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
 use request::{LaunchSwap, NodeId};
 
@@ -85,7 +50,6 @@ impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
-    type Address = ServiceId;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -94,19 +58,19 @@ impl esb::Handler<ServiceBus> for Runtime {
 
     fn handle(
         &mut self,
-        senders: &mut esb::SenderList<ServiceBus, ServiceId>,
+        endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(senders, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(senders, source, request),
+            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
+            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
             _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
         }
     }
 
-    fn handle_err(&mut self, _: esb::Error) -> Result<(), esb::Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
@@ -117,10 +81,10 @@ impl esb::Handler<ServiceBus> for Runtime {
 impl Runtime {
     fn send_farcasterd(
         &self,
-        senders: &mut Senders,
+        endpoints: &mut Endpoints,
         message: request::Request,
     ) -> Result<(), Error> {
-        senders.send_to(
+        endpoints.send_to(
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Farcasterd,
@@ -131,7 +95,7 @@ impl Runtime {
 
     fn handle_rpc_msg(
         &mut self,
-        senders: &mut Senders,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -164,7 +128,7 @@ impl Runtime {
 
     fn handle_rpc_ctl(
         &mut self,
-        senders: &mut Senders,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -176,7 +140,7 @@ impl Runtime {
                 //         if let Some(req) = option_req {
                 //             let request = req.clone();
                 //             *option_req = None;
-                //             self.send_ctl(senders, source, request)?
+                //             self.send_ctl(endpoints, source, request)?
                 //         }
                 //     }
                 // }
