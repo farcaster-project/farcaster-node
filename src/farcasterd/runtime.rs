@@ -796,6 +796,28 @@ impl Runtime {
                 )?;
             }
 
+            Request::RevokeOffer(public_offer) => {
+                if self.public_offers.remove(&public_offer) {
+                    info!("Revoked offer {}", public_offer);
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source,
+                        Request::String("Successfully revoked offer.".to_string()),
+                    )?;
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source,
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: "Coulod not find to be revoked offer.".to_string(),
+                        }),
+                    )?;
+                }
+            }
+
             // Request::ListOfferIds => {
             //     endpoints.send_to(
             //         ServiceBus::Ctl,

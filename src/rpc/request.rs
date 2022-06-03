@@ -467,6 +467,10 @@ pub enum Request {
     #[display("monero address()")]
     MoneroAddress(MoneroAddress),
 
+    #[api(type = 193)]
+    #[display("revoke_offer({0})")]
+    RevokeOffer(PublicOffer<BtcXmr>),
+
     #[api(type = 205)]
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),

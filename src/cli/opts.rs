@@ -184,6 +184,13 @@ pub enum Command {
         without_validation: bool,
     },
 
+    /// Revoke offer accepts an offer and revokes it within the runtime
+    #[display("revoke-offer<{public_offer}>")]
+    RevokeOffer {
+        /// The offer to be canceled
+        public_offer: PublicOffer<BtcXmr>,
+    },
+
     /// Request swap progress report.
     #[display("progress<{swapid}>")]
     Progress {
