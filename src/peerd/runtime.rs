@@ -217,7 +217,11 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
         // Forwarding all received messages to the runtime
         trace!("FWP message details: {:?}", message);
         if let Msg::Pong(_) = *Arc::clone(&message) {
-            self.awaiting_pong = false;
+            if self.awaiting_pong {
+                self.awaiting_pong = false;
+            } else {
+                error!("Unexpected pong received in PeerReceiverRuntime.")
+            }
         }
         self.send_over_bridge(message)
     }
