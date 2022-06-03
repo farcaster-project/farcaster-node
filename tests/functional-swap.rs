@@ -67,6 +67,56 @@ async fn swap_bob_maker_normal() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
+async fn swap_revoke_offer_bob_maker_normal() {
+    let execution_mutex = Arc::new(Mutex::new(0));
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_farcaster_clients().await;
+
+    // first make and revoke an offer
+    make_and_revoke_offer(
+        data_dir_maker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    // then check if we can still swap normally
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    run_swap(
+        swap_id,
+        data_dir_taker,
+        data_dir_maker,
+        Arc::clone(&bitcoin_rpc),
+        bitcoin_address,
+        monero_regtest,
+        Arc::clone(&monero_wallet),
+        xmr_dest_wallet_name,
+        execution_mutex,
+    )
+    .await;
+
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
 async fn swap_bob_maker_refund_race_cancel() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -953,6 +1003,44 @@ async fn make_and_take_offer_parallel(
     (xmr_address_wallet_name, btc_address, swap_id)
 }
 
+async fn make_and_revoke_offer(
+    data_dir_maker: Vec<String>,
+    role: String,
+    bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
+    monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
+    btc_amount: bitcoin::Amount,
+    xmr_amount: monero::Amount,
+) {
+    let maker_info_args = info_args(data_dir_maker.clone());
+    // test connection to farcasterd and check that swap-cli is in the correct place
+    run("../swap-cli", maker_info_args.clone()).unwrap();
+
+    let (xmr_address, _) = monero_new_dest_address(Arc::clone(&monero_wallet)).await;
+    let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let btc_addr = btc_address.to_string();
+    let xmr_addr = xmr_address.to_string();
+
+    let cli_make_args = make_offer_args(
+        data_dir_maker.clone(),
+        role,
+        btc_addr.clone(),
+        btc_amount,
+        xmr_addr.clone(),
+        xmr_amount,
+    );
+    let (_stdout, _stderr) = run("../swap-cli", cli_make_args).unwrap();
+
+    // get offer string
+    let offer = retry_until_offer(maker_info_args.clone()).await;
+    revoke_offer(offer[0].clone(), data_dir_maker);
+
+    assert!(get_info(maker_info_args)
+        .offers
+        .iter()
+        .find(|o| format!("{}", o) == offer[0].clone())
+        .is_none());
+}
+
 async fn make_and_take_offer(
     data_dir_maker: Vec<String>,
     data_dir_taker: Vec<String>,
@@ -1557,6 +1645,13 @@ fn needs_funding_args(data_dir: Vec<String>, currency: String) -> Vec<String> {
         .collect()
 }
 
+fn revoke_offer_args(data_dir: Vec<String>, offer: String) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(vec!["revoke-offer".to_string(), format!("{}", offer)])
+        .collect()
+}
+
 fn cli_output_to_node_info(stdout: Vec<String>) -> NodeInfo {
     serde_yaml::from_str(
         &stdout
@@ -1581,6 +1676,15 @@ async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
     panic!("timeout before any offer could be retrieved");
+}
+
+fn get_info(args: Vec<String>) -> NodeInfo {
+    let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+    cli_output_to_node_info(stdout)
+}
+
+fn revoke_offer(offer: String, data_dir: Vec<String>) {
+    run("../swap-cli", revoke_offer_args(data_dir, offer)).unwrap();
 }
 
 async fn retry_until_offer_parallel(

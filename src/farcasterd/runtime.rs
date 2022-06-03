@@ -797,6 +797,7 @@ impl Runtime {
             }
 
             Request::RevokeOffer(public_offer) => {
+                debug!("attempting to revoke {}", public_offer);
                 if self.public_offers.remove(&public_offer) {
                     info!("Revoked offer {}", public_offer);
                     endpoints.send_to(
@@ -806,6 +807,7 @@ impl Runtime {
                         Request::String("Successfully revoked offer.".to_string()),
                     )?;
                 } else {
+                    error!("failed to revoke {}", public_offer);
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd,
