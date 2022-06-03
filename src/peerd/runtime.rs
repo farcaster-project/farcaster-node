@@ -358,9 +358,8 @@ impl Runtime {
                         std::process::exit(0);
                     }
 
-                    if let Err(err) = self.reconnect_peer() {
+                    while let Err(err) = self.reconnect_peer() {
                         warn!("error during reconnection attempt: {}", err);
-                        continue;
                     }
                 }
             }
@@ -522,7 +521,9 @@ impl Runtime {
                     std::process::exit(0);
                 }
 
-                self.reconnect_peer()?;
+                while let Err(err) = self.reconnect_peer() {
+                    warn!("error during reconnection attempt: {}", err);
+                }
             }
 
             // swap initiation message
