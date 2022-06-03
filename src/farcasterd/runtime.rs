@@ -1315,13 +1315,7 @@ impl Runtime {
                         if self
                             .consumed_offers
                             .iter()
-                            .find_map(|(_, (_, service_id))| {
-                                if service_id.clone() == peerd_id {
-                                    Some(0)
-                                } else {
-                                    None
-                                }
-                            })
+                            .find(|(_, (_, service_id))| *service_id == peerd_id)
                             .is_some()
                         {
                             info!("a swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr);
