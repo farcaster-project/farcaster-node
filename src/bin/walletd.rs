@@ -57,7 +57,7 @@ fn main() {
         service_config,
         wallet_token,
         node_secrets,
-        opts.shared.data_dir,
+        // opts.shared.data_dir,
     )
     .expect("Error running walletd runtime");
 

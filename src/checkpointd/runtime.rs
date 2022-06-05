@@ -10,6 +10,7 @@ use std::{
     ptr::swap_nonoverlapping,
     str::FromStr,
 };
+use strict_encoding::StrictEncode;
 
 use crate::swapd::get_swap_id;
 use crate::walletd::NodeSecrets;
@@ -95,7 +96,7 @@ impl Runtime {
 
     fn handle_rpc_msg(
         &mut self,
-        endpoints: &mut Endpoints,
+        _endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -128,22 +129,12 @@ impl Runtime {
 
     fn handle_rpc_ctl(
         &mut self,
-        endpoints: &mut Endpoints,
+        _endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
         match request {
             Request::Hello => match &source {
-                // ServiceId::Swap(swap_id) => {
-                //     if let Some(option_req) = self.swaps.get_mut(swap_id) {
-                //         trace!("Known swapd, you launched it");
-                //         if let Some(req) = option_req {
-                //             let request = req.clone();
-                //             *option_req = None;
-                //             self.send_ctl(endpoints, source, request)?
-                //         }
-                //     }
-                // }
                 source => {
                     debug!("Received Hello from {}", source);
                 }
@@ -151,16 +142,14 @@ impl Runtime {
 
             // TODO: use RFC 2363 once stabilized: https://github.com/rust-lang/rust/issues/60553
             // then, instead of explicitly matching on checkpoint variant, can use index as with fieldless enums, so have one generic request match for all originating services & checkpoint indices
-            Request::Checkpoint(request::Checkpoint::CheckpointWalletAlicePreBuy(wallet_state)) => {
-                let key = (get_swap_id(&source)?, self.identity.clone()).into();
+            Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
+                trace!("setting checkpoint with state: {}", state);
+                let key = (swap_id, source).into();
                 let mut state_encoded = vec![];
-                let _state_size = wallet_state.consensus_encode(&mut state_encoded);
+                let _state_size = state.strict_encode(&mut state_encoded);
                 self.checkpoints.set_state(&key, &state_encoded);
             }
 
-            // Request::Checkpoint(request::Checkpoint::CheckpointSwapAlicePreBuy(_)) => {
-            //     todo!();
-            // }
             _ => {
                 error!(
                     "Request {:?} is not supported by the CTL interface",

@@ -14,6 +14,7 @@
 
 #![allow(clippy::clone_on_copy)]
 
+use crate::walletd::runtime::BobState;
 use crate::walletd::{runtime::AliceState, NodeSecrets};
 use crate::{
     farcasterd,
@@ -682,11 +683,19 @@ pub enum FundingInfo {
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display("checkpoint")]
-pub enum Checkpoint {
-    // TODO: use RFC 2363 once stabilized: https://github.com/rust-lang/rust/issues/60553
+#[display(Debug)]
+pub struct Checkpoint {
+    pub swap_id: SwapId,
+    pub state: CheckpointState,
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display(Debug)]
+pub enum CheckpointState {
+    CheckpointWalletAlicePreLock(AliceState),
+    CheckpointWalletBobPreLock(BobState),
     CheckpointWalletAlicePreBuy(AliceState),
-    // CheckpointSwapAlicePreBuy(SwapState),
+    CheckpointWalletBobPreBuy(BobState),
 }
 
 impl FromStr for BitcoinFundingInfo {
