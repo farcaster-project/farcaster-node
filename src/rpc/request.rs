@@ -664,6 +664,11 @@ pub enum Request {
     #[display("checkpoint({0})", alt = "{0:#}")]
     #[from]
     Checkpoint(Checkpoint),
+
+    #[api(type = 1305)]
+    #[display("checkpoint_multipart({0})")]
+    #[from]
+    CheckpointMultipartChunk(CheckpointMultipartChunk),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -680,6 +685,44 @@ pub enum Outcome {
 pub enum FundingInfo {
     Bitcoin(BitcoinFundingInfo),
     Monero(MoneroFundingInfo),
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("{swap_id}, {msg_number}, {checkpoint_type}")]
+pub struct CheckpointMultipartChunk {
+    pub swap_id: SwapId,
+    pub msg_number: usize,
+    pub msgs_total: usize,
+    pub serialized_state_chunk: Vec<u8>,
+    pub checkpoint_type: CheckpointType,
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display(Debug)]
+pub enum CheckpointType {
+    CheckpointWalletAlicePreLock,
+    CheckpointWalletBobPreLock,
+    CheckpointWalletAlicePreBuy,
+    CheckpointWalletBobPreBuy,
+}
+
+impl From<CheckpointState> for CheckpointType {
+    fn from(state: CheckpointState) -> CheckpointType {
+        match state {
+            CheckpointState::CheckpointWalletAlicePreBuy(_) => {
+                CheckpointType::CheckpointWalletAlicePreBuy
+            }
+            CheckpointState::CheckpointWalletAlicePreLock(_) => {
+                CheckpointType::CheckpointWalletAlicePreLock
+            }
+            CheckpointState::CheckpointWalletBobPreBuy(_) => {
+                CheckpointType::CheckpointWalletBobPreBuy
+            }
+            CheckpointState::CheckpointWalletBobPreLock(_) => {
+                CheckpointType::CheckpointWalletBobPreLock
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
