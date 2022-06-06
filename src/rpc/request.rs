@@ -695,35 +695,6 @@ pub struct CheckpointMultipartChunk {
     pub msgs_total: usize,
     pub serialized_state_chunk: Vec<u8>,
     pub swap_id: SwapId,
-    // pub checkpoint_type: CheckpointType,
-}
-
-#[derive(Clone, Debug, Display, PartialEq, Eq, Hash, StrictDecode, StrictEncode)]
-#[display(Debug)]
-pub enum CheckpointType {
-    CheckpointWalletAlicePreLock,
-    CheckpointWalletBobPreLock,
-    CheckpointWalletAlicePreBuy,
-    CheckpointWalletBobPreBuy,
-}
-
-impl From<CheckpointState> for CheckpointType {
-    fn from(state: CheckpointState) -> CheckpointType {
-        match state {
-            CheckpointState::CheckpointWalletAlicePreBuy(_) => {
-                CheckpointType::CheckpointWalletAlicePreBuy
-            }
-            CheckpointState::CheckpointWalletAlicePreLock(_) => {
-                CheckpointType::CheckpointWalletAlicePreLock
-            }
-            CheckpointState::CheckpointWalletBobPreBuy(_) => {
-                CheckpointType::CheckpointWalletBobPreBuy
-            }
-            CheckpointState::CheckpointWalletBobPreLock(_) => {
-                CheckpointType::CheckpointWalletBobPreLock
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]

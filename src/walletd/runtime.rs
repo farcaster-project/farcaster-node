@@ -1,8 +1,6 @@
 use crate::service::Endpoints;
-use crate::walletd::runtime::request::Checkpoint;
-use crate::walletd::runtime::request::CheckpointMultipartChunk;
-use crate::walletd::runtime::request::CheckpointType;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
+use request::{Checkpoint, CheckpointMultipartChunk};
 use std::path::PathBuf;
 use std::{
     any::Any,
@@ -859,23 +857,26 @@ impl Runtime {
                     )?;
 
                     // *refund_sigs = Some(refund_proc_sigs);
-                    let signed_arb_lock = bob.sign_arbitrating_lock(key_manager, core_arb_txs)?;
-                    let sig = signed_arb_lock.lock_sig;
-                    let tx = core_arb_setup.lock.clone();
-                    let mut lock_tx = LockTx::from_partial(tx);
-                    let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
-                    lock_tx.add_witness(lock_pubkey, sig)?;
-                    let finalized_lock_tx: bitcoin::Transaction =
-                        Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
+                    {
+                        let signed_arb_lock =
+                            bob.sign_arbitrating_lock(key_manager, core_arb_txs)?;
+                        let sig = signed_arb_lock.lock_sig;
+                        let tx = core_arb_setup.lock.clone();
+                        let mut lock_tx = LockTx::from_partial(tx);
+                        let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
+                        lock_tx.add_witness(lock_pubkey, sig)?;
+                        let finalized_lock_tx: bitcoin::Transaction =
+                            Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
 
-                    // TODO: checkpoint here
+                        // TODO: checkpoint here
 
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        my_id.clone(),
-                        source.clone(), // destination swapd
-                        Request::Tx(request::Tx::Lock(finalized_lock_tx)),
-                    )?;
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            my_id.clone(),
+                            source.clone(), // destination swapd
+                            Request::Tx(request::Tx::Lock(finalized_lock_tx)),
+                        )?;
+                    }
 
                     {
                         if adaptor_buy.is_some() {
@@ -1551,17 +1552,12 @@ pub fn checkpoint_state(
     let mut serialized_state = vec![];
     let size = state.strict_encode(&mut serialized_state).unwrap();
 
-    let state =
-        request::CheckpointState::strict_decode(std::io::Cursor::new(serialized_state.clone()))
-            .expect("this has to work given that the checkpoint was just serialized");
-
     // if the size exceeds a boundary, send a multi-part message
     let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
-    debug!("checkpointing state");
+    debug!("checkpointing wallet state");
     if size > max_chunk_size {
         let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
         debug!("need to chunk the checkpoint message");
-        // let checkpoint_type: CheckpointType = state.into();
         let chunks: Vec<(usize, Vec<u8>)> = serialized_state
             .chunks_mut(max_chunk_size)
             .enumerate()
@@ -1570,8 +1566,9 @@ pub fn checkpoint_state(
         let chunks_total = chunks.len();
         for (n, chunk) in chunks {
             debug!(
-                "sending {} chunked checkpoint message of a total {}",
-                n, chunks_total
+                "sending chunked checkpoint message {} of a total {}",
+                n + 1,
+                chunks_total
             );
             endpoints.send_to(
                 ServiceBus::Ctl,
@@ -1585,7 +1582,6 @@ pub fn checkpoint_state(
                     swap_id,
                 }),
             )?;
-            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     } else {
         endpoints.send_to(

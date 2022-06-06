@@ -1,4 +1,3 @@
-use crate::checkpointd::runtime::request::CheckpointType;
 use crate::farcaster_core::consensus::Encodable;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
@@ -91,38 +90,12 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_farcasterd(
-        &self,
-        endpoints: &mut Endpoints,
-        message: request::Request,
-    ) -> Result<(), Error> {
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            self.identity(),
-            ServiceId::Farcasterd,
-            message,
-        )?;
-        Ok(())
-    }
-
     fn handle_rpc_msg(
         &mut self,
         _endpoints: &mut Endpoints,
-        source: ServiceId,
+        _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        let req_swap_id = get_swap_id(&source).ok();
-        match &request {
-            Request::Protocol(Msg::TakerCommit(_)) if source == ServiceId::Farcasterd => {}
-            Request::Protocol(msg)
-                if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id =>
-            {
-                error!("Msg and source don't have same swap_id, ignoring...");
-                return Ok(());
-            }
-            // TODO enter farcasterd messages allowed
-            _ => {}
-        }
         match request {
             Request::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
@@ -157,7 +130,6 @@ impl Runtime {
                 msgs_total,
                 serialized_state_chunk,
                 swap_id,
-                // checkpoint_type,
             }) => {
                 debug!("received checkpoint multipart message");
                 if self.pending_checkpoint_chunks.contains_key(&checksum) {
@@ -186,18 +158,20 @@ impl Runtime {
                     let mut chunk_tup_vec = chunks
                         .drain()
                         .map(|chunk| (chunk.msg_index, chunk.serialized_state_chunk))
-                        .collect::<Vec<(usize, Vec<u8>)>>(); // map to vec
-                    chunk_tup_vec.sort_by(|a, b| a.0.cmp(&b.0)); // sort in ascending order
+                        .collect::<Vec<(usize, Vec<u8>)>>(); // map the hashset to a vec for sorting
+                    chunk_tup_vec.sort_by(|(msg_number_a, _), (msg_number_b, _)| {
+                        msg_number_a.cmp(&msg_number_b)
+                    }); // sort in ascending order
                     let chunk_vec = chunk_tup_vec
                         .drain(..)
                         .map(|(_, chunk)| chunk)
                         .collect::<Vec<Vec<u8>>>(); // drop the extra integer index
                     let serialized_checkpoint =
-                        chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // accumulate the chunked message into a single serialized message
+                        chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // collect the chunked messages into a single serialized message
                     if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
                         // this should never happen
                         error!("Unable to checkpoint the message, checksum did not match");
-                        Ok(())
+                        return Ok(());
                     }
                     // serialize request and recurse to handle the actual request
                     let request = Request::Checkpoint(request::Checkpoint {
@@ -205,14 +179,14 @@ impl Runtime {
                         state: request::CheckpointState::strict_decode(std::io::Cursor::new(
                             serialized_checkpoint,
                         ))
-                        .expect("this should work given that the checksum has matched"),
+                        .map_err(|err| Error::Farcaster(err.to_string()))?,
                     });
                     self.handle_rpc_ctl(endpoints, source, request)?;
                 }
             }
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
-                debug!("setting checkpoint with state: {}", state);
+                debug!("setting checkpoint");
                 let key = (swap_id, source).into();
                 let mut state_encoded = vec![];
                 let _state_size = state.strict_encode(&mut state_encoded);
@@ -227,7 +201,6 @@ impl Runtime {
     }
 }
 
-// TODO: replace this ugly temp structure
 struct CheckpointKey(Vec<u8>);
 
 impl From<(SwapId, ServiceId)> for CheckpointKey {
