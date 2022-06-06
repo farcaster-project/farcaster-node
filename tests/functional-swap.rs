@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use bitcoincore_rpc::{Auth, Client, RpcApi};
+use bitcoincore_rpc::{Client, RpcApi};
 use farcaster_core::swap::SwapId;
 use farcaster_node::rpc::request::BitcoinFundingInfo;
 use farcaster_node::rpc::request::MoneroFundingInfo;
@@ -18,11 +18,14 @@ use tokio::sync::Mutex;
 
 use std::collections::HashMap;
 use std::env;
-use std::path::PathBuf;
 use std::str;
 use std::str::FromStr;
 
 use ntest::timeout;
+
+use utils::config;
+
+mod utils;
 
 const ALLOWED_RETRIES: u32 = 180;
 
@@ -351,8 +354,8 @@ async fn swap_parallel_execution() {
 
 async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
     // data directories
-    let data_dir_maker = vec!["-d".to_string(), "tests/.farcaster_1".to_string()];
-    let data_dir_taker = vec!["-d".to_string(), "tests/.farcaster_2".to_string()];
+    let data_dir_maker = vec!["-d".to_string(), "tests/fc1".to_string()];
+    let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
 
     // If we are in CI we use .ci.toml files, otherwise .toml
     let ctx = env::var("CI").unwrap_or("false".into());
@@ -360,13 +363,13 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
 
     let farcasterd_maker_args = farcasterd_args(
         data_dir_maker.clone(),
-        vec!["-vvv", "--config", &format!("tests/.farcasterd_1{}", ext)],
-        vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_1.log"],
+        vec!["-vvv", "--config", &format!("tests/cfg/fc1{}", ext)],
+        vec!["2>&1", "|", "tee", "-a", "tests/fc1.log"],
     );
     let farcasterd_taker_args = farcasterd_args(
         data_dir_taker.clone(),
-        vec!["-vvv", "--config", &format!("tests/.farcasterd_2{}", ext)],
-        vec!["2>&1", "|", "tee", "-a", "tests/farcasterd_2.log"],
+        vec!["-vvv", "--config", &format!("tests/cfg/fc2{}", ext)],
+        vec!["2>&1", "|", "tee", "-a", "tests/fc2.log"],
     );
 
     let farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
@@ -1801,11 +1804,9 @@ async fn retry_until_finish_state_transition(
 }
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let cookie = env::var("BITCOIN_COOKIE").unwrap_or("tests/data_dir/regtest/.cookie".into());
-    let path = PathBuf::from_str(&cookie).unwrap();
-    let host = env::var("BITCOIN_HOST").unwrap_or("localhost".into());
+    let conf = config::TestConfig::parse();
     let bitcoin_rpc =
-        Client::new(&format!("http://{}:18443", host), Auth::CookieFile(path)).unwrap();
+        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -1824,13 +1825,14 @@ async fn monero_setup() -> (
     monero_rpc::RegtestDaemonClient,
     Arc<Mutex<monero_rpc::WalletClient>>,
 ) {
-    let dhost = env::var("MONERO_DAEMON_HOST").unwrap_or("localhost".into());
-    let daemon_client = monero_rpc::RpcClient::new(format!("http://{}:18081", dhost));
-    let daemon = daemon_client.daemon();
-    let regtest = daemon.regtest();
-    let whost = env::var("MONERO_WALLET_HOST_1").unwrap_or("localhost".into());
-    let wallet_client = monero_rpc::RpcClient::new(format!("http://{}:18083", whost));
-    let wallet = wallet_client.wallet();
+    let conf = config::TestConfig::parse();
+    let client = monero_rpc::RpcClient::new(format!("{}", conf.monero.daemon));
+    let regtest = client.daemon().regtest();
+    let client = monero_rpc::RpcClient::new(format!(
+        "{}",
+        conf.monero.get_wallet(config::WalletIndex::Primary)
+    ));
+    let wallet = client.wallet();
 
     if wallet.open_wallet("test".to_string(), None).await.is_err() {
         // TODO: investigate this error in monero-rpc-rs

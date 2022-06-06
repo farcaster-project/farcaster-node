@@ -2,27 +2,22 @@ version: "3.7"
 services:
     bitcoind:
         image: ghcr.io/farcaster-project/containers/bitcoin-core:22.0
-        environment:
-            NETWORK: regtest
-            RPC_PORT: 18443
-            FALLBACKFEE: "0.00001"
         volumes:
-            - ./data_dir:/data
+            - bitcoind-data:/data
         ports:
             - 18443:18443
             - 18444:18444
+        command: "/usr/bin/bitcoind -regtest -server -rest -txindex -rpcport=18443 -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 -rpcuser=test -rpcpassword=cEl2o3tHHgzYeuu3CiiZ2FjdgSiw9wNeMFzoNbFmx9k= -fallbackfee=0.00001 -datadir=/data"
     electrs:
         image: ghcr.io/farcaster-project/containers/electrs:0.8.11
-        environment:
-            NETWORK: regtest
-            DAEMON_RPC_ADDR: bitcoind:18443
-            ELECTRUM_RPC_PORT: 60401
         depends_on:
             - "bitcoind"
         volumes:
-            - ./data_dir:/data
+            - bitcoind-data:/data
+            - ./cfg:/cfg
         ports:
             - 60401:60401
+        command: "/usr/bin/electrs --daemon-dir /data --conf /cfg/electrs.toml"
     monerod:
         image: ghcr.io/farcaster-project/containers/monerod:0.17.3.2
         environment:
@@ -68,3 +63,6 @@ services:
             - "monerod"
         ports:
             - 38884:38884
+
+volumes:
+  bitcoind-data:

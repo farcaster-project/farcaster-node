@@ -7,8 +7,8 @@ use sysinfo::{ProcessExt, System, SystemExt};
 #[test]
 fn spawn_swap() {
     // Config data dir for two fcd
-    let data_dir_maker = vec!["-d", "tests/.farcaster_node_0", "-vv"];
-    let data_dir_taker = vec!["-d", "tests/.farcaster_node_1", "-vv"];
+    let data_dir_maker = vec!["-d", "tests/fc1", "-vv"];
+    let data_dir_taker = vec!["-d", "tests/fc2", "-vv"];
 
     // Get path to target/debug bins
     let mut bin_path = std::env::current_exe().unwrap();

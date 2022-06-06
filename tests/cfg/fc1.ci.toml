@@ -1,4 +1,4 @@
 [syncers.local]
 electrum_server = "tcp://electrs:60401"
 monero_daemon = "http://monerod:18081"
-monero_rpc_wallet = "http://monero-wallet-rpc-2:18084"
+monero_rpc_wallet = "http://monero-wallet-rpc-2:18083"
