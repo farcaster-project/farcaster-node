@@ -13,6 +13,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::farcasterd::runtime::request::MadeOffer;
+use crate::farcasterd::runtime::request::TookOffer;
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -27,6 +29,7 @@ use crate::{
 };
 use amplify::Wrapper;
 use clap::IntoApp;
+use internet2::LIGHTNING_P2P_DEFAULT_PORT;
 use request::{Commit, List, Params};
 use std::io;
 use std::iter::FromIterator;
@@ -838,7 +841,7 @@ impl Runtime {
                 } else {
                     (None, peer_public_key.clone())
                 };
-                let resp = match (bindaddr, peer_secret_key, peer_public_key) {
+                let res = match (bindaddr, peer_secret_key, peer_public_key) {
                     (None, None, None) => {
                         trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
                         return self.get_secret(endpoints, source, request);
@@ -862,55 +865,51 @@ impl Runtime {
                         Ok(())
                     }
                     _ => unreachable!(),
-                };
-                let res = match resp {
-                    Ok(_) => {
-                        info!(
-                            "Connection daemon {} for incoming peer connections on {}",
-                            "listens".bright_green_bold(),
-                            bind_addr
-                        );
-                        let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
-                        let public_offer = offer.to_public_v1(node_id, public_addr.into());
-                        let pub_offer_id = public_offer.id();
-                        let serialized_offer = public_offer.to_string();
-                        if !self.public_offers.insert(public_offer) {
-                            let msg = s!("This Public offer was previously registered");
-                            error!("{}", msg.err());
-                            return Err(Error::Other(msg));
-                        }
-                        let msg = format!(
-                            "{} {}",
-                            "Public offer registered, please share with taker: ".bright_blue_bold(),
-                            serialized_offer.bright_yellow_bold()
-                        );
-                        info!(
-                            "{}: {:#}",
-                            "Public offer registered".bright_green_bold(),
-                            pub_offer_id.bright_yellow_bold()
-                        );
-                        report_to.push((
-                            Some(source.clone()),
-                            Request::Success(OptionDetails(Some(msg))),
-                        ));
-                        self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
-                        self.acc_addrs
-                            .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
-                        Ok(())
+                }.and_then(|_| {
+                    info!(
+                        "Connection daemon {} for incoming peer connections on {}",
+                        "listens".bright_green_bold(),
+                        bind_addr
+                    );
+                    let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
+                    let public_offer = offer.to_public_v1(node_id, public_addr.into());
+                    let pub_offer_id = public_offer.id();
+                    let serialized_offer = public_offer.to_string();
+                    if !self.public_offers.insert(public_offer) {
+                        let msg = s!("This Public offer was previously registered");
+                        error!("{}", msg.err());
+                        return Err(Error::Other(msg));
                     }
-                    Err(err) => {
-                        error!("{}", err.err());
-                        Err(err)
-                    }
-                };
+                    let msg = s!("Public offer registered, please share with taker.");
+                    info!(
+                        "{}: {:#}",
+                        "Public offer registered.".bright_green_bold(),
+                        pub_offer_id.bright_yellow_bold()
+                    );
+                    self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
+                    self.acc_addrs
+                        .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd, // source
+                        source.clone(),        // destination
+                        Request::MadeOffer(MadeOffer {
+                            offer: serialized_offer,
+                            message: msg,
+                        }),
+                    )?;
+                    Ok(())
+                });
                 if let Err(err) = res {
-                    report_to.push((
-                        Some(source.clone()),
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source.clone(),
                         Request::Failure(Failure {
                             code: 1,
                             info: err.to_string(),
                         }),
-                    ));
+                    )?
                 }
             }
 
@@ -928,89 +927,96 @@ impl Runtime {
                         &public_offer.to_string()
                     );
                     warn!("{}", msg.err());
-                    report_to.push((
-                        Some(source.clone()),
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd, // source
+                        source.clone(),        // destination
                         Request::Failure(Failure { code: 1, info: msg }),
-                    ));
-                } else {
-                    let PublicOffer {
-                        version: _,
-                        offer: _,
-                        node_id,      // bitcoin::Pubkey
-                        peer_address, // InetSocketAddr
-                    } = public_offer;
+                    )?;
+                    return Ok(());
+                }
+                let PublicOffer {
+                    version: _,
+                    offer: _,
+                    node_id,      // bitcoin::Pubkey
+                    peer_address, // InetSocketAddr
+                } = public_offer;
 
-                    let daemon_service = internet2::RemoteNodeAddr {
-                        node_id,                                           // checked above
-                        remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
-                    };
-                    let peer = daemon_service
-                        .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
-                        .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
+                let daemon_service = internet2::RemoteNodeAddr {
+                    node_id,                                           // checked above
+                    remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
+                };
+                let peer = daemon_service
+                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
+                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
-                    // Connect
-                    let peer_connected_is_ok =
-                        match (self.connections.contains(&peer), peer_secret_key) {
-                            (false, None) => return self.get_secret(endpoints, source, request),
-                            (false, Some(sk)) => {
-                                debug!(
-                                    "{} to remote peer {}",
-                                    "Connecting".bright_blue_bold(),
-                                    peer.bright_blue_italic()
-                                );
-                                match self.connect_peer(source.clone(), &peer, sk) {
-                                    Err(err) => {
-                                        report_to.push((
-                                            Some(source.clone()),
-                                            Request::Failure(Failure {
-                                                code: 1,
-                                                info: err.to_string(),
-                                            }),
-                                        ));
-                                        false
-                                    }
-                                    Ok(()) => true,
-                                }
-                            }
-                            (true, _) => {
-                                let msg = format!(
-                                    "Already connected to remote peer {}",
-                                    peer.bright_blue_italic()
-                                );
-                                warn!("{}", &msg);
-                                true
-                            }
-                        };
-
-                    if peer_connected_is_ok {
-                        let offer_registered = format!(
-                            "{}: {:#}",
-                            "Public offer registered".bright_green_bold(),
-                            &public_offer.id().bright_yellow_bold()
-                        );
-                        // not yet in the set
-                        self.public_offers.insert(public_offer.clone());
-                        info!("{}", offer_registered);
-                        let progress = (
-                            Some(source.clone()),
-                            Request::Success(OptionDetails(Some(offer_registered))),
-                        );
-                        report_to.push(progress);
-                        // reconstruct original request, by drop peer_secret_key
-                        // from offer
-                        let request = Request::TakeOffer(PubOffer {
-                            public_offer,
-                            external_address,
-                            internal_address,
-                            peer_secret_key: None,
-                        });
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Wallet,
-                            request,
-                        )?;
+                // Connect
+                let res = match (self.connections.contains(&peer), peer_secret_key) {
+                    (false, None) => {
+                        return self.get_secret(endpoints, source, request);
                     }
+                    (false, Some(sk)) => {
+                        debug!(
+                            "{} to remote peer {}",
+                            "Connecting".bright_blue_bold(),
+                            peer.bright_blue_italic()
+                        );
+                        self.connect_peer(source.clone(), &peer, sk)
+                    }
+                    (true, _) => {
+                        let msg = format!(
+                            "Already connected to remote peer {}",
+                            peer.bright_blue_italic()
+                        );
+                        warn!("{}", &msg);
+                        Ok(())
+                    }
+                }
+                .and_then(|_| {
+                    let offer_registered = format!("{}", "Public offer registered",);
+                    // not yet in the set
+                    self.public_offers.insert(public_offer.clone());
+                    info!(
+                        "{}: {:#}",
+                        offer_registered.bright_green_bold(),
+                        &public_offer.id().bright_yellow_bold()
+                    );
+
+                    // reconstruct original request, but drop peer_secret_key
+                    // from offer
+                    let request = Request::TakeOffer(PubOffer {
+                        public_offer: public_offer.clone(),
+                        external_address,
+                        internal_address,
+                        peer_secret_key: None,
+                    });
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Wallet,
+                        request,
+                    )?;
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd, // source
+                        source.clone(),        // destination
+                        Request::TookOffer(TookOffer {
+                            offerid: public_offer.id(),
+                            message: offer_registered,
+                        }),
+                    )?;
+                    Ok(())
+                });
+                if let Err(err) = res {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source.clone(),
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: err.to_string(),
+                        }),
+                    )?
                 }
             }
 

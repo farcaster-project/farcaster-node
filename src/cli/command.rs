@@ -155,16 +155,8 @@ impl Exec for Command {
                     accordant_addr: accordant_addr.to_string(),
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
-                // report success of failure of the request to cli
-                runtime.report_progress()?;
-                // TODO: activate when we do client side offer validation, must
-                // be activated on farcasterd as well
-                // let public_offer = runtime.response()?;
-                // let instruction =
-                //     format!("Share the following offer with taker:",);
-                // let hex = format!("{:?}", &public_offer);
-                // println!("{} \n {}", instruction.green_bold(),
-                // hex.bright_yellow_bold());
+                // report success or failure of the request to cli
+                runtime.report_response()?;
             }
 
             Command::Take {
@@ -220,7 +212,7 @@ impl Exec for Command {
                         ),
                     )?;
                     // report success of failure of the request to cli
-                    runtime.report_progress()?;
+                    runtime.report_response()?;
                 }
             }
 
