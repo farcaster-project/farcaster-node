@@ -688,16 +688,17 @@ pub enum FundingInfo {
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display("{swap_id}, {msg_number}, {checkpoint_type}")]
+#[display("{msg_index}, {msgs_total}, {swap_id}")]
 pub struct CheckpointMultipartChunk {
-    pub swap_id: SwapId,
-    pub msg_number: usize,
+    pub checksum: [u8; 20],
+    pub msg_index: usize,
     pub msgs_total: usize,
     pub serialized_state_chunk: Vec<u8>,
-    pub checkpoint_type: CheckpointType,
+    pub swap_id: SwapId,
+    // pub checkpoint_type: CheckpointType,
 }
 
-#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Hash, StrictDecode, StrictEncode)]
 #[display(Debug)]
 pub enum CheckpointType {
     CheckpointWalletAlicePreLock,

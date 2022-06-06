@@ -1,3 +1,4 @@
+use crate::checkpointd::runtime::request::CheckpointType;
 use crate::farcaster_core::consensus::Encodable;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
@@ -10,12 +11,14 @@ use std::{
     ptr::swap_nonoverlapping,
     str::FromStr,
 };
+use strict_encoding::StrictDecode;
 use strict_encoding::StrictEncode;
 
 use crate::swapd::get_swap_id;
-use crate::walletd::NodeSecrets;
 use crate::Endpoints;
 use crate::LogStyle;
+use bitcoin::hashes::{ripemd160, Hash};
+
 use crate::{
     rpc::{
         request::{
@@ -33,16 +36,24 @@ use request::{LaunchSwap, NodeId};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
-        identity: ServiceId::Wallet,
+        identity: ServiceId::Checkpoint,
         checkpoints: CheckpointGetSet::new(data_dir),
+        pending_checkpoint_chunks: map![],
     };
 
     Service::run(config, runtime, false)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+struct CheckpointChunk {
+    pub msg_index: usize,
+    pub serialized_state_chunk: Vec<u8>,
+}
+
 pub struct Runtime {
     identity: ServiceId,
     checkpoints: CheckpointGetSet,
+    pending_checkpoint_chunks: HashMap<[u8; 20], HashSet<CheckpointChunk>>,
 }
 
 impl Runtime {}
@@ -129,7 +140,7 @@ impl Runtime {
 
     fn handle_rpc_ctl(
         &mut self,
-        _endpoints: &mut Endpoints,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -140,8 +151,64 @@ impl Runtime {
                 }
             },
 
-            // TODO: use RFC 2363 once stabilized: https://github.com/rust-lang/rust/issues/60553
-            // then, instead of explicitly matching on checkpoint variant, can use index as with fieldless enums, so have one generic request match for all originating services & checkpoint indices
+            Request::CheckpointMultipartChunk(request::CheckpointMultipartChunk {
+                checksum,
+                msg_index,
+                msgs_total,
+                serialized_state_chunk,
+                swap_id,
+                // checkpoint_type,
+            }) => {
+                debug!("received checkpoint multipart message");
+                if self.pending_checkpoint_chunks.contains_key(&checksum) {
+                    let chunks = self
+                        .pending_checkpoint_chunks
+                        .get_mut(&checksum)
+                        .expect("checked with contains_key");
+                    chunks.insert(CheckpointChunk {
+                        msg_index,
+                        serialized_state_chunk,
+                    });
+                } else {
+                    let mut chunk = HashSet::new();
+                    chunk.insert(CheckpointChunk {
+                        msg_index,
+                        serialized_state_chunk,
+                    });
+                    self.pending_checkpoint_chunks.insert(checksum, chunk);
+                }
+                let mut chunks = self
+                    .pending_checkpoint_chunks
+                    .get(&checksum)
+                    .unwrap_or(&HashSet::new())
+                    .clone();
+                if chunks.len() >= msgs_total {
+                    let mut chunk_tup_vec = chunks
+                        .drain()
+                        .map(|chunk| (chunk.msg_index, chunk.serialized_state_chunk))
+                        .collect::<Vec<(usize, Vec<u8>)>>(); // map to vec
+                    chunk_tup_vec.sort_by(|a, b| a.0.cmp(&b.0)); // sort in ascending order
+                    let chunk_vec = chunk_tup_vec
+                        .drain(..)
+                        .map(|(_, chunk)| chunk)
+                        .collect::<Vec<Vec<u8>>>(); // drop the extra integer index
+                    let serialized_checkpoint =
+                        chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // accumulate the chunked message into a single serialized message
+                    if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
+                        error!("\n\nlmao, of course it does not work yet\n\n");
+                    }
+                    // serialize request and recurse to handle the actual request
+                    let request = Request::Checkpoint(request::Checkpoint {
+                        swap_id,
+                        state: request::CheckpointState::strict_decode(std::io::Cursor::new(
+                            serialized_checkpoint,
+                        ))
+                        .expect("this should work given that the checksum has matched"),
+                    });
+                    self.handle_rpc_ctl(endpoints, source, request)?;
+                }
+            }
+
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
                 trace!("setting checkpoint with state: {}", state);
                 let key = (swap_id, source).into();
@@ -151,10 +218,7 @@ impl Runtime {
             }
 
             _ => {
-                error!(
-                    "Request {:?} is not supported by the CTL interface",
-                    request
-                );
+                error!("Request {} is not supported by the CTL interface", request);
             }
         }
         Ok(())

@@ -28,6 +28,7 @@ use crate::{
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use bitcoin::{
     hashes::hex::FromHex,
+    hashes::{ripemd160, Hash},
     secp256k1::{self, ecdsa::Signature, rand::thread_rng, PublicKey, Secp256k1, SecretKey},
     util::{
         bip32::{DerivationPath, ExtendedPrivKey},
@@ -1549,10 +1550,18 @@ pub fn checkpoint_state(
 ) -> Result<(), Error> {
     let mut serialized_state = vec![];
     let size = state.strict_encode(&mut serialized_state).unwrap();
+
+    let state =
+        request::CheckpointState::strict_decode(std::io::Cursor::new(serialized_state.clone()))
+            .expect("this has to work given that the checkpoint was just serialized");
+
     // if the size exceeds a boundary, send a multi-part message
     let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
+    debug!("checkpointing state");
     if size > max_chunk_size {
-        let checkpoint_type: CheckpointType = state.into();
+        let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
+        debug!("need to chunk the checkpoint message");
+        // let checkpoint_type: CheckpointType = state.into();
         let chunks: Vec<(usize, Vec<u8>)> = serialized_state
             .chunks_mut(max_chunk_size)
             .enumerate()
@@ -1560,18 +1569,23 @@ pub fn checkpoint_state(
             .collect();
         let chunks_total = chunks.len();
         for (n, chunk) in chunks {
+            debug!(
+                "sending {} chunked checkpoint message of a total {}",
+                n, chunks_total
+            );
             endpoints.send_to(
                 ServiceBus::Ctl,
                 ServiceId::Wallet,
                 ServiceId::Checkpoint,
                 Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
-                    swap_id,
-                    msg_number: n,
+                    checksum,
+                    msg_index: n,
                     msgs_total: chunks_total,
                     serialized_state_chunk: chunk,
-                    checkpoint_type: checkpoint_type.clone(),
+                    swap_id,
                 }),
             )?;
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     } else {
         endpoints.send_to(
