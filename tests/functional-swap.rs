@@ -1805,11 +1805,8 @@ async fn retry_until_finish_state_transition(
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let conf = config::TestConfig::parse();
-    let bitcoin_rpc = Client::new(
-        &format!("http://{}", conf.bitcoin.daemon),
-        conf.bitcoin.get_auth(),
-    )
-    .unwrap();
+    let bitcoin_rpc =
+        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -1829,10 +1826,10 @@ async fn monero_setup() -> (
     Arc<Mutex<monero_rpc::WalletClient>>,
 ) {
     let conf = config::TestConfig::parse();
-    let client = monero_rpc::RpcClient::new(format!("http://{}", conf.monero.daemon));
+    let client = monero_rpc::RpcClient::new(format!("{}", conf.monero.daemon));
     let regtest = client.daemon().regtest();
     let client = monero_rpc::RpcClient::new(format!(
-        "http://{}",
+        "{}",
         conf.monero.get_wallet(config::WalletIndex::Primary)
     ));
     let wallet = client.wallet();

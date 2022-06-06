@@ -4,11 +4,11 @@
 //! tests. It allows to parse the configuration from a yaml file and get the correct configuration
 //! based on the context: ci or (docker-)compose.
 
-use amplify::Display;
 use bitcoincore_rpc::Auth;
 use serde::{Deserialize, Serialize};
 use serde_crate as serde;
 use std::env;
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -46,12 +46,21 @@ impl TestConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, Display)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(crate = "serde_crate")]
-#[display("{host}:{port}")]
 pub struct NodeConfig {
     pub host: String,
     pub port: u16,
+    pub protocol: Option<String>,
+}
+
+impl fmt::Display for NodeConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(proto) = &self.protocol {
+            write!(f, "{}://", proto)?;
+        }
+        write!(f, "{}:{}", self.host, self.port)
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

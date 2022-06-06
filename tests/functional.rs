@@ -933,7 +933,7 @@ fn create_bitcoin_syncer(
         "--coin",
         "Bitcoin",
         "--electrum-server",
-        &format!("tcp://{}", conf.electrs),
+        &format!("{}", conf.electrs),
     ]));
 
     syncer
@@ -971,11 +971,8 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
 
 fn bitcoin_setup() -> bitcoincore_rpc::Client {
     let conf = config::TestConfig::parse();
-    let bitcoin_rpc = Client::new(
-        &format!("http://{}", conf.bitcoin.daemon),
-        conf.bitcoin.get_auth(),
-    )
-    .unwrap();
+    let bitcoin_rpc =
+        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
 
     // make sure a wallet is created and loaded
     if bitcoin_rpc
@@ -1703,11 +1700,11 @@ async fn monero_syncer_broadcast_tx_test() {
 async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletClient) {
     let conf = config::TestConfig::parse();
 
-    let client = monero_rpc::RpcClient::new(format!("http://{}", conf.monero.daemon));
+    let client = monero_rpc::RpcClient::new(format!("{}", conf.monero.daemon));
     let regtest = client.daemon().regtest();
 
     let client = monero_rpc::RpcClient::new(format!(
-        "http://{}",
+        "{}",
         conf.monero.get_wallet(config::WalletIndex::Primary)
     ));
     let wallet = client.wallet();
@@ -1736,7 +1733,7 @@ fn create_monero_syncer(
     let mut syncer = MoneroSyncer::new();
 
     let conf = config::TestConfig::parse();
-    let lws_wallet = &format!("http://{}", conf.monero.lws);
+    let lws_wallet = &format!("{}", conf.monero.lws);
     let wallet_server = if lws {
         vec!["--monero-lws", lws_wallet]
     } else {
@@ -1750,12 +1747,9 @@ fn create_monero_syncer(
                 "--coin",
                 "Monero",
                 "--monero-daemon",
-                &format!("http://{}", conf.monero.daemon),
+                &format!("{}", conf.monero.daemon),
                 "--monero-rpc-wallet",
-                &format!(
-                    "http://{}",
-                    conf.monero.get_wallet(config::WalletIndex::Secondary)
-                ),
+                &format!("{}", conf.monero.get_wallet(config::WalletIndex::Secondary)),
             ])
             .chain(wallet_server),
     );
