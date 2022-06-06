@@ -1042,7 +1042,7 @@ checksum = "d9435d864e017c3c6afeac1654189b06cdb491cf2ff73dbf0d73b0f292f42ff8"
 [[package]]
 name = "farcaster_core"
 version = "0.4.4"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#abd71f7c16ce9058b5cfb7dfd28e9cdbd029f757"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#0f7f8c58c5d8fa88be108c9f6457ac975cb0ab86"
 dependencies = [
  "amplify",
  "base58-monero",

@@ -195,7 +195,9 @@ impl Runtime {
                     let serialized_checkpoint =
                         chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // accumulate the chunked message into a single serialized message
                     if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
-                        error!("\n\nlmao, of course it does not work yet\n\n");
+                        // this should never happen
+                        error!("Unable to checkpoint the message, checksum did not match");
+                        Ok(())
                     }
                     // serialize request and recurse to handle the actual request
                     let request = Request::Checkpoint(request::Checkpoint {
@@ -210,7 +212,7 @@ impl Runtime {
             }
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
-                trace!("setting checkpoint with state: {}", state);
+                debug!("setting checkpoint with state: {}", state);
                 let key = (swap_id, source).into();
                 let mut state_encoded = vec![];
                 let _state_size = state.strict_encode(&mut state_encoded);
