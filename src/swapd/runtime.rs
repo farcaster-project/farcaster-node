@@ -1046,7 +1046,7 @@ impl Runtime {
         );
         let msg = format!("{} -> {}", self.state, next_state,);
         self.state = next_state;
-        self.report_success_to(endpoints, self.enquirer.clone(), Some(msg))?;
+        self.report_state_transition_progress_message_to(endpoints, self.enquirer.clone(), msg)?;
         Ok(())
     }
 
@@ -2700,7 +2700,7 @@ impl Runtime {
         // halt the swap just because the client disconnected
         let enquirer = self.enquirer.clone();
         let msg = format!("Proposing to take swap to Maker remote peer",);
-        let _ = self.report_progress_to(endpoints, &enquirer, msg);
+        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
 
         Ok(commitment)
     }
@@ -2726,7 +2726,7 @@ impl Runtime {
             swap_id, peerd
         );
         let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(endpoints, &enquirer, msg);
+        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
 
         let engine = CommitmentEngine;
         let commitment = match params.clone() {
