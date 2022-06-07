@@ -677,6 +677,10 @@ pub enum Request {
     #[api(type = 1307)]
     #[display("delete_checkpoint")]
     DeleteCheckpoint(SwapId),
+
+    #[api(type = 1308)]
+    #[display("checkpoint_list")]
+    CheckpointList(Vec<(SwapId, PublicOffer<BtcXmr>)>),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
