@@ -69,7 +69,7 @@ pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
     };
 
     let mut service = Service::service(config, runtime)?;
-    service.add_loopback(rx_request)?;
+    service.add_bridge_service_bus(rx_request)?;
     service.run_loop()?;
     unreachable!()
 }
