@@ -1,4 +1,6 @@
 use crate::farcaster_core::consensus::Encodable;
+use farcaster_core::negotiation::PublicOffer;
+use farcaster_core::swap::btcxmr::BtcXmr;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use std::path::PathBuf;
@@ -199,7 +201,38 @@ impl Runtime {
             }
 
             Request::RetrieveAllCheckpointInfo => {
-                let _pairs = self.database.get_all_key_value_pairs();
+                let pairs = self.database.get_all_key_value_pairs().expect("unable retrieve all checkpointed key-value pairs");
+                let checkpointed_pub_offers: Vec<(SwapId, PublicOffer<BtcXmr>)> = pairs
+                    .iter()
+                    .filter_map(|(checkpoint_key, state)| {
+                        let state =
+                            request::CheckpointState::strict_decode(std::io::Cursor::new(state))
+                                .ok()?;
+                        match checkpoint_key.service_id {
+                            ServiceId::Wallet => match state {
+                                request::CheckpointState::CheckpointWalletAlicePreBuy(
+                                    checkpoint,
+                                ) => Some((checkpoint_key.swap_id, checkpoint.pub_offer)),
+                                request::CheckpointState::CheckpointWalletAlicePreLock(
+                                    checkpoint,
+                                ) => Some((checkpoint_key.swap_id, checkpoint.pub_offer)),
+                                request::CheckpointState::CheckpointWalletBobPreBuy(checkpoint) => {
+                                    Some((checkpoint_key.swap_id, checkpoint.pub_offer))
+                                }
+                                request::CheckpointState::CheckpointWalletBobPreLock(
+                                    checkpoint,
+                                ) => Some((checkpoint_key.swap_id, checkpoint.pub_offer)),
+                            },
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Wallet,
+                    source,
+                    Request::CheckpointList(checkpointed_pub_offers),
+                )?;
             }
 
             Request::DeleteCheckpoint(swap_id) => {
