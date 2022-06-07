@@ -214,7 +214,6 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
         &mut self,
         message: <Unmarshaller<Msg> as Unmarshall>::Data,
     ) -> Result<(), Self::Error> {
-        // Forwarding all received messages to the runtime
         trace!("FWP message details: {:?}", message);
         if let Msg::Pong(_) = *Arc::clone(&message) {
             if self.awaiting_pong {
@@ -223,7 +222,24 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
                 error!("Unexpected pong received in PeerReceiverRuntime.")
             }
         }
-        self.send_over_bridge(message)
+        // Forwarding received and whitelisted messages to the runtime
+        match *Arc::clone(&message) {
+            Msg::MakerCommit(_)
+            | Msg::TakerCommit(_)
+            | Msg::Reveal(_)
+            | Msg::RefundProcedureSignatures(_)
+            | Msg::CoreArbitratingSetup(_)
+            | Msg::BuyProcedureSignature(_)
+            | Msg::Ping(_)
+            | Msg::Pong(_) => self.send_over_bridge(message),
+            _ => {
+                debug!(
+                    "Ignoring message {}, did not match peer receiving whitelist",
+                    message
+                );
+                Ok(())
+            }
+        }
     }
 
     fn handle_err(&mut self, err: Self::Error) -> Result<(), Self::Error> {
