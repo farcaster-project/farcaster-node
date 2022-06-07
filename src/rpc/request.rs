@@ -112,7 +112,10 @@ pub enum Msg {
     PingPeer,
     #[api(type = 34)]
     #[display("error_shutdown")]
-    PeerdShutdown,
+    PeerReceiverRuntimeShutdown,
+    #[api(type = 35)]
+    #[display("identity")]
+    Identity(bitcoin::secp256k1::PublicKey),
 }
 
 impl Msg {
@@ -139,8 +142,14 @@ impl Msg {
             Msg::BuyProcedureSignature(protocol_message::BuyProcedureSignature {
                 swap_id, ..
             }) => *swap_id,
-            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer | Msg::PeerdShutdown => {
-                unreachable!("Ping and Pong does not contain swapid")
+            Msg::Ping(_)
+            | Msg::Pong(_)
+            | Msg::PingPeer
+            | Msg::PeerReceiverRuntimeShutdown
+            | Msg::Identity(_) => {
+                unreachable!(
+                    "Ping, Pong, PingPeer, PeerdShutdown and Identity do not contain swapid"
+                )
             }
         }
     }
@@ -228,6 +237,10 @@ pub struct Token(pub String);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("get keys(token({0}), req_id({1}))")]
 pub struct GetKeys(pub Token, pub RequestId);
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display("reconnect peer(node addr({0})))")]
+pub struct ReconnectPeer(pub NodeAddr, pub Option<SecretKey>);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("launch_swap")]
@@ -359,6 +372,22 @@ pub enum Request {
     #[display("peerd_terminated")]
     PeerdTerminated,
 
+    #[api(type = 5)]
+    #[display("send_message({0})")]
+    Protocol(Msg),
+
+    #[api(type = 6)]
+    #[display("peerd_unreachable")]
+    PeerdUnreachable(ServiceId),
+
+    #[api(type = 7)]
+    #[display("reconnect_peer")]
+    ReconnectPeer(ReconnectPeer),
+
+    #[api(type = 8)]
+    #[display("peerd_reconnected")]
+    PeerdReconnected,
+
     #[api(type = 32)]
     #[display("nodeid({0})")]
     NodeId(NodeId),
@@ -382,10 +411,6 @@ pub enum Request {
     #[api(type = 46)]
     #[display("swap_success()")]
     SwapOutcome(Outcome),
-
-    #[api(type = 5)]
-    #[display("send_message({0})")]
-    Protocol(Msg),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
@@ -874,7 +899,7 @@ pub struct PeerInfo {
     pub since: u64,
     pub messages_sent: usize,
     pub messages_received: usize,
-    pub connected: bool,
+    pub forked_from_listener: bool,
     pub awaits_pong: bool,
 }
 pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;

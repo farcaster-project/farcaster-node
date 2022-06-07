@@ -124,6 +124,7 @@ pub fn run(
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
+        report_peerd_reconnect: none!(),
         running_swaps: none!(),
         spawning_services: none!(),
         making_swaps: none!(),
@@ -154,6 +155,7 @@ pub struct Runtime {
     listens: HashMap<OfferId, RemoteSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
+    report_peerd_reconnect: HashMap<NodeAddr, ServiceId>,
     running_swaps: HashSet<SwapId>,
     spawning_services: HashMap<ServiceId, ServiceId>,
     making_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
@@ -161,9 +163,9 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashMap<OfferId, SwapId>,
-    node_ids: HashMap<OfferId, PublicKey>, // TODO is it possible? HashMap<SwapId, PublicKey>
-    peerd_ids: HashMap<OfferId, ServiceId>,
+    consumed_offers: HashMap<OfferId, (SwapId, ServiceId)>,
+    node_ids: HashMap<OfferId, PublicKey>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
+    peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     syncer_services: HashMap<(Coin, Network), ServiceId>,
@@ -304,9 +306,9 @@ impl Runtime {
         self.consumed_offers = self
             .consumed_offers
             .drain()
-            .filter_map(|(k, v)| {
-                if swapid != &v {
-                    Some((k, v))
+            .filter_map(|(k, (swap_id, service_id))| {
+                if swapid != &swap_id {
+                    Some((k, (swap_id, service_id)))
                 } else {
                     offerid = Some(k);
                     None
@@ -516,6 +518,17 @@ impl Runtime {
                                 connection_id.bright_blue_italic(),
                                 self.connections.len().bright_blue_bold()
                             );
+                            if let Some(swap_service_id) =
+                                self.report_peerd_reconnect.remove(connection_id)
+                            {
+                                debug!("Letting {} know of peer reconnection.", swap_service_id);
+                                endpoints.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    swap_service_id,
+                                    Request::PeerdReconnected,
+                                )?;
+                            }
                         } else {
                             warn!(
                                 "Connection {} was already registered; the service probably was relaunched",
@@ -714,7 +727,7 @@ impl Runtime {
                     );
 
                     self.consumed_offers
-                        .insert(public_offer.offer.id(), swap_id);
+                        .insert(public_offer.offer.id(), (swap_id, peer.clone()));
                     self.stats.incr_initiated();
                     launch_swapd(
                         self,
@@ -735,7 +748,7 @@ impl Runtime {
             }
 
             Request::Keys(Keys(sk, pk, id)) if self.pending_requests.contains_key(&id) => {
-                trace!("received peerd keys");
+                debug!("received peerd keys {}", sk.display_secret());
                 if let Some((request, source)) = self.pending_requests.remove(&id) {
                     // storing node_id
                     trace!("Received expected peer keys, injecting key in request");
@@ -1317,8 +1330,38 @@ impl Runtime {
                             "removed connection {} from farcasterd registered connections",
                             addr
                         );
+
+                        // log a message if a swap running over this connection
+                        // is not completed, and thus present in consumed_offers
+                        let peerd_id = ServiceId::Peer(addr.clone());
+                        if self
+                            .consumed_offers
+                            .iter()
+                            .find(|(_, (_, service_id))| *service_id == peerd_id)
+                            .is_some()
+                        {
+                            info!("a swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr);
+                        }
                     }
                 }
+            }
+
+            Request::PeerdUnreachable(ServiceId::Peer(addr)) => {
+                if self.connections.contains(&addr) {
+                    warn!(
+                        "Peerd {} was reported to be unreachable, attempting to
+                        terminate to kick-off re-connect procedure, if we are
+                        taker and the swap is still running.",
+                        addr
+                    );
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Peer(addr.clone()),
+                        Request::Terminate,
+                    )?;
+                }
+                self.report_peerd_reconnect.insert(addr, source);
             }
 
             req => {

@@ -12,6 +12,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use internet2::LocalNode;
+use internet2::RemoteNodeAddr;
+use internet2::RemoteSocketAddr;
+use microservices::peer::PeerReceiver;
+use microservices::peer::RecvMessage;
+use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
 use std::{rc::Rc, thread::spawn};
@@ -36,26 +42,61 @@ use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, Servi
 pub fn run(
     config: ServiceConfig,
     connection: PeerConnection,
-    internal_id: NodeAddr,
-    local_id: PublicKey,
-    remote_id: Option<PublicKey>,
+    remote_node_addr: Option<RemoteNodeAddr>,
     local_socket: Option<InetSocketAddr>,
-    remote_socket: InetSocketAddr,
-    connect: bool,
+    local_node: LocalNode,
+    // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
+    forked_from_listener: bool,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
-    let (receiver, sender) = connection.split();
+    let (mut peer_receiver, mut peer_sender) = connection.split();
 
-    debug!("Opening bridge between runtime and peer listener threads");
-    let tx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    let rx = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    tx.connect("inproc://bridge")?;
+    // this is hella hacky, but it serves the purpose of keeping peerd's service
+    // id constant across reconnects: <REMOTE_NODE_ID>:<REMOTE_ADDR> for taker,
+    // <REMOTE_NODE_ID>:<LOCAL_ADDR> for maker
+    // TODO: It is privacy/security critical that once the
+    // connection is encrypted, this should be replaced by a proper handshake.
+    let internal_identity = if !forked_from_listener {
+        // taker's case
+        peer_sender
+            .send_message(Msg::Identity(local_node.node_id()))
+            .expect("failed to send taker identity to maker");
+        debug!(
+            "sent message with local node id {} to the maker",
+            local_node.node_id()
+        );
+        ServiceId::Peer(NodeAddr::Remote(remote_node_addr.clone().expect(
+            "remote node addr should never be None in taker (connect) case",
+        )))
+    } else {
+        // maker's case
+        let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
+        let msg: &Msg = &*peer_receiver
+            .recv_message(&unmarshaller)
+            .expect("failed to receive identity message from maker");
+        let id = match msg {
+            Msg::Identity(id) => {
+                debug!("Received the following local node id from the taker {}", id);
+                Some(id)
+            }
+            _ => None,
+        };
+        ServiceId::Peer(NodeAddr::Remote(RemoteNodeAddr {
+            node_id: *id.expect("remote id should always be some in maker's case"),
+            remote_addr: RemoteSocketAddr::Ftcp(local_socket.unwrap()),
+        }))
+    };
+
+    debug!("Opening bridge between runtime and peer receiver threads");
+    let rx = ZMQ_CONTEXT.socket(zmq::PULL)?;
     rx.bind("inproc://bridge")?;
+    let tx = ZMQ_CONTEXT.socket(zmq::PUSH)?;
+    tx.connect("inproc://bridge")?;
 
-    let internal_identity = ServiceId::Peer(internal_id);
+    let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
 
     debug!("Starting thread listening for messages from the remote peer");
-    let bridge_handler = ListenerRuntime {
+    let bridge_handler = PeerReceiverRuntime {
         internal_identity: internal_identity.clone(),
         bridge: esb::Controller::with(
             map! {
@@ -68,12 +109,24 @@ pub fn run(
             BridgeHandler,
             ZmqType::Rep,
         )?,
+        _thread_flag_rx,
+        awaiting_pong: false,
     };
     let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
-    let listener =
-        peer::Listener::<ListenerRuntime, Msg>::with(receiver, bridge_handler, unmarshaller);
-    spawn(move || listener.run_or_panic("peerd-listener"));
-    // TODO: Use the handle returned by spawn to track the child process
+    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, Msg>::with(
+        peer_receiver,
+        bridge_handler,
+        unmarshaller,
+    );
+    // We use the _thread_flag_rx to determine when the thread had terminated
+    spawn(move || {
+        if let Err(err) = peer_receiver_runtime.try_run_loop() {
+            error!(
+                "Error encountered in peer receiver runtime, receiver runtime is stopped: {}",
+                err
+            );
+        }
+    });
 
     debug!(
         "Starting main service runtime with identity: {}",
@@ -81,20 +134,20 @@ pub fn run(
     );
     let runtime = Runtime {
         identity: internal_identity,
-        local_id,
-        remote_id,
+        remote_node_addr,
         local_socket,
-        remote_socket,
+        local_node,
         routing: empty!(),
-        sender,
-        connect,
+        peer_sender,
+        forked_from_listener,
         started: SystemTime::now(),
         messages_sent: 0,
         messages_received: 0,
         awaited_pong: None,
+        thread_flag_tx,
     };
     let mut service = Service::service(config, runtime)?;
-    service.add_loopback(rx)?;
+    service.add_bridge_service_bus(rx)?;
     service.run_loop()?;
     unreachable!()
 }
@@ -127,29 +180,35 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
     }
 }
 
-pub struct ListenerRuntime {
+// PeerReceiverRuntime handles incoming messages only
+pub struct PeerReceiverRuntime {
     internal_identity: ServiceId,
     bridge: esb::Controller<ServiceBus, Request, BridgeHandler>,
+    awaiting_pong: bool,
+    _thread_flag_rx: std::sync::mpsc::Receiver<()>,
 }
 
-impl ListenerRuntime {
+impl PeerReceiverRuntime {
     /// send msgs over bridge from remote to local runtime
     fn send_over_bridge(
         &mut self,
         req: <Unmarshaller<Msg> as Unmarshall>::Data,
     ) -> Result<(), Error> {
         debug!("Forwarding FWP message over BRIDGE interface to the runtime");
-        self.bridge.send_to(
+        if let Err(err) = self.bridge.send_to(
             ServiceBus::Bridge,
             self.internal_identity.clone(),
             Request::Protocol((&*req).clone()),
-        )?;
-        Ok(())
+        ) {
+            error!("Error sending over bridge: {}", err);
+            Err(err.into())
+        } else {
+            Ok(())
+        }
     }
 }
 
-use std::fmt::{Debug, Display};
-impl peer::Handler<Msg> for ListenerRuntime {
+impl peer::Handler<Msg> for PeerReceiverRuntime {
     type Error = crate::Error;
     fn handle(
         &mut self,
@@ -157,6 +216,13 @@ impl peer::Handler<Msg> for ListenerRuntime {
     ) -> Result<(), Self::Error> {
         // Forwarding all received messages to the runtime
         trace!("FWP message details: {:?}", message);
+        if let Msg::Pong(_) = *Arc::clone(&message) {
+            if self.awaiting_pong {
+                self.awaiting_pong = false;
+            } else {
+                error!("Unexpected pong received in PeerReceiverRuntime.")
+            }
+        }
         self.send_over_bridge(message)
     }
 
@@ -165,29 +231,28 @@ impl peer::Handler<Msg> for ListenerRuntime {
         match err {
             Error::Peer(presentation::Error::Transport(transport::Error::TimedOut)) => {
                 trace!("Time to ping the remote peer");
+                if self.awaiting_pong {
+                    error!(
+                        "The ping has failed, probably the connection is down. Will shutdown the receiver runtime."
+                    );
+                    self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
+                    return Err(Error::NotResponding);
+                }
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
-                //
                 self.send_over_bridge(Arc::new(Msg::PingPeer))?;
+                self.awaiting_pong = true;
                 Ok(())
             }
-            Error::Peer(presentation::Error::Transport(transport::Error::SocketIo(
-                std::io::ErrorKind::UnexpectedEof,
-            ))) => {
+            // for all other error types, indicating internal errors and broken
+            // connections, we propagate error to the upper level (currently not
+            // handled, will result in a broken peerd state)
+            _ => {
                 error!(
-                    "The remote peer has hung up, notifying that peerd has halted: {}",
+                    "The remote connection is broken; notifying peerd that its receiver runtime is halting: {}",
                     err
                 );
-                self.send_over_bridge(Arc::new(Msg::PeerdShutdown))?;
-                // park this thread, the process exit is supposed to be handled by the parent
-                //  the socket will continue spamming this error until peerd is shutdown, this ensures it is only handled once
-                std::thread::park();
-                Ok(())
-            }
-            // for all other error types, indicating internal errors, we
-            // propagate error to the upper level
-            _ => {
-                error!("Unrecoverable peer error {}, halting", err);
+                self.send_over_bridge(Arc::new(Msg::PeerReceiverRuntimeShutdown))?;
                 Err(err)
             }
         }
@@ -196,19 +261,21 @@ impl peer::Handler<Msg> for ListenerRuntime {
 
 pub struct Runtime {
     identity: ServiceId,
-    local_id: PublicKey,
-    remote_id: Option<PublicKey>,
+    remote_node_addr: Option<RemoteNodeAddr>,
     local_socket: Option<InetSocketAddr>,
-    remote_socket: InetSocketAddr,
+    local_node: LocalNode,
 
     routing: HashMap<ServiceId, ServiceId>,
-    sender: PeerSender,
-    connect: bool,
+    peer_sender: PeerSender,
+    // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
+    forked_from_listener: bool,
 
     started: SystemTime,
     messages_sent: usize,
     messages_received: usize,
     awaited_pong: Option<u16>,
+
+    thread_flag_tx: std::sync::mpsc::Sender<()>,
 }
 
 impl CtlServer for Runtime {}
@@ -222,22 +289,16 @@ impl esb::Handler<ServiceBus> for Runtime {
     }
 
     fn on_ready(&mut self, _endpoints: &mut Endpoints) -> Result<(), Error> {
-        if self.connect {
+        // log iff taker
+        if !self.forked_from_listener {
             info!(
                 "{} with the remote peer {}",
                 "Initializing connection".bright_blue_bold(),
-                self.remote_socket
+                self.remote_node_addr
+                    .clone()
+                    .expect("remote node addr is never None if forked from listener")
+                    .remote_addr,
             );
-            // self.send_ctl(endpoints, ServiceId::Wallet, request::PeerSecret)
-
-            // self.sender.send_message(Messages::Init(message::Init {
-            //     global_features: none!(),
-            //     local_features: none!(),
-            //     assets: none!(),
-            //     unknown_tlvs: none!(),
-            // }))?;
-
-            self.connect = false;
         }
         Ok(())
     }
@@ -256,10 +317,11 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
+    fn handle_err(&mut self, _: &mut Endpoints, err: esb::Error<ServiceId>) -> Result<(), Error> {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
+        error!("peerd runtime received an error: {}", err);
         Ok(())
     }
 }
@@ -268,24 +330,10 @@ impl Runtime {
     /// send messages over the bridge
     fn handle_rpc_msg(
         &mut self,
-        _endpoints: &mut Endpoints,
+        endpoints: &mut Endpoints,
         _source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        // match &request {
-        //     Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
-        //         channel_id,
-        //         ..
-        //     })) => {
-        //         debug!(
-        //             "Renaming channeld service from temporary id {:#} to channel id
-        // #{:#}",             source, channel_id
-        //         );
-        //         self.routing.remove(&source);
-        //         self.routing.insert(channel_id.clone().into(), source);
-        //     }
-        //     _ => {}
-        // }
         match request.clone() {
             Request::Protocol(message) => {
                 // 1. Check permissions
@@ -296,7 +344,24 @@ impl Runtime {
                     &request.get_type()
                 );
                 self.messages_sent += 1;
-                self.sender.send_message(message)?;
+                while let Err(err) = self.peer_sender.send_message(message.clone()) {
+                    debug!("Error sending to remote peer in peerd runtime: {}", err);
+                    // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
+                    if self.forked_from_listener {
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::PeerdTerminated,
+                        )?;
+                        warn!("Exiting peerd");
+                        std::process::exit(0);
+                    }
+
+                    while let Err(err) = self.reconnect_peer() {
+                        warn!("error during reconnection attempt: {}", err);
+                    }
+                }
             }
             _ => {
                 error!("MSG RPC can be only used for forwarding Protocol Messages");
@@ -328,10 +393,18 @@ impl Runtime {
 
             Request::GetInfo(_) => {
                 let info = PeerInfo {
-                    local_id: self.local_id,
-                    remote_id: self.remote_id.map(|id| vec![id]).unwrap_or_default(),
+                    local_id: self.local_node.node_id(),
+                    remote_id: self
+                        .remote_node_addr
+                        .clone()
+                        .map(|addr| vec![addr.node_id])
+                        .unwrap_or_default(),
                     local_socket: self.local_socket,
-                    remote_socket: vec![self.remote_socket],
+                    remote_socket: self
+                        .remote_node_addr
+                        .clone()
+                        .map(|addr| vec![addr.remote_addr.into()])
+                        .unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or_else(|_| Duration::from_secs(0)),
@@ -342,7 +415,7 @@ impl Runtime {
                         .as_secs(),
                     messages_sent: self.messages_sent,
                     messages_received: self.messages_received,
-                    connected: !self.connect,
+                    forked_from_listener: self.forked_from_listener,
                     awaits_pong: self.awaited_pong.is_some(),
                 };
                 self.send_ctl(endpoints, source, Request::PeerInfo(info))?;
@@ -355,6 +428,53 @@ impl Runtime {
         }
         Ok(())
     }
+
+    fn reconnect_peer(&mut self) -> Result<(), Error> {
+        info!("Attempting to reconnect to remote peerd");
+        // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
+        // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
+        let mut connection = PeerConnection::connect(
+            self.remote_node_addr
+                .clone()
+                .expect("is some if not forked from listener"),
+            &self.local_node,
+        );
+        let mut attempt = 0;
+
+        while let Err(err) = connection {
+            trace!("failed to re-establish tcp connection: {}", err);
+            attempt += 1;
+            warn!("reconnect failed attempting again in {} seconds", attempt);
+            std::thread::sleep(std::time::Duration::from_secs(attempt));
+            connection = PeerConnection::connect(
+                self.remote_node_addr
+                    .clone()
+                    .expect("is some if not forked from listener"),
+                &self.local_node,
+            );
+        }
+        let (peer_receiver, peer_sender) = connection.expect("checked with is_err()").split();
+        self.peer_sender = peer_sender;
+        // send the local id to the maker(listener) again
+        self.peer_sender
+            .send_message(Msg::Identity(self.local_node.node_id()))?;
+
+        let identity = self.identity.clone();
+        let dying_thread_flag_tx = self.thread_flag_tx.clone();
+        let (thread_flag_tx, thread_flag_rx) = std::sync::mpsc::channel();
+        info!("Peerd reconnect successful, launching peerd receiver runtime");
+        spawn(move || {
+            restart_receiver_runtime(
+                identity,
+                peer_receiver,
+                dying_thread_flag_tx,
+                thread_flag_rx,
+            )
+        });
+        self.thread_flag_tx = thread_flag_tx;
+        Ok(())
+    }
+
     /// receive messages arriving over the bridge
     fn handle_bridge(
         &mut self,
@@ -371,7 +491,10 @@ impl Runtime {
         match &request {
             Request::Protocol(Msg::PingPeer) => self.ping()?,
 
-            Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => self.pong(*pong_size)?,
+            Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => {
+                debug!("receiving ping, ponging back");
+                self.pong(*pong_size)?
+            }
 
             Request::Protocol(Msg::Pong(noise)) => {
                 match self.awaited_pong {
@@ -384,15 +507,23 @@ impl Runtime {
                 self.awaited_pong = None;
             }
 
-            Request::Protocol(Msg::PeerdShutdown) => {
-                warn!("Exiting peerd");
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    ServiceId::Farcasterd,
-                    Request::PeerdTerminated,
-                )?;
-                std::process::exit(0);
+            Request::Protocol(Msg::PeerReceiverRuntimeShutdown) => {
+                warn!("Exiting peerd receiver runtime");
+                // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
+                if self.forked_from_listener {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Farcasterd,
+                        Request::PeerdTerminated,
+                    )?;
+                    warn!("Exiting peerd");
+                    std::process::exit(0);
+                }
+
+                while let Err(err) = self.reconnect_peer() {
+                    warn!("error during reconnection attempt: {}", err);
+                }
             }
 
             // swap initiation message
@@ -412,71 +543,6 @@ impl Runtime {
                     request,
                 )?;
             }
-            // }
-            // Request::PeerMessage(Messages::OpenChannel(_)) => {
-            //     endpoints.send_to(
-            //         ServiceBus::Msg,
-            //         self.identity(),
-            //         ServiceId::Farcasterd,
-            //         request,
-            //     )?;
-            // }
-
-            // Request::PeerMessage(Messages::AcceptChannel(accept_channel)) => {
-            //     let channeld: ServiceId = accept_channel.temporary_channel_id.into();
-            //     self.routing.insert(channeld.clone(), channeld.clone());
-            //     endpoints.send_to(ServiceBus::Msg, self.identity(), channeld, request)?;
-            // }
-
-            // Request::PeerMessage(Messages::FundingCreated(message::FundingCreated {
-            //     temporary_channel_id,
-            //     ..
-            // })) => {
-            //     endpoints.send_to(
-            //         ServiceBus::Msg,
-            //         self.identity(),
-            //         temporary_channel_id.clone().into(),
-            //         request,
-            //     )?;
-            // }
-
-            // Request::PeerMessage(Messages::FundingSigned(message::FundingSigned {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::FundingLocked(message::FundingLocked {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateAddHtlc(message::UpdateAddHtlc {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateFulfillHtlc(message::UpdateFulfillHtlc {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateFailHtlc(message::UpdateFailHtlc {
-            //     channel_id,
-            //     ..
-            // }))
-            // | Request::PeerMessage(Messages::UpdateFailMalformedHtlc(
-            //     message::UpdateFailMalformedHtlc { channel_id, .. },
-            // )) => {
-            //     let channeld: ServiceId = channel_id.clone().into();
-            //     endpoints.send_to(
-            //         ServiceBus::Msg,
-            //         self.identity(),
-            //         self.routing.get(&channeld).cloned().unwrap_or(channeld),
-            //         request,
-            //     )?;
-            // }
-
-            // Request::PeerMessage(message) => {
-            //     // 1. Check permissions
-            //     // 2. Forward to the corresponding daemon
-            //     debug!("Got peer FWP message {}", message);
-            // }
             other => {
                 error!("Request is not supported by the BRIDGE interface");
                 dbg!(other);
@@ -488,17 +554,14 @@ impl Runtime {
 
     fn ping(&mut self) -> Result<(), Error> {
         trace!("Sending ping to the remote peer");
-        if self.awaited_pong.is_some() {
-            return Err(Error::NotResponding);
-        }
         let mut rng = rand::thread_rng();
         let len: u16 = rng.gen_range(4, 32);
         let mut noise = vec![0u8; len as usize];
         rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.sender.send_message(Msg::Ping(Ping {
-            ignored: noise.into(),
+        self.peer_sender.send_message(Msg::Ping(Ping {
+            ignored: noise,
             pong_size,
         }))?;
         self.awaited_pong = Some(pong_size);
@@ -513,7 +576,57 @@ impl Runtime {
             .map(|_| rng.gen())
             .collect();
         self.messages_sent += 1;
-        self.sender.send_message(Msg::Pong(noise))?;
+        self.peer_sender.send_message(Msg::Pong(noise))?;
         Ok(())
+    }
+}
+
+fn restart_receiver_runtime(
+    internal_identity: ServiceId,
+    peer_receiver: PeerReceiver,
+    dying_thread_flag_tx: std::sync::mpsc::Sender<()>,
+    _thread_flag_rx: std::sync::mpsc::Receiver<()>,
+) {
+    // flag_rx on the old receiver thread goes out of scope, thus making
+    // the send fail as soon as the old receiver thread exited.
+    while dying_thread_flag_tx.send(()).is_ok() {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    let tx = ZMQ_CONTEXT
+        .socket(zmq::PUSH)
+        .expect("unable to create new bridge zmq socket");
+    tx.connect("inproc://bridge")
+        .expect("unable to connec to zmq bridge");
+
+    debug!("Starting thread listening for messages from the remote peer");
+    let bridge_handler = PeerReceiverRuntime {
+        internal_identity: internal_identity.clone(),
+        bridge: esb::Controller::with(
+            map! {
+                ServiceBus::Bridge => esb::BusConfig {
+                    carrier: zmqsocket::Carrier::Socket(tx),
+                    router: None,
+                    queued: true,
+                }
+            },
+            BridgeHandler,
+            ZmqType::Rep,
+        )
+        .expect("error re-creating receiver runtime bridge"),
+        awaiting_pong: false,
+        _thread_flag_rx,
+    };
+    let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
+    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, Msg>::with(
+        peer_receiver,
+        bridge_handler,
+        unmarshaller,
+    );
+    debug!("entering peerd receiver runtime loop");
+    if let Err(err) = peer_receiver_runtime.try_run_loop() {
+        error!(
+            "Error encountered in peer receiver runtime, receiver runtime is stopped: {}",
+            err
+        )
     }
 }

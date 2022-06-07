@@ -101,11 +101,10 @@ use std::net::TcpListener;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use bitcoin::secp256k1::PublicKey;
 use farcaster_node::peerd::{self, Opts};
 use farcaster_node::LogStyle;
 use farcaster_node::ServiceConfig;
-use internet2::{session, FramingProtocol, NodeAddr, RemoteNodeAddr, RemoteSocketAddr};
+use internet2::{session, FramingProtocol, RemoteNodeAddr, RemoteSocketAddr};
 use microservices::peer::PeerConnection;
 
 /*
@@ -177,26 +176,23 @@ fn main() {
      */
 
     let local_node = opts.peer_key_opts.local_node();
-    let local_id = local_node.node_id();
     info!(
         "{}: {}",
         "Local node id".bright_green_bold(),
-        local_id.bright_yellow_bold()
+        local_node.node_id().bright_yellow_bold()
     );
 
     let peer_socket = PeerSocket::from(opts.clone());
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
-    let internal_id: NodeAddr;
     let mut local_socket: Option<InetSocketAddr> = None;
-    let mut remote_id: Option<PublicKey> = None;
-    let mut remote_socket: InetSocketAddr;
-    let connect: bool;
+    let mut remote_node_addr: Option<RemoteNodeAddr> = None;
+    let forked_from_listener: bool;
     let connection = match peer_socket {
         PeerSocket::Listen(RemoteSocketAddr::Ftcp(inet_addr)) => {
             debug!("Running in LISTEN mode");
 
-            connect = false;
+            forked_from_listener = true;
             local_socket = Some(inet_addr);
 
             debug!("Binding TCP socket {}", inet_addr);
@@ -213,8 +209,6 @@ fn main() {
                     .expect("Error accepting incoming peer connection");
                 debug!("New connection from {}", remote_socket_addr);
 
-                remote_socket = remote_socket_addr.into();
-
                 // TODO: Support multithread mode
                 debug!("Forking child process");
                 if let ForkResult::Child = unsafe { fork().expect("Unable to fork child process") }
@@ -228,30 +222,25 @@ fn main() {
                         session::Raw::with_brontide(stream, local_node.private_key(), inet_addr)
                             .expect("Unable to establish session with the remote peer");
 
-                    internal_id = NodeAddr::Remote(RemoteNodeAddr {
-                        node_id: opts.peer_key_opts.internal_node().node_id(),
-                        remote_addr: RemoteSocketAddr::Ftcp(remote_socket),
-                    });
                     debug!(
-                        "Session successfully established with new unique id: {}",
-                        internal_id
+                        "Session successfully established with {}",
+                        remote_socket_addr
                     );
+
                     break PeerConnection::with(session);
                 }
                 debug!("Child forked; returning into main listener event loop");
                 continue;
             }
         }
-        PeerSocket::Connect(remote_node_addr) => {
-            debug!("Running in CONNECT mode");
+        PeerSocket::Connect(remote_node) => {
+            debug!("Peerd running in CONNECT mode");
 
-            connect = true;
-            internal_id = NodeAddr::Remote(remote_node_addr.clone());
-            remote_id = Some(remote_node_addr.node_id);
-            remote_socket = remote_node_addr.remote_addr.into();
+            forked_from_listener = false;
+            remote_node_addr = Some(remote_node.clone());
 
-            debug!("Connecting to {}", &remote_node_addr.addr());
-            PeerConnection::connect(remote_node_addr, &local_node)
+            debug!("Connecting to {}", &remote_node.addr());
+            PeerConnection::connect(remote_node, &local_node)
                 .expect("Unable to connect to the remote peer")
         }
         _ => unimplemented!(),
@@ -260,27 +249,21 @@ fn main() {
     debug!("Starting runtime ...");
 
     /* A maker / listener passes the following content
-        internal_id: local key and remote address
-        remote_id: None
+        remote_node_addr: none
         local_socket: local inet address
-        remote_socket: address of the remote socket
         connect: false
 
     A taker / connecter passes the following content
-        internal_id: remote key and remote address
-        remote_id: remote peer id
+        remote_node_addr: full internet2 remote node address
         local_socket: None
-        remote_socket: remote node addr
         connect: true */
     peerd::run(
         service_config,
         connection,
-        internal_id,
-        local_id,
-        remote_id,
+        remote_node_addr,
         local_socket,
-        remote_socket,
-        connect,
+        local_node,
+        forked_from_listener,
     )
     .expect("Error running peerd runtime");
 

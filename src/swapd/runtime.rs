@@ -177,6 +177,7 @@ pub fn run(
             }),
         )?),
         pending_requests: none!(),
+        pending_peer_request: none!(),
         txs: none!(),
     };
     let broker = false;
@@ -196,6 +197,7 @@ pub struct Runtime {
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
     pending_requests: HashMap<ServiceId, Vec<PendingRequest>>, // FIXME Something more meaningful than ServiceId to index
+    pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
@@ -1017,14 +1019,27 @@ impl SyncerState {
     }
 }
 impl Runtime {
-    fn send_peer(&self, endpoints: &mut Endpoints, msg: request::Msg) -> Result<(), Error> {
+    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: request::Msg) -> Result<(), Error> {
         trace!("sending peer message {}", msg.bright_yellow_bold());
-        endpoints.send_to(
+        if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
             self.peer_service.clone(), // = ServiceId::Loopback
-            Request::Protocol(msg),
-        )?;
+            Request::Protocol(msg.clone()),
+        ) {
+            error!(
+                "could not send message {} to {} due to {}",
+                msg, self.peer_service, error
+            );
+            warn!("notifying farcasterd of peer error, farcasterd will attempt to reconnect");
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                ServiceId::Farcasterd,
+                Request::PeerdUnreachable(self.peer_service.clone()),
+            )?;
+            self.pending_peer_request.push(msg);
+        }
         Ok(())
     }
 
@@ -1542,14 +1557,14 @@ impl Runtime {
             Request::Protocol(Msg::Reveal(reveal))
                 if self.state.commit() && self.state.remote_commit().is_some() =>
             {
-                let local_params = self
-                    .state
-                    .local_params()
-                    .expect("commit state has local_params");
                 let reveal_proof = Msg::Reveal(reveal);
                 let swap_id = reveal_proof.swap_id();
                 self.send_peer(endpoints, reveal_proof)?;
                 trace!("sent reveal_proof to peerd");
+                let local_params = self
+                    .state
+                    .local_params()
+                    .expect("commit state has local_params");
                 let reveal_params: Reveal = (swap_id, local_params.clone()).into();
                 self.send_peer(endpoints, Msg::Reveal(reveal_params))?;
                 trace!("sent reveal_proof to peerd");
@@ -2664,6 +2679,13 @@ impl Runtime {
                     remote_keys: bmap(&self.maker_peer, &dumb!()),
                 };
                 self.send_ctl(endpoints, source, Request::SwapInfo(info))?;
+            }
+
+            Request::PeerdReconnected => {
+                for msg in self.pending_peer_request.clone().iter() {
+                    self.send_peer(endpoints, msg.clone())?;
+                }
+                self.pending_peer_request.clear();
             }
 
             _ => {

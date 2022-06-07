@@ -68,8 +68,8 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
 
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    tx_event.connect("inproc://syncerdbridge")?;
     rx_event.bind("inproc://syncerdbridge")?;
+    tx_event.connect("inproc://syncerdbridge")?;
 
     let syncer: Box<dyn Synclet> = match coin {
         Coin::Monero => Box::new(MoneroSyncer::new()),
@@ -93,7 +93,7 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         polling,
     )?;
     let mut service = Service::service(config, runtime)?;
-    service.add_loopback(rx_event)?;
+    service.add_bridge_service_bus(rx_event)?;
     service.run_loop()?;
     unreachable!()
 }

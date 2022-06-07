@@ -1,0 +1,24 @@
+title Peer Reconnect Procedure
+
+participant t_peerd_run
+participant t_peerd_recv
+participant m_peerd_recv
+participant m_peerd_run
+participant m_farcasterd
+participant m_swapd
+
+==Peer reconnect procedure==
+m_swapd -> m_farcasterd : Ctl PeerdUnreachable
+m_farcasterd -> m_peerd_run : Ctl Terminate
+m_peerd_run -> m_farcasterd : Ctl PeerdTerminated
+m_peerd_recv -> m_peerd_recv: terminate
+m_peerd_run -> m_peerd_run: terminate
+t_peerd_recv -> t_peerd_run : Ctl PeerdListenerRuntimeShutdown
+t_peerd_recv -> t_peerd_recv: terminate
+==Taker peerd restarts connection, connects to maker forked peerd==
+m_peerd_run -> m_peerd_run : forked from listener
+t_peerd_run -> m_peerd_run : NodeId (raw)
+t_peerd_run -> t_peerd_recv: spawn
+m_peerd_run -> m_farcasterd: Ctl Hello
+m_farcasterd -> m_swapd: Ctl PeerdReconnected
+
