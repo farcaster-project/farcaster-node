@@ -669,6 +669,14 @@ pub enum Request {
     #[display("checkpoint_multipart({0})")]
     #[from]
     CheckpointMultipartChunk(CheckpointMultipartChunk),
+
+    #[api(type = 1306)]
+    #[display("retrieve_all_checkpoint_info")]
+    RetrieveAllCheckpointInfo,
+
+    #[api(type = 1307)]
+    #[display("delete_checkpoint")]
+    DeleteCheckpoint(SwapId),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]

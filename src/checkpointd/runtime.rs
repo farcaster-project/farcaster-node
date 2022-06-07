@@ -36,7 +36,7 @@ use request::{LaunchSwap, NodeId};
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Checkpoint,
-        checkpoints: CheckpointGetSet::new(data_dir),
+        checkpoints: CheckpointGetSet::new(data_dir).unwrap(),
         pending_checkpoint_chunks: map![],
     };
 
@@ -187,10 +187,34 @@ impl Runtime {
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
                 debug!("setting checkpoint");
-                let key = (swap_id, source).into();
+                let key = CheckpointKey {
+                    swap_id,
+                    service_id: source,
+                };
                 let mut state_encoded = vec![];
                 let _state_size = state.strict_encode(&mut state_encoded);
-                self.checkpoints.set_state(&key, &state_encoded);
+                self.checkpoints
+                    .set_state(&key, &state_encoded)
+                    .expect("failed to set checkpoint state");
+            }
+
+            Request::RetrieveAllCheckpointInfo => {
+                let _pairs = self.checkpoints.get_all_key_value_pairs();
+            }
+
+            Request::DeleteCheckpoint(swap_id) => {
+                self.checkpoints
+                    .delete_state(CheckpointKey {
+                        swap_id,
+                        service_id: ServiceId::Wallet,
+                    })
+                    .expect("failed to delete Wallet state");
+                self.checkpoints
+                    .delete_state(CheckpointKey {
+                        swap_id,
+                        service_id: ServiceId::Swap(swap_id),
+                    })
+                    .expect("failed to delete Swap state");
             }
 
             _ => {
@@ -201,45 +225,84 @@ impl Runtime {
     }
 }
 
-struct CheckpointKey(Vec<u8>);
+#[derive(Debug, Clone)]
+struct CheckpointKey {
+    swap_id: SwapId,
+    service_id: ServiceId,
+}
 
-impl From<(SwapId, ServiceId)> for CheckpointKey {
-    fn from((swapid, serviceid): (SwapId, ServiceId)) -> Self {
-        CheckpointKey(
-            Into::<[u8; 32]>::into(swapid)
-                .iter()
-                .cloned()
-                .chain(Into::<Vec<u8>>::into(serviceid).iter().cloned())
-                .collect(),
-        )
+impl From<CheckpointKey> for Vec<u8> {
+    fn from(checkpoint_key: CheckpointKey) -> Self {
+        Into::<[u8; 32]>::into(checkpoint_key.swap_id)
+            .iter()
+            .cloned()
+            .chain(
+                Into::<Vec<u8>>::into(checkpoint_key.service_id)
+                    .iter()
+                    .cloned(),
+            )
+            .collect()
+    }
+}
+
+impl From<Vec<u8>> for CheckpointKey {
+    fn from(raw_key: Vec<u8>) -> Self {
+        CheckpointKey {
+            swap_id: SwapId(raw_key[0..32].try_into().unwrap()),
+            service_id: raw_key[32..].to_vec().into(),
+        }
     }
 }
 
 struct CheckpointGetSet(lmdb::Environment);
 
 impl CheckpointGetSet {
-    fn new(path: PathBuf) -> CheckpointGetSet {
-        let env = lmdb::Environment::new().open(&path).unwrap();
-        env.create_db(None, lmdb::DatabaseFlags::empty()).unwrap();
-        CheckpointGetSet(env)
+    fn new(path: PathBuf) -> Result<CheckpointGetSet, lmdb::Error> {
+        let env = lmdb::Environment::new().open(&path)?;
+        env.create_db(None, lmdb::DatabaseFlags::empty())?;
+        Ok(CheckpointGetSet(env))
     }
 
-    fn set_state(&mut self, key: &CheckpointKey, val: &[u8]) {
-        let db = self.0.open_db(None).unwrap();
-        let mut tx = self.0.begin_rw_txn().unwrap();
-        if !tx.get(db, &key.0).is_err() {
-            tx.del(db, &key.0, None).unwrap();
+    fn set_state(&mut self, key: &CheckpointKey, val: &[u8]) -> Result<(), lmdb::Error> {
+        let db = self.0.open_db(None)?;
+        let mut tx = self.0.begin_rw_txn()?;
+        if !tx.get(db, &Vec::from(key.clone())).is_err() {
+            tx.del(db, &Vec::from(key.clone()), None)?;
         }
-        tx.put(db, &key.0, &val, lmdb::WriteFlags::empty()).unwrap();
-        tx.commit().unwrap();
+        tx.put(db, &Vec::from(key.clone()), &val, lmdb::WriteFlags::empty())?;
+        tx.commit()?;
+        Ok(())
     }
 
-    fn get_state(&mut self, key: &CheckpointKey) -> Vec<u8> {
-        let db = self.0.open_db(None).unwrap();
-        let tx = self.0.begin_ro_txn().unwrap();
-        let val: Vec<u8> = tx.get(db, &key.0).unwrap().into();
+    fn get_state(&mut self, key: &CheckpointKey) -> Result<Vec<u8>, lmdb::Error> {
+        let db = self.0.open_db(None)?;
+        let tx = self.0.begin_ro_txn()?;
+        let val: Vec<u8> = tx.get(db, &Vec::from(key.clone()))?.into();
         tx.abort();
-        val
+        Ok(val)
+    }
+
+    fn delete_state(&mut self, key: CheckpointKey) -> Result<(), lmdb::Error> {
+        let db = self.0.open_db(None)?;
+        let mut tx = self.0.begin_rw_txn()?;
+        if let Err(err) = tx.del(db, &Vec::from(key), None) {
+            error!("{}", err);
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn get_all_key_value_pairs(&mut self) -> Result<Vec<(CheckpointKey, Vec<u8>)>, lmdb::Error> {
+        let db = self.0.open_db(None)?;
+        let tx = self.0.begin_ro_txn()?;
+        let mut cursor = tx.open_ro_cursor(db)?;
+        let res = cursor
+            .iter()
+            .map(|(key, value)| (CheckpointKey::from(key.to_vec()), value.to_vec()))
+            .collect();
+        drop(cursor);
+        tx.abort();
+        Ok(res)
     }
 }
 
@@ -247,17 +310,27 @@ impl CheckpointGetSet {
 fn test_lmdb_state() {
     let val1 = vec![0, 1];
     let val2 = vec![2, 3, 4, 5];
-    let key1 = (SwapId::random(), ServiceId::Checkpoint).into();
-    let key2 = (SwapId::random(), ServiceId::Checkpoint).into();
+    let key1 = CheckpointKey {
+        swap_id: SwapId::random(),
+        service_id: ServiceId::Swap(SwapId::random()),
+    };
+    let key2 = CheckpointKey {
+        swap_id: SwapId::random(),
+        service_id: ServiceId::Checkpoint,
+    };
     let path = std::env::current_dir().unwrap();
-    let mut state = CheckpointGetSet::new(path.to_path_buf());
-    state.set_state(&key1, &val1);
-    let res = state.get_state(&key1);
+    let mut state = CheckpointGetSet::new(path.to_path_buf()).unwrap();
+    state.set_state(&key1, &val1).unwrap();
+    let res = state.get_state(&key1).unwrap();
     assert_eq!(val1, res);
-    state.set_state(&key1, &val2);
-    let res = state.get_state(&key1);
+    state.set_state(&key1, &val2).unwrap();
+    let res = state.get_state(&key1).unwrap();
     assert_eq!(val2, res);
-    state.set_state(&key2, &val2);
+    state.set_state(&key2, &val2).unwrap();
+    let res = state.get_state(&key2).unwrap();
+    assert_eq!(val2, res);
+    state.delete_state(key2.clone()).unwrap();
     let res = state.get_state(&key2);
-    assert_eq!(val2, res);
+    assert!(res.is_err());
+    state.get_all_key_value_pairs().unwrap();
 }
