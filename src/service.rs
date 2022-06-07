@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::rpc::request::Progress;
 use crate::syncerd::opts::Coin;
 use std::convert::TryInto;
 use std::fmt::{self, Display, Formatter};
@@ -310,7 +311,7 @@ where
         Ok(())
     }
 
-    fn report_progress_to(
+    fn report_progress_message_to(
         &mut self,
         senders: &mut Endpoints,
         dest: impl TryToServiceId,
@@ -321,7 +322,24 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Progress(msg.to_string()),
+                Request::Progress(Progress::ProgressMessage(msg.to_string())),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn report_state_transition_progress_message_to(
+        &mut self,
+        senders: &mut Endpoints,
+        dest: impl TryToServiceId,
+        msg: impl ToString,
+    ) -> Result<(), Error> {
+        if let Some(dest) = dest.try_to_service_id() {
+            senders.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                dest,
+                Request::Progress(Progress::StateTransition(msg.to_string())),
             )?;
         }
         Ok(())

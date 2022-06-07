@@ -508,7 +508,7 @@ pub enum Request {
 
     #[api(type = 1002)]
     #[display("progress({0})")]
-    Progress(String),
+    Progress(Progress),
 
     #[api(type = 1005)]
     #[display("swap_progress({0})", alt = "{0:#}")]
@@ -766,6 +766,13 @@ pub struct InitSwap {
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
     pub funding_address: Option<bitcoin::Address>,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display("progress {}")]
+pub enum Progress {
+    ProgressMessage(String),
+    StateTransition(String),
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -1042,7 +1049,7 @@ pub trait IntoSuccessOrFailure {
 impl IntoProgressOrFailure for Result<String, crate::Error> {
     fn into_progress_or_failure(self) -> Request {
         match self {
-            Ok(val) => Request::Progress(val),
+            Ok(val) => Request::Progress(Progress::ProgressMessage(val)),
             Err(err) => Request::from(err),
         }
     }

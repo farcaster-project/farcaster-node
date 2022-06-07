@@ -585,7 +585,10 @@ impl Runtime {
                     );
                     report_to.push((
                         swap_params.report_to.clone(), // walletd
-                        Request::Progress(format!("Swap daemon {} operational", source)),
+                        Request::Progress(request::Progress::ProgressMessage(format!(
+                            "Swap daemon {} operational",
+                            source
+                        ))),
                     ));
                     let swapid = get_swap_id(&source)?;
                     // when online, Syncers say Hello, then they get registered to self.syncers
@@ -628,7 +631,10 @@ impl Runtime {
                     );
                     report_to.push((
                         swap_params.report_to.clone(), // walletd
-                        Request::Progress(format!("Swap daemon {} operational", source)),
+                        Request::Progress(request::Progress::ProgressMessage(format!(
+                            "Swap daemon {} operational",
+                            source
+                        ))),
                     ));
                     match swap_params.local_params {
                         Params::Alice(_) => {}
@@ -1069,12 +1075,12 @@ impl Runtime {
                     };
                     for (_i, req) in queue.iter().enumerate() {
                         match req {
-                            Request::Progress(x) | Request::Success(OptionDetails(Some(x))) => {
-                                if x.contains("State") {
-                                    swap_progress.state_transitions.push(x.clone());
-                                } else {
-                                    swap_progress.messages.push(x.clone());
-                                }
+                            Request::Progress(request::Progress::ProgressMessage(x))
+                            | Request::Success(OptionDetails(Some(x))) => {
+                                swap_progress.messages.push(x.clone());
+                            }
+                            Request::Progress(request::Progress::StateTransition(x)) => {
+                                swap_progress.state_transitions.push(x.clone());
                             }
                             Request::Failure(Failure { code: _, info: x }) => {
                                 swap_progress.failure = Some(x.clone());
