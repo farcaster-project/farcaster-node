@@ -45,6 +45,15 @@ pub mod walletd {
 }
 
 fn main() -> Result<(), configure_me_codegen::Error> {
+    let proto_file = "./src/grpcd/proto/farcaster.proto";
+
+    tonic_build::configure()
+        .build_server(true)
+        .compile(&[proto_file], &["."])
+        .unwrap_or_else(|e| panic!("protobuf compile error: {}", e));
+
+    println!("cargo:rerun-if-changed={}", proto_file);
+
     let outdir = "./shell";
 
     for app in [

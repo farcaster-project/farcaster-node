@@ -98,6 +98,22 @@ pub fn run(
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
+    if config.is_grpc_enable() {
+        let _grpcd = launch(
+            "grpcd",
+            &[
+                "--grpc-port",
+                &config
+                    .farcasterd
+                    .clone()
+                    .unwrap()
+                    .grpc
+                    .unwrap()
+                    .port
+                    .to_string(),
+            ],
+        )?;
+    }
 
     if config.is_auto_funding_enable() {
         info!("farcasterd will attempt to fund automatically");
@@ -403,6 +419,7 @@ impl Runtime {
     ) -> Result<(), Error> {
         match (&request, &source) {
             (Request::Hello, _) => {
+                trace!("Hello farcasterd from {}", source);
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -742,12 +759,13 @@ impl Runtime {
                 }
             }
 
-            Request::GetInfo => {
+            Request::GetInfo(id) => {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::NodeInfo(NodeInfo {
+                        id,
                         node_ids: self.node_ids(),
                         listens: self.listens.values().into_iter().cloned().collect(),
                         uptime: SystemTime::now()

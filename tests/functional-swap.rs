@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use crate::farcaster::farcaster_client::FarcasterClient;
 use bitcoincore_rpc::{Client, RpcApi};
 use farcaster_core::swap::SwapId;
 use farcaster_node::rpc::request::BitcoinFundingInfo;
@@ -15,6 +16,7 @@ use std::sync::Arc;
 use std::time;
 use sysinfo::{ProcessExt, System, SystemExt};
 use tokio::sync::Mutex;
+use tonic::transport::Endpoint;
 
 use std::collections::HashMap;
 use std::env;
@@ -64,6 +66,32 @@ async fn swap_bob_maker_normal() {
     )
     .await;
 
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+}
+
+pub mod farcaster {
+    tonic::include_proto!("farcaster");
+}
+
+use farcaster::InfoRequest;
+
+#[tokio::test]
+#[ignore]
+async fn grpc_server_functional_test() {
+    let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;
+
+    // Allow some time for the microservices to start and register each other
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+
+    let channel = Endpoint::from_static("http://[::1]:50051")
+        .connect()
+        .await
+        .unwrap();
+
+    let mut farcaster_client = FarcasterClient::new(channel.clone());
+    let request = tonic::Request::new(InfoRequest { id: 0 });
+    let response = farcaster_client.info(request).await;
+    assert_eq!(response.unwrap().into_inner().id, 0);
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
@@ -1429,7 +1457,7 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["swapd", "walletd", "syncerd", "peerd"].contains(&process.name())
+            ["swapd", "grpcd", "walletd", "syncerd", "peerd"].contains(&process.name())
                 && procs
                     .iter()
                     .map(|proc| proc.0)

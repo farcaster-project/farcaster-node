@@ -326,7 +326,7 @@ impl Runtime {
                 std::process::exit(0);
             }
 
-            Request::GetInfo => {
+            Request::GetInfo(_) => {
                 let info = PeerInfo {
                     local_id: self.local_id,
                     remote_id: self.remote_id.map(|id| vec![id]).unwrap_or_default(),
