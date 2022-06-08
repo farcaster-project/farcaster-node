@@ -95,4 +95,4 @@ services:
     command: "/usr/bin/monero-wallet-rpc --stagenet --disable-rpc-login --wallet-dir wallets --daemon-host stagenet.melo.tools:38081 --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083 --confirm-external-bind"
 ```
 
-:mag_right: If you plan to make offer with the Docker stack make sure you understand what ports need to be open and forwarded, a current limitation does not allow port reuse while making multiple offers. Either refresh the containers or forward more ports for peerd to listen on, by default `9735` is forwarded.
+:mag_right: If you plan to make offer with the Docker stack make sure you understand what ports need to be open and forwarded. You might need to additionally configure your firewall to enable takers to connect.
