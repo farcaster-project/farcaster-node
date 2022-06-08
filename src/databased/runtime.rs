@@ -225,30 +225,18 @@ impl Runtime {
                                 .ok()?;
                         match checkpoint_key.service_id {
                             ServiceId::Wallet => match state {
-                                request::CheckpointState::CheckpointWalletAlicePreBuy(
-                                    checkpoint,
-                                ) => Some(CheckpointEntry {
-                                    swap_id: checkpoint_key.swap_id,
-                                    public_offer: checkpoint.pub_offer,
-                                }),
-                                request::CheckpointState::CheckpointWalletAlicePreLock(
-                                    checkpoint,
-                                ) => Some(CheckpointEntry {
-                                    swap_id: checkpoint_key.swap_id,
-                                    public_offer: checkpoint.pub_offer,
-                                }),
-                                request::CheckpointState::CheckpointWalletBobPreBuy(checkpoint) => {
+                                request::CheckpointState::CheckpointWalletAlice(checkpoint) => {
                                     Some(CheckpointEntry {
                                         swap_id: checkpoint_key.swap_id,
                                         public_offer: checkpoint.pub_offer,
                                     })
                                 }
-                                request::CheckpointState::CheckpointWalletBobPreLock(
-                                    checkpoint,
-                                ) => Some(CheckpointEntry {
-                                    swap_id: checkpoint_key.swap_id,
-                                    public_offer: checkpoint.pub_offer,
-                                }),
+                                request::CheckpointState::CheckpointWalletBob(checkpoint) => {
+                                    Some(CheckpointEntry {
+                                        swap_id: checkpoint_key.swap_id,
+                                        public_offer: checkpoint.pub_offer,
+                                    })
+                                }
                             },
                             _ => None,
                         }

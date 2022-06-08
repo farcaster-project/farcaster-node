@@ -700,7 +700,7 @@ impl Runtime {
                             checkpoint_state(
                                 endpoints,
                                 swap_id,
-                                request::CheckpointState::CheckpointWalletBobPreLock(BobState {
+                                request::CheckpointState::CheckpointWalletBob(BobState {
                                     bob: bob.clone(),
                                     local_params: local_params.clone(),
                                     local_proof: local_proof.clone(),
@@ -827,7 +827,7 @@ impl Runtime {
                     checkpoint_state(
                         endpoints,
                         swap_id,
-                        request::CheckpointState::CheckpointWalletBobPreBuy(state.clone()),
+                        request::CheckpointState::CheckpointWalletBob(state.clone()),
                     )?;
                 } else {
                     error!(
@@ -960,7 +960,7 @@ impl Runtime {
                     checkpoint_state(
                         endpoints,
                         swap_id,
-                        request::CheckpointState::CheckpointWalletAlicePreLock(state.clone()),
+                        request::CheckpointState::CheckpointWalletAlice(state.clone()),
                     )?;
                 } else {
                     error!(
@@ -1094,7 +1094,7 @@ impl Runtime {
                     checkpoint_state(
                         endpoints,
                         swap_id,
-                        request::CheckpointState::CheckpointWalletAlicePreBuy(state.clone()),
+                        request::CheckpointState::CheckpointWalletAlice(state.clone()),
                     )?;
                 } else {
                     error!(
@@ -1597,15 +1597,13 @@ impl Runtime {
             }
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
-                CheckpointState::CheckpointWalletAlicePreBuy(alice_state)
-                | CheckpointState::CheckpointWalletAlicePreLock(alice_state) => {
+                CheckpointState::CheckpointWalletAlice(alice_state) => {
                     info!("Restoring alice wallet for swap {}", swap_id);
                     if !self.wallets.contains_key(&swap_id) {
                         self.wallets.insert(swap_id, Wallet::Alice(alice_state));
                     }
                 }
-                CheckpointState::CheckpointWalletBobPreBuy(bob_state)
-                | CheckpointState::CheckpointWalletBobPreLock(bob_state) => {
+                CheckpointState::CheckpointWalletBob(bob_state) => {
                     info!("Restoring bob wallet for swap {}", swap_id);
                     if !self.wallets.contains_key(&swap_id) {
                         self.wallets.insert(swap_id, Wallet::Bob(bob_state));
