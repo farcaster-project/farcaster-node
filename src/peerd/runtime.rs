@@ -222,24 +222,15 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
                 error!("Unexpected pong received in PeerReceiverRuntime.")
             }
         }
-        // Forwarding received and whitelisted messages to the runtime
-        match *Arc::clone(&message) {
-            Msg::MakerCommit(_)
-            | Msg::TakerCommit(_)
-            | Msg::Reveal(_)
-            | Msg::RefundProcedureSignatures(_)
-            | Msg::CoreArbitratingSetup(_)
-            | Msg::BuyProcedureSignature(_)
-            | Msg::Ping(_)
-            | Msg::Pong(_) => self.send_over_bridge(message),
-            _ => {
-                debug!(
-                    "Ignoring message {}, did not match peer receiving whitelist",
-                    message
-                );
-                Ok(())
-            }
+        if message.on_receiver_whitelist() {
+            self.send_over_bridge(message)?;
+        } else {
+            debug!(
+                "Ignoring message {}, did not match peer receiving whitelist",
+                message
+            );
         }
+        Ok(())
     }
 
     fn handle_err(&mut self, err: Self::Error) -> Result<(), Self::Error> {
