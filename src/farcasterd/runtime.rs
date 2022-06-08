@@ -1453,7 +1453,18 @@ impl Runtime {
                     "--token",
                     &self.wallet_token.clone().to_string(),
                 ],
-            )?;
+            );
+
+            // in case it can't connect wait for it to crash
+            std::thread::sleep(Duration::from_secs_f32(0.5));
+
+            // status is Some if peerd returns because it crashed
+            let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
+
+            if status.is_some() {
+                return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
+            }
+
             debug!("New instance of peerd launched with PID {}", child.id());
             Ok(())
         } else {
