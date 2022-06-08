@@ -260,7 +260,7 @@ impl Runtime {
                 )?;
             }
 
-            Request::DeleteCheckpoint(swap_id) => {
+            Request::RemoveCheckpoint(swap_id) => {
                 self.database
                     .delete_checkpoint_state(CheckpointKey {
                         swap_id,
