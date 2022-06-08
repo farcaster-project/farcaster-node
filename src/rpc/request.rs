@@ -525,23 +525,35 @@ pub enum Request {
     String(String),
 
     #[api(type = 1002)]
-    #[display("progress({0})")]
+    #[display("progress: {0}")]
     Progress(Progress),
 
     #[api(type = 1005)]
-    #[display("swap_progress({0})", alt = "{0:#}")]
+    #[display(inner)]
     SwapProgress(SwapProgress),
 
     #[api(type = 1003)]
     #[display("read_progress({0})")]
     ReadProgress(SwapId),
 
+    #[api(type = 9999)]
+    #[display("test_progress({0})")]
+    TestProgress(SwapId),
+
+    #[api(type = 1006)]
+    #[display("subscribe_progress({0})")]
+    SubscribeProgress(SwapId),
+
+    #[api(type = 1007)]
+    #[display("unsubscribe_progress({0})")]
+    UnsubscribeProgress(SwapId),
+
     #[api(type = 1001)]
-    #[display("success({0})")]
+    #[display(inner)]
     Success(OptionDetails),
 
     #[api(type = 1000)]
-    #[display("failure({0:#})")]
+    #[display(inner)]
     #[from]
     Failure(Failure),
 
@@ -785,7 +797,7 @@ pub struct InitSwap {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("progress {}")]
+#[display(inner)]
 pub enum Progress {
     Message(String),
     StateTransition(String),

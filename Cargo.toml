@@ -51,6 +51,7 @@ farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", 
 anyhow = "1"
 hex = "^0.4.3"
 
+rand = "0.8.4"
 # LNP/BP crates
 amplify = "3"
 amplify_derive = "2"
@@ -106,6 +107,8 @@ tonic = "0.7.2"
 prost = "0.10.3"
 
 [build-dependencies]
+
+rand = "0.8.4"
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
 farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
 
@@ -147,7 +150,6 @@ features = ['peer']
 
 [dev-dependencies]
 ntest = "0.7.3"
-rand = "0.8.4"
 
 # Test
 strip-ansi-escapes = "0.1.1"

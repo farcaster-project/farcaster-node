@@ -204,11 +204,30 @@ _arguments "${_arguments_options[@]}" \
 '--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
 '-x+[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
+'-f[Subscribe to progress and only return when progress is finished]' \
+'--follow[Subscribe to progress and only return when progress is finished]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
 ':swapid -- The swap id requested:' \
+&& ret=0
+;;
+(test)
+_arguments "${_arguments_options[@]}" \
+'-d+[Data directory path]:DATA_DIR:_files -/' \
+'--data-dir=[Data directory path]:DATA_DIR:_files -/' \
+'-T+[Use Tor]:TOR_PROXY:_hosts' \
+'--tor-proxy=[Use Tor]:TOR_PROXY:_hosts' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
+'-x+[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
+'--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'*-v[Set verbosity level]' \
+'*--verbose[Set verbosity level]' \
+':swapid:' \
 && ret=0
 ;;
 (needs-funding)
@@ -225,7 +244,7 @@ _arguments "${_arguments_options[@]}" \
 '--help[Print help information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':coin:' \
+':coin -- The coin funding required needs to be checked against:' \
 && ret=0
 ;;
 (help)
@@ -260,6 +279,7 @@ _swap-cli_commands() {
 'take:Taker accepts offer and connects to maker'\''s daemon to start the trade' \
 'revoke-offer:Revoke offer accepts an offer and revokes it within the runtime' \
 'progress:Request swap progress report' \
+'test:' \
 'needs-funding:Returns addresses and amounts that require funding for coin' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -319,6 +339,11 @@ _swap-cli__revoke-offer_commands() {
 _swap-cli__take_commands() {
     local commands; commands=()
     _describe -t commands 'swap-cli take commands' commands "$@"
+}
+(( $+functions[_swap-cli__test_commands] )) ||
+_swap-cli__test_commands() {
+    local commands; commands=()
+    _describe -t commands 'swap-cli test commands' commands "$@"
 }
 
 _swap-cli "$@"
