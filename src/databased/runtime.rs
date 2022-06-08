@@ -222,7 +222,7 @@ impl Runtime {
                     .database
                     .get_all_key_value_pairs()
                     .expect("unable retrieve all checkpointed key-value pairs");
-                let checkpointed_pub_offers: List<_> = pairs
+                let checkpointed_pub_offers: List<CheckpointEntry> = pairs
                     .iter()
                     .filter_map(|(checkpoint_key, state)| {
                         let state =
@@ -230,18 +230,30 @@ impl Runtime {
                                 .ok()?;
                         match checkpoint_key.service_id {
                             ServiceId::Wallet => match state {
-                                request::CheckpointState::CheckpointWalletAlice(checkpoint) => {
+                                request::CheckpointState::CheckpointWalletAlicePreBuy(
+                                    checkpoint,
+                                ) => Some(CheckpointEntry {
+                                    swap_id: checkpoint_key.swap_id,
+                                    public_offer: checkpoint.pub_offer,
+                                }),
+                                request::CheckpointState::CheckpointWalletAlicePreLock(
+                                    checkpoint,
+                                ) => Some(CheckpointEntry {
+                                    swap_id: checkpoint_key.swap_id,
+                                    public_offer: checkpoint.pub_offer,
+                                }),
+                                request::CheckpointState::CheckpointWalletBobPreBuy(checkpoint) => {
                                     Some(CheckpointEntry {
                                         swap_id: checkpoint_key.swap_id,
                                         public_offer: checkpoint.pub_offer,
                                     })
                                 }
-                                request::CheckpointState::CheckpointWalletBob(checkpoint) => {
-                                    Some(CheckpointEntry {
-                                        swap_id: checkpoint_key.swap_id,
-                                        public_offer: checkpoint.pub_offer,
-                                    })
-                                }
+                                request::CheckpointState::CheckpointWalletBobPreLock(
+                                    checkpoint,
+                                ) => Some(CheckpointEntry {
+                                    swap_id: checkpoint_key.swap_id,
+                                    public_offer: checkpoint.pub_offer,
+                                }),
                             },
                             _ => None,
                         }
@@ -278,10 +290,9 @@ impl Runtime {
     }
 }
 
-pub fn checkpoint_restore(
+pub fn checkpoint_state(
     endpoints: &mut Endpoints,
     swap_id: SwapId,
-    destination: ServiceId,
     state: request::CheckpointState,
 ) -> Result<(), Error> {
     let mut serialized_state = vec![];
@@ -323,8 +334,8 @@ pub fn checkpoint_restore(
     } else {
         endpoints.send_to(
             ServiceBus::Ctl,
-            ServiceId::Database,
-            destination,
+            ServiceId::Wallet,
+            ServiceId::Checkpoint,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;
     }

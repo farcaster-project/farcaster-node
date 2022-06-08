@@ -1597,17 +1597,15 @@ impl Runtime {
             }
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
-                CheckpointState::CheckpointWalletAlice(alice_state) => {
-                    info!("Restoring alice wallet for swap {}", swap_id);
-                    if !self.wallets.contains_key(&swap_id) {
-                        self.wallets.insert(swap_id, Wallet::Alice(alice_state));
-                    }
+                CheckpointState::CheckpointWalletAlicePreBuy(alice_state)
+                | CheckpointState::CheckpointWalletAlicePreLock(alice_state) => {
+                    debug!("Restoring alice wallet for swap {}", swap_id);
+                    self.wallets.insert(swap_id, Wallet::Alice(alice_state));
                 }
-                CheckpointState::CheckpointWalletBob(bob_state) => {
-                    info!("Restoring bob wallet for swap {}", swap_id);
-                    if !self.wallets.contains_key(&swap_id) {
-                        self.wallets.insert(swap_id, Wallet::Bob(bob_state));
-                    }
+                CheckpointState::CheckpointWalletBobPreBuy(bob_state)
+                | CheckpointState::CheckpointWalletBobPreLock(bob_state) => {
+                    debug!("Restoring bob wallet for swap {}", swap_id);
+                    self.wallets.insert(swap_id, Wallet::Bob(bob_state));
                 }
             },
 
