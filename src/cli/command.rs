@@ -216,6 +216,11 @@ impl Exec for Command {
                 }
             }
 
+            Command::RevokeOffer { public_offer } => {
+                runtime.request(ServiceId::Farcasterd, Request::RevokeOffer(public_offer))?;
+                runtime.report_response()?;
+            }
+
             Command::Progress { swapid } => {
                 runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
                 runtime.report_progress()?;
