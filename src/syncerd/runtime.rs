@@ -207,7 +207,7 @@ impl Runtime {
                     source.clone(),
                     Request::TaskList(self.tasks.iter().cloned().collect()),
                 )?;
-                let resp = Request::Progress(Progress::ProgressMessage("ListedTasks?".to_string()));
+                let resp = Request::Progress(Progress::Message("ListedTasks?".to_string()));
                 notify_cli = Some((Some(source), resp));
             }
 

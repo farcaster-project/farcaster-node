@@ -322,7 +322,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Progress(Progress::ProgressMessage(msg.to_string())),
+                Request::Progress(Progress::Message(msg.to_string())),
             )?;
         }
         Ok(())

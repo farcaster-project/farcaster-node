@@ -771,7 +771,7 @@ pub struct InitSwap {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("progress {}")]
 pub enum Progress {
-    ProgressMessage(String),
+    Message(String),
     StateTransition(String),
 }
 
@@ -882,10 +882,25 @@ pub struct TookOffer {
 )]
 #[display(SwapProgress::to_yaml_string)]
 pub struct SwapProgress {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure: Option<String>,
-    pub state_transitions: Vec<String>,
-    pub messages: Vec<String>,
+    pub progress: Vec<ProgressEvent>,
+}
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(ProgressEvent::to_yaml_string)]
+pub enum ProgressEvent {
+    #[serde(rename = "message")]
+    Message(String),
+    #[serde(rename = "transition")]
+    StateTransition(String),
+    #[serde(rename = "success")]
+    Success(OptionDetails),
+    #[serde(rename = "failure")]
+    Failure(Failure),
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -969,6 +984,8 @@ impl ToYamlString for MadeOffer {}
 impl ToYamlString for TookOffer {}
 #[cfg(feature = "serde")]
 impl ToYamlString for SwapProgress {}
+#[cfg(feature = "serde")]
+impl ToYamlString for ProgressEvent {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]
@@ -1012,6 +1029,11 @@ where
 }
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct OptionDetails(pub Option<String>);
 
 impl Display for OptionDetails {
@@ -1049,7 +1071,7 @@ pub trait IntoSuccessOrFailure {
 impl IntoProgressOrFailure for Result<String, crate::Error> {
     fn into_progress_or_failure(self) -> Request {
         match self {
-            Ok(val) => Request::Progress(Progress::ProgressMessage(val)),
+            Ok(val) => Request::Progress(Progress::Message(val)),
             Err(err) => Request::from(err),
         }
     }

@@ -14,8 +14,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::farcasterd::runtime::request::MadeOffer;
-use crate::farcasterd::runtime::request::SwapProgress;
 use crate::farcasterd::runtime::request::TookOffer;
+use crate::farcasterd::runtime::request::{ProgressEvent, SwapProgress};
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -585,7 +585,7 @@ impl Runtime {
                     );
                     report_to.push((
                         swap_params.report_to.clone(), // walletd
-                        Request::Progress(request::Progress::ProgressMessage(format!(
+                        Request::Progress(request::Progress::Message(format!(
                             "Swap daemon {} operational",
                             source
                         ))),
@@ -631,7 +631,7 @@ impl Runtime {
                     );
                     report_to.push((
                         swap_params.report_to.clone(), // walletd
-                        Request::Progress(request::Progress::ProgressMessage(format!(
+                        Request::Progress(request::Progress::Message(format!(
                             "Swap daemon {} operational",
                             source
                         ))),
@@ -1068,22 +1068,28 @@ impl Runtime {
 
             Request::ReadProgress(swapid) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swapid)) {
-                    let mut swap_progress = SwapProgress {
-                        failure: None,
-                        messages: vec![],
-                        state_transitions: vec![],
-                    };
+                    let mut swap_progress = SwapProgress { progress: vec![] };
                     for (_i, req) in queue.iter().enumerate() {
                         match req {
-                            Request::Progress(request::Progress::ProgressMessage(x))
-                            | Request::Success(OptionDetails(Some(x))) => {
-                                swap_progress.messages.push(x.clone());
+                            Request::Progress(request::Progress::Message(m)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Message(m.clone()));
                             }
-                            Request::Progress(request::Progress::StateTransition(x)) => {
-                                swap_progress.state_transitions.push(x.clone());
+                            Request::Progress(request::Progress::StateTransition(t)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::StateTransition(t.clone()));
                             }
-                            Request::Failure(Failure { code: _, info: x }) => {
-                                swap_progress.failure = Some(x.clone());
+                            Request::Success(s) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Success(s.clone()));
+                            }
+                            Request::Failure(f) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Failure(f.clone()));
                             }
                             _ => unreachable!("not handled here"),
                         };
@@ -1110,6 +1116,7 @@ impl Runtime {
                     )?;
                 }
             }
+
             Request::FundingInfo(info) => match info {
                 FundingInfo::Bitcoin(BitcoinFundingInfo {
                     swap_id,
