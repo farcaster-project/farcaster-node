@@ -310,8 +310,8 @@ pub fn checkpoint_state(
             );
             endpoints.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Wallet,
                 ServiceId::Checkpoint,
+                ServiceId::Wallet,
                 Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
                     checksum,
                     msg_index: n,
@@ -324,8 +324,8 @@ pub fn checkpoint_state(
     } else {
         endpoints.send_to(
             ServiceBus::Ctl,
-            ServiceId::Wallet,
             ServiceId::Checkpoint,
+            ServiceId::Wallet,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;
     }
