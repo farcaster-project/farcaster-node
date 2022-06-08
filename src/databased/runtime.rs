@@ -23,7 +23,9 @@ use bitcoin::hashes::{ripemd160, Hash};
 use crate::{
     rpc::{
         request::{
-            self, BitcoinAddress, Commit, Keys, MoneroAddress, Msg, Params, Reveal, Token, Tx,
+            self, BitcoinAddress, Checkpoint, CheckpointChunk, CheckpointEntry,
+            CheckpointMultipartChunk, Commit, Keys, List, MoneroAddress, Msg, Params, Reveal,
+            Token, Tx,
         },
         Request, ServiceBus,
     },
@@ -43,12 +45,6 @@ pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     };
 
     Service::run(config, runtime, false)
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-struct CheckpointChunk {
-    pub msg_index: usize,
-    pub serialized_state_chunk: Vec<u8>,
 }
 
 pub struct Runtime {
@@ -200,6 +196,20 @@ impl Runtime {
                     .expect("failed to set checkpoint state");
             }
 
+            Request::RestoreCheckpoint(swap_id) => {
+                let raw_state = self
+                    .checkpoints
+                    .get_state(&CheckpointKey {
+                        swap_id,
+                        service_id: ServiceId::Wallet,
+                    })
+                    .expect("to be restored state not found");
+                let state =
+                    request::CheckpointState::strict_decode(std::io::Cursor::new(raw_state))
+                        .expect("decoding the checkpoint should not fail");
+                checkpoint_state(endpoints, swap_id, state)?;
+            }
+
             Request::RetrieveAllCheckpointInfo => {
                 let pairs = self.database.get_all_key_value_pairs().expect("unable retrieve all checkpointed key-value pairs");
                 let checkpointed_pub_offers: Vec<(SwapId, PublicOffer<BtcXmr>)> = pairs
@@ -212,16 +222,28 @@ impl Runtime {
                             ServiceId::Wallet => match state {
                                 request::CheckpointState::CheckpointWalletAlicePreBuy(
                                     checkpoint,
-                                ) => Some((checkpoint_key.swap_id, checkpoint.pub_offer)),
+                                ) => Some(CheckpointEntry {
+                                    swap_id: checkpoint_key.swap_id,
+                                    public_offer: checkpoint.pub_offer,
+                                }),
                                 request::CheckpointState::CheckpointWalletAlicePreLock(
                                     checkpoint,
-                                ) => Some((checkpoint_key.swap_id, checkpoint.pub_offer)),
+                                ) => Some(CheckpointEntry {
+                                    swap_id: checkpoint_key.swap_id,
+                                    public_offer: checkpoint.pub_offer,
+                                }),
                                 request::CheckpointState::CheckpointWalletBobPreBuy(checkpoint) => {
-                                    Some((checkpoint_key.swap_id, checkpoint.pub_offer))
+                                    Some(CheckpointEntry {
+                                        swap_id: checkpoint_key.swap_id,
+                                        public_offer: checkpoint.pub_offer,
+                                    })
                                 }
                                 request::CheckpointState::CheckpointWalletBobPreLock(
                                     checkpoint,
-                                ) => Some((checkpoint_key.swap_id, checkpoint.pub_offer)),
+                                ) => Some(CheckpointEntry {
+                                    swap_id: checkpoint_key.swap_id,
+                                    public_offer: checkpoint.pub_offer,
+                                }),
                             },
                             _ => None,
                         }
@@ -256,6 +278,58 @@ impl Runtime {
         }
         Ok(())
     }
+}
+
+pub fn checkpoint_state(
+    endpoints: &mut Endpoints,
+    swap_id: SwapId,
+    state: request::CheckpointState,
+) -> Result<(), Error> {
+    let mut serialized_state = vec![];
+    let size = state
+        .strict_encode(&mut serialized_state)
+        .expect("strict encode of a checkpoint should not fail");
+
+    // if the size exceeds a boundary, send a multi-part message
+    let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
+    debug!("checkpointing wallet state");
+    if size > max_chunk_size {
+        let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
+        debug!("need to chunk the checkpoint message");
+        let chunks: Vec<(usize, Vec<u8>)> = serialized_state
+            .chunks_mut(max_chunk_size)
+            .enumerate()
+            .map(|(n, chunk)| (n, chunk.to_vec()))
+            .collect();
+        let chunks_total = chunks.len();
+        for (n, chunk) in chunks {
+            debug!(
+                "sending chunked checkpoint message {} of a total {}",
+                n + 1,
+                chunks_total
+            );
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                ServiceId::Wallet,
+                ServiceId::Checkpoint,
+                Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
+                    checksum,
+                    msg_index: n,
+                    msgs_total: chunks_total,
+                    serialized_state_chunk: chunk,
+                    swap_id,
+                }),
+            )?;
+        }
+    } else {
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            ServiceId::Wallet,
+            ServiceId::Checkpoint,
+            Request::Checkpoint(Checkpoint { swap_id, state }),
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

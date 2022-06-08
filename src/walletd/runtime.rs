@@ -65,7 +65,7 @@ use farcaster_core::{
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::esb::{self, Handler};
-use request::{LaunchSwap, NodeId};
+use request::{CheckpointChunk, CheckpointState, LaunchSwap, NodeId};
 
 pub fn run(
     config: ServiceConfig,
@@ -80,6 +80,7 @@ pub fn run(
         swaps: none!(),
         btc_addrs: none!(),
         xmr_addrs: none!(),
+        pending_checkpoint_chunks: map![],
     };
 
     Service::run(config, runtime, false)
@@ -93,6 +94,7 @@ pub struct Runtime {
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
     xmr_addrs: HashMap<SwapId, monero::Address>,
+    pending_checkpoint_chunks: HashMap<[u8; 20], HashSet<CheckpointChunk>>,
 }
 
 impl Runtime {
@@ -1532,6 +1534,80 @@ impl Runtime {
                 );
                 self.clean_up_after_swap(&swap_id);
             }
+
+            Request::CheckpointMultipartChunk(request::CheckpointMultipartChunk {
+                checksum,
+                msg_index,
+                msgs_total,
+                serialized_state_chunk,
+                swap_id,
+            }) => {
+                debug!("received checkpoint multipart message");
+                if self.pending_checkpoint_chunks.contains_key(&checksum) {
+                    let chunks = self
+                        .pending_checkpoint_chunks
+                        .get_mut(&checksum)
+                        .expect("checked with contains_key");
+                    chunks.insert(CheckpointChunk {
+                        msg_index,
+                        serialized_state_chunk,
+                    });
+                } else {
+                    let mut chunk = HashSet::new();
+                    chunk.insert(CheckpointChunk {
+                        msg_index,
+                        serialized_state_chunk,
+                    });
+                    self.pending_checkpoint_chunks.insert(checksum, chunk);
+                }
+                let mut chunks = self
+                    .pending_checkpoint_chunks
+                    .get(&checksum)
+                    .unwrap_or(&HashSet::new())
+                    .clone();
+                if chunks.len() >= msgs_total {
+                    let mut chunk_tup_vec = chunks
+                        .drain()
+                        .map(|chunk| (chunk.msg_index, chunk.serialized_state_chunk))
+                        .collect::<Vec<(usize, Vec<u8>)>>(); // map the hashset to a vec for sorting
+                    chunk_tup_vec.sort_by(|(msg_number_a, _), (msg_number_b, _)| {
+                        msg_number_a.cmp(&msg_number_b)
+                    }); // sort in ascending order
+                    let chunk_vec = chunk_tup_vec
+                        .drain(..)
+                        .map(|(_, chunk)| chunk)
+                        .collect::<Vec<Vec<u8>>>(); // drop the extra integer index
+                    let serialized_checkpoint =
+                        chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // collect the chunked messages into a single serialized message
+                    if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
+                        // this should never happen
+                        error!("Unable to checkpoint the message, checksum did not match");
+                        return Ok(());
+                    }
+                    // serialize request and recurse to handle the actual request
+                    let request = Request::Checkpoint(request::Checkpoint {
+                        swap_id,
+                        state: CheckpointState::strict_decode(std::io::Cursor::new(
+                            serialized_checkpoint,
+                        ))
+                        .map_err(|err| Error::Farcaster(err.to_string()))?,
+                    });
+                    self.handle_rpc_ctl(endpoints, source, request)?;
+                }
+            }
+
+            Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
+                CheckpointState::CheckpointWalletAlicePreBuy(alice_state)
+                | CheckpointState::CheckpointWalletAlicePreLock(alice_state) => {
+                    debug!("Restoring alice wallet for swap {}", swap_id);
+                    self.wallets.insert(swap_id, Wallet::Alice(alice_state));
+                }
+                CheckpointState::CheckpointWalletBobPreBuy(bob_state)
+                | CheckpointState::CheckpointWalletBobPreLock(bob_state) => {
+                    debug!("Restoring bob wallet for swap {}", swap_id);
+                    self.wallets.insert(swap_id, Wallet::Bob(bob_state));
+                }
+            },
 
             _ => {
                 error!(

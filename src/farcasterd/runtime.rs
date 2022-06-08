@@ -889,6 +889,21 @@ impl Runtime {
                 )?;
             }
 
+            Request::RestoreCheckpoint(swap_id) => {
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    ServiceId::Checkpoint,
+                    Request::RestoreCheckpoint(swap_id),
+                )?;
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    source,
+                    Request::String("Restored checkpoint.".to_string()),
+                )?;
+            }
+
             Request::MakeOffer(request::ProtoPublicOffer {
                 offer,
                 public_addr,

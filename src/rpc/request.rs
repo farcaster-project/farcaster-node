@@ -679,8 +679,12 @@ pub enum Request {
     DeleteCheckpoint(SwapId),
 
     #[api(type = 1308)]
-    #[display("checkpoint_list")]
-    CheckpointList(Vec<(SwapId, PublicOffer<BtcXmr>)>),
+    #[display("checkpoint_list({0})", alt = "{0:#}")]
+    CheckpointList(List<CheckpointEntry>),
+
+    #[api(type = 1309)]
+    #[display("restore_checkpoint({0})", alt = "{0:#}")]
+    RestoreCheckpoint(SwapId),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -697,6 +701,25 @@ pub enum Outcome {
 pub enum FundingInfo {
     Bitcoin(BitcoinFundingInfo),
     Monero(MoneroFundingInfo),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("{swap_id}, {public_offer}")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(NodeInfo::to_yaml_string)]
+pub struct CheckpointEntry {
+    pub swap_id: SwapId,
+    pub public_offer: PublicOffer<BtcXmr>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct CheckpointChunk {
+    pub msg_index: usize,
+    pub serialized_state_chunk: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
@@ -1062,6 +1085,8 @@ impl ToYamlString for TookOffer {}
 impl ToYamlString for SwapProgress {}
 #[cfg(feature = "serde")]
 impl ToYamlString for ProgressEvent {}
+#[cfg(feature = "serde")]
+impl ToYamlString for CheckpointEntry {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]

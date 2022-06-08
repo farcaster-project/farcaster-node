@@ -79,6 +79,17 @@ pub enum Command {
     #[clap(aliases = &["ll"])]
     ListListens,
 
+    /// Lists saved checkpoints of the swaps
+    #[clap(aliases = &["lc"])]
+    ListCheckpoints,
+
+    /// Restore saved checkpoint of a swap
+    #[clap(aliases = &["r"])]
+    RestoreCheckpoint {
+        // The swap id of the swap to be restored.
+        swap_id: SwapId,
+    },
+
     /// Maker creates offer and start listening for incoming connections. Command used to to print
     /// the resulting public offer that shall be shared with Taker. Additionally it spins up the
     /// listener awaiting for connection related to this offer.
