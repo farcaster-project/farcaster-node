@@ -15,6 +15,7 @@
 
 use crate::farcasterd::runtime::request::MadeOffer;
 use crate::farcasterd::runtime::request::TookOffer;
+use crate::farcasterd::runtime::request::{ProgressEvent, SwapProgress};
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -584,7 +585,10 @@ impl Runtime {
                     );
                     report_to.push((
                         swap_params.report_to.clone(), // walletd
-                        Request::Progress(format!("Swap daemon {} operational", source)),
+                        Request::Progress(request::Progress::Message(format!(
+                            "Swap daemon {} operational",
+                            source
+                        ))),
                     ));
                     let swapid = get_swap_id(&source)?;
                     // when online, Syncers say Hello, then they get registered to self.syncers
@@ -627,7 +631,10 @@ impl Runtime {
                     );
                     report_to.push((
                         swap_params.report_to.clone(), // walletd
-                        Request::Progress(format!("Swap daemon {} operational", source)),
+                        Request::Progress(request::Progress::Message(format!(
+                            "Swap daemon {} operational",
+                            source
+                        ))),
                     ));
                     match swap_params.local_params {
                         Params::Alice(_) => {}
@@ -1085,22 +1092,38 @@ impl Runtime {
 
             Request::ReadProgress(swapid) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swapid)) {
-                    let n = queue.len();
-
-                    for (i, req) in queue.iter().enumerate() {
-                        let x = match req {
-                            Request::Progress(x)
-                            | Request::Success(OptionDetails(Some(x)))
-                            | Request::Failure(Failure { code: _, info: x }) => x,
+                    let mut swap_progress = SwapProgress { progress: vec![] };
+                    for (_i, req) in queue.iter().enumerate() {
+                        match req {
+                            Request::Progress(request::Progress::Message(m)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Message(m.clone()));
+                            }
+                            Request::Progress(request::Progress::StateTransition(t)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::StateTransition(t.clone()));
+                            }
+                            Request::Success(s) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Success(s.clone()));
+                            }
+                            Request::Failure(f) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Failure(f.clone()));
+                            }
                             _ => unreachable!("not handled here"),
                         };
-                        let req = if i < n - 1 {
-                            Request::Progress(x.clone())
-                        } else {
-                            Request::Success(OptionDetails(Some(x.clone())))
-                        };
-                        report_to.push((Some(source.clone()), req));
                     }
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        Request::SwapProgress(swap_progress),
+                    )?;
                 } else {
                     let info = if self.making_swaps.contains_key(&ServiceId::Swap(swapid))
                         || self.taking_swaps.contains_key(&ServiceId::Swap(swapid))
@@ -1117,6 +1140,7 @@ impl Runtime {
                     )?;
                 }
             }
+
             Request::FundingInfo(info) => match info {
                 FundingInfo::Bitcoin(BitcoinFundingInfo {
                     swap_id,

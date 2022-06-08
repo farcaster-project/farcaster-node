@@ -32,7 +32,7 @@ use lazy_static::lazy_static;
 use lightning_encoding::{strategies::AsStrict, LightningDecode, LightningEncode};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 #[cfg(feature = "serde")]
-use serde_with::{DisplayFromStr, DurationSeconds, Same};
+use serde_with::{skip_serializing_none, DisplayFromStr, DurationSeconds, Same};
 use std::{collections::BTreeMap, convert::TryInto};
 use std::{
     fmt::{self, Debug, Display, Formatter},
@@ -509,9 +509,14 @@ pub enum Request {
     #[api(type = 1004)]
     #[display("{0}")]
     String(String),
+
     #[api(type = 1002)]
     #[display("progress({0})")]
-    Progress(String),
+    Progress(Progress),
+
+    #[api(type = 1005)]
+    #[display("swap_progress({0})", alt = "{0:#}")]
+    SwapProgress(SwapProgress),
 
     #[api(type = 1003)]
     #[display("read_progress({0})")]
@@ -765,6 +770,13 @@ pub struct InitSwap {
     pub funding_address: Option<bitcoin::Address>,
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display("progress {}")]
+pub enum Progress {
+    Message(String),
+    StateTransition(String),
+}
+
 #[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[cfg_attr(
@@ -864,6 +876,36 @@ pub struct TookOffer {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, Default, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(SwapProgress::to_yaml_string)]
+pub struct SwapProgress {
+    pub progress: Vec<ProgressEvent>,
+}
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(ProgressEvent::to_yaml_string)]
+pub enum ProgressEvent {
+    #[serde(rename = "message")]
+    Message(String),
+    #[serde(rename = "transition")]
+    StateTransition(String),
+    #[serde(rename = "success")]
+    Success(OptionDetails),
+    #[serde(rename = "failure")]
+    Failure(Failure),
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[cfg_attr(
     feature = "serde",
@@ -942,6 +984,10 @@ impl ToYamlString for SyncerInfo {}
 impl ToYamlString for MadeOffer {}
 #[cfg(feature = "serde")]
 impl ToYamlString for TookOffer {}
+#[cfg(feature = "serde")]
+impl ToYamlString for SwapProgress {}
+#[cfg(feature = "serde")]
+impl ToYamlString for ProgressEvent {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]
@@ -985,6 +1031,11 @@ where
 }
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct OptionDetails(pub Option<String>);
 
 impl Display for OptionDetails {
@@ -1022,7 +1073,7 @@ pub trait IntoSuccessOrFailure {
 impl IntoProgressOrFailure for Result<String, crate::Error> {
     fn into_progress_or_failure(self) -> Request {
         match self {
-            Ok(val) => Request::Progress(val),
+            Ok(val) => Request::Progress(Progress::Message(val)),
             Err(err) => Request::from(err),
         }
     }

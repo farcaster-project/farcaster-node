@@ -1053,14 +1053,15 @@ impl Runtime {
     }
 
     fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
-        let msg = format!(
-            "State transition: {} -> {}",
+        info!(
+            "{} | State transition: {} -> {}",
+            self.swap_id.bright_blue_italic(),
             self.state.bright_white_bold(),
-            next_state.bright_white_bold()
+            next_state.bright_white_bold(),
         );
-        info!("{} | {}", self.swap_id.bright_blue_italic(), &msg);
+        let msg = format!("{} -> {}", self.state, next_state,);
         self.state = next_state;
-        self.report_success_to(endpoints, self.enquirer.clone(), Some(msg))?;
+        self.report_state_transition_progress_message_to(endpoints, self.enquirer.clone(), msg)?;
         Ok(())
     }
 
@@ -2703,12 +2704,21 @@ impl Runtime {
         endpoints: &mut Endpoints,
         params: Params,
     ) -> Result<request::Commit, Error> {
-        let msg = format!(
-            "{} {} to Maker remote peer",
+        info!(
+            "{} | {} to Maker remote peer",
+            self.swap_id().bright_blue_italic(),
             "Proposing to take swap".bright_white_bold(),
-            self.swap_id().bright_blue_italic()
         );
-        info!("{} | {}", self.swap_id.bright_blue_italic(), &msg);
+
+        let msg = format!(
+            "Proposing to take swap {} to Maker remote peer",
+            self.swap_id()
+        );
+        let enquirer = self.enquirer.clone();
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the client disconnected
+        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
+
         let engine = CommitmentEngine;
         let commitment = match params {
             Params::Bob(params) => request::Commit::BobParameters(
@@ -2718,10 +2728,6 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(endpoints, &enquirer, msg);
 
         Ok(commitment)
     }
@@ -2733,18 +2739,21 @@ impl Runtime {
         swap_id: SwapId,
         params: &Params,
     ) -> Result<request::Commit, Error> {
-        let msg = format!(
-            "{} {} as Maker from Taker remote peer {}",
-            "Accepting swap".bright_white_bold(),
+        info!(
+            "{} | {} as Maker from Taker through peerd {}",
             swap_id.bright_blue_italic(),
+            "Accepting swap".bright_white_bold(),
             peerd.bright_blue_italic()
         );
-        info!("{} | {}", self.swap_id.bright_blue_italic(), msg);
 
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the channel just because the client disconnected
+        let msg = format!(
+            "Accepting swap {} as Maker from Taker through peerd {}",
+            swap_id, peerd
+        );
         let enquirer = self.enquirer.clone();
-        let _ = self.report_progress_to(endpoints, &enquirer, msg);
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the client disconnected
+        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
 
         let engine = CommitmentEngine;
         let commitment = match params.clone() {
@@ -2756,13 +2765,6 @@ impl Runtime {
             ),
         };
 
-        let msg = format!(
-            "{} swap {:#} from remote peer Taker {}",
-            "Making".bright_green_bold(),
-            swap_id.bright_green_italic(),
-            peerd.bright_green_italic()
-        );
-        let _ = self.report_success_to(endpoints, &enquirer, Some(msg));
         Ok(commitment)
     }
 }

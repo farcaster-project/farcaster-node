@@ -87,22 +87,14 @@ impl Client {
 
     pub fn report_failure(&mut self) -> Result<Request, Error> {
         match self.response()? {
-            Request::Failure(fail) =>
-            // // Errors reported on swap-cli binary
-            // eprintln!(
-            //     "{}: {}",
-            //     "Request failure".err(),
-            //     fail.err_details()
-            // );
-            {
-                Err(Error::from(fail))
-            }
+            Request::Failure(fail) => Err(Error::from(fail)),
             resp => Ok(resp),
         }
     }
 
     pub fn report_response(&mut self) -> Result<(), Error> {
         let resp = self.report_failure()?;
+        // note: this triggers the yaml formatting when implemented
         println!("{:#}", resp);
         Ok(())
     }

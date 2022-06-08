@@ -16,6 +16,7 @@ use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::{Coin, Opts};
+use crate::syncerd::runtime::request::Progress;
 use amplify::Wrapper;
 use farcaster_core::blockchain::Network;
 use std::collections::{HashMap, HashSet};
@@ -206,7 +207,7 @@ impl Runtime {
                     source.clone(),
                     Request::TaskList(self.tasks.iter().cloned().collect()),
                 )?;
-                let resp = Request::Progress("ListedTasks?".to_string());
+                let resp = Request::Progress(Progress::Message("ListedTasks?".to_string()));
                 notify_cli = Some((Some(source), resp));
             }
 
