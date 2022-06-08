@@ -307,6 +307,12 @@ impl Runtime {
                 Request::Terminate,
             )?;
         }
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            self.identity(),
+            ServiceId::Checkpoint,
+            Request::RemoveCheckpoint(*swapid),
+        )?;
         let mut offerid = None;
         self.consumed_offers = self
             .consumed_offers

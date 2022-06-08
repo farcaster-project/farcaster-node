@@ -676,7 +676,7 @@ pub enum Request {
 
     #[api(type = 1307)]
     #[display("delete_checkpoint")]
-    DeleteCheckpoint(SwapId),
+    RemoveCheckpoint(SwapId),
 
     #[api(type = 1308)]
     #[display("checkpoint_list({0})", alt = "{0:#}")]
