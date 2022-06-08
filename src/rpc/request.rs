@@ -742,10 +742,8 @@ pub struct Checkpoint {
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display(Debug)]
 pub enum CheckpointState {
-    CheckpointWalletAlicePreLock(AliceState),
-    CheckpointWalletBobPreLock(BobState),
-    CheckpointWalletAlicePreBuy(AliceState),
-    CheckpointWalletBobPreBuy(BobState),
+    CheckpointWalletAlice(AliceState),
+    CheckpointWalletBob(BobState),
 }
 
 impl FromStr for BitcoinFundingInfo {
