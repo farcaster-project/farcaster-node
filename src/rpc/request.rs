@@ -356,10 +356,6 @@ pub enum Request {
     #[display("hello()")]
     Hello,
 
-    #[api(type = 1)]
-    #[display("update_channel_id({0})")]
-    UpdateSwapId(SwapId),
-
     #[api(type = 2)]
     #[display("send_message({0})")]
     PeerMessage(Messages),
