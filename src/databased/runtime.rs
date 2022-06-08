@@ -197,17 +197,24 @@ impl Runtime {
             }
 
             Request::RestoreCheckpoint(swap_id) => {
-                let raw_state = self
-                    .checkpoints
-                    .get_state(&CheckpointKey {
-                        swap_id,
-                        service_id: ServiceId::Wallet,
-                    })
-                    .expect("to be restored state not found");
-                let state =
-                    request::CheckpointState::strict_decode(std::io::Cursor::new(raw_state))
+                match self.checkpoints.get_state(&CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                }) {
+                    Ok(raw_state) => {
+                        let state = request::CheckpointState::strict_decode(std::io::Cursor::new(
+                            raw_state,
+                        ))
                         .expect("decoding the checkpoint should not fail");
-                checkpoint_state(endpoints, swap_id, state)?;
+                        checkpoint_restore(endpoints, swap_id, ServiceId::Wallet, state)?;
+                    }
+                    Err(err) => {
+                        error!(
+                            "Failed to retrieve checkpointed state for swap {}: {}",
+                            swap_id, err
+                        );
+                    }
+                }
             }
 
             Request::RetrieveAllCheckpointInfo => {
@@ -280,9 +287,10 @@ impl Runtime {
     }
 }
 
-pub fn checkpoint_state(
+pub fn checkpoint_restore(
     endpoints: &mut Endpoints,
     swap_id: SwapId,
+    destination: ServiceId,
     state: request::CheckpointState,
 ) -> Result<(), Error> {
     let mut serialized_state = vec![];
@@ -311,7 +319,7 @@ pub fn checkpoint_state(
             endpoints.send_to(
                 ServiceBus::Ctl,
                 ServiceId::Checkpoint,
-                ServiceId::Wallet,
+                destination.clone(),
                 Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
                     checksum,
                     msg_index: n,
@@ -325,7 +333,7 @@ pub fn checkpoint_state(
         endpoints.send_to(
             ServiceBus::Ctl,
             ServiceId::Checkpoint,
-            ServiceId::Wallet,
+            destination,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;
     }

@@ -95,6 +95,10 @@ pub enum Error {
     /// BitcoinHashes
     #[display(inner)]
     BitcoinHashes(bitcoin::hashes::Error),
+
+    /// Checkpoint
+    #[from(lmdb::Error)]
+    Checkpoint(lmdb::Error),
 }
 
 #[derive(Debug, Display)]
