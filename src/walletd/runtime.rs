@@ -1600,12 +1600,16 @@ impl Runtime {
                 CheckpointState::CheckpointWalletAlicePreBuy(alice_state)
                 | CheckpointState::CheckpointWalletAlicePreLock(alice_state) => {
                     info!("Restoring alice wallet for swap {}", swap_id);
-                    self.wallets.insert(swap_id, Wallet::Alice(alice_state));
+                    if !self.wallets.contains_key(&swap_id) {
+                        self.wallets.insert(swap_id, Wallet::Alice(alice_state));
+                    }
                 }
                 CheckpointState::CheckpointWalletBobPreBuy(bob_state)
                 | CheckpointState::CheckpointWalletBobPreLock(bob_state) => {
                     info!("Restoring bob wallet for swap {}", swap_id);
-                    self.wallets.insert(swap_id, Wallet::Bob(bob_state));
+                    if !self.wallets.contains_key(&swap_id) {
+                        self.wallets.insert(swap_id, Wallet::Bob(bob_state));
+                    }
                 }
             },
 

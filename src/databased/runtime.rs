@@ -290,9 +290,10 @@ impl Runtime {
     }
 }
 
-pub fn checkpoint_state(
+pub fn checkpoint_restore(
     endpoints: &mut Endpoints,
     swap_id: SwapId,
+    destination: ServiceId,
     state: request::CheckpointState,
 ) -> Result<(), Error> {
     let mut serialized_state = vec![];
@@ -335,7 +336,7 @@ pub fn checkpoint_state(
         endpoints.send_to(
             ServiceBus::Ctl,
             ServiceId::Checkpoint,
-            ServiceId::Wallet,
+            destination,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;
     }
