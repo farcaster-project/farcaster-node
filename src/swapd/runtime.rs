@@ -2709,6 +2709,16 @@ impl Runtime {
             self.swap_id().bright_blue_italic(),
             "Proposing to take swap".bright_white_bold(),
         );
+
+        let msg = format!(
+            "Proposing to take swap {} to Maker remote peer",
+            self.swap_id()
+        );
+        let enquirer = self.enquirer.clone();
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the client disconnected
+        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
+
         let engine = CommitmentEngine;
         let commitment = match params {
             Params::Bob(params) => request::Commit::BobParameters(
@@ -2718,11 +2728,6 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let enquirer = self.enquirer.clone();
-        let msg = format!("Proposing to take swap to Maker remote peer",);
-        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
 
         Ok(commitment)
     }
@@ -2736,18 +2741,18 @@ impl Runtime {
     ) -> Result<request::Commit, Error> {
         info!(
             "{} | {} as Maker from Taker through peerd {}",
-            "Accepting swap".bright_white_bold(),
             swap_id.bright_blue_italic(),
+            "Accepting swap".bright_white_bold(),
             peerd.bright_blue_italic()
         );
 
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the channel just because the client disconnected
         let msg = format!(
             "Accepting swap {} as Maker from Taker through peerd {}",
             swap_id, peerd
         );
         let enquirer = self.enquirer.clone();
+        // Ignoring possible reporting errors here and after: do not want to
+        // halt the swap just because the client disconnected
         let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
 
         let engine = CommitmentEngine;
@@ -2759,6 +2764,7 @@ impl Runtime {
                 CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
             ),
         };
+
         Ok(commitment)
     }
 }
