@@ -53,13 +53,8 @@ fn main() {
     let node_secrets = NodeSecrets::new(opts.key_opts.key_file.clone());
 
     debug!("Starting runtime ...");
-    walletd::run(
-        service_config,
-        wallet_token,
-        node_secrets,
-        // opts.shared.data_dir,
-    )
-    .expect("Error running walletd runtime");
+    walletd::run(service_config, wallet_token, node_secrets)
+        .expect("Error running walletd runtime");
 
     unreachable!()
 }
