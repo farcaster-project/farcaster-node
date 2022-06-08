@@ -513,9 +513,7 @@ pub enum Request {
     #[api(type = 1005)]
     #[display("swap_progress({0})", alt = "{0:#}")]
     SwapProgress(SwapProgress),
-    // #[api(type = 207)]
-    // #[display("took_offer({0})", alt = "{0:#}")]
-    // TookOffer(TookOffer),
+
     #[api(type = 1003)]
     #[display("read_progress({0})")]
     ReadProgress(SwapId),
