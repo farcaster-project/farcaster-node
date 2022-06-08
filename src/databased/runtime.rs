@@ -191,30 +191,32 @@ impl Runtime {
                 };
                 let mut state_encoded = vec![];
                 let _state_size = state.strict_encode(&mut state_encoded);
-                self.database
-                    .set_checkpoint_state(&key, &state_encoded)
-                    .expect("failed to set checkpoint state");
+                self.database.set_checkpoint_state(&key, &state_encoded)?;
             }
 
             Request::RestoreCheckpoint(swap_id) => {
-                let raw_state = self
-                    .database
-                    .get_checkpoint_state(&CheckpointKey {
-                        swap_id,
-                        service_id: ServiceId::Wallet,
-                    })
-                    .expect("to be restored state not found");
-                let state =
-                    request::CheckpointState::strict_decode(std::io::Cursor::new(raw_state))
+                match self.database.get_checkpoint_state(&CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                }) {
+                    Ok(raw_state) => {
+                        let state = request::CheckpointState::strict_decode(std::io::Cursor::new(
+                            raw_state,
+                        ))
                         .expect("decoding the checkpoint should not fail");
-                checkpoint_state(endpoints, swap_id, state)?;
+                        checkpoint_restore(endpoints, swap_id, ServiceId::Wallet, state)?;
+                    }
+                    Err(err) => {
+                        error!(
+                            "Failed to retrieve checkpointed state for swap {}: {}",
+                            swap_id, err
+                        );
+                    }
+                }
             }
 
             Request::RetrieveAllCheckpointInfo => {
-                let pairs = self
-                    .database
-                    .get_all_key_value_pairs()
-                    .expect("unable retrieve all checkpointed key-value pairs");
+                let pairs = self.database.get_all_key_value_pairs()?;
                 let checkpointed_pub_offers: List<CheckpointEntry> = pairs
                     .iter()
                     .filter_map(|(checkpoint_key, state)| {
@@ -261,18 +263,14 @@ impl Runtime {
             }
 
             Request::RemoveCheckpoint(swap_id) => {
-                self.database
-                    .delete_checkpoint_state(CheckpointKey {
-                        swap_id,
-                        service_id: ServiceId::Wallet,
-                    })
-                    .expect("failed to delete Wallet state");
-                self.database
-                    .delete_checkpoint_state(CheckpointKey {
-                        swap_id,
-                        service_id: ServiceId::Swap(swap_id),
-                    })
-                    .expect("failed to delete Swap state");
+                self.database.delete_checkpoint_state(CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                })?;
+                self.database.delete_checkpoint_state(CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Swap(swap_id),
+                })?;
             }
 
             _ => {
@@ -283,9 +281,10 @@ impl Runtime {
     }
 }
 
-pub fn checkpoint_state(
+pub fn checkpoint_restore(
     endpoints: &mut Endpoints,
     swap_id: SwapId,
+    destination: ServiceId,
     state: request::CheckpointState,
 ) -> Result<(), Error> {
     let mut serialized_state = vec![];
@@ -313,8 +312,8 @@ pub fn checkpoint_state(
             );
             endpoints.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Wallet,
                 ServiceId::Database,
+                destination.clone(),
                 Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
                     checksum,
                     msg_index: n,
@@ -327,8 +326,8 @@ pub fn checkpoint_state(
     } else {
         endpoints.send_to(
             ServiceBus::Ctl,
-            ServiceId::Wallet,
             ServiceId::Database,
+            destination,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;
     }
