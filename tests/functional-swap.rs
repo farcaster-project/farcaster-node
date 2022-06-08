@@ -1926,7 +1926,7 @@ async fn retry_until_monero_funding_address(
             .collect();
 
         if !funding_infos.is_empty() {
-            return (funding_infos[0].address.clone(), funding_infos[0].amount);
+            return (funding_infos[0].address, funding_infos[0].amount);
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }

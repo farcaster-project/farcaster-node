@@ -323,13 +323,14 @@ impl Runtime {
                 let node_id = self.node_ids.remove(offerid).unwrap();
                 let remote_addr = self.listens.remove(offerid).unwrap();
                 // nr of offers using that peerd
-                let peerd_users: Vec<_> = self
+                if self
                     .listens
                     .values()
                     .filter(|x| x == &&remote_addr)
                     .into_iter()
-                    .collect();
-                if peerd_users.len() == 0 {
+                    .count()
+                    == 0
+                {
                     let connectionid = NodeAddr::Remote(RemoteNodeAddr {
                         node_id,
                         remote_addr,
@@ -901,7 +902,7 @@ impl Runtime {
                 {
                     (Some(bindaddr), Some(*pk))
                 } else {
-                    (None, peer_public_key.clone())
+                    (None, peer_public_key)
                 };
                 let res = match (bindaddr, peer_secret_key, peer_public_key) {
                     (None, None, None) => {
@@ -1035,7 +1036,7 @@ impl Runtime {
                     }
                 }
                 .and_then(|_| {
-                    let offer_registered = format!("{}", "Public offer registered",);
+                    let offer_registered = "Public offer registered".to_string();
                     // not yet in the set
                     self.public_offers.insert(public_offer.clone());
                     info!(
@@ -1385,8 +1386,7 @@ impl Runtime {
                         if self
                             .consumed_offers
                             .iter()
-                            .find(|(_, (_, service_id))| *service_id == peerd_id)
-                            .is_some()
+                            .any(|(_, (_, service_id))| *service_id == peerd_id)
                         {
                             info!("a swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr);
                         }

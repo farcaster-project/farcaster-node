@@ -590,7 +590,7 @@ fn restart_receiver_runtime(
 
     debug!("Starting thread listening for messages from the remote peer");
     let bridge_handler = PeerReceiverRuntime {
-        internal_identity: internal_identity.clone(),
+        internal_identity,
         bridge: esb::Controller::with(
             map! {
                 ServiceBus::Bridge => esb::BusConfig {
