@@ -1609,6 +1609,9 @@ impl Runtime {
                         self.wallets.insert(swap_id, Wallet::Bob(bob_state));
                     }
                 }
+                s => {
+                    error!("Checkpoint {} not supported in walletd", s);
+                }
             },
 
             _ => {

@@ -81,6 +81,7 @@ use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use monero::{cryptonote::hash::keccak_256, PrivateKey, ViewPair};
 use request::{Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
+use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(
     config: ServiceConfig,
@@ -203,7 +204,88 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
 }
 
-struct TemporalSafety {
+#[derive(Debug, Clone)]
+pub struct PendingRequest {
+    dest: ServiceId,
+    bus_id: ServiceBus,
+    request: Request,
+}
+
+impl StrictEncode for PendingRequest {
+    fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
+        let mut len = self.dest.strict_encode(&mut e)?;
+        len += self.bus_id.strict_encode(&mut e)?;
+        len += self.request.serialize().strict_encode(&mut e)?;
+        Ok(len)
+    }
+}
+
+impl StrictDecode for PendingRequest {
+    fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        let unmarshaller: Unmarshaller<Request> = Request::create_unmarshaller();
+        let dest = ServiceId::strict_decode(&mut d)?;
+        let bus_id = ServiceBus::strict_decode(&mut d)?;
+        let request: Request = (&*unmarshaller
+            .unmarshall(Cursor::new(Vec::<u8>::strict_decode(&mut d)?))
+            .unwrap())
+            .clone();
+        Ok(PendingRequest {
+            dest,
+            bus_id,
+            request,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Display)]
+#[display("swapd-checkpoint")]
+pub struct SwapdCheckpoint {
+    pub state: State,
+    pub temporal_safety: TemporalSafety,
+    pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
+}
+
+impl StrictEncode for SwapdCheckpoint {
+    fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
+        let mut len = self.state.strict_encode(&mut e)?;
+        len += self.temporal_safety.strict_encode(&mut e)?;
+
+        // len += self.pending_requests.len() as usize;
+        len += self.pending_requests.len().strict_encode(&mut e)?;
+        self.pending_requests
+            .iter()
+            .try_fold(len, |mut acc, (key, val)| {
+                acc += key.strict_encode(&mut e)?;
+                acc += val.strict_encode(&mut e)?;
+                Ok(acc)
+            })
+    }
+}
+
+impl StrictDecode for SwapdCheckpoint {
+    fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        let state = State::strict_decode(&mut d)?;
+        let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
+        let len = usize::strict_decode(&mut d)?;
+        let mut pending_requests = HashMap::<ServiceId, Vec<PendingRequest>>::new();
+        for _ in 0..len {
+            let key = ServiceId::strict_decode(&mut d)?;
+            let val = Vec::<PendingRequest>::strict_decode(&mut d)?;
+            if pending_requests.contains_key(&key) {
+                return Err(strict_encoding::Error::RepeatedValue(format!("{:?}", key)));
+            }
+            pending_requests.insert(key, val);
+        }
+        Ok(SwapdCheckpoint {
+            state,
+            temporal_safety,
+            pending_requests,
+        })
+    }
+}
+
+#[derive(Debug, Clone, StrictEncode, StrictDecode)]
+pub struct TemporalSafety {
     cancel_timelock: BlockHeight,
     punish_timelock: BlockHeight,
     race_thr: BlockHeight,
@@ -304,7 +386,7 @@ struct SyncerState {
     awaiting_funding: bool,
 }
 
-#[derive(Display, Clone)]
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum AliceState {
     // #[display("Start: {0:#?} {1:#?}")]
     #[display("Start")]
@@ -341,7 +423,7 @@ pub enum AliceState {
     FinishA(Outcome),
 }
 
-#[derive(Display, Clone)]
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum BobState {
     // #[display("Start {0:#?} {1:#?}")]
     #[display("Start")]
@@ -381,7 +463,7 @@ pub enum BobState {
     FinishB(Outcome),
 }
 
-#[derive(Display, Clone)]
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 #[display(inner)]
 pub enum State {
     #[display("AliceState({0})")]
@@ -2819,12 +2901,6 @@ fn aggregate_xmr_spend_view(
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 
-#[derive(Debug)]
-struct PendingRequest {
-    request: Request,
-    dest: ServiceId,
-    bus_id: ServiceBus,
-}
 fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
     // parameter processing irrespective of maker & taker role
     let core_wallet = CommitmentEngine;

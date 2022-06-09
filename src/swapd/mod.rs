@@ -23,3 +23,4 @@ pub use opts::Opts;
 pub use runtime::get_swap_id;
 pub use runtime::run;
 pub use runtime::State;
+pub use runtime::SwapdCheckpoint;
