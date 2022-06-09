@@ -24,8 +24,8 @@ use crate::{
     rpc::{
         request::{
             self, BitcoinAddress, Checkpoint, CheckpointChunk, CheckpointEntry,
-            CheckpointMultipartChunk, Commit, Keys, List, MoneroAddress, Msg, Params, Reveal,
-            Token, Tx,
+            CheckpointMultipartChunk, CheckpointState, Commit, Keys, LaunchSwap, List,
+            MoneroAddress, Msg, NodeId, Params, Reveal, Token, Tx,
         },
         Request, ServiceBus,
     },
@@ -35,7 +35,6 @@ use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use colored::Colorize;
 use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
-use request::{LaunchSwap, NodeId};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
@@ -130,8 +129,16 @@ impl Runtime {
                     self.handle_rpc_ctl(endpoints, source, checkpoint_request)?;
                 }
             }
-
-            Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
+            Request::Checkpoint(Checkpoint { swap_id, state }) => {
+                match state {
+                    CheckpointState::CheckpointWalletAlice(_)
+                    | CheckpointState::CheckpointWalletBob(_) => {
+                        debug!("setting wallet checkpoint");
+                    }
+                    CheckpointState::CheckpointSwapd(_) => {
+                        debug!("setting swap checkpoint");
+                    }
+                };
                 let key = CheckpointKey {
                     swap_id,
                     service_id: source,
@@ -148,17 +155,38 @@ impl Runtime {
                     service_id: ServiceId::Wallet,
                 }) {
                     Ok(raw_state) => {
-                        let state = request::CheckpointState::strict_decode(std::io::Cursor::new(
-                            raw_state,
-                        ))
-                        .expect("decoding the checkpoint should not fail");
-                        checkpoint_send(
-                            endpoints,
-                            swap_id,
-                            ServiceId::Database,
-                            ServiceId::Wallet,
-                            state,
-                        )?;
+                        match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
+                            Ok(CheckpointState::CheckpointWalletAlice(state)) => {
+                                checkpoint_send(
+                                    endpoints,
+                                    swap_id,
+                                    ServiceId::Database,
+                                    ServiceId::Wallet,
+                                    CheckpointState::CheckpointWalletAlice(state),
+                                )?;
+                            }
+                            Ok(CheckpointState::CheckpointWalletBob(state)) => {
+                                checkpoint_send(
+                                    endpoints,
+                                    swap_id,
+                                    ServiceId::Database,
+                                    ServiceId::Wallet,
+                                    CheckpointState::CheckpointWalletBob(state),
+                                )?;
+                            }
+                            Ok(CheckpointState::CheckpointSwapd(state)) => {
+                                checkpoint_send(
+                                    endpoints,
+                                    swap_id,
+                                    ServiceId::Database,
+                                    ServiceId::Swap(swap_id),
+                                    CheckpointState::CheckpointSwapd(state),
+                                )?;
+                            }
+                            Err(err) => {
+                                error!("Decoding the checkpoint failed: {}", err);
+                            }
+                        }
                     }
                     Err(err) => {
                         error!(
@@ -175,20 +203,21 @@ impl Runtime {
                     .iter()
                     .filter_map(|(checkpoint_key, state)| {
                         let state =
-                            request::CheckpointState::strict_decode(std::io::Cursor::new(state))
-                                .ok()?;
+                            CheckpointState::strict_decode(std::io::Cursor::new(state)).ok()?;
                         match checkpoint_key.service_id {
                             ServiceId::Wallet => match state {
-                                request::CheckpointState::CheckpointWalletAlice(checkpoint) => {
+                                CheckpointState::CheckpointWalletAlice(checkpoint) => {
                                     Some(CheckpointEntry {
                                         swap_id: checkpoint_key.swap_id,
                                         public_offer: checkpoint.pub_offer,
+                                        trade_role: checkpoint.local_trade_role,
                                     })
                                 }
-                                request::CheckpointState::CheckpointWalletBob(checkpoint) => {
+                                CheckpointState::CheckpointWalletBob(checkpoint) => {
                                     Some(CheckpointEntry {
                                         swap_id: checkpoint_key.swap_id,
                                         public_offer: checkpoint.pub_offer,
+                                        trade_role: checkpoint.local_trade_role,
                                     })
                                 }
                                 s => {
@@ -206,8 +235,8 @@ impl Runtime {
                     .collect();
                 endpoints.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Database,
                     source,
+                    ServiceId::Farcasterd,
                     Request::CheckpointList(checkpointed_pub_offers),
                 )?;
             }
@@ -300,7 +329,7 @@ pub fn checkpoint_send(
     swap_id: SwapId,
     source: ServiceId,
     destination: ServiceId,
-    state: request::CheckpointState,
+    state: CheckpointState,
 ) -> Result<(), Error> {
     let mut serialized_state = vec![];
     let size = state

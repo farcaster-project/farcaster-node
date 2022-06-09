@@ -13,6 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::farcasterd::runtime::request::CheckpointEntry;
 use crate::farcasterd::runtime::request::MadeOffer;
 use crate::farcasterd::runtime::request::TookOffer;
 use crate::farcasterd::runtime::request::{ProgressEvent, SwapProgress};
@@ -147,6 +148,8 @@ pub fn run(
         stats: none!(),
         funding_xmr: none!(),
         funding_btc: none!(),
+        checkpointed_pub_offers: vec![].into(),
+        restoring_swap_id: none!(),
         config,
     };
 
@@ -178,6 +181,8 @@ pub struct Runtime {
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>,
     funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount, bool)>,
     funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount, bool)>,
+    checkpointed_pub_offers: List<CheckpointEntry>,
+    restoring_swap_id: HashSet<SwapId>,
     stats: Stats,
     config: Config,
 }
@@ -549,6 +554,15 @@ impl Runtime {
                         }
                     }
                     ServiceId::Swap(swap_id) => {
+                        if self.restoring_swap_id.remove(swap_id) {
+                            info!("Restoring swap {}", swap_id.bright_blue_italic());
+                            endpoints.send_to(
+                                ServiceBus::Ctl,
+                                ServiceId::Farcasterd,
+                                ServiceId::Database,
+                                Request::RestoreCheckpoint(*swap_id),
+                            )?;
+                        }
                         if self.running_swaps.insert(*swap_id) {
                             info!(
                                 "Swap {} is registered; total {} swaps are known",
@@ -895,6 +909,16 @@ impl Runtime {
                 )?;
             }
 
+            Request::CheckpointList(checkpointed_pub_offers) => {
+                self.checkpointed_pub_offers = checkpointed_pub_offers.clone();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    source,
+                    Request::CheckpointList(checkpointed_pub_offers),
+                )?;
+            }
+
             Request::RestoreCheckpoint(swap_id) => {
                 if endpoints
                     .send_to(
@@ -916,17 +940,27 @@ impl Runtime {
                     )?;
                     return Ok(());
                 }
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd,
-                    ServiceId::Database,
-                    Request::RestoreCheckpoint(swap_id),
+
+                let checkpoint_entry = self
+                    .checkpointed_pub_offers
+                    .iter()
+                    .find(|entry| entry.swap_id == swap_id)
+                    .unwrap();
+                self.restoring_swap_id.insert(swap_id);
+                let _child = launch(
+                    "swapd",
+                    &[
+                        checkpoint_entry.swap_id.to_hex(),
+                        checkpoint_entry.public_offer.to_string(),
+                        checkpoint_entry.trade_role.to_string(),
+                    ],
                 )?;
+
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd,
                     source,
-                    Request::String("Restored checkpoint.".to_string()),
+                    Request::String("Restoring checkpoint.".to_string()),
                 )?;
             }
 

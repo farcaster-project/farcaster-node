@@ -715,6 +715,7 @@ pub enum FundingInfo {
 pub struct CheckpointEntry {
     pub swap_id: SwapId,
     pub public_offer: PublicOffer<BtcXmr>,
+    pub trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
