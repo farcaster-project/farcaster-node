@@ -920,18 +920,43 @@ impl Runtime {
             }
 
             Request::RestoreCheckpoint(swap_id) => {
-                let checkpoint_entry = self
+                let CheckpointEntry {
+                    public_offer,
+                    trade_role,
+                    ..
+                } = self
                     .checkpointed_pub_offers
                     .iter()
                     .find(|entry| entry.swap_id == swap_id)
                     .unwrap();
                 self.restoring_swap_id.insert(swap_id);
+                syncers_up(
+                    ServiceId::Farcasterd,
+                    &mut self.spawning_services,
+                    &self.syncer_services,
+                    &mut self.syncer_clients,
+                    Coin::Bitcoin,
+                    public_offer.offer.network,
+                    swap_id,
+                    &self.config,
+                )?;
+                syncers_up(
+                    ServiceId::Farcasterd,
+                    &mut self.spawning_services,
+                    &self.syncer_services,
+                    &mut self.syncer_clients,
+                    Coin::Bitcoin,
+                    public_offer.offer.network,
+                    swap_id,
+                    &self.config,
+                )?;
+
                 let _child = launch(
                     "swapd",
                     &[
-                        checkpoint_entry.swap_id.to_hex(),
-                        checkpoint_entry.public_offer.to_string(),
-                        checkpoint_entry.trade_role.to_string(),
+                        swap_id.to_hex(),
+                        public_offer.to_string(),
+                        trade_role.to_string(),
                     ],
                 )?;
 
