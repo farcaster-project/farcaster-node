@@ -14,7 +14,7 @@
 
 #![allow(clippy::clone_on_copy)]
 
-use crate::swapd::SwapdCheckpoint;
+use crate::swapd::CheckpointSwapd;
 use crate::walletd::runtime::BobState;
 use crate::walletd::{runtime::AliceState, NodeSecrets};
 use crate::{
@@ -745,7 +745,7 @@ pub struct Checkpoint {
 pub enum CheckpointState {
     CheckpointWalletAlice(AliceState),
     CheckpointWalletBob(BobState),
-    CheckpointSwapd(SwapdCheckpoint),
+    CheckpointSwapd(CheckpointSwapd),
 }
 
 impl FromStr for BitcoinFundingInfo {
