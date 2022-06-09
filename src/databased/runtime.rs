@@ -191,6 +191,14 @@ impl Runtime {
                                         public_offer: checkpoint.pub_offer,
                                     })
                                 }
+                                s => {
+                                    error!(
+                                        "Checkpoint {} not supported for service {}",
+                                        s,
+                                        ServiceId::Wallet
+                                    );
+                                    None
+                                }
                             },
                             _ => None,
                         }

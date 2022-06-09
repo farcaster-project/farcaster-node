@@ -1571,6 +1571,9 @@ impl Runtime {
                         error!("Did not restore wallet, the runtime already contains a Bob wallet for swap {}", swap_id)
                     }
                 }
+                s => {
+                    error!("Checkpoint {} not supported in walletd", s);
+                }
             },
 
             _ => {

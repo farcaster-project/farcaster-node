@@ -1,7 +1,9 @@
 use crate::{syncerd::Coin, Error};
+use strict_encoding::{StrictDecode, StrictEncode};
 
 pub type BlockHeight = u32;
 
+#[derive(Debug, Clone, StrictEncode, StrictDecode)]
 pub struct TemporalSafety {
     pub cancel_timelock: BlockHeight,
     pub punish_timelock: BlockHeight,
