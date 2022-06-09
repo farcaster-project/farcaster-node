@@ -14,7 +14,6 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::service::Endpoints;
-use crate::swapd::runtime::request::CheckpointMultipartChunk;
 use crate::{
     rpc::request::Outcome,
     rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
@@ -81,7 +80,10 @@ use internet2::{
 use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use monero::{cryptonote::hash::keccak_256, PrivateKey, ViewPair};
-use request::{Checkpoint, Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
+use request::{
+    Checkpoint, CheckpointChunk, CheckpointMultipartChunk, CheckpointState, Commit, InitSwap,
+    Params, Reveal, TakeCommit, Tx,
+};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(
@@ -180,6 +182,7 @@ pub fn run(
         )?),
         pending_requests: none!(),
         pending_peer_request: none!(),
+        pending_checkpoint_chunks: map![],
         txs: none!(),
     };
     let broker = false;
@@ -200,6 +203,7 @@ pub struct Runtime {
     temporal_safety: TemporalSafety,
     pending_requests: HashMap<ServiceId, Vec<PendingRequest>>, // FIXME Something more meaningful than ServiceId to index
     pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
+    pending_checkpoint_chunks: HashMap<[u8; 20], HashSet<CheckpointChunk>>,
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
@@ -242,6 +246,7 @@ impl StrictDecode for PendingRequest {
 #[display("checkpoint-swapd")]
 pub struct CheckpointSwapd {
     pub state: State,
+    pub last_msg: Msg,
     pub temporal_safety: TemporalSafety,
     pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
 }
@@ -249,6 +254,7 @@ pub struct CheckpointSwapd {
 impl StrictEncode for CheckpointSwapd {
     fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
         let mut len = self.state.strict_encode(&mut e)?;
+        len += self.last_msg.strict_encode(&mut e)?;
         len += self.temporal_safety.strict_encode(&mut e)?;
 
         // len += self.pending_requests.len() as usize;
@@ -266,6 +272,7 @@ impl StrictEncode for CheckpointSwapd {
 impl StrictDecode for CheckpointSwapd {
     fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
         let state = State::strict_decode(&mut d)?;
+        let last_msg = Msg::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
         let len = usize::strict_decode(&mut d)?;
         let mut pending_requests = HashMap::<ServiceId, Vec<PendingRequest>>::new();
@@ -279,6 +286,7 @@ impl StrictDecode for CheckpointSwapd {
         }
         Ok(CheckpointSwapd {
             state,
+            last_msg,
             temporal_safety,
             pending_requests,
         })
@@ -1458,15 +1466,18 @@ impl Runtime {
                         self.send_wallet(msg_bus, endpoints, request)?;
                     }
                     // alice receives, bob sends
-                    Msg::BuyProcedureSignature(BuyProcedureSignature { buy, .. })
-                        if self.state.a_refundsig() =>
-                    {
+                    Msg::BuyProcedureSignature(buy_proc_sig) if self.state.a_refundsig() => {
                         // checkpoint swap alice pre buy
+                        debug!(
+                            "{} | checkpointing alice swapd state",
+                            self.swap_id.bright_blue_italic()
+                        );
                         checkpoint_state(
                             endpoints,
                             self.swap_id,
                             request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                                 state: self.state.clone(),
+                                last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
                                 temporal_safety: self.temporal_safety.clone(),
                                 pending_requests: self.pending_requests.clone(),
                             }),
@@ -1476,7 +1487,7 @@ impl Runtime {
                         // processing the buy signatures from Bob
                         let tx_label = TxLabel::Buy;
                         if !self.syncer_state.is_watched_tx(&tx_label) {
-                            let txid = buy.clone().extract_tx().txid();
+                            let txid = buy_proc_sig.buy.clone().extract_tx().txid();
                             let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                             endpoints.send_to(
                                 ServiceBus::Ctl,
@@ -2592,11 +2603,16 @@ impl Runtime {
                     && self.state.local_params().is_some() =>
             {
                 // checkpoint swap pre lock bob
+                debug!(
+                    "{} | checkpointing bob pre lock swapd state",
+                    self.swap_id.bright_blue_italic()
+                );
                 checkpoint_state(
                     endpoints,
                     self.swap_id,
                     request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                         state: self.state.clone(),
+                        last_msg: Msg::CoreArbitratingSetup(core_arb_setup.clone()),
                         temporal_safety: self.temporal_safety.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
@@ -2703,11 +2719,16 @@ impl Runtime {
                     && self.state.local_params().is_some() =>
             {
                 // checkpoint alice pre lock bob
+                debug!(
+                    "{} | checkpointing alice pre lock swapd state",
+                    self.swap_id.bright_blue_italic()
+                );
                 checkpoint_state(
                     endpoints,
                     self.swap_id,
                     request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                         state: self.state.clone(),
+                        last_msg: Msg::RefundProcedureSignatures(refund_proc_sigs.clone()),
                         temporal_safety: self.temporal_safety.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
@@ -2731,11 +2752,16 @@ impl Runtime {
                     && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
             {
                 // checkpoint bob pre buy
+                debug!(
+                    "{} | checkpointing bob pre buy swapd state",
+                    self.swap_id.bright_blue_italic()
+                );
                 checkpoint_state(
                     endpoints,
                     self.swap_id,
                     request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                         state: self.state.clone(),
+                        last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
                         temporal_safety: self.temporal_safety.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
@@ -2817,6 +2843,89 @@ impl Runtime {
                 }
                 self.pending_peer_request.clear();
             }
+
+            Request::CheckpointMultipartChunk(request::CheckpointMultipartChunk {
+                checksum,
+                msg_index,
+                msgs_total,
+                serialized_state_chunk,
+                swap_id,
+            }) => {
+                debug!("received checkpoint multipart message");
+                if self.pending_checkpoint_chunks.contains_key(&checksum) {
+                    let chunks = self
+                        .pending_checkpoint_chunks
+                        .get_mut(&checksum)
+                        .expect("checked with contains_key");
+                    chunks.insert(CheckpointChunk {
+                        msg_index,
+                        serialized_state_chunk,
+                    });
+                } else {
+                    let mut chunk = HashSet::new();
+                    chunk.insert(CheckpointChunk {
+                        msg_index,
+                        serialized_state_chunk,
+                    });
+                    self.pending_checkpoint_chunks.insert(checksum, chunk);
+                }
+                let mut chunks = self
+                    .pending_checkpoint_chunks
+                    .get(&checksum)
+                    .unwrap_or(&HashSet::new())
+                    .clone();
+                if chunks.len() >= msgs_total {
+                    let mut chunk_tup_vec = chunks
+                        .drain()
+                        .map(|chunk| (chunk.msg_index, chunk.serialized_state_chunk))
+                        .collect::<Vec<(usize, Vec<u8>)>>(); // map the hashset to a vec for sorting
+                    chunk_tup_vec.sort_by(|(msg_number_a, _), (msg_number_b, _)| {
+                        msg_number_a.cmp(&msg_number_b)
+                    }); // sort in ascending order
+                    let chunk_vec = chunk_tup_vec
+                        .drain(..)
+                        .map(|(_, chunk)| chunk)
+                        .collect::<Vec<Vec<u8>>>(); // drop the extra integer index
+                    let serialized_checkpoint =
+                        chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // collect the chunked messages into a single serialized message
+                    if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
+                        // this should never happen
+                        error!("Unable to checkpoint the message, checksum did not match");
+                        return Ok(());
+                    }
+                    // serialize request and recurse to handle the actual request
+                    let request = Request::Checkpoint(request::Checkpoint {
+                        swap_id,
+                        state: CheckpointState::strict_decode(std::io::Cursor::new(
+                            serialized_checkpoint,
+                        ))
+                        .map_err(|err| Error::Farcaster(err.to_string()))?,
+                    });
+                    self.handle_rpc_ctl(endpoints, source, request)?;
+                }
+            }
+
+            Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
+                CheckpointState::CheckpointSwapd(CheckpointSwapd {
+                    state,
+                    last_msg,
+                    temporal_safety,
+                    pending_requests,
+                }) => {
+                    info!("{} | Restoring swap", swap_id);
+                    self.state = state;
+                    self.temporal_safety = temporal_safety;
+                    self.pending_requests = pending_requests;
+                    self.handle_rpc_ctl(
+                        endpoints,
+                        ServiceId::Checkpoint,
+                        Request::Protocol(last_msg),
+                    )?;
+                }
+                s => {
+                    error!("Checkpoint {} not supported in walletd", s);
+                }
+            },
 
             _ => {
                 error!("Request is not supported by the CTL interface {}", request);
@@ -2987,10 +3096,12 @@ pub fn checkpoint_state(
 
     // if the size exceeds a boundary, send a multi-part message
     let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
-    debug!("checkpointing wallet state");
     if size > max_chunk_size {
         let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
-        debug!("need to chunk the checkpoint message");
+        debug!(
+            "{} | need to chunk the checkpoint message",
+            swap_id.bright_blue_italic()
+        );
         let chunks: Vec<(usize, Vec<u8>)> = serialized_state
             .chunks_mut(max_chunk_size)
             .enumerate()
@@ -2999,13 +3110,14 @@ pub fn checkpoint_state(
         let chunks_total = chunks.len();
         for (n, chunk) in chunks {
             debug!(
-                "sending chunked checkpoint message {} of a total {}",
+                "{} | sending chunked checkpoint message {} of a total {}",
+                swap_id.bright_blue_italic(),
                 n + 1,
                 chunks_total
             );
             endpoints.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Wallet,
+                ServiceId::Swap(swap_id),
                 ServiceId::Checkpoint,
                 Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
                     checksum,
@@ -3019,7 +3131,7 @@ pub fn checkpoint_state(
     } else {
         endpoints.send_to(
             ServiceBus::Ctl,
-            ServiceId::Wallet,
+            ServiceId::Swap(swap_id),
             ServiceId::Checkpoint,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;

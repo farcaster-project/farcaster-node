@@ -119,6 +119,7 @@ pub enum Wallet {
 #[derive(Clone, Debug)]
 pub struct AliceState {
     alice: Alice<BtcXmr>,
+    pub local_trade_role: TradeRole,
     local_params: AliceParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
     key_manager: KeyManager,
@@ -134,6 +135,7 @@ pub struct AliceState {
 impl Encodable for AliceState {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.alice.consensus_encode(writer)?;
+        len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.local_proof.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
@@ -155,6 +157,7 @@ impl Decodable for AliceState {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
         Ok(AliceState {
             alice: Decodable::consensus_decode(d)?,
+            local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             local_proof: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
@@ -176,6 +179,7 @@ impl_strict_encoding!(AliceState);
 impl AliceState {
     fn new(
         alice: Alice<BtcXmr>,
+        local_trade_role: TradeRole,
         local_params: AliceParameters<BtcXmr>,
         local_proof: Proof<BtcXmr>,
         key_manager: KeyManager,
@@ -184,6 +188,7 @@ impl AliceState {
     ) -> Self {
         Self {
             alice,
+            local_trade_role,
             local_params,
             local_proof,
             key_manager,
@@ -201,6 +206,7 @@ impl AliceState {
 #[derive(Clone, Debug)]
 pub struct BobState {
     bob: Bob<BtcXmr>,
+    pub local_trade_role: TradeRole,
     local_params: BobParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
     key_manager: KeyManager,
@@ -216,6 +222,7 @@ pub struct BobState {
 impl Encodable for BobState {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.bob.consensus_encode(writer)?;
+        len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.local_proof.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
@@ -234,6 +241,7 @@ impl Decodable for BobState {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
         Ok(BobState {
             bob: Decodable::consensus_decode(d)?,
+            local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             local_proof: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
@@ -251,6 +259,7 @@ impl Decodable for BobState {
 impl BobState {
     fn new(
         bob: Bob<BtcXmr>,
+        local_trade_role: TradeRole,
         local_params: BobParameters<BtcXmr>,
         local_proof: Proof<BtcXmr>,
         key_manager: KeyManager,
@@ -260,6 +269,7 @@ impl BobState {
     ) -> Self {
         Self {
             bob,
+            local_trade_role,
             local_params,
             local_proof,
             key_manager,
@@ -408,11 +418,13 @@ impl Runtime {
                                 swap_id.bright_blue_italic(),
                                 "Wallet::Bob".bright_yellow()
                             );
+                            let local_trade_role = TradeRole::Maker;
                             if let request::Commit::AliceParameters(remote_commit) =
                                 remote_commit.clone()
                             {
                                 let bob_wallet = BobState::new(
                                     bob,
+                                    local_trade_role,
                                     local_params.clone(),
                                     local_proof,
                                     key_manager,
@@ -426,7 +438,7 @@ impl Runtime {
                                 return Ok(());
                             }
                             let launch_swap = LaunchSwap {
-                                local_trade_role: TradeRole::Maker,
+                                local_trade_role,
                                 public_offer: pub_offer,
                                 local_params: Params::Bob(local_params),
                                 swap_id,
@@ -459,8 +471,10 @@ impl Runtime {
                             if let request::Commit::BobParameters(bob_commit) =
                                 remote_commit.clone()
                             {
+                                let local_trade_role = TradeRole::Maker;
                                 let alice_state = AliceState::new(
                                     alice,
+                                    local_trade_role,
                                     local_params.clone(),
                                     local_proof,
                                     key_manager,
@@ -471,7 +485,7 @@ impl Runtime {
                                 self.wallets.insert(swap_id, Wallet::Alice(alice_state));
 
                                 let launch_swap = LaunchSwap {
-                                    local_trade_role: TradeRole::Maker,
+                                    local_trade_role,
                                     public_offer: pub_offer,
                                     local_params: Params::Alice(local_params),
                                     swap_id,
@@ -645,6 +659,7 @@ impl Runtime {
                     Reveal::AliceParameters(reveal) => {
                         if let Some(Wallet::Bob(BobState {
                             bob,
+                            local_trade_role,
                             local_params,
                             local_proof,
                             key_manager,
@@ -702,6 +717,7 @@ impl Runtime {
                                 swap_id,
                                 request::CheckpointState::CheckpointWalletBob(BobState {
                                     bob: bob.clone(),
+                                    local_trade_role: local_trade_role.clone(),
                                     local_params: local_params.clone(),
                                     local_proof: local_proof.clone(),
                                     key_manager: key_manager.clone(),
@@ -1235,9 +1251,11 @@ impl Runtime {
                             swap_id.bright_blue_italic(),
                             "Wallet::Bob".bright_yellow()
                         );
+                        let local_trade_role = TradeRole::Taker;
                         if self.wallets.get(&swap_id).is_none() {
                             let local_wallet = BobState::new(
                                 bob,
+                                local_trade_role,
                                 local_params.clone(),
                                 local_proof,
                                 key_manager,
@@ -1251,7 +1269,7 @@ impl Runtime {
                             return Ok(());
                         }
                         let launch_swap = LaunchSwap {
-                            local_trade_role: TradeRole::Taker,
+                            local_trade_role,
                             public_offer,
                             local_params: Params::Bob(local_params),
                             swap_id,
@@ -1271,6 +1289,7 @@ impl Runtime {
                             alice.generate_parameters(&mut key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let key_manager = KeyManager::new(wallet_seed, wallet_index)?;
+                        let local_trade_role = TradeRole::Taker;
 
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
@@ -1281,6 +1300,7 @@ impl Runtime {
                             );
                             let wallet = AliceState::new(
                                 alice,
+                                local_trade_role,
                                 local_params.clone(),
                                 local_proof,
                                 key_manager,
@@ -1292,7 +1312,7 @@ impl Runtime {
                             error!("{} | Wallet already exists", swap_id.bright_blue_italic());
                         }
                         let launch_swap = LaunchSwap {
-                            local_trade_role: TradeRole::Taker,
+                            local_trade_role,
                             public_offer,
                             local_params: Params::Alice(local_params),
                             swap_id,
