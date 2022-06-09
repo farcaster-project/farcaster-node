@@ -248,6 +248,7 @@ pub struct CheckpointSwapd {
     pub state: State,
     pub last_msg: Msg,
     pub temporal_safety: TemporalSafety,
+    pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
 }
 
@@ -257,7 +258,25 @@ impl StrictEncode for CheckpointSwapd {
         len += self.last_msg.strict_encode(&mut e)?;
         len += self.temporal_safety.strict_encode(&mut e)?;
 
-        // len += self.pending_requests.len() as usize;
+        len += self.txs.len().strict_encode(&mut e)?;
+        let res: Result<usize, strict_encoding::Error> =
+            self.txs.iter().try_fold(len, |mut acc, (key, val)| {
+                acc += key.strict_encode(&mut e).map_err(|err| {
+                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
+                })?;
+                acc += val.strict_encode(&mut e).map_err(|err| {
+                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
+                })?;
+                Ok(acc)
+            });
+        len = match res {
+            Ok(val) => Ok(val),
+            Err(err) => Err(strict_encoding::Error::DataIntegrityError(format!(
+                "{}",
+                err
+            ))),
+        }?;
+
         len += self.pending_requests.len().strict_encode(&mut e)?;
         self.pending_requests
             .iter()
@@ -275,6 +294,16 @@ impl StrictDecode for CheckpointSwapd {
         let last_msg = Msg::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
         let len = usize::strict_decode(&mut d)?;
+        let mut txs = HashMap::<TxLabel, bitcoin::Transaction>::new();
+        for _ in 0..len {
+            let key = TxLabel::strict_decode(&mut d)?;
+            let val = bitcoin::Transaction::strict_decode(&mut d)?;
+            if txs.contains_key(&key) {
+                return Err(strict_encoding::Error::RepeatedValue(format!("{:?}", key)));
+            }
+            txs.insert(key, val);
+        }
+        let len = usize::strict_decode(&mut d)?;
         let mut pending_requests = HashMap::<ServiceId, Vec<PendingRequest>>::new();
         for _ in 0..len {
             let key = ServiceId::strict_decode(&mut d)?;
@@ -288,6 +317,7 @@ impl StrictDecode for CheckpointSwapd {
             state,
             last_msg,
             temporal_safety,
+            txs,
             pending_requests,
         })
     }
@@ -1479,6 +1509,7 @@ impl Runtime {
                                 state: self.state.clone(),
                                 last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
                                 temporal_safety: self.temporal_safety.clone(),
+                                txs: self.txs.clone(),
                                 pending_requests: self.pending_requests.clone(),
                             }),
                         )?;
@@ -2614,6 +2645,7 @@ impl Runtime {
                         state: self.state.clone(),
                         last_msg: Msg::CoreArbitratingSetup(core_arb_setup.clone()),
                         temporal_safety: self.temporal_safety.clone(),
+                        txs: self.txs.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
                 )?;
@@ -2730,6 +2762,7 @@ impl Runtime {
                         state: self.state.clone(),
                         last_msg: Msg::RefundProcedureSignatures(refund_proc_sigs.clone()),
                         temporal_safety: self.temporal_safety.clone(),
+                        txs: self.txs.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
                 )?;
@@ -2763,6 +2796,7 @@ impl Runtime {
                         state: self.state.clone(),
                         last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
                         temporal_safety: self.temporal_safety.clone(),
+                        txs: self.txs.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
                 )?;
@@ -2910,12 +2944,49 @@ impl Runtime {
                     state,
                     last_msg,
                     temporal_safety,
+                    txs,
                     pending_requests,
                 }) => {
                     info!("{} | Restoring swap", swap_id);
                     self.state = state;
                     self.temporal_safety = temporal_safety;
                     self.pending_requests = pending_requests;
+                    self.txs = txs.clone();
+                    trace!("Watch height bitcoin");
+                    let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
+                        id: self.syncer_state.tasks.new_taskid(),
+                        lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
+                    });
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.bitcoin_syncer(),
+                        Request::SyncerTask(watch_height_bitcoin),
+                    )?;
+
+                    trace!("Watch height monero");
+                    let watch_height_monero = Task::WatchHeight(WatchHeight {
+                        id: self.syncer_state.tasks.new_taskid(),
+                        lifetime: self.syncer_state.task_lifetime(Coin::Monero),
+                    });
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.monero_syncer(),
+                        Request::SyncerTask(watch_height_monero),
+                    )?;
+
+                    trace!("Watching transactions");
+                    for (tx_label, tx) in txs.iter() {
+                        let task = self.syncer_state.watch_tx_btc(tx.txid(), tx_label.clone());
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
+
                     self.handle_rpc_ctl(
                         endpoints,
                         ServiceId::Checkpoint,
