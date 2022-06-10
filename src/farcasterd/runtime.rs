@@ -945,11 +945,26 @@ impl Runtime {
                     public_offer,
                     trade_role,
                     ..
-                } = self
+                } = match self
                     .checkpointed_pub_offers
                     .iter()
                     .find(|entry| entry.swap_id == swap_id)
-                    .unwrap();
+                {
+                    Some(ce) => ce,
+                    None => {
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd,
+                            source,
+                            Request::Failure(Failure {
+                                code: 1,
+                                info: "No checkpoint found with given swap id, aborting restore."
+                                    .to_string(),
+                            }),
+                        )?;
+                        return Ok(());
+                    }
+                };
                 self.restoring_swap_id.insert(swap_id);
                 syncers_up(
                     ServiceId::Farcasterd,
