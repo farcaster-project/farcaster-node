@@ -249,6 +249,7 @@ pub struct CheckpointSwapd {
     pub last_msg: Msg,
     pub temporal_safety: TemporalSafety,
     pub txs: HashMap<TxLabel, bitcoin::Transaction>,
+    pub txids: HashMap<TxLabel, Txid>,
     pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
 }
 
@@ -261,6 +262,25 @@ impl StrictEncode for CheckpointSwapd {
         len += self.txs.len().strict_encode(&mut e)?;
         let res: Result<usize, strict_encoding::Error> =
             self.txs.iter().try_fold(len, |mut acc, (key, val)| {
+                acc += key.strict_encode(&mut e).map_err(|err| {
+                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
+                })?;
+                acc += val.strict_encode(&mut e).map_err(|err| {
+                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
+                })?;
+                Ok(acc)
+            });
+        len = match res {
+            Ok(val) => Ok(val),
+            Err(err) => Err(strict_encoding::Error::DataIntegrityError(format!(
+                "{}",
+                err
+            ))),
+        }?;
+
+        len += self.txids.len().strict_encode(&mut e)?;
+        let res: Result<usize, strict_encoding::Error> =
+            self.txids.iter().try_fold(len, |mut acc, (key, val)| {
                 acc += key.strict_encode(&mut e).map_err(|err| {
                     strict_encoding::Error::DataIntegrityError(format!("{}", err))
                 })?;
@@ -293,6 +313,7 @@ impl StrictDecode for CheckpointSwapd {
         let state = State::strict_decode(&mut d)?;
         let last_msg = Msg::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
+
         let len = usize::strict_decode(&mut d)?;
         let mut txs = HashMap::<TxLabel, bitcoin::Transaction>::new();
         for _ in 0..len {
@@ -303,6 +324,18 @@ impl StrictDecode for CheckpointSwapd {
             }
             txs.insert(key, val);
         }
+
+        let len = usize::strict_decode(&mut d)?;
+        let mut txids = HashMap::<TxLabel, Txid>::new();
+        for _ in 0..len {
+            let key = TxLabel::strict_decode(&mut d)?;
+            let val = Txid::strict_decode(&mut d)?;
+            if txids.contains_key(&key) {
+                return Err(strict_encoding::Error::RepeatedValue(format!("{:?}", key)));
+            }
+            txids.insert(key, val);
+        }
+
         let len = usize::strict_decode(&mut d)?;
         let mut pending_requests = HashMap::<ServiceId, Vec<PendingRequest>>::new();
         for _ in 0..len {
@@ -318,6 +351,7 @@ impl StrictDecode for CheckpointSwapd {
             last_msg,
             temporal_safety,
             txs,
+            txids,
             pending_requests,
         })
     }
@@ -921,6 +955,7 @@ impl SyncerState {
     fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
+        self.tasks.txids.insert(tx_label, txid);
         info!(
             "{} | Watching {} transaction ({})",
             self.swap_id.bright_blue_italic(),
@@ -1510,6 +1545,7 @@ impl Runtime {
                                 last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
                                 temporal_safety: self.temporal_safety.clone(),
                                 txs: self.txs.clone(),
+                                txids: self.syncer_state.tasks.txids.clone(),
                                 pending_requests: self.pending_requests.clone(),
                             }),
                         )?;
@@ -2091,10 +2127,10 @@ impl Runtime {
                             let swap_success_req = Request::SwapOutcome(success);
                             self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
                             self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-                            // remove txs to invalidate outdated states
+                            // remove txs from outdated states
+                            self.txs.remove(&TxLabel::Lock);
                             self.txs.remove(&TxLabel::Cancel);
                             self.txs.remove(&TxLabel::Refund);
-                            self.txs.remove(&TxLabel::Buy);
                             self.txs.remove(&TxLabel::Punish);
                         }
                     }
@@ -2304,9 +2340,8 @@ impl Runtime {
                                     && self.state.safe_cancel()
                                     && self.txs.contains_key(&TxLabel::Cancel) =>
                             {
-                                let (tx_label, cancel_tx) =
-                                    self.txs.remove_entry(&TxLabel::Cancel).unwrap();
-                                self.broadcast(cancel_tx, tx_label, endpoints)?
+                                let cancel_tx = self.txs.get(&TxLabel::Cancel).unwrap().clone();
+                                self.broadcast(cancel_tx, TxLabel::Cancel, endpoints)?
                             }
                             TxLabel::Lock
                                 if self.temporal_safety.safe_buy(*confirmations)
@@ -2319,10 +2354,9 @@ impl Runtime {
                                     && self.state.local_params().is_some() =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
-                                if let Some((txlabel, buy_tx)) =
-                                    self.txs.remove_entry(&TxLabel::Buy)
-                                {
-                                    self.broadcast(buy_tx, txlabel, endpoints)?;
+                                if let Some(buy_tx) = self.txs.get(&TxLabel::Buy) {
+                                    let buy_tx = buy_tx.clone();
+                                    self.broadcast(buy_tx, TxLabel::Buy, endpoints)?;
                                     self.state = State::Alice(AliceState::RefundSigA {
                                         local_params: self.state.local_params().cloned().unwrap(),
                                         buy_published: true,
@@ -2369,12 +2403,12 @@ impl Runtime {
                             {
                                 trace!("Alice publishes punish tx");
 
-                                let (tx_label, punish_tx) =
-                                    self.txs.remove_entry(&TxLabel::Punish).unwrap();
+                                let punish_tx = self.txs.get(&TxLabel::Punish).unwrap().clone();
                                 // syncer's watch punish tx task
-                                if !self.syncer_state.is_watched_tx(&tx_label) {
-                                    let txid = punish_tx.txid();
-                                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                                if !self.syncer_state.is_watched_tx(&TxLabel::Punish) {
+                                    let txid = punish_tx.clone().txid();
+                                    let task =
+                                        self.syncer_state.watch_tx_btc(txid, TxLabel::Punish);
                                     endpoints.send_to(
                                         ServiceBus::Ctl,
                                         self.identity(),
@@ -2383,7 +2417,7 @@ impl Runtime {
                                     )?;
                                 }
 
-                                self.broadcast(punish_tx, tx_label, endpoints)?;
+                                self.broadcast(punish_tx, TxLabel::Punish, endpoints)?;
                             }
 
                             TxLabel::Cancel
@@ -2392,9 +2426,8 @@ impl Runtime {
                                     && self.txs.contains_key(&TxLabel::Refund) =>
                             {
                                 trace!("here Bob publishes refund tx");
-                                let (tx_label, refund_tx) =
-                                    self.txs.remove_entry(&TxLabel::Refund).unwrap();
-                                self.broadcast(refund_tx, tx_label, endpoints)?;
+                                let refund_tx = self.txs.get(&TxLabel::Refund).unwrap().clone();
+                                self.broadcast(refund_tx, TxLabel::Refund, endpoints)?;
                             }
                             TxLabel::Cancel
                                 if (self.state.swap_role() == SwapRole::Alice
@@ -2440,8 +2473,9 @@ impl Runtime {
                                     swap_success_req.clone(),
                                 )?;
                                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
+                                // remove txs from outdated states
+                                self.txs.remove(&TxLabel::Lock);
                                 self.txs.remove(&TxLabel::Buy);
-                                self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
                             }
                             TxLabel::Buy
@@ -2542,9 +2576,9 @@ impl Runtime {
                                     swap_success_req.clone(),
                                 )?;
                                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-                                // remove txs to invalidate outdated states
+                                // remove txs from outdated states
+                                self.txs.remove(&TxLabel::Lock);
                                 self.txs.remove(&TxLabel::Cancel);
-                                self.txs.remove(&TxLabel::Refund);
                                 self.txs.remove(&TxLabel::Buy);
                                 self.txs.remove(&TxLabel::Punish);
                             }
@@ -2585,10 +2619,9 @@ impl Runtime {
                                     swap_success_req.clone(),
                                 )?;
                                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-                                // remove txs to invalidate outdated states
+                                // remove txs from outdated states
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Refund);
-                                self.txs.remove(&TxLabel::Buy);
                                 self.txs.remove(&TxLabel::Punish);
                             }
                             tx_label => trace!(
@@ -2647,6 +2680,7 @@ impl Runtime {
                         last_msg: Msg::CoreArbitratingSetup(core_arb_setup.clone()),
                         temporal_safety: self.temporal_safety.clone(),
                         txs: self.txs.clone(),
+                        txids: self.syncer_state.tasks.txids.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
                 )?;
@@ -2685,6 +2719,7 @@ impl Runtime {
 
             // TODO: checkpoint here or in caller of this
             Request::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
+                self.txs.insert(TxLabel::Lock, btc_lock.clone());
                 log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, endpoints)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
@@ -2764,6 +2799,7 @@ impl Runtime {
                         last_msg: Msg::RefundProcedureSignatures(refund_proc_sigs.clone()),
                         temporal_safety: self.temporal_safety.clone(),
                         txs: self.txs.clone(),
+                        txids: self.syncer_state.tasks.txids.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
                 )?;
@@ -2798,6 +2834,7 @@ impl Runtime {
                         last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
                         temporal_safety: self.temporal_safety.clone(),
                         txs: self.txs.clone(),
+                        txids: self.syncer_state.tasks.txids.clone(),
                         pending_requests: self.pending_requests.clone(),
                     }),
                 )?;
@@ -2946,6 +2983,7 @@ impl Runtime {
                     last_msg,
                     temporal_safety,
                     txs,
+                    txids,
                     pending_requests,
                 }) => {
                     info!("{} | Restoring swap", swap_id);
@@ -2980,6 +3018,17 @@ impl Runtime {
                     trace!("Watching transactions");
                     for (tx_label, tx) in txs.iter() {
                         let task = self.syncer_state.watch_tx_btc(tx.txid(), tx_label.clone());
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
+                    for (tx_label, txid) in txids.iter() {
+                        let task = self
+                            .syncer_state
+                            .watch_tx_btc(txid.clone(), tx_label.clone());
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
