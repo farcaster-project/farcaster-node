@@ -1570,6 +1570,7 @@ impl Runtime {
                 _,
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
+                | ServiceId::Checkpoint
             ) => {}
             (Request::GetInfo(_), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
@@ -2994,7 +2995,7 @@ impl Runtime {
                     )?;
                 }
                 s => {
-                    error!("Checkpoint {} not supported in walletd", s);
+                    error!("Checkpoint {} not supported in swapd", s);
                 }
             },
 

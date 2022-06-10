@@ -226,6 +226,29 @@ impl Runtime {
                                     CheckpointState::CheckpointWalletBob(state),
                                 )?;
                             }
+                            Ok(CheckpointState::CheckpointSwapd(_)) => {
+                                error!(
+                                    "Decoded swapd checkpoint where walletd checkpoint was stored"
+                                );
+                            }
+                            Err(err) => {
+                                error!("Decoding the checkpoint failed: {}", err);
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        error!(
+                            "Failed to retrieve checkpointed state for swap {}: {}",
+                            swap_id, err
+                        );
+                    }
+                }
+                match self.checkpoints.get_state(&CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Swap(swap_id),
+                }) {
+                    Ok(raw_state) => {
+                        match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
                             Ok(CheckpointState::CheckpointSwapd(state)) => {
                                 checkpoint_restore(
                                     endpoints,
@@ -233,6 +256,12 @@ impl Runtime {
                                     ServiceId::Swap(swap_id),
                                     CheckpointState::CheckpointSwapd(state),
                                 )?;
+                            }
+                            Ok(CheckpointState::CheckpointWalletAlice(_))
+                            | Ok(CheckpointState::CheckpointWalletBob(_)) => {
+                                error!(
+                                    "Decoded walletd checkpoint were swapd checkpoint was stored"
+                                );
                             }
                             Err(err) => {
                                 error!("Decoding the checkpoint failed: {}", err);
