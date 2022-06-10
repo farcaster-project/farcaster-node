@@ -909,14 +909,16 @@ impl Runtime {
                         return self.get_secret(endpoints, source, request);
                     }
                     (None, Some(sk), Some(pk)) => {
-                        self.listens.insert(offer.id(), bind_addr);
-                        self.node_ids.insert(offer.id(), pk);
                         info!(
                             "{} for incoming peer connections on {}",
                             "Starting listener".bright_blue_bold(),
                             bind_addr.bright_blue_bold()
                         );
-                        self.listen(&bind_addr, sk)
+                        self.listen(&bind_addr, sk).and_then(|_| {
+                            self.listens.insert(offer.id(), bind_addr);
+                            self.node_ids.insert(offer.id(), pk);
+                            Ok(())
+                        })
                     }
                     (Some(&addr), _, Some(pk)) => {
                         // no need for the keys, because peerd already knows them
