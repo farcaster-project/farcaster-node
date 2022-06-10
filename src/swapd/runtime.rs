@@ -2719,7 +2719,6 @@ impl Runtime {
 
             // TODO: checkpoint here or in caller of this
             Request::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
-                self.txs.insert(TxLabel::Lock, btc_lock.clone());
                 log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, endpoints)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
@@ -3214,6 +3213,9 @@ pub fn checkpoint_state(
     swap_id: SwapId,
     state: request::CheckpointState,
 ) -> Result<(), Error> {
+    if let request::CheckpointState::CheckpointSwapd(swapd_state) = state.clone() {
+        debug!("transactions: {:?}", swapd_state.txs);
+    }
     let mut serialized_state = vec![];
     let size = state.strict_encode(&mut serialized_state).unwrap();
 
