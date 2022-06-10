@@ -153,6 +153,20 @@ impl Msg {
             }
         }
     }
+
+    pub fn on_receiver_whitelist(&self) -> bool {
+        matches!(
+            self,
+            Msg::MakerCommit(_)
+                | Msg::TakerCommit(_)
+                | Msg::Reveal(_)
+                | Msg::RefundProcedureSignatures(_)
+                | Msg::CoreArbitratingSetup(_)
+                | Msg::BuyProcedureSignature(_)
+                | Msg::Ping(_)
+                | Msg::Pong(_)
+        )
+    }
 }
 
 impl LightningEncode for Msg {
