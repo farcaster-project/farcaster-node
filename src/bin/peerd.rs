@@ -166,15 +166,6 @@ fn main() {
     debug!("MSG RPC socket {}", &service_config.msg_endpoint);
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    /*
-    use self::internal::ResultExt;
-    let (config_from_file, _) =
-        internal::Config::custom_args_and_optional_files(std::iter::empty::<
-            &str,
-        >())
-        .unwrap_or_exit();
-     */
-
     let local_node = opts.peer_key_opts.local_node();
     info!(
         "{}: {}",
@@ -196,41 +187,43 @@ fn main() {
             local_socket = Some(inet_addr);
 
             debug!("Binding TCP socket {}", inet_addr);
-            let listener = TcpListener::bind(
+            if let Ok(listener) = TcpListener::bind(
                 SocketAddr::try_from(inet_addr).expect("Tor is not yet supported"),
-            )
-            .expect("Unable to bind to Lightning network peer socket");
+            ) {
+                debug!("Running TCP listener event loop");
+                loop {
+                    debug!("Awaiting for incoming connections...");
+                    let (stream, remote_socket_addr) = listener
+                        .accept()
+                        .expect("Error accepting incoming peer connection");
+                    debug!("New connection from {}", remote_socket_addr);
 
-            debug!("Running TCP listener event loop");
-            loop {
-                debug!("Awaiting for incoming connections...");
-                let (stream, remote_socket_addr) = listener
-                    .accept()
-                    .expect("Error accepting incoming peer connection");
-                debug!("New connection from {}", remote_socket_addr);
+                    // TODO: Support multithread mode
+                    debug!("Forking child process");
+                    if let ForkResult::Child = unsafe { fork().expect("Unable to fork child process") }
+                    {
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(30)))
+                            .expect("Unable to set up timeout for TCP connection");
 
-                // TODO: Support multithread mode
-                debug!("Forking child process");
-                if let ForkResult::Child = unsafe { fork().expect("Unable to fork child process") }
-                {
-                    stream
-                        .set_read_timeout(Some(Duration::from_secs(30)))
-                        .expect("Unable to set up timeout for TCP connection");
+                        debug!("Establishing session with the remote");
+                        let session =
+                            session::Raw::with_brontide(stream, local_node.private_key(), inet_addr)
+                                .expect("Unable to establish session with the remote peer");
 
-                    debug!("Establishing session with the remote");
-                    let session =
-                        session::Raw::with_brontide(stream, local_node.private_key(), inet_addr)
-                            .expect("Unable to establish session with the remote peer");
+                        debug!(
+                            "Session successfully established with {}",
+                            remote_socket_addr
+                        );
 
-                    debug!(
-                        "Session successfully established with {}",
-                        remote_socket_addr
-                    );
-
-                    break PeerConnection::with(session);
+                        break PeerConnection::with(session);
+                    }
+                    debug!("Child forked; returning into main listener event loop");
+                    continue;
                 }
-                debug!("Child forked; returning into main listener event loop");
-                continue;
+            } else {
+                error!("Unable to bind to {} socket", inet_addr.red_bold());
+                std::process::exit(2);
             }
         }
         PeerSocket::Connect(remote_node) => {
