@@ -2987,6 +2987,8 @@ impl Runtime {
                             Request::SyncerTask(task),
                         )?;
                     }
+                    let msg = format!("Restored swap at state {}", self.state);
+                    let _ = self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg);
 
                     self.handle_rpc_ctl(
                         endpoints,
