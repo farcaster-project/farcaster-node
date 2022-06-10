@@ -536,10 +536,6 @@ pub enum Request {
     #[display("read_progress({0})")]
     ReadProgress(SwapId),
 
-    #[api(type = 9999)]
-    #[display("test_progress({0})")]
-    TestProgress(SwapId),
-
     #[api(type = 1006)]
     #[display("subscribe_progress({0})")]
     SubscribeProgress(SwapId),
