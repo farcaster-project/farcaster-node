@@ -213,12 +213,6 @@ dependencies = [
 
 [[package]]
 name = "base64"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
-
-[[package]]
-name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
@@ -231,12 +225,6 @@ checksum = "5a8d4d2746f89841e49230dd26917df1876050f95abafafbe34f47cb534b88d7"
 dependencies = [
  "byteorder",
 ]
-
-[[package]]
-name = "bech32"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dabbe35f96fb9507f7330793dc490461b2962659ac5d427181e451a623751d1"
 
 [[package]]
 name = "bech32"
@@ -260,7 +248,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05bba324e6baf655b882df672453dbbc527bc938cadd27750ae510aaccc3a66a"
 dependencies = [
  "base64-compat",
- "bech32 0.8.1",
+ "bech32",
  "bitcoin_hashes",
  "secp256k1",
  "serde 1.0.137",
@@ -285,7 +273,7 @@ dependencies = [
  "bitcoin",
  "serde 1.0.137",
  "serde_with",
- "slip132 0.6.0",
+ "slip132",
  "strict_encoding",
 ]
 
@@ -862,7 +850,7 @@ dependencies = [
  "psbt",
  "serde 1.0.137",
  "serde_with",
- "slip132 0.6.0",
+ "slip132",
  "strict_encoding",
 ]
 
@@ -924,12 +912,6 @@ name = "doc-comment"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
-
-[[package]]
-name = "dotenv"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "ecdsa_fun"
@@ -1066,11 +1048,8 @@ dependencies = [
  "amplify",
  "amplify_derive",
  "anyhow",
- "base64 0.12.3",
- "bech32 0.7.3",
  "bitcoin",
  "bitcoincore-rpc",
- "chrono",
  "clap",
  "clap_complete",
  "colored",
@@ -1078,7 +1057,6 @@ dependencies = [
  "config 0.11.0",
  "configure_me",
  "configure_me_codegen",
- "dotenv",
  "electrum-client",
  "env_logger",
  "farcaster_core",
@@ -1108,7 +1086,6 @@ dependencies = [
  "serde_with",
  "serde_yaml",
  "shellexpand",
- "slip132 0.7.0",
  "strict_encoding",
  "strict_encoding_derive",
  "strip-ansi-escapes",
@@ -1827,7 +1804,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3dd0d4d712b845b2981058cffb359202464a6f127dd78fa24951e1df882551"
 dependencies = [
  "amplify",
- "bech32 0.8.1",
+ "bech32",
  "bitcoin_hashes",
  "deflate",
  "inflate",
@@ -1843,7 +1820,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4da7044659fa9c1c86335dda27686d1bc21f65517b264529cffb8bae1a0c7dc"
 dependencies = [
  "amplify",
- "bech32 0.8.1",
+ "bech32",
  "bitcoin_hashes",
  "deflate",
  "inflate",
@@ -2775,7 +2752,7 @@ version = "0.11.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46a1f7aa4f35e5e8b4160449f51afc758f0ce6454315a9fa7d0d113e958c41eb"
 dependencies = [
- "base64 0.13.0",
+ "base64",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -3193,18 +3170,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "slip132"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "086f81f7be78373eb07e9879fa77e49d52416bde18778f675698c5c7da6b296c"
-dependencies = [
- "amplify",
- "bitcoin",
- "serde 1.0.137",
- "serde_with",
-]
-
-[[package]]
 name = "smallvec"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3255,9 +3220,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strict_encoding"
-version = "1.8.1"
+version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e4ef7c6fc77d2e1163fcaf02cd394c08c543923706e5972ca1d79a227c14ca"
+checksum = "a13dd4e8a467f81b70dfbfde6d2e9bd38dfd5a62ad8dbd399f7017f0e2808292"
 dependencies = [
  "amplify",
  "bitcoin",
@@ -3550,7 +3515,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum",
- "base64 0.13.0",
+ "base64",
  "bytes",
  "futures-core",
  "futures-util",
@@ -3593,7 +3558,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99febc413f26cf855b3a309c5872edff5c31e0ffe9c2fce5681868761df36f69"
 dependencies = [
  "base32",
- "base64 0.13.0",
+ "base64",
  "derive_more",
  "ed25519-dalek",
  "hex",
