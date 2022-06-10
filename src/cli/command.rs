@@ -12,8 +12,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::{
     convert::TryFrom,
     io::{self, Read, Write},

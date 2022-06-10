@@ -106,7 +106,6 @@ tonic = "0.7.2"
 prost = "0.10.3"
 
 [build-dependencies]
-
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
 farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
 
