@@ -184,10 +184,10 @@ pub enum Command {
         without_validation: bool,
     },
 
-    /// Revoke offer accepts an offer and revokes it within the runtime
+    /// Revoke offer accepts an offer and revokes it within the runtime.
     #[display("revoke-offer<{public_offer}>")]
     RevokeOffer {
-        /// The offer to be canceled
+        /// The offer to be canceled.
         public_offer: PublicOffer<BtcXmr>,
     },
 
@@ -196,9 +196,18 @@ pub enum Command {
     Progress {
         /// The swap id requested.
         swapid: SwapId,
+
+        /// Subscribe to progress and only return when progress is finished.
+        #[clap(short, long)]
+        follow: bool,
     },
-    /// Returns addresses and amounts that require funding for coin
-    NeedsFunding { coin: Coin },
+
+    /// Returns addresses and amounts that require funding for coin.
+    #[display("needs-funding<{coin}>")]
+    NeedsFunding {
+        /// The coin funding required needs to be checked against.
+        coin: Coin,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]

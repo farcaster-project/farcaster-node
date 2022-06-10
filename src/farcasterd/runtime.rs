@@ -141,6 +141,7 @@ pub fn run(
         syncer_clients: none!(),
         consumed_offers: none!(),
         progress: none!(),
+        progress_subscriptions: none!(),
         stats: none!(),
         funding_xmr: none!(),
         funding_btc: none!(),
@@ -172,6 +173,7 @@ pub struct Runtime {
     syncer_services: HashMap<(Coin, Network), ServiceId>,
     syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
+    progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>,
     funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount, bool)>,
     funding_xmr: HashMap<SwapId, (monero::Address, monero::Amount, bool)>,
     stats: Stats,
@@ -1083,18 +1085,22 @@ impl Runtime {
                 }
             }
 
+            // Add progress in queues and forward to subscribed clients
             Request::Progress(..) | Request::Success(..) | Request::Failure(..) => {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
                 };
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
-                queue.push_back(request);
+                queue.push_back(request.clone());
+                // forward the request to each subscribed clients
+                self.notify_subscribed_clients(endpoints, &source, &request);
             }
 
+            // Returns a unique response that contains the complete progress queue
             Request::ReadProgress(swapid) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swapid)) {
                     let mut swap_progress = SwapProgress { progress: vec![] };
-                    for (_i, req) in queue.iter().enumerate() {
+                    for req in queue.iter() {
                         match req {
                             Request::Progress(request::Progress::Message(m)) => {
                                 swap_progress
@@ -1119,12 +1125,7 @@ impl Runtime {
                             _ => unreachable!("not handled here"),
                         };
                     }
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        source,
-                        Request::SwapProgress(swap_progress),
-                    )?;
+                    report_to.push((Some(source.clone()), Request::SwapProgress(swap_progress)));
                 } else {
                     let info = if self.making_swaps.contains_key(&ServiceId::Swap(swapid))
                         || self.taking_swaps.contains_key(&ServiceId::Swap(swapid))
@@ -1133,13 +1134,75 @@ impl Runtime {
                     } else {
                         s!("Unknown swapd")
                     };
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        source,
+                    report_to.push((
+                        Some(source.clone()),
                         Request::Failure(Failure { code: 1, info }),
-                    )?;
+                    ));
                 }
+            }
+
+            // Add the request's source to the subscription list for later progress notifications
+            // and send all notifications already in the queue
+            Request::SubscribeProgress(swapid) => {
+                let service = ServiceId::Swap(swapid);
+                // if the swap is known either in taking, making or progress, attach the client
+                // otherwise terminate
+                if self.making_swaps.contains_key(&service)
+                    || self.taking_swaps.contains_key(&service)
+                    || self.progress.contains_key(&service)
+                {
+                    if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
+                        // ret true if not in the set, false otherwise. Double subscribe is not a
+                        // problem as we manage the list in a set.
+                        let _ = subscribed.insert(source.clone());
+                    } else {
+                        let mut subscribed = HashSet::new();
+                        subscribed.insert(source.clone());
+                        // None is returned, the key was not set as checked before
+                        let _ = self
+                            .progress_subscriptions
+                            .insert(service.clone(), subscribed);
+                    }
+                    trace!(
+                        "{} has been added to {} progress subscription",
+                        source.clone(),
+                        swapid
+                    );
+                    // send all queued notification to the source to catch up
+                    if let Some(queue) = self.progress.get_mut(&service) {
+                        for req in queue.iter() {
+                            report_to.push((Some(source.clone()), req.clone()));
+                        }
+                    }
+                } else {
+                    // no swap service exists, terminate
+                    report_to.push((
+                        Some(source.clone()),
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: "Unknown swapd".to_string(),
+                        }),
+                    ));
+                }
+            }
+
+            // Remove the request's source from the subscription list of notifications
+            Request::UnsubscribeProgress(swapid) => {
+                let service = ServiceId::Swap(swapid);
+                if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
+                    // we don't care if the source was not in the set
+                    let _ = subscribed.remove(&source);
+                    trace!(
+                        "{} has been removed from {} progress subscription",
+                        source.clone(),
+                        swapid
+                    );
+                    if subscribed.len() == 0 {
+                        // we drop the empty set located at the swap index
+                        let _ = self.progress_subscriptions.remove(&service);
+                    }
+                }
+                // if no swap service exists no subscription need to be removed
             }
 
             Request::FundingInfo(info) => match info {
@@ -1417,20 +1480,19 @@ impl Runtime {
             }
         }
 
-        let mut len = 0;
-        for (respond_to, resp) in report_to.into_iter() {
+        for (i, (respond_to, resp)) in report_to.clone().into_iter().enumerate() {
             if let Some(respond_to) = respond_to {
-                len += 1;
-                debug!("notifications to cli: {}", len);
                 trace!(
-                    "Respond to {} -> Response {}",
+                    "(#{}) Respond to {}: {}",
+                    i,
                     respond_to.bright_yellow_bold(),
                     resp.bright_blue_bold(),
                 );
                 endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
             }
         }
-        debug!("processed all cli notifications");
+        trace!("Processed all cli notifications");
+
         Ok(())
     }
 
@@ -1530,6 +1592,30 @@ impl Runtime {
             Request::GetKeys(wallet_token),
         )?;
         Ok(())
+    }
+
+    /// Notify(forward to) the subscribed clients still online with the given request
+    fn notify_subscribed_clients(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: &ServiceId,
+        request: &Request,
+    ) {
+        // if subs exists for the source (swapid), forward the request to every subs
+        if let Some(subs) = self.progress_subscriptions.get_mut(source) {
+            // if the sub is no longer reachable, i.e. the process terminated without calling
+            // unsub, remove it from sub list
+            subs.retain(|sub| {
+                endpoints
+                    .send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        sub.clone(),
+                        request.clone(),
+                    )
+                    .is_ok()
+            });
+        }
     }
 }
 

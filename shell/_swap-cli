@@ -204,6 +204,8 @@ _arguments "${_arguments_options[@]}" \
 '--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
 '-x+[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
+'-f[Subscribe to progress and only return when progress is finished]' \
+'--follow[Subscribe to progress and only return when progress is finished]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
 '*-v[Set verbosity level]' \
@@ -225,7 +227,7 @@ _arguments "${_arguments_options[@]}" \
 '--help[Print help information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':coin:' \
+':coin -- The coin funding required needs to be checked against:' \
 && ret=0
 ;;
 (help)

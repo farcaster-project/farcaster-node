@@ -78,28 +78,28 @@ impl Exec for Command {
 
             Command::Peers => {
                 runtime.request(ServiceId::Farcasterd, Request::ListPeers)?;
-                runtime.report_response()?;
+                runtime.report_response_or_fail()?;
             }
 
             Command::ListSwaps => {
                 runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
-                runtime.report_response()?;
+                runtime.report_response_or_fail()?;
             }
 
             // TODO: only list offers matching list of OfferIds
             Command::ListOffers => {
                 runtime.request(ServiceId::Farcasterd, Request::ListOffers)?;
-                runtime.report_response()?;
+                runtime.report_response_or_fail()?;
             }
 
             Command::ListListens => {
                 runtime.request(ServiceId::Farcasterd, Request::ListListens)?;
-                runtime.report_response()?;
+                runtime.report_response_or_fail()?;
             }
 
             // Command::ListOfferIds => {
             //     runtime.request(ServiceId::Farcasterd, Request::ListOfferIds)?;
-            //     runtime.report_response()?;
+            //     runtime.report_response_or_fail()?;
             // }
             Command::Make {
                 network,
@@ -156,7 +156,7 @@ impl Exec for Command {
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success or failure of the request to cli
-                runtime.report_response()?;
+                runtime.report_response_or_fail()?;
             }
 
             Command::Take {
@@ -212,23 +212,37 @@ impl Exec for Command {
                         ),
                     )?;
                     // report success of failure of the request to cli
-                    runtime.report_response()?;
+                    runtime.report_response_or_fail()?;
                 }
             }
 
             Command::RevokeOffer { public_offer } => {
                 runtime.request(ServiceId::Farcasterd, Request::RevokeOffer(public_offer))?;
-                runtime.report_response()?;
+                runtime.report_response_or_fail()?;
             }
 
-            Command::Progress { swapid } => {
-                runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
-                runtime.report_response()?;
+            Command::Progress { swapid, follow } => {
+                if follow {
+                    // subscribe to progress event and loop until Finish event is received or user
+                    // ctrl-c the cli. Expect to recieve a stream of event responses
+                    runtime.request(ServiceId::Farcasterd, Request::SubscribeProgress(swapid))?;
+                    let res = runtime.report_progress();
+                    // if user didn't ctrl-c before that point we can cleanly unsubscribe the
+                    // client from the notification stream and then return the result from report
+                    // progress
+                    runtime.request(ServiceId::Farcasterd, Request::UnsubscribeProgress(swapid))?;
+                    return res;
+                } else {
+                    // request a read progress response. Expect to recieve only one response and
+                    // quit
+                    runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
+                    runtime.report_response_or_fail()?;
+                }
             }
 
             Command::NeedsFunding { coin } => {
                 runtime.request(ServiceId::Farcasterd, Request::NeedsFunding(coin))?;
-                runtime.report_response()?;
+                runtime.report_response_or_fail()?;
             }
         }
 

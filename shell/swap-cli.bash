@@ -546,7 +546,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__progress)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SWAPID>"
+            opts="-f -h -d -v -T -m -x --follow --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SWAPID>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

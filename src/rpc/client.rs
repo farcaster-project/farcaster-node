@@ -14,13 +14,14 @@
 
 use crate::service::Endpoints;
 use std::convert::TryInto;
-use std::thread::sleep;
+use std::thread::{self, sleep};
 use std::time::Duration;
 
 use internet2::ZmqType;
 use microservices::esb;
 
 use crate::rpc::request::OptionDetails;
+use crate::rpc::request::SwapProgress;
 use crate::rpc::{Request, ServiceBus};
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
@@ -92,38 +93,33 @@ impl Client {
         }
     }
 
-    pub fn report_response(&mut self) -> Result<(), Error> {
+    pub fn report_response_or_fail(&mut self) -> Result<(), Error> {
         let resp = self.report_failure()?;
         // note: this triggers the yaml formatting when implemented
-        println!("{:#}", resp);
+        println!("{}", resp);
         Ok(())
     }
 
-    pub fn report_progress(&mut self) -> Result<usize, Error> {
-        let mut counter = 0;
-        let mut finished = false;
-        while !finished {
-            finished = true;
-            counter += 1;
-            match self.report_failure()? {
-                // Failure is already covered by `report_response()`
-                Request::Progress(info) => {
-                    println!("{}", info.green_bold());
-                    finished = false;
+    /// Print the stream of received requests until progress fails or succeed
+    pub fn report_progress(&mut self) -> Result<(), Error> {
+        // loop on all requests received until a progress termination condition is recieved
+        // report failure transform Request::Failure in error already, terminate on error or on
+        // success
+        let res = loop {
+            match self.report_failure() {
+                Err(e) => {
+                    // terminate on error
+                    break Err(e);
                 }
-                Request::Success(OptionDetails(Some(info))) => {
-                    println!("{}{}", "Success: ".bright_green_bold(), info);
+                Ok(Request::Success(s)) => {
+                    println!("{}", s.bright_green_bold());
+                    // terminate on success
+                    break Ok(());
                 }
-                Request::Success(OptionDetails(None)) => {
-                    println!("{}", "Success".bright_green_bold());
-                }
-                other => {
-                    eprintln!("{}: {}", "Unexpected report".err(), other.err_details());
-                    return Err(Error::Other(s!("Unexpected server response")));
-                }
+                Ok(req) => println!("{}", req),
             }
-        }
-        Ok(counter)
+        };
+        res
     }
 }
 
