@@ -966,7 +966,7 @@ impl Runtime {
                     &mut self.spawning_services,
                     &self.syncer_services,
                     &mut self.syncer_clients,
-                    Coin::Bitcoin,
+                    Coin::Monero,
                     public_offer.offer.network,
                     swap_id,
                     &self.config,
