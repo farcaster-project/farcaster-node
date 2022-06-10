@@ -406,6 +406,10 @@ pub trait LogStyle: ToString {
         self.to_string().bold().green()
     }
 
+    fn red_bold(&self) -> colored::ColoredString {
+        self.to_string().bold().red()
+    }
+
     fn bright_green_bold(&self) -> colored::ColoredString {
         self.to_string().bold().bright_green()
     }

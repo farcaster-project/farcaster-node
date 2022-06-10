@@ -912,14 +912,16 @@ impl Runtime {
                         return self.get_secret(endpoints, source, request);
                     }
                     (None, Some(sk), Some(pk)) => {
-                        self.listens.insert(offer.id(), bind_addr);
-                        self.node_ids.insert(offer.id(), pk);
                         info!(
                             "{} for incoming peer connections on {}",
                             "Starting listener".bright_blue_bold(),
                             bind_addr.bright_blue_bold()
                         );
-                        self.listen(&bind_addr, sk)
+                        self.listen(&bind_addr, sk).and_then(|_| {
+                            self.listens.insert(offer.id(), bind_addr);
+                            self.node_ids.insert(offer.id(), pk);
+                            Ok(())
+                        })
                     }
                     (Some(&addr), _, Some(pk)) => {
                         // no need for the keys, because peerd already knows them
@@ -1515,7 +1517,18 @@ impl Runtime {
                     "--token",
                     &self.wallet_token.clone().to_string(),
                 ],
-            )?;
+            );
+
+            // in case it can't connect wait for it to crash
+            std::thread::sleep(Duration::from_secs_f32(0.5));
+
+            // status is Some if peerd returns because it crashed
+            let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
+
+            if status.is_some() {
+                return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
+            }
+
             debug!("New instance of peerd launched with PID {}", child.id());
             Ok(())
         } else {
