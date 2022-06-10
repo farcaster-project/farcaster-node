@@ -200,16 +200,20 @@ fn main() {
 
                     // TODO: Support multithread mode
                     debug!("Forking child process");
-                    if let ForkResult::Child = unsafe { fork().expect("Unable to fork child process") }
+                    if let ForkResult::Child =
+                        unsafe { fork().expect("Unable to fork child process") }
                     {
                         stream
                             .set_read_timeout(Some(Duration::from_secs(30)))
                             .expect("Unable to set up timeout for TCP connection");
 
                         debug!("Establishing session with the remote");
-                        let session =
-                            session::Raw::with_brontide(stream, local_node.private_key(), inet_addr)
-                                .expect("Unable to establish session with the remote peer");
+                        let session = session::Raw::with_brontide(
+                            stream,
+                            local_node.private_key(),
+                            inet_addr,
+                        )
+                        .expect("Unable to establish session with the remote peer");
 
                         debug!(
                             "Session successfully established with {}",
