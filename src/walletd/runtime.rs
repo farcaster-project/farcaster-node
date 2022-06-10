@@ -903,31 +903,6 @@ impl Runtime {
                     }
 
                     {
-                        if adaptor_buy.is_some() {
-                            error!("{} | adaptor_buy already set", swap_id.bright_blue_italic());
-                            return Ok(());
-                        }
-                        *adaptor_buy = Some(bob.sign_adaptor_buy(
-                            key_manager,
-                            remote_params,
-                            local_params,
-                            core_arb_txs,
-                            pub_offer,
-                        )?);
-                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from((
-                            swap_id,
-                            adaptor_buy.clone().unwrap(),
-                        ));
-                        let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(), // destination swapd
-                            Request::Protocol(buy_proc_sig),
-                        )?;
-                    }
-
-                    {
                         // cancel
                         let tx = core_arb_setup.cancel.clone();
                         let mut cancel_tx = CancelTx::from_partial(tx);
@@ -942,6 +917,7 @@ impl Runtime {
                             Request::Tx(Tx::Cancel(finalized_cancel_tx)),
                         )?;
                     }
+
                     {
                         // refund
                         let FullySignedRefund {
@@ -961,9 +937,34 @@ impl Runtime {
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut refund_tx)?;
                         endpoints.send_to(
                             ServiceBus::Ctl,
+                            my_id.clone(),
+                            source.clone(), // destination swapd
+                            Request::Tx(Tx::Refund(final_refund_tx)),
+                        )?;
+                    }
+
+                    {
+                        if adaptor_buy.is_some() {
+                            error!("{} | adaptor_buy already set", swap_id.bright_blue_italic());
+                            return Ok(());
+                        }
+                        *adaptor_buy = Some(bob.sign_adaptor_buy(
+                            key_manager,
+                            remote_params,
+                            local_params,
+                            core_arb_txs,
+                            pub_offer,
+                        )?);
+                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from((
+                            swap_id,
+                            adaptor_buy.clone().unwrap(),
+                        ));
+                        let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
                             my_id,
                             source, // destination swapd
-                            Request::Tx(Tx::Refund(final_refund_tx)),
+                            Request::Protocol(buy_proc_sig),
                         )?;
                     }
                 } else {
