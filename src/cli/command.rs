@@ -223,10 +223,6 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::Test { swapid } => {
-                runtime.request(ServiceId::Farcasterd, Request::TestProgress(swapid))?;
-            }
-
             Command::Progress { swapid, follow } => {
                 if follow {
                     // subscribe to progress event and loop until Finish event is received or user

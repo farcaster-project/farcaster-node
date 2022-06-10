@@ -1186,51 +1186,6 @@ impl Runtime {
                 }
             }
 
-            // Simulate a progress
-            Request::TestProgress(swapid) => {
-                let service = ServiceId::Swap(swapid);
-                use rand::prelude::*;
-                let mut rng = rand::thread_rng();
-                let reqs = if rng.gen::<f64>() >= 0.5 {
-                    if rng.gen::<f64>() >= 0.5 {
-                        vec![Request::Failure(Failure {
-                            code: 1,
-                            info: "Coulod not find to be revoked offer.".to_string(),
-                        })]
-                    } else {
-                        vec![Request::Success(OptionDetails(Some(
-                            "Some success message".to_string(),
-                        )))]
-                    }
-                } else {
-                    vec![
-                        Request::Progress(request::Progress::Message(
-                            "Some progress message".to_string(),
-                        )),
-                        Request::Progress(request::Progress::StateTransition(
-                            "Some progress state -> transition".to_string(),
-                        )),
-                    ]
-                };
-                // Simulate Progress:: match req
-                for req in reqs.iter() {
-                    if !self.progress.contains_key(&service) {
-                        self.progress.insert(service.clone(), none!());
-                    };
-                    let queue = self
-                        .progress
-                        .get_mut(&service)
-                        .expect("checked/added above");
-                    queue.push_back(req.clone());
-
-                    self.notify_subscribed_clients(endpoints, &service, req);
-                }
-
-                println!("Test progress done!");
-                println!("{:#?}", self.progress);
-                println!("{:#?}", self.progress_subscriptions);
-            }
-
             // Remove the request's source from the subscription list of notifications
             Request::UnsubscribeProgress(swapid) => {
                 let service = ServiceId::Swap(swapid);

@@ -202,9 +202,6 @@ pub enum Command {
         follow: bool,
     },
 
-    #[display("test<{swapid}>")]
-    Test { swapid: SwapId },
-
     /// Returns addresses and amounts that require funding for coin.
     #[display("needs-funding<{coin}>")]
     NeedsFunding {

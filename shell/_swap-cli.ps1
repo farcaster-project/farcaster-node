@@ -44,7 +44,6 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to maker''s daemon to start the trade')
             [CompletionResult]::new('revoke-offer', 'revoke-offer', [CompletionResultType]::ParameterValue, 'Revoke offer accepts an offer and revokes it within the runtime')
             [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request swap progress report')
-            [CompletionResult]::new('test', 'test', [CompletionResultType]::ParameterValue, 'test')
             [CompletionResult]::new('needs-funding', 'needs-funding', [CompletionResultType]::ParameterValue, 'Returns addresses and amounts that require funding for coin')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -206,21 +205,6 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
             [CompletionResult]::new('-f', 'f', [CompletionResultType]::ParameterName, 'Subscribe to progress and only return when progress is finished')
             [CompletionResult]::new('--follow', 'follow', [CompletionResultType]::ParameterName, 'Subscribe to progress and only return when progress is finished')
-            [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
-            [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
-            break
-        }
-        'swap-cli;test' {
-            [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
-            [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('--tor-proxy', 'tor-proxy', [CompletionResultType]::ParameterName, 'Use Tor')
-            [CompletionResult]::new('-m', 'm', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('--msg-socket', 'msg-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
-            [CompletionResult]::new('-x', 'x', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
-            [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
             [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
             [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
             [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
