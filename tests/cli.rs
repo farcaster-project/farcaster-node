@@ -1,11 +1,10 @@
-// #![cfg(feature = "integration_test")]
-
 use std::process;
 use std::{thread, time};
 use sysinfo::{ProcessExt, System, SystemExt};
 
 #[test]
-fn spawn_swap() {
+#[ignore]
+fn cli_make_offer() {
     // Config data dir for two fcd
     let data_dir_maker = vec!["-d", "tests/fc1", "-vv"];
     let data_dir_taker = vec!["-d", "tests/fc2", "-vv"];

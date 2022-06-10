@@ -53,7 +53,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [bitcoin, monero, swap]
+        test: [bitcoin, monero, swap, cli, grpc]
         include:
           - test: swap
             logs: true

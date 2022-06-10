@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 
-use crate::farcaster::farcaster_client::FarcasterClient;
 use bitcoincore_rpc::{Client, RpcApi};
 use farcaster_core::swap::SwapId;
 use farcaster_node::rpc::request::{
@@ -9,23 +8,19 @@ use farcaster_node::rpc::request::{
 };
 use futures::future::join_all;
 use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::io;
-use std::process;
 use std::sync::Arc;
 use std::time;
 use sysinfo::{ProcessExt, System, SystemExt};
 use tokio::sync::Mutex;
-use tonic::transport::Endpoint;
 
+use std::process;
 use std::collections::HashMap;
-use std::env;
-use std::str;
 use std::str::FromStr;
 
 use ntest::timeout;
 
 use utils::config;
+use utils::fc::*;
 
 mod utils;
 
@@ -40,7 +35,7 @@ async fn swap_bob_maker_normal() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -77,7 +72,7 @@ async fn swap_bob_funds_incorrect_amount() {
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -110,7 +105,7 @@ async fn swap_bob_maker_user_abort_sweep_btc() {
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -142,26 +137,6 @@ pub mod farcaster {
 use farcaster::InfoRequest;
 
 #[tokio::test]
-#[ignore]
-async fn grpc_server_functional_test() {
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;
-
-    // Allow some time for the microservices to start and register each other
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
-
-    let channel = Endpoint::from_static("http://[::1]:50051")
-        .connect()
-        .await
-        .unwrap();
-
-    let mut farcaster_client = FarcasterClient::new(channel.clone());
-    let request = tonic::Request::new(InfoRequest { id: 0 });
-    let response = farcaster_client.info(request).await;
-    assert_eq!(response.unwrap().into_inner().id, 0);
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
-}
-
-#[tokio::test]
 #[timeout(600000)]
 #[ignore]
 async fn swap_bob_maker_kill_peerd_before_funding_should_reconnect_success() {
@@ -170,7 +145,7 @@ async fn swap_bob_maker_kill_peerd_before_funding_should_reconnect_success() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -212,7 +187,7 @@ async fn swap_revoke_offer_bob_maker_normal() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     // first make and revoke an offer
     make_and_revoke_offer(
@@ -262,7 +237,7 @@ async fn swap_bob_maker_refund_alice_overfunds() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -300,7 +275,7 @@ async fn swap_bob_maker_refund_race_cancel() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -338,7 +313,7 @@ async fn swap_bob_maker_refund_kill_alice_after_funding() {
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -375,7 +350,7 @@ async fn swap_bob_maker_refund_alice_does_not_fund() {
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -410,7 +385,7 @@ async fn swap_bob_maker_punish_kill_bob() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -448,7 +423,7 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_lock() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -486,7 +461,7 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_buy() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -524,7 +499,7 @@ async fn swap_alice_maker() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -570,7 +545,7 @@ async fn swap_parallel_execution() {
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
     let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_farcaster_clients().await;
+        setup_clients().await;
 
     let previous_offers: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
     let previous_swap_ids: Arc<Mutex<HashSet<SwapId>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -650,36 +625,6 @@ async fn swap_parallel_execution() {
     )
     .await;
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
-}
-
-async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
-    // data directories
-    let data_dir_maker = vec!["-d".to_string(), "tests/fc1".to_string()];
-    let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
-
-    // If we are in CI we use .ci.toml files, otherwise .toml
-    let ctx = env::var("CI").unwrap_or("false".into());
-    let ext = if ctx == "false" { ".toml" } else { ".ci.toml" };
-
-    let farcasterd_maker_args = farcasterd_args(
-        data_dir_maker.clone(),
-        vec!["-vvv", "--config", &format!("tests/cfg/fc1{}", ext)],
-        vec!["2>&1", "|", "tee", "-a", "tests/fc1.log"],
-    );
-    let farcasterd_taker_args = farcasterd_args(
-        data_dir_taker.clone(),
-        vec!["-vvv", "--config", &format!("tests/cfg/fc2{}", ext)],
-        vec!["2>&1", "|", "tee", "-a", "tests/fc2.log"],
-    );
-
-    let farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
-    let farcasterd_taker = launch("../farcasterd", farcasterd_taker_args).unwrap();
-    (
-        farcasterd_maker,
-        data_dir_maker,
-        farcasterd_taker,
-        data_dir_taker,
-    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -773,7 +718,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
 
     // kill all the daemons,  and start them again
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;
+    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
 
     // wait a bit for all the daemons to start
     tokio::time::sleep(time::Duration::from_secs(1)).await;
@@ -917,7 +862,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
 
     // kill all the daemons and start them again
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;
+    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
 
     // wait a bit for all the daemons to start
     tokio::time::sleep(time::Duration::from_secs(1)).await;
@@ -2473,14 +2418,6 @@ fn info_args(data_dir: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-fn farcasterd_args(data_dir: Vec<String>, server_args: Vec<&str>, extra: Vec<&str>) -> Vec<String> {
-    data_dir
-        .into_iter()
-        .chain(server_args.into_iter().map(|s| s.into()))
-        .chain(extra.into_iter().map(|s| s.into()))
-        .collect()
-}
-
 fn make_offer_args(
     data_dir: Vec<String>,
     role: String,
@@ -2945,79 +2882,6 @@ async fn monero_new_dest_address(
     let address = wallet_lock.get_address(0, None).await.unwrap();
 
     (address.address, wallet_name)
-}
-
-pub fn run(
-    name: &str,
-    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-) -> io::Result<(Vec<String>, Vec<String>)> {
-    let mut bin_path = std::env::current_exe().map_err(|err| {
-        error!("Unable to detect binary directory: {}", err);
-        err
-    })?;
-    bin_path.pop();
-
-    bin_path.push(name);
-    #[cfg(target_os = "windows")]
-    bin_path.set_extension("exe");
-
-    debug!(
-        "Launching {} as a separate process using `{}` as binary",
-        name,
-        bin_path.to_string_lossy()
-    );
-
-    let res = process::Command::new(bin_path)
-        .args(args)
-        .output()
-        .expect("failed to run command");
-
-    let stdout = String::from_utf8_lossy(&res.stdout)
-        .to_string()
-        .lines()
-        .map(|line| {
-            let plain_bytes = strip_ansi_escapes::strip(&line).unwrap();
-            str::from_utf8(&plain_bytes).unwrap().to_string()
-        })
-        .collect();
-    let stderr = String::from_utf8_lossy(&res.stderr)
-        .to_string()
-        .lines()
-        .map(|line| {
-            let plain_bytes = strip_ansi_escapes::strip(&line).unwrap();
-            str::from_utf8(&plain_bytes).unwrap().to_string()
-        })
-        .collect();
-    Ok((stdout, stderr))
-}
-
-pub fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<process::Child> {
-    let mut bin_path = std::env::current_exe().map_err(|err| {
-        error!("Unable to detect binary directory: {}", err);
-        err
-    })?;
-    bin_path.pop();
-    bin_path.push(name);
-
-    println!(
-        "Launching {} as a separate process using `{}` as binary",
-        name,
-        bin_path.to_string_lossy()
-    );
-
-    let cmdargs = args.into_iter().collect::<Vec<String>>().join(" ");
-    println!("Command arguments: \"{}\"", cmdargs);
-
-    let mut shell = process::Command::new("sh");
-    shell
-        .arg("-c")
-        .arg(format!("{} {}", bin_path.to_string_lossy(), cmdargs));
-
-    println!("Executing `{:?}`", shell);
-    shell.spawn().map_err(|err| {
-        error!("Error launching {}: {}", name, err);
-        err
-    })
 }
 
 async fn send_monero(
