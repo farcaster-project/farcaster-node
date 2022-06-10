@@ -102,7 +102,7 @@ impl Client {
 
     /// Print the stream of received requests until progress fails or succeed
     pub fn report_progress(&mut self) -> Result<(), Error> {
-        // loop on all requests received until a progress terminaison condition is recieved
+        // loop on all requests received until a progress termination condition is recieved
         // report failure transform Request::Failure in error already, terminate on error or on
         // success
         let res = loop {
