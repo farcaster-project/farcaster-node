@@ -1868,7 +1868,7 @@ impl Runtime {
                     {
                         self.syncer_state.handle_tx_confs(
                             id,
-                            &confirmations,
+                            confirmations,
                             self.swap_id(),
                             self.temporal_safety.xmr_finality_thr,
                         );
@@ -1880,7 +1880,7 @@ impl Runtime {
                     }) => {
                         self.syncer_state.handle_tx_confs(
                             id,
-                            &confirmations,
+                            confirmations,
                             self.swap_id(),
                             self.temporal_safety.xmr_finality_thr,
                         );
@@ -2234,7 +2234,7 @@ impl Runtime {
                                     self.txs.remove_entry(&TxLabel::Punish).unwrap();
                                 // syncer's watch punish tx task
                                 if !self.syncer_state.is_watched_tx(&tx_label) {
-                                    let txid = punish_tx.clone().txid();
+                                    let txid = punish_tx.txid();
                                     let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                                     endpoints.send_to(
                                         ServiceBus::Ctl,
@@ -2468,7 +2468,7 @@ impl Runtime {
                     }) => {
                         self.syncer_state.handle_tx_confs(
                             id,
-                            &confirmations,
+                            confirmations,
                             self.swap_id(),
                             self.temporal_safety.btc_finality_thr,
                         );
@@ -2519,7 +2519,7 @@ impl Runtime {
                     }
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
-                self.send_peer(endpoints, Msg::CoreArbitratingSetup(core_arb_setup.clone()))?;
+                self.send_peer(endpoints, Msg::CoreArbitratingSetup(core_arb_setup))?;
                 let next_state = State::Bob(BobState::CorearbB {
                     local_params: self.state.local_params().cloned().unwrap(),
                     cancel_seen: false,

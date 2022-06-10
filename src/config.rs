@@ -104,22 +104,13 @@ impl Default for Config {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(crate = "serde_crate")]
 pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
     /// Sets the grpc server port, if none is given, no grpc server is run
     pub grpc: Option<GrpcConfig>,
-}
-
-impl Default for FarcasterdConfig {
-    fn default() -> Self {
-        FarcasterdConfig {
-            auto_funding: None,
-            grpc: None,
-        }
-    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

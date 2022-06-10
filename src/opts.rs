@@ -131,9 +131,7 @@ impl Opts {
         LogLevel::from_verbosity_flag_count(self.verbose).apply();
         let mut me = self.clone();
 
-        me.data_dir = PathBuf::from(
-            shellexpand::tilde(&me.data_dir.to_string_lossy().to_string()).to_string(),
-        );
+        me.data_dir = PathBuf::from(shellexpand::tilde(&me.data_dir.to_string_lossy()).to_string());
         fs::create_dir_all(&me.data_dir).expect("Unable to access data directory");
 
         for s in vec![&mut self.msg_socket, &mut self.ctl_socket] {

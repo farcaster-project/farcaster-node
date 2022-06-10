@@ -341,7 +341,7 @@ async fn sweep_address(
                 let sweep_wallet_filename = format!("/sweep:{}", address);
                 if let Err(error) = fs::remove_file(raw_path.to_string() + &sweep_wallet_filename)
                     .and(fs::remove_file(
-                        raw_path.to_string() + &sweep_wallet_filename + &".keys".to_string(),
+                        raw_path.to_string() + &sweep_wallet_filename + ".keys",
                     ))
                 {
                     warn!("Failed to clean sweep wallet data after successful sweep. {}. The path used for the wallet directory is probably malformed", error);
@@ -351,10 +351,10 @@ async fn sweep_address(
 
                 if let Err(error) = fs::remove_file(raw_path.to_string() + &watch_wallet_filename)
                     .and(fs::remove_file(
-                        raw_path.to_string() + &watch_wallet_filename + &".address.txt".to_string(),
+                        raw_path.to_string() + &watch_wallet_filename + ".address.txt",
                     ))
                     .and(fs::remove_file(
-                        raw_path.to_string() + &watch_wallet_filename + &".keys".to_string(),
+                        raw_path.to_string() + &watch_wallet_filename + ".keys",
                     ))
                 {
                     debug!("Failed to clean watch-only wallet data after sweep. {}. The path used for the wallet directory is probably malformed", error);
@@ -791,10 +791,7 @@ impl Synclet for MoneroSyncer {
                     monero_lws: opts.monero_lws.clone(),
                 };
                 info!("monero syncer servers: {:?}", syncer_servers);
-                let wallet_dir = opts
-                    .monero_wallet_dir_path
-                    .clone()
-                    .map(|wallet_dir| PathBuf::from(wallet_dir));
+                let wallet_dir = opts.monero_wallet_dir_path.clone().map(PathBuf::from);
 
                 let _handle = std::thread::spawn(move || {
                     use tokio::runtime::Builder;
