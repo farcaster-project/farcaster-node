@@ -247,6 +247,7 @@ impl StrictDecode for PendingRequest {
 pub struct CheckpointSwapd {
     pub state: State,
     pub last_msg: Msg,
+    pub enquirer: Option<ServiceId>,
     pub temporal_safety: TemporalSafety,
     pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     pub txids: HashMap<TxLabel, Txid>,
@@ -257,6 +258,7 @@ impl StrictEncode for CheckpointSwapd {
     fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
         let mut len = self.state.strict_encode(&mut e)?;
         len += self.last_msg.strict_encode(&mut e)?;
+        len += self.enquirer.strict_encode(&mut e)?;
         len += self.temporal_safety.strict_encode(&mut e)?;
 
         len += self.txs.len().strict_encode(&mut e)?;
@@ -312,6 +314,7 @@ impl StrictDecode for CheckpointSwapd {
     fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
         let state = State::strict_decode(&mut d)?;
         let last_msg = Msg::strict_decode(&mut d)?;
+        let enquirer = Option::<ServiceId>::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
 
         let len = usize::strict_decode(&mut d)?;
@@ -349,6 +352,7 @@ impl StrictDecode for CheckpointSwapd {
         Ok(CheckpointSwapd {
             state,
             last_msg,
+            enquirer,
             temporal_safety,
             txs,
             txids,
@@ -1543,6 +1547,7 @@ impl Runtime {
                             request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                                 state: self.state.clone(),
                                 last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
+                                enquirer: self.enquirer.clone(),
                                 temporal_safety: self.temporal_safety.clone(),
                                 txs: self.txs.clone(),
                                 txids: self.syncer_state.tasks.txids.clone(),
@@ -2476,6 +2481,7 @@ impl Runtime {
                                 // remove txs from outdated states
                                 self.txs.remove(&TxLabel::Lock);
                                 self.txs.remove(&TxLabel::Buy);
+                                self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
                             }
                             TxLabel::Buy
@@ -2579,6 +2585,7 @@ impl Runtime {
                                 // remove txs from outdated states
                                 self.txs.remove(&TxLabel::Lock);
                                 self.txs.remove(&TxLabel::Cancel);
+                                self.txs.remove(&TxLabel::Refund);
                                 self.txs.remove(&TxLabel::Buy);
                                 self.txs.remove(&TxLabel::Punish);
                             }
@@ -2620,8 +2627,10 @@ impl Runtime {
                                 )?;
                                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
                                 // remove txs from outdated states
+                                self.txs.remove(&TxLabel::Lock);
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Refund);
+                                self.txs.remove(&TxLabel::Buy);
                                 self.txs.remove(&TxLabel::Punish);
                             }
                             tx_label => trace!(
@@ -2678,6 +2687,7 @@ impl Runtime {
                     request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                         state: self.state.clone(),
                         last_msg: Msg::CoreArbitratingSetup(core_arb_setup.clone()),
+                        enquirer: self.enquirer.clone(),
                         temporal_safety: self.temporal_safety.clone(),
                         txs: self.txs.clone(),
                         txids: self.syncer_state.tasks.txids.clone(),
@@ -2796,6 +2806,7 @@ impl Runtime {
                     request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                         state: self.state.clone(),
                         last_msg: Msg::RefundProcedureSignatures(refund_proc_sigs.clone()),
+                        enquirer: self.enquirer.clone(),
                         temporal_safety: self.temporal_safety.clone(),
                         txs: self.txs.clone(),
                         txids: self.syncer_state.tasks.txids.clone(),
@@ -2831,6 +2842,7 @@ impl Runtime {
                     request::CheckpointState::CheckpointSwapd(CheckpointSwapd {
                         state: self.state.clone(),
                         last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
+                        enquirer: self.enquirer.clone(),
                         temporal_safety: self.temporal_safety.clone(),
                         txs: self.txs.clone(),
                         txids: self.syncer_state.tasks.txids.clone(),
@@ -2980,6 +2992,7 @@ impl Runtime {
                 CheckpointState::CheckpointSwapd(CheckpointSwapd {
                     state,
                     last_msg,
+                    enquirer,
                     temporal_safety,
                     txs,
                     txids,
@@ -2987,6 +3000,7 @@ impl Runtime {
                 }) => {
                     info!("{} | Restoring swap", swap_id);
                     self.state = state;
+                    self.enquirer = enquirer;
                     self.temporal_safety = temporal_safety;
                     self.pending_requests = pending_requests;
                     self.txs = txs.clone();
