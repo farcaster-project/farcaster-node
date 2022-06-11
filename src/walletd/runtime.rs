@@ -838,7 +838,7 @@ impl Runtime {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
                 // TODO: checkpointing before .get_mut call for now, but should do this later
-                trace!("checkpointing bob pre buy.");
+                trace!("checkpointing bob pre buy sig.");
                 if let Some(Wallet::Bob(state)) = self.wallets.get(&swap_id) {
                     checkpoint_state(
                         endpoints,
@@ -1106,7 +1106,7 @@ impl Runtime {
                     buy_adaptor_sig: buy_encrypted_sig,
                 };
                 let id = self.identity();
-                trace!("checkpointing alice pre buy.");
+                trace!("checkpointing alice pre buy sig.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
                     checkpoint_state(
                         endpoints,
