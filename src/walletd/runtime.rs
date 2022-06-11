@@ -1249,7 +1249,7 @@ impl Runtime {
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
                         let funding = create_funding(&mut key_manager, offer.network)?;
                         let funding_addr = funding.get_address()?;
-                        let funding_fee = bitcoin::Amount::from_sat(150);
+                        let funding_fee = bitcoin::Amount::from_sat(200);
                         let funding_amount = offer.arbitrating_amount + funding_fee;
                         debug!(
                             "{} | Send {} to {}",
