@@ -118,10 +118,13 @@ t_wallet -> t_swap:Ctl Datum::SignedArbitratingLock
 // DONE: do we know that same inputs are being used in case of replay?
 // -> yes, but create different sig
 t_wallet -> t_checkpoint : Ctl CheckpointWalletBobPreBuySig
+t_wallet -> t_swap : Ctl Tx::Lock
+t_swap -> t_syncer: Ctl Broadcast Arbitrating Lock
+t_swap -> t_syncer : Watch Accordant Lock
+t_wallet -> t_swap: Ctl Tx::Cancel
+t_wallet -> t_swap: Ctl Tx::Refund
 t_wallet -> t_swap : Ctl BuyProcedureSignature
 t_swap -> t_checkpoint : Ctl CheckpointSwapBobPreBuySig
-t_syncer <- t_swap : Broadcast Arbitrating Lock
-t_swap -> t_syncer : Watch Accordant Lock
 t_swap -> t_syncer : Watch Buy
 
 parallel
@@ -156,7 +159,6 @@ t_wallet <- t_swap : Ctl Buy signature
 t_wallet -> t_wallet : recover accordant keys
 
 ==Cancel Init t > t0: Bob is left, Alice right, either have a fully signed and valid cancel tx, and can publish==
-// TODO: insert Ctl Tx::Cancel from wallet to swap (or do it after CoreArbitratingSetup, as in the code atm)
 parallel
 t_swap <- t_syncer : Ctl Cancel valid
 m_swap <- m_syncer : Ctl Cancel valid
