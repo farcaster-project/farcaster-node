@@ -833,7 +833,7 @@ impl Runtime {
                 _,
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
-                | ServiceId::Checkpoint
+                | ServiceId::Database
             ) => {}
             (Request::GetInfo(_), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
