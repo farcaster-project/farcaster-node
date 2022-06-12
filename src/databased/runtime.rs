@@ -1,4 +1,5 @@
 use crate::farcaster_core::consensus::Encodable;
+use crate::walletd::runtime::{CheckpointWallet, Wallet};
 use farcaster_core::negotiation::PublicOffer;
 use farcaster_core::swap::btcxmr::BtcXmr;
 use farcaster_core::swap::SwapId;
@@ -184,8 +185,7 @@ impl Runtime {
 
             Request::Checkpoint(Checkpoint { swap_id, state }) => {
                 match state {
-                    CheckpointState::CheckpointWalletAlice(_)
-                    | CheckpointState::CheckpointWalletBob(_) => {
+                    CheckpointState::CheckpointWallet(_) => {
                         debug!("setting wallet checkpoint");
                     }
                     CheckpointState::CheckpointSwapd(_) => {
@@ -210,20 +210,12 @@ impl Runtime {
                 }) {
                     Ok(raw_state) => {
                         match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
-                            Ok(CheckpointState::CheckpointWalletAlice(state)) => {
+                            Ok(CheckpointState::CheckpointWallet(wallet)) => {
                                 checkpoint_restore(
                                     endpoints,
                                     swap_id,
                                     ServiceId::Wallet,
-                                    CheckpointState::CheckpointWalletAlice(state),
-                                )?;
-                            }
-                            Ok(CheckpointState::CheckpointWalletBob(state)) => {
-                                checkpoint_restore(
-                                    endpoints,
-                                    swap_id,
-                                    ServiceId::Wallet,
-                                    CheckpointState::CheckpointWalletBob(state),
+                                    CheckpointState::CheckpointWallet(wallet),
                                 )?;
                             }
                             Ok(CheckpointState::CheckpointSwapd(_)) => {
@@ -257,8 +249,7 @@ impl Runtime {
                                     CheckpointState::CheckpointSwapd(state),
                                 )?;
                             }
-                            Ok(CheckpointState::CheckpointWalletAlice(_))
-                            | Ok(CheckpointState::CheckpointWalletBob(_)) => {
+                            Ok(CheckpointState::CheckpointWallet(_)) => {
                                 error!(
                                     "Decoded walletd checkpoint were swapd checkpoint was stored"
                                 );
@@ -289,20 +280,21 @@ impl Runtime {
                             CheckpointState::strict_decode(std::io::Cursor::new(state)).ok()?;
                         match checkpoint_key.service_id {
                             ServiceId::Wallet => match state {
-                                CheckpointState::CheckpointWalletAlice(checkpoint) => {
-                                    Some(CheckpointEntry {
+                                CheckpointState::CheckpointWallet(CheckpointWallet {
+                                    wallet,
+                                    ..
+                                }) => match wallet {
+                                    Wallet::Bob(wallet) => Some(CheckpointEntry {
                                         swap_id: checkpoint_key.swap_id,
-                                        public_offer: checkpoint.pub_offer,
-                                        trade_role: checkpoint.local_trade_role,
-                                    })
-                                }
-                                CheckpointState::CheckpointWalletBob(checkpoint) => {
-                                    Some(CheckpointEntry {
+                                        public_offer: wallet.pub_offer,
+                                        trade_role: wallet.local_trade_role,
+                                    }),
+                                    Wallet::Alice(wallet) => Some(CheckpointEntry {
                                         swap_id: checkpoint_key.swap_id,
-                                        public_offer: checkpoint.pub_offer,
-                                        trade_role: checkpoint.local_trade_role,
-                                    })
-                                }
+                                        public_offer: wallet.pub_offer,
+                                        trade_role: wallet.local_trade_role,
+                                    }),
+                                },
                                 s => {
                                     error!(
                                         "Checkpoint {} not supported for service {}",

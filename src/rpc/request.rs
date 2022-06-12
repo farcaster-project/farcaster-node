@@ -15,8 +15,10 @@
 #![allow(clippy::clone_on_copy)]
 
 use crate::swapd::CheckpointSwapd;
-use crate::walletd::runtime::BobState;
-use crate::walletd::{runtime::AliceState, NodeSecrets};
+use crate::walletd::{
+    runtime::{AliceState, CheckpointWallet},
+    NodeSecrets,
+};
 use crate::{
     farcasterd,
     syncerd::{
@@ -711,7 +713,7 @@ pub enum FundingInfo {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(NodeInfo::to_yaml_string)]
+#[display(CheckpointEntry::to_yaml_string)]
 pub struct CheckpointEntry {
     pub swap_id: SwapId,
     pub public_offer: PublicOffer<BtcXmr>,
@@ -745,8 +747,7 @@ pub struct Checkpoint {
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display(Debug)]
 pub enum CheckpointState {
-    CheckpointWalletAlice(AliceState),
-    CheckpointWalletBob(BobState),
+    CheckpointWallet(CheckpointWallet),
     CheckpointSwapd(CheckpointSwapd),
 }
 
