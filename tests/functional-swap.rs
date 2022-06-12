@@ -4,9 +4,9 @@ extern crate log;
 use crate::farcaster::farcaster_client::FarcasterClient;
 use bitcoincore_rpc::{Client, RpcApi};
 use farcaster_core::swap::SwapId;
-use farcaster_node::rpc::request::BitcoinFundingInfo;
-use farcaster_node::rpc::request::MoneroFundingInfo;
-use farcaster_node::rpc::request::NodeInfo;
+use farcaster_node::rpc::request::{
+    BitcoinFundingInfo, CheckpointEntry, MoneroFundingInfo, NodeInfo,
+};
 use futures::future::join_all;
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -338,6 +338,44 @@ async fn swap_bob_maker_punish_kill_bob() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
+async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_lock() {
+    let execution_mutex = Arc::new(Mutex::new(0));
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_farcaster_clients().await;
+
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
+        swap_id,
+        data_dir_taker,
+        data_dir_maker,
+        Arc::clone(&bitcoin_rpc),
+        bitcoin_address,
+        monero_regtest,
+        Arc::clone(&monero_wallet),
+        xmr_dest_wallet_name,
+        execution_mutex,
+        farcasterd_maker,
+        farcasterd_taker,
+    )
+    .await;
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
 async fn swap_alice_maker() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -500,6 +538,186 @@ async fn setup_farcaster_clients() -> (process::Child, Vec<String>, process::Chi
         farcasterd_taker,
         data_dir_taker,
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
+    swap_id: SwapId,
+    data_dir_alice: Vec<String>,
+    data_dir_bob: Vec<String>,
+    bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
+    funding_btc_address: bitcoin::Address,
+    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
+    monero_dest_wallet_name: String,
+    execution_mutex: Arc<Mutex<u8>>,
+    farcasterd_maker: std::process::Child,
+    farcasterd_taker: std::process::Child,
+) {
+    let cli_alice_progress_args: Vec<String> =
+        progress_args(data_dir_alice.clone(), swap_id.clone());
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_bob_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
+    let cli_alice_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_alice.clone(), "monero".to_string());
+
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    let lock = execution_mutex.lock().await;
+
+    // run until bob has the btc funding address
+    let (address, amount) =
+        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
+            .await;
+
+    // fund the bitcoin address
+    bitcoin_rpc
+        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .unwrap();
+
+    println!("waiting for AliceState(RefundSigs");
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(RefundSigs".to_string(),
+    )
+    .await;
+
+    // run until BobState(CoreArb) is received
+    println!("waiting for BobState(CoreArb)");
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(CoreArb)".to_string(),
+    )
+    .await;
+
+    // run until the funding infos are cleared again
+    println!("waiting for the bitcoin funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    // TODO remove this sleep and make sure it still runs
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+
+    // kill all the daemons and start them again
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;
+
+    // wait a bit for all the daemons to start
+    tokio::time::sleep(time::Duration::from_secs(1)).await;
+
+    // restore the saved checkpoints for each alice and bob
+    restore_checkpoint(swap_id, data_dir_bob.clone());
+    restore_checkpoint(swap_id, data_dir_alice.clone());
+
+    // the rest of the swap execution should be like a more usual refund swap
+
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+    // generate some bitcoin blocks to finalize the bitcoin arb lock tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
+    // run until the alice has the monero funding address and fund it
+    let (monero_address, monero_amount) =
+        retry_until_monero_funding_address(swap_id, cli_alice_needs_funding_args.clone()).await;
+    send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks for confirmations
+    bitcoin_rpc
+        .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin cancel tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
+    // generate some bitcoin blocks for confirmations
+    bitcoin_rpc
+        .generate_to_address(20, &reusable_btc_address())
+        .unwrap();
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // generate some bitcoin blocks to finalize the bitcoin refund tx
+    bitcoin_rpc
+        .generate_to_address(3, &reusable_btc_address())
+        .unwrap();
+
+    // run until the BobState(Finish(Failure(Refunded))) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(Finish(Failure(Refunded)))".to_string(),
+    )
+    .await;
+
+    // generate some blocks on bitcoin's side
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    let (_stdout, _stderr) = run("../swap-cli", cli_bob_progress_args.clone()).unwrap();
+
+    // check that btc was received in the destination address
+    let balance = bitcoin_rpc
+        .get_received_by_address(&funding_btc_address, None)
+        .unwrap();
+    assert!(balance.as_sat() > 90000000);
+
+    // cache the monero balance before sweeping
+    let monero_wallet_lock = monero_wallet.lock().await;
+    monero_wallet_lock
+        .open_wallet(monero_dest_wallet_name.clone(), None)
+        .await
+        .unwrap();
+    let before_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
+    drop(monero_wallet_lock);
+
+    // Sleep here to work around a race condition between pending
+    // SweepXmrAddress requests and tx Acc Lock confirmations. If Acc Lock
+    // confirmations are produced before the pending request is queued, no
+    // action will take place after this point.
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+
+    // generate some blocks on monero's side
+    monero_regtest
+        .generate_blocks(10, reusable_xmr_address())
+        .await
+        .unwrap();
+
+    // run until the BobState(Finish) is received
+    retry_until_finish_state_transition(
+        cli_alice_progress_args.clone(),
+        "AliceState(Finish(Failure(Refunded)))".to_string(),
+    )
+    .await;
+
+    monero_regtest
+        .generate_blocks(1, reusable_xmr_address())
+        .await
+        .unwrap();
+
+    let monero_wallet_lock = monero_wallet.lock().await;
+    monero_wallet_lock
+        .open_wallet(monero_dest_wallet_name, None)
+        .await
+        .unwrap();
+    monero_wallet_lock.refresh(Some(1)).await.unwrap();
+    let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
+    drop(monero_wallet_lock);
+    println!(
+        "after balance: {}, before balance: {}",
+        after_balance.balance, before_balance.balance
+    );
+    let delta_balance = after_balance.balance - before_balance.balance;
+    assert!(delta_balance > 999660000000);
+    drop(lock);
+
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1781,6 +1999,42 @@ fn get_info(args: Vec<String>) -> NodeInfo {
 
 fn revoke_offer(offer: String, data_dir: Vec<String>) {
     run("../swap-cli", revoke_offer_args(data_dir, offer)).unwrap();
+}
+
+fn restore_checkpoint(swap_id: SwapId, data_dir: Vec<String>) {
+    let (_stdout, _stderr) = run(
+        "../swap-cli",
+        data_dir
+            .clone()
+            .into_iter()
+            .chain(vec!["list-checkpoints".to_string()])
+            .collect::<Vec<String>>(),
+    )
+    .unwrap();
+    // TODO: Find out how to deserialize this object
+    // println!("stdout: {:?}, stderr: {:?}", stdout, _stderr);
+    // let checkpoint_list: Vec<CheckpointEntry> = serde_yaml::from_str(
+    //     &stdout
+    //         .iter()
+    //         .map(|line| format!("{}{}", line, "\n"))
+    //         .collect::<String>(),
+    // )
+    // .unwrap();
+    // assert!(checkpoint_list
+    //     .iter()
+    //     .any(|entry| { entry.swap_id == swap_id }));
+    let (_stdout, _stderr) = run(
+        "../swap-cli",
+        data_dir
+            .into_iter()
+            .chain(vec![
+                "restore-checkpoint".to_string(),
+                format!("{:#?}", swap_id),
+            ])
+            .collect::<Vec<String>>(),
+    )
+    .unwrap();
+    println!("stdout: {:?}, stderr: {:?}", _stdout, _stderr);
 }
 
 async fn retry_until_offer_parallel(
