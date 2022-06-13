@@ -98,7 +98,7 @@ fn spawn_swap() {
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["peerd", "swapd", "walletd", "checkpointd"].contains(&process.name())
+            ["peerd", "swapd", "walletd", "databased"].contains(&process.name())
                 && [farcasterd_maker.id(), farcasterd_taker.id()]
                     .contains(&(process.parent().unwrap() as u32))
         })
@@ -132,7 +132,7 @@ fn spawn_swap() {
             r" peerd",
             r" swapd",
             r" walletd",
-            r" checkpointd",
+            r" databased",
         ])
         .unwrap();
 
