@@ -24,14 +24,14 @@
     missing_docs
 )]
 
-//! Main executable for checkpointd: farcaster node checkpointing microservice.
+//! Main executable for databased: farcaster node databaseing microservice.
 
 #[macro_use]
 extern crate log;
 
 use clap::Parser;
 
-use farcaster_node::checkpointd::{self, Opts};
+use farcaster_node::databased::{self, Opts};
 use farcaster_node::ServiceConfig;
 
 fn main() {
@@ -46,8 +46,7 @@ fn main() {
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
     debug!("Starting runtime ...");
-    checkpointd::run(service_config, opts.shared.data_dir)
-        .expect("Error running checkpointd runtime");
+    databased::run(service_config, opts.shared.data_dir).expect("Error running databased runtime");
 
     unreachable!()
 }

@@ -116,7 +116,7 @@ pub fn run(
         )?;
     }
     let empty: Vec<String> = vec![];
-    let _checkpointd = launch("checkpointd", empty)?;
+    let _databased = launch("databased", empty)?;
 
     if config.is_auto_funding_enable() {
         info!("farcasterd will attempt to fund automatically");
