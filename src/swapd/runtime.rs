@@ -1536,6 +1536,20 @@ impl Runtime {
                     }
                     // alice receives, bob sends
                     Msg::BuyProcedureSignature(buy_proc_sig) if self.state.a_refundsig() => {
+                        // Alice verifies that she has sent refund procedure signatures before
+                        // processing the buy signatures from Bob
+                        let tx_label = TxLabel::Buy;
+                        if !self.syncer_state.is_watched_tx(&tx_label) {
+                            let txid = buy_proc_sig.buy.clone().extract_tx().txid();
+                            let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                            endpoints.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.bitcoin_syncer(),
+                                Request::SyncerTask(task),
+                            )?;
+                        }
+
                         // checkpoint swap alice pre buy
                         debug!(
                             "{} | checkpointing alice swapd state",
@@ -1555,19 +1569,6 @@ impl Runtime {
                             }),
                         )?;
 
-                        // Alice verifies that she has sent refund procedure signatures before
-                        // processing the buy signatures from Bob
-                        let tx_label = TxLabel::Buy;
-                        if !self.syncer_state.is_watched_tx(&tx_label) {
-                            let txid = buy_proc_sig.buy.clone().extract_tx().txid();
-                            let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                            endpoints.send_to(
-                                ServiceBus::Ctl,
-                                self.identity(),
-                                self.syncer_state.bitcoin_syncer(),
-                                Request::SyncerTask(task),
-                            )?;
-                        }
                         self.send_wallet(msg_bus, endpoints, request)?
                     }
 
