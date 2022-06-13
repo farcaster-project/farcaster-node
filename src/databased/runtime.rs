@@ -431,7 +431,9 @@ struct Database(lmdb::Environment);
 
 impl Database {
     fn new(path: PathBuf) -> Result<Database, lmdb::Error> {
-        let env = lmdb::Environment::new().open(&path)?;
+        let env = lmdb::Environment::new()
+            .set_map_size(10485760 * 1024 * 64)
+            .open(&path)?;
         env.create_db(None, lmdb::DatabaseFlags::empty())?;
         Ok(Database(env))
     }
