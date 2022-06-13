@@ -21,7 +21,8 @@ use crate::{
     syncerd::{
         opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
-    }};
+    },
+};
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -33,7 +34,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use super::{storage::{self, Driver}, syncer_client::{SyncerState, SyncerTasks, log_tx_received}};
+use super::{
+    storage::{self, Driver},
+    syncer_client::{log_tx_received, SyncerState, SyncerTasks},
+};
 use crate::rpc::{
     request::{self, Msg},
     Request, ServiceBus,

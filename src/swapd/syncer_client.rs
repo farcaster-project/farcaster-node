@@ -1,4 +1,10 @@
-use crate::{service::LogStyle, syncerd::{AddressAddendum, Boolean, BtcAddressAddendum, Coin, GetTx, SweepAddress, SweepAddressAddendum, SweepXmrAddress, WatchAddress, WatchTransaction, XmrAddressAddendum}};
+use crate::{
+    service::LogStyle,
+    syncerd::{
+        AddressAddendum, Boolean, BtcAddressAddendum, Coin, GetTx, SweepAddress,
+        SweepAddressAddendum, SweepXmrAddress, WatchAddress, WatchTransaction, XmrAddressAddendum,
+    },
+};
 use bitcoin::{Script, Txid};
 use farcaster_core::{swap::SwapId, transaction::TxLabel};
 use std::collections::HashMap;
