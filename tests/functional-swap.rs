@@ -634,8 +634,6 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
     retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
-    // TODO remove this sleep and make sure it still runs
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
@@ -809,8 +807,6 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
     retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
-    // TODO remove this sleep and make sure it still runs
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // kill all the daemons and start them again
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
