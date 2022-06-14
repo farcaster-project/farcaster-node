@@ -1513,21 +1513,6 @@ impl Runtime {
             }
             Request::Tx(Tx::Refund(refund_tx)) => {
                 let swap_id = get_swap_id(&source)?;
-                info!("\n\n Received refund tx on walletd \n\n",);
-                match self.wallets.get(&swap_id) {
-                    Some(Wallet::Alice(AliceState {
-                        remote_params,
-                        adaptor_refund,
-                        ..
-                    })) => {
-                        info!(
-                            "\n\n this is an alice wallet. {:?} {:?} \n\n",
-                            remote_params, adaptor_refund
-                        )
-                    }
-                    Some(Wallet::Bob(_)) => info!("\n\n this is a bob wallet.\n\n"),
-                    None => info!("\n\n no wallet exists for swap id {}.\n\n", swap_id),
-                }
 
                 if let Some(Wallet::Alice(AliceState {
                     alice,
