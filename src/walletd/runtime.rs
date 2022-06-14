@@ -735,7 +735,7 @@ impl Runtime {
 
                             // checkpoint here after proof verification and potentially sending RevealProof
                             let swap_id = get_swap_id(&source)?;
-                            trace!("checkpointing bob pre lock.");
+                            debug!("checkpointing bob pre lock.");
                             checkpoint_state(
                                 endpoints,
                                 swap_id,
@@ -868,24 +868,6 @@ impl Runtime {
             })) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
-                // TODO: checkpointing before .get_mut call for now, but should do this later
-                trace!("checkpointing bob pre buy sig.");
-                checkpoint_state(
-                    endpoints,
-                    swap_id,
-                    request::CheckpointState::CheckpointWallet(CheckpointWallet {
-                        xmr_addr: self
-                            .xmr_addrs
-                            .get(&swap_id)
-                            .expect("checked at start of swap")
-                            .clone(),
-                        wallet: self
-                            .wallets
-                            .get(&swap_id)
-                            .expect("checked at start of swap")
-                            .clone(),
-                    }),
-                )?;
 
                 if let Some(Wallet::Bob(BobState {
                     bob,
@@ -895,7 +877,11 @@ impl Runtime {
                     remote_params: Some(remote_params),
                     core_arb_setup: Some(core_arb_setup),
                     adaptor_buy, // None
-                    ..
+                    funding_tx,
+                    local_proof,
+                    local_trade_role,
+                    remote_commit_params,
+                    remote_proof,
                 })) = self.wallets.get_mut(&swap_id)
                 {
                     let core_arb_txs = &(core_arb_setup.clone()).into();
@@ -907,6 +893,45 @@ impl Runtime {
                         local_params,
                         core_arb_txs,
                         signed_adaptor_refund,
+                    )?;
+
+                    if adaptor_buy.is_some() {
+                        error!("{} | adaptor_buy already set", swap_id.bright_blue_italic());
+                        return Ok(());
+                    }
+                    *adaptor_buy = Some(bob.sign_adaptor_buy(
+                        key_manager,
+                        remote_params,
+                        local_params,
+                        core_arb_txs,
+                        pub_offer,
+                    )?);
+
+                    debug!("checkpointing bob pre buy sig.");
+                    checkpoint_state(
+                        endpoints,
+                        swap_id,
+                        request::CheckpointState::CheckpointWallet(CheckpointWallet {
+                            xmr_addr: self
+                                .xmr_addrs
+                                .get(&swap_id)
+                                .expect("checked at start of swap")
+                                .clone(),
+                            wallet: Wallet::Bob(BobState {
+                                bob: bob.clone(),
+                                local_params: local_params.clone(),
+                                key_manager: key_manager.clone(),
+                                pub_offer: pub_offer.clone(),
+                                remote_params: Some(remote_params.clone()),
+                                core_arb_setup: Some(core_arb_setup.clone()),
+                                adaptor_buy: adaptor_buy.clone(),
+                                funding_tx: funding_tx.clone(),
+                                local_proof: local_proof.clone(),
+                                local_trade_role: local_trade_role.clone(),
+                                remote_commit_params: remote_commit_params.clone(),
+                                remote_proof: remote_proof.clone(),
+                            }),
+                        }),
                     )?;
 
                     // *refund_sigs = Some(refund_proc_sigs);
@@ -973,17 +998,6 @@ impl Runtime {
                     }
 
                     {
-                        if adaptor_buy.is_some() {
-                            error!("{} | adaptor_buy already set", swap_id.bright_blue_italic());
-                            return Ok(());
-                        }
-                        *adaptor_buy = Some(bob.sign_adaptor_buy(
-                            key_manager,
-                            remote_params,
-                            local_params,
-                            core_arb_txs,
-                            pub_offer,
-                        )?);
                         let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from((
                             swap_id,
                             adaptor_buy.clone().unwrap(),
@@ -1062,7 +1076,7 @@ impl Runtime {
                     ));
                     *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
 
-                    trace!("checkpointing alice pre lock.");
+                    debug!("checkpointing alice pre lock.");
                     checkpoint_state(
                         endpoints,
                         swap_id,
@@ -1158,7 +1172,7 @@ impl Runtime {
                     buy_adaptor_sig: buy_encrypted_sig,
                 };
                 let id = self.identity();
-                trace!("checkpointing alice pre buy sig.");
+                debug!("checkpointing alice pre buy sig.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
                     checkpoint_state(
                         endpoints,
@@ -1423,7 +1437,6 @@ impl Runtime {
                     local_params,
                     key_manager,
                     remote_params: Some(alice_params),
-                    core_arb_setup: Some(_),
                     adaptor_buy: Some(adaptor_buy),
                     pub_offer,
                     ..
@@ -1727,7 +1740,6 @@ pub fn checkpoint_state(
 
     // if the size exceeds a boundary, send a multi-part message
     let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
-    debug!("checkpointing wallet state");
     if size > max_chunk_size {
         let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
         debug!("need to chunk the checkpoint message");
