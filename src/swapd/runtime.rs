@@ -167,6 +167,7 @@ pub fn run(
         monero_amount,
         bitcoin_amount,
         awaiting_funding: false,
+        xmr_addr_addendum: None,
     };
 
     let runtime = Runtime {
@@ -253,6 +254,7 @@ pub struct CheckpointSwapd {
     pub state: State,
     pub last_msg: Msg,
     pub enquirer: Option<ServiceId>,
+    pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub temporal_safety: TemporalSafety,
     pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     pub txids: HashMap<TxLabel, Txid>,
@@ -264,6 +266,7 @@ impl StrictEncode for CheckpointSwapd {
         let mut len = self.state.strict_encode(&mut e)?;
         len += self.last_msg.strict_encode(&mut e)?;
         len += self.enquirer.strict_encode(&mut e)?;
+        len += self.xmr_addr_addendum.strict_encode(&mut e)?;
         len += self.temporal_safety.strict_encode(&mut e)?;
 
         len += self.txs.len().strict_encode(&mut e)?;
@@ -320,6 +323,7 @@ impl StrictDecode for CheckpointSwapd {
         let state = State::strict_decode(&mut d)?;
         let last_msg = Msg::strict_decode(&mut d)?;
         let enquirer = Option::<ServiceId>::strict_decode(&mut d)?;
+        let xmr_addr_addendum = Option::<XmrAddressAddendum>::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
 
         let len = usize::strict_decode(&mut d)?;
@@ -358,6 +362,7 @@ impl StrictDecode for CheckpointSwapd {
             state,
             last_msg,
             enquirer,
+            xmr_addr_addendum,
             temporal_safety,
             txs,
             txids,
@@ -774,7 +779,7 @@ impl Runtime {
 
                         // checkpoint swap alice pre buy
                         debug!(
-                            "{} | checkpointing alice swapd state",
+                            "{} | checkpointing alice pre buy swapd state",
                             self.swap_id.bright_blue_italic()
                         );
                         checkpoint_state(
@@ -788,6 +793,7 @@ impl Runtime {
                                 txs: self.txs.clone(),
                                 txids: self.syncer_state.tasks.txids.clone(),
                                 pending_requests: self.pending_requests.clone(),
+                                xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                             }),
                         )?;
 
@@ -1547,8 +1553,9 @@ impl Runtime {
                                     }
                                     let txlabel = TxLabel::AccLock;
                                     if !self.syncer_state.is_watched_addr(&txlabel) {
-                                        let watch_addr_task =
-                                            self.syncer_state.watch_addr_xmr(spend, view, txlabel);
+                                        let watch_addr_task = self
+                                            .syncer_state
+                                            .watch_addr_xmr(spend, view, txlabel, None);
                                         endpoints.send_to(
                                             ServiceBus::Ctl,
                                             self.identity(),
@@ -1709,8 +1716,7 @@ impl Runtime {
                             }
                             TxLabel::Buy
                                 if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
-                                    && self.state.a_refundsig()
-                                    && self.state.a_buy_published() =>
+                                    && self.state.a_refundsig() =>
                             {
                                 // FIXME: swap ends here for alice
                                 // wallet + farcaster
@@ -1915,6 +1921,7 @@ impl Runtime {
                         txs: self.txs.clone(),
                         txids: self.syncer_state.tasks.txids.clone(),
                         pending_requests: self.pending_requests.clone(),
+                        xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                     }),
                 )?;
                 let CoreArbitratingSetup {
@@ -1961,7 +1968,7 @@ impl Runtime {
 
                     let txlabel = TxLabel::AccLock;
                     if !self.syncer_state.is_watched_addr(&txlabel) {
-                        let task = self.syncer_state.watch_addr_xmr(spend, view, txlabel);
+                        let task = self.syncer_state.watch_addr_xmr(spend, view, txlabel, None);
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -2037,6 +2044,7 @@ impl Runtime {
                         txs: self.txs.clone(),
                         txids: self.syncer_state.tasks.txids.clone(),
                         pending_requests: self.pending_requests.clone(),
+                        xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                     }),
                 )?;
 
@@ -2073,6 +2081,7 @@ impl Runtime {
                         txs: self.txs.clone(),
                         txids: self.syncer_state.tasks.txids.clone(),
                         pending_requests: self.pending_requests.clone(),
+                        xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                     }),
                 )?;
 
@@ -2223,6 +2232,7 @@ impl Runtime {
                     txs,
                     txids,
                     pending_requests,
+                    xmr_addr_addendum,
                 }) => {
                     info!("{} | Restoring swap", swap_id);
                     self.state = state;
@@ -2272,6 +2282,25 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
+                    if xmr_addr_addendum.is_some() {
+                        let XmrAddressAddendum {
+                            view_key,
+                            spend_key,
+                            from_height,
+                        } = xmr_addr_addendum.expect("checked");
+                        let task = self.syncer_state.watch_addr_xmr(
+                            spend_key,
+                            view_key,
+                            TxLabel::AccLock,
+                            Some(from_height),
+                        );
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
                             Request::SyncerTask(task),
                         )?;
                     }

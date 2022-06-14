@@ -47,6 +47,7 @@ pub struct SyncerState {
     pub monero_syncer: ServiceId,
     pub monero_amount: monero::Amount,
     pub bitcoin_amount: bitcoin::Amount,
+    pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub awaiting_funding: bool,
 }
 impl SyncerState {
@@ -166,6 +167,7 @@ impl SyncerState {
         spend: monero::PublicKey,
         view: monero::PrivateKey,
         tx_label: TxLabel,
+        from_height: Option<u64>,
     ) -> Task {
         debug!(
             "{} | Address's secret view key for {}: {}",
@@ -181,12 +183,14 @@ impl SyncerState {
         );
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
-        let from_height = self.from_height(Coin::Monero, 20);
-        let addendum = AddressAddendum::Monero(XmrAddressAddendum {
+        let from_height = from_height.unwrap_or(self.from_height(Coin::Monero, 20));
+        let addendum = XmrAddressAddendum {
             spend_key: spend,
             view_key: view,
             from_height,
-        });
+        };
+
+        self.xmr_addr_addendum = Some(addendum.clone());
 
         let id = self.tasks.new_taskid();
         self.tasks.watched_addrs.insert(id, tx_label);
@@ -201,7 +205,7 @@ impl SyncerState {
         let watch_addr = WatchAddress {
             id,
             lifetime: self.task_lifetime(Coin::Monero),
-            addendum,
+            addendum: AddressAddendum::Monero(addendum),
             include_tx: Boolean::False,
         };
         Task::WatchAddress(watch_addr)
