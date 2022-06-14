@@ -678,7 +678,7 @@ pub enum Request {
     RetrieveAllCheckpointInfo,
 
     #[api(type = 1307)]
-    #[display("delete_checkpoint")]
+    #[display("remove_checkpoint")]
     RemoveCheckpoint(SwapId),
 
     #[api(type = 1308)]
@@ -744,9 +744,10 @@ pub struct Checkpoint {
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display(Debug)]
 pub enum CheckpointState {
+    #[display("Checkpoint Wallet")]
     CheckpointWallet(CheckpointWallet),
+    #[display("Checkpoint Wallet")]
     CheckpointSwapd(CheckpointSwapd),
 }
 
