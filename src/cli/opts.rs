@@ -73,6 +73,14 @@ pub enum Command {
     #[clap(aliases = &["lo"])]
     ListOffers,
 
+    /// Gives information on an open offer
+    #[clap(aliases = &["oi"])]
+    #[display("offer-info<{public_offer}>")]
+    OfferInfo {
+        /// The offer to be canceled.
+        public_offer: PublicOffer<BtcXmr>,
+    },
+
     // /// Lists IDs of public offers created by daemon
     // ListOfferIds,
     /// Lists listeners created by daemon
