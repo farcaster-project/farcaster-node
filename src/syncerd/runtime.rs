@@ -211,7 +211,7 @@ impl Runtime {
                 notify_cli = Some((Some(source), resp));
             }
 
-            (Request::Terminate, _) => {
+            (Request::Terminate, ServiceId::Farcasterd) => {
                 // terminate all runtimes
                 info!("Received terminate on {}", self.identity());
                 std::process::exit(0);
