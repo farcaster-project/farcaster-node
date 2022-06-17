@@ -145,14 +145,14 @@ fn request_loop(
         while let Some(request) = tokio_rx_request.recv().await {
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
-            debug!("sending request over syncerd bridge: {:?}", request);
-            let syncer_address: Vec<u8> = ServiceId::Grpcd.into();
+            debug!("sending request over grpc bridge: {:?}", request);
+            let grpc_address: Vec<u8> = ServiceId::Grpcd.into();
 
             writer
                 .send_routed(
-                    &syncer_address,
-                    &syncer_address,
-                    &syncer_address,
+                    &grpc_address,
+                    &grpc_address,
+                    &grpc_address,
                     &transcoder.encrypt(request.serialize()),
                 )
                 .expect("failed to send from grpc server to grpc runtime over bridge");
