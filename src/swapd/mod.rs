@@ -17,6 +17,7 @@ mod opts;
 mod runtime;
 #[allow(dead_code)]
 pub(self) mod storage;
+mod syncer_client;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;
