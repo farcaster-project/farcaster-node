@@ -559,7 +559,7 @@ impl Runtime {
                             endpoints.send_to(
                                 ServiceBus::Ctl,
                                 ServiceId::Farcasterd,
-                                ServiceId::Checkpoint,
+                                ServiceId::Database,
                                 Request::RestoreCheckpoint(*swap_id),
                             )?;
                         }

@@ -235,7 +235,7 @@ impl Runtime {
                         );
                     }
                 }
-                match self.checkpoints.get_state(&CheckpointKey {
+                match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Swap(swap_id),
                 }) {
@@ -384,7 +384,7 @@ pub fn checkpoint_restore(
     } else {
         endpoints.send_to(
             ServiceBus::Ctl,
-            ServiceId::Checkpoint,
+            ServiceId::Database,
             destination,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;

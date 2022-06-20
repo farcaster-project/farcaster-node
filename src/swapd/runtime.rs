@@ -1622,7 +1622,7 @@ impl Runtime {
                 _,
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
-                | ServiceId::Checkpoint
+                | ServiceId::Database
             ) => {}
             (Request::GetInfo(_), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
@@ -3088,7 +3088,7 @@ impl Runtime {
 
                     self.handle_rpc_ctl(
                         endpoints,
-                        ServiceId::Checkpoint,
+                        ServiceId::Database,
                         Request::Protocol(last_msg),
                     )?;
                 }
@@ -3291,7 +3291,7 @@ pub fn checkpoint_state(
             endpoints.send_to(
                 ServiceBus::Ctl,
                 ServiceId::Swap(swap_id),
-                ServiceId::Checkpoint,
+                ServiceId::Database,
                 Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
                     checksum,
                     msg_index: n,
@@ -3305,7 +3305,7 @@ pub fn checkpoint_state(
         endpoints.send_to(
             ServiceBus::Ctl,
             ServiceId::Swap(swap_id),
-            ServiceId::Checkpoint,
+            ServiceId::Database,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;
     }
