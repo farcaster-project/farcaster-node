@@ -739,6 +739,7 @@ pub struct Checkpoint {
     pub state: CheckpointState,
 }
 
+// this is the same as State enum in swapd
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display(Debug)]
 pub enum CheckpointState {

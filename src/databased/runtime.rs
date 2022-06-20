@@ -197,7 +197,7 @@ impl Runtime {
             }
 
             Request::RestoreCheckpoint(swap_id) => {
-                match self.checkpoints.get_state(&CheckpointKey {
+                match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
                 }) {
@@ -218,8 +218,11 @@ impl Runtime {
             }
 
             Request::RetrieveAllCheckpointInfo => {
-                let pairs = self.database.get_all_key_value_pairs().expect("unable retrieve all checkpointed key-value pairs");
-                let checkpointed_pub_offers: Vec<(SwapId, PublicOffer<BtcXmr>)> = pairs
+                let pairs = self
+                    .database
+                    .get_all_key_value_pairs()
+                    .expect("unable retrieve all checkpointed key-value pairs");
+                let checkpointed_pub_offers: List<_> = pairs
                     .iter()
                     .filter_map(|(checkpoint_key, state)| {
                         let state =
@@ -252,7 +255,7 @@ impl Runtime {
                 )?;
             }
 
-            Request::DeleteCheckpoint(swap_id) => {
+            Request::RemoveCheckpoint(swap_id) => {
                 self.database
                     .delete_checkpoint_state(CheckpointKey {
                         swap_id,
@@ -306,7 +309,7 @@ pub fn checkpoint_restore(
             );
             endpoints.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Checkpoint,
+                ServiceId::Database,
                 destination.clone(),
                 Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
                     checksum,
@@ -320,7 +323,7 @@ pub fn checkpoint_restore(
     } else {
         endpoints.send_to(
             ServiceBus::Ctl,
-            ServiceId::Checkpoint,
+            ServiceId::Database,
             destination,
             Request::Checkpoint(Checkpoint { swap_id, state }),
         )?;

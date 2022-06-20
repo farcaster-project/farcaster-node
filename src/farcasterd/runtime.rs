@@ -310,7 +310,7 @@ impl Runtime {
         endpoints.send_to(
             ServiceBus::Ctl,
             self.identity(),
-            ServiceId::Checkpoint,
+            ServiceId::Database,
             Request::RemoveCheckpoint(*swapid),
         )?;
         let mut offerid = None;
@@ -899,7 +899,7 @@ impl Runtime {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd,
-                    ServiceId::Checkpoint,
+                    ServiceId::Database,
                     Request::RestoreCheckpoint(swap_id),
                 )?;
                 endpoints.send_to(

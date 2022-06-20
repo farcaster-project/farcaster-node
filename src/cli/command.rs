@@ -98,7 +98,7 @@ impl Exec for Command {
             }
 
             Command::ListCheckpoints => {
-                runtime.request(ServiceId::Checkpoint, Request::RetrieveAllCheckpointInfo)?;
+                runtime.request(ServiceId::Database, Request::RetrieveAllCheckpointInfo)?;
                 runtime.report_response_or_fail()?;
             }
 
