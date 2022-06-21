@@ -47,7 +47,6 @@ required-features = ["server"]
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
 farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
 
-
 anyhow = "1"
 hex = "^0.4.3"
 
@@ -74,6 +73,9 @@ lazy_static = "1.4"
 lightning_encoding = "0.6.1"
 lnp-core = { version = "0.6.0", git = "https://github.com/LNP-BP/lnp-core" }
 lnpbp = { version = "0.6.0", features = ["all"] }
+lmdb = "0.8.0"
+# lnp-core =  { path = "../ext/lnp-core" }
+# internet2 = { path = "../ext/rust-internet2" }
 # Congig & logging
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 monero = "0.16"

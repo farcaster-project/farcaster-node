@@ -1587,7 +1587,7 @@ fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["swapd", "grpcd", "walletd", "syncerd", "peerd"].contains(&process.name())
+            ["swapd", "grpcd", "databased", "walletd", "syncerd", "peerd"].contains(&process.name())
                 && procs
                     .iter()
                     .map(|proc| proc.0)

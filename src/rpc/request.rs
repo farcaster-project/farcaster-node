@@ -14,11 +14,15 @@
 
 #![allow(clippy::clone_on_copy)]
 
-use crate::syncerd::{
-    types::{Event, Task},
-    Coin, SweepXmrAddress,
+use crate::walletd::runtime::BobState;
+use crate::walletd::{runtime::AliceState, NodeSecrets};
+use crate::{
+    farcasterd,
+    syncerd::{
+        types::{Event, Task},
+        Coin, SweepXmrAddress,
+    },
 };
-use crate::walletd::NodeSecrets;
 use amplify::{Holder, ToYamlString, Wrapper};
 use farcaster_core::syncer::BroadcastTransaction;
 use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
@@ -655,6 +659,24 @@ pub enum Request {
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     SweepXmrAddress(SweepXmrAddress),
+
+    #[api(type = 1304)]
+    #[display("checkpoint({0})", alt = "{0:#}")]
+    #[from]
+    Checkpoint(Checkpoint),
+
+    #[api(type = 1305)]
+    #[display("checkpoint_multipart({0})")]
+    #[from]
+    CheckpointMultipartChunk(CheckpointMultipartChunk),
+
+    #[api(type = 1306)]
+    #[display("retrieve_all_checkpoint_info")]
+    RetrieveAllCheckpointInfo,
+
+    #[api(type = 1307)]
+    #[display("delete_checkpoint")]
+    DeleteCheckpoint(SwapId),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -671,6 +693,32 @@ pub enum Outcome {
 pub enum FundingInfo {
     Bitcoin(BitcoinFundingInfo),
     Monero(MoneroFundingInfo),
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("{msg_index}, {msgs_total}, {swap_id}")]
+pub struct CheckpointMultipartChunk {
+    pub checksum: [u8; 20],
+    pub msg_index: usize,
+    pub msgs_total: usize,
+    pub serialized_state_chunk: Vec<u8>,
+    pub swap_id: SwapId,
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display(Debug)]
+pub struct Checkpoint {
+    pub swap_id: SwapId,
+    pub state: CheckpointState,
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display(Debug)]
+pub enum CheckpointState {
+    CheckpointWalletAlicePreLock(AliceState),
+    CheckpointWalletBobPreLock(BobState),
+    CheckpointWalletAlicePreBuy(AliceState),
+    CheckpointWalletBobPreBuy(BobState),
 }
 
 impl FromStr for BitcoinFundingInfo {

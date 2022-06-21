@@ -1042,7 +1042,7 @@ checksum = "d9435d864e017c3c6afeac1654189b06cdb491cf2ff73dbf0d73b0f292f42ff8"
 [[package]]
 name = "farcaster_core"
 version = "0.4.4"
-source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#abd71f7c16ce9058b5cfb7dfd28e9cdbd029f757"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=main#0f7f8c58c5d8fa88be108c9f6457ac975cb0ab86"
 dependencies = [
  "amplify",
  "base58-monero",
@@ -1099,6 +1099,7 @@ dependencies = [
  "lazy_static",
  "lightning_encoding 0.6.1",
  "lightning_encoding 0.7.1",
+ "lmdb",
  "lnp-core",
  "lnpbp 0.6.0",
  "lnpbp 0.7.0",
@@ -1741,6 +1742,28 @@ name = "linked-hash-map"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
+
+[[package]]
+name = "lmdb"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b0908efb5d6496aa977d96f91413da2635a902e5e31dbef0bfb88986c248539"
+dependencies = [
+ "bitflags",
+ "libc",
+ "lmdb-sys",
+]
+
+[[package]]
+name = "lmdb-sys"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5b392838cfe8858e86fac37cf97a0e8c55cc60ba0a18365cadc33092f128ce9"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
 
 [[package]]
 name = "lnp-core"

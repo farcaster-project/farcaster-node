@@ -1,4 +1,7 @@
 use crate::service::Endpoints;
+use lmdb::{Cursor, Transaction as LMDBTransaction};
+use request::{Checkpoint, CheckpointMultipartChunk};
+use std::path::PathBuf;
 use std::{
     any::Any,
     collections::{HashMap, HashSet},
@@ -23,6 +26,7 @@ use crate::{
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use bitcoin::{
     hashes::hex::FromHex,
+    hashes::{ripemd160, Hash},
     secp256k1::{self, ecdsa::Signature, rand::thread_rng, PublicKey, Secp256k1, SecretKey},
     util::{
         bip32::{DerivationPath, ExtendedPrivKey},
@@ -43,8 +47,10 @@ use farcaster_core::{
         FullySignedPunish, FullySignedRefund, FundingTransaction, Proof, SignedAdaptorBuy,
         SignedAdaptorRefund, SignedArbitratingLock,
     },
+    consensus::{self, CanonicalBytes, Decodable, Encodable},
     crypto::{ArbitratingKeyId, GenerateKey, SharedKeyId},
     crypto::{CommitmentEngine, ProveCrossGroupDleq},
+    impl_strict_encoding,
     monero::{Monero, SHARED_VIEW_KEY_ID},
     negotiation::PublicOffer,
     protocol_message::{
@@ -58,7 +64,6 @@ use farcaster_core::{
     transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
-// use lnp::{ChannelId as SwapId, TempChannelId as TempSwapId};
 use microservices::esb::{self, Handler};
 use request::{LaunchSwap, NodeId};
 
@@ -66,7 +71,6 @@ pub fn run(
     config: ServiceConfig,
     wallet_token: Token,
     node_secrets: NodeSecrets,
-    _node_id: bitcoin::secp256k1::PublicKey,
 ) -> Result<(), Error> {
     let runtime = Runtime {
         identity: ServiceId::Wallet,
@@ -100,11 +104,17 @@ impl Runtime {
     }
 }
 
+use strict_encoding::{
+    strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
+};
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub enum Wallet {
     Alice(AliceState),
     Bob(BobState),
 }
 
+#[derive(Clone, Debug)]
 pub struct AliceState {
     alice: Alice<BtcXmr>,
     local_params: AliceParameters<BtcXmr>,
@@ -118,6 +128,48 @@ pub struct AliceState {
     alice_cancel_signature: Option<Signature>,
     adaptor_refund: Option<SignedAdaptorRefund<farcaster_core::bitcoin::BitcoinSegwitV0>>,
 }
+
+impl Encodable for AliceState {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut len = self.alice.consensus_encode(writer)?;
+        len += self.local_params.consensus_encode(writer)?;
+        len += self.local_proof.consensus_encode(writer)?;
+        len += self.key_manager.consensus_encode(writer)?;
+        len += self.pub_offer.consensus_encode(writer)?;
+        len += self.remote_commit.consensus_encode(writer)?;
+        len += self.remote_params.consensus_encode(writer)?;
+        len += self.remote_proof.consensus_encode(writer)?;
+        len += self.core_arb_setup.consensus_encode(writer)?;
+        len += self
+            .alice_cancel_signature
+            .as_canonical_bytes()
+            .consensus_encode(writer)?;
+        len += self.adaptor_refund.consensus_encode(writer)?;
+        Ok(len)
+    }
+}
+
+impl Decodable for AliceState {
+    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(AliceState {
+            alice: Decodable::consensus_decode(d)?,
+            local_params: Decodable::consensus_decode(d)?,
+            local_proof: Decodable::consensus_decode(d)?,
+            key_manager: Decodable::consensus_decode(d)?,
+            pub_offer: Decodable::consensus_decode(d)?,
+            remote_commit: Decodable::consensus_decode(d)?,
+            remote_params: Decodable::consensus_decode(d)?,
+            remote_proof: Decodable::consensus_decode(d)?,
+            core_arb_setup: Decodable::consensus_decode(d)?,
+            alice_cancel_signature: Option::<Signature>::from_canonical_bytes(
+                farcaster_core::unwrap_vec_ref!(d).as_ref(),
+            )?,
+            adaptor_refund: Decodable::consensus_decode(d)?,
+        })
+    }
+}
+
+impl_strict_encoding!(AliceState);
 
 impl AliceState {
     fn new(
@@ -144,6 +196,7 @@ impl AliceState {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct BobState {
     bob: Bob<BtcXmr>,
     local_params: BobParameters<BtcXmr>,
@@ -156,6 +209,41 @@ pub struct BobState {
     remote_proof: Option<Proof<BtcXmr>>,
     core_arb_setup: Option<CoreArbitratingSetup<BtcXmr>>,
     adaptor_buy: Option<SignedAdaptorBuy<Bitcoin<SegwitV0>>>,
+}
+
+impl Encodable for BobState {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut len = self.bob.consensus_encode(writer)?;
+        len += self.local_params.consensus_encode(writer)?;
+        len += self.local_proof.consensus_encode(writer)?;
+        len += self.key_manager.consensus_encode(writer)?;
+        len += self.pub_offer.consensus_encode(writer)?;
+        len += self.funding_tx.consensus_encode(writer)?;
+        len += self.remote_commit_params.consensus_encode(writer)?;
+        len += self.remote_params.consensus_encode(writer)?;
+        len += self.remote_proof.consensus_encode(writer)?;
+        len += self.core_arb_setup.consensus_encode(writer)?;
+        len += self.adaptor_buy.consensus_encode(writer)?;
+        Ok(len)
+    }
+}
+
+impl Decodable for BobState {
+    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(BobState {
+            bob: Decodable::consensus_decode(d)?,
+            local_params: Decodable::consensus_decode(d)?,
+            local_proof: Decodable::consensus_decode(d)?,
+            key_manager: Decodable::consensus_decode(d)?,
+            pub_offer: Decodable::consensus_decode(d)?,
+            funding_tx: Decodable::consensus_decode(d)?,
+            remote_commit_params: Decodable::consensus_decode(d)?,
+            remote_params: Decodable::consensus_decode(d)?,
+            remote_proof: Decodable::consensus_decode(d)?,
+            core_arb_setup: Decodable::consensus_decode(d)?,
+            adaptor_buy: Decodable::consensus_decode(d)?,
+        })
+    }
 }
 
 impl BobState {
@@ -183,6 +271,8 @@ impl BobState {
         }
     }
 }
+
+impl_strict_encoding!(BobState);
 
 impl CtlServer for Runtime {}
 
@@ -558,10 +648,11 @@ impl Runtime {
                             key_manager,
                             pub_offer,
                             funding_tx: Some(funding_tx),
+                            remote_commit_params,
                             remote_params,                    // None
                             remote_proof: Some(remote_proof), // Some
                             core_arb_setup,                   // None
-                            ..
+                            adaptor_buy,
                         })) = self.wallets.get_mut(&swap_id)
                         {
                             // set wallet params
@@ -601,6 +692,27 @@ impl Runtime {
                                 )?;
                             }
 
+                            // checkpoint here after proof verification and potentially sending RevealProof
+                            let swap_id = get_swap_id(&source)?;
+                            trace!("checkpointing bob pre lock.");
+                            checkpoint_state(
+                                endpoints,
+                                swap_id,
+                                request::CheckpointState::CheckpointWalletBobPreLock(BobState {
+                                    bob: bob.clone(),
+                                    local_params: local_params.clone(),
+                                    local_proof: local_proof.clone(),
+                                    key_manager: key_manager.clone(),
+                                    pub_offer: pub_offer.clone(),
+                                    funding_tx: Some(funding_tx.clone()),
+                                    remote_commit_params: remote_commit_params.clone(),
+                                    remote_params: remote_params.clone(),
+                                    remote_proof: Some(remote_proof.clone()),
+                                    core_arb_setup: core_arb_setup.clone(),
+                                    adaptor_buy: adaptor_buy.clone(),
+                                }),
+                            )?;
+
                             // set wallet core_arb_txs
                             if core_arb_setup.is_some() {
                                 error!(
@@ -629,6 +741,7 @@ impl Runtime {
                             )));
                             let core_arb_setup_msg =
                                 Msg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
+
                             self.send_ctl(
                                 endpoints,
                                 source,
@@ -706,6 +819,21 @@ impl Runtime {
             })) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
+                // TODO: checkpointing before .get_mut call for now, but should do this later
+                trace!("checkpointing bob pre buy.");
+                if let Some(Wallet::Bob(state)) = self.wallets.get(&swap_id) {
+                    checkpoint_state(
+                        endpoints,
+                        swap_id,
+                        request::CheckpointState::CheckpointWalletBobPreBuy(state.clone()),
+                    )?;
+                } else {
+                    error!(
+                        "{:#} | Unknown wallet and swap_id {:#}",
+                        swap_id.bright_blue_italic(),
+                        swap_id.bright_white_bold(),
+                    );
+                };
                 if let Some(Wallet::Bob(BobState {
                     bob,
                     local_params,
@@ -737,8 +865,10 @@ impl Runtime {
                         let mut lock_tx = LockTx::from_partial(tx);
                         let lock_pubkey = key_manager.get_pubkey(ArbitratingKeyId::Lock)?;
                         lock_tx.add_witness(lock_pubkey, sig)?;
-                        let finalized_lock_tx =
+                        let finalized_lock_tx: bitcoin::Transaction =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
+
+                        // TODO: checkpoint here
 
                         endpoints.send_to(
                             ServiceBus::Ctl,
@@ -823,6 +953,21 @@ impl Runtime {
             Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
+                trace!("checkpointing alice pre lock.");
+                if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
+                    checkpoint_state(
+                        endpoints,
+                        swap_id,
+                        request::CheckpointState::CheckpointWalletAlicePreLock(state.clone()),
+                    )?;
+                } else {
+                    error!(
+                        "{:#} | Unknown wallet and swap_id {:#}",
+                        swap_id.bright_blue_italic(),
+                        swap_id.bright_white_bold(),
+                    );
+                };
+
                 if let Some(Wallet::Alice(AliceState {
                     alice,
                     local_params,
@@ -873,10 +1018,11 @@ impl Runtime {
                         signed_adaptor_refund,
                     ));
                     *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
+                    // NOTE: if this is the right spot for the Ctl message, it should also be replayed upon state recovery
                     {
                         // cancel
-                        let tx = core_arb_setup.as_ref().unwrap().cancel.clone();
-                        let mut cancel_tx = CancelTx::from_partial(tx);
+                        let partial_cancel_tx = core_arb_setup.as_ref().unwrap().cancel.clone();
+                        let mut cancel_tx = CancelTx::from_partial(partial_cancel_tx);
                         cancel_tx
                             .add_witness(local_params.cancel, alice_cancel_signature.unwrap())?;
                         cancel_tx.add_witness(
@@ -892,6 +1038,7 @@ impl Runtime {
                             Request::Tx(Tx::Cancel(finalized_cancel_tx)),
                         )?;
                     }
+                    // NOTE: if this is the right spot for the Ctl message, it should also be replayed upon state recovery
                     {
                         let FullySignedPunish { punish, punish_sig } = alice.fully_sign_punish(
                             key_manager,
@@ -940,6 +1087,21 @@ impl Runtime {
                     buy_adaptor_sig: buy_encrypted_sig,
                 };
                 let id = self.identity();
+                trace!("checkpointing alice pre buy.");
+                if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
+                    checkpoint_state(
+                        endpoints,
+                        swap_id,
+                        request::CheckpointState::CheckpointWalletAlicePreBuy(state.clone()),
+                    )?;
+                } else {
+                    error!(
+                        "{:#} | Unknown wallet and swap_id {:#}",
+                        swap_id.bright_blue_italic(),
+                        swap_id.bright_white_bold(),
+                    );
+                };
+
                 if let Some(Wallet::Alice(AliceState {
                     alice,
                     local_params: alice_params,
@@ -1380,6 +1542,56 @@ impl Runtime {
         }
         Ok(())
     }
+}
+
+pub fn checkpoint_state(
+    endpoints: &mut Endpoints,
+    swap_id: SwapId,
+    state: request::CheckpointState,
+) -> Result<(), Error> {
+    let mut serialized_state = vec![];
+    let size = state.strict_encode(&mut serialized_state).unwrap();
+
+    // if the size exceeds a boundary, send a multi-part message
+    let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
+    debug!("checkpointing wallet state");
+    if size > max_chunk_size {
+        let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
+        debug!("need to chunk the checkpoint message");
+        let chunks: Vec<(usize, Vec<u8>)> = serialized_state
+            .chunks_mut(max_chunk_size)
+            .enumerate()
+            .map(|(n, chunk)| (n, chunk.to_vec()))
+            .collect();
+        let chunks_total = chunks.len();
+        for (n, chunk) in chunks {
+            debug!(
+                "sending chunked checkpoint message {} of a total {}",
+                n + 1,
+                chunks_total
+            );
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                ServiceId::Wallet,
+                ServiceId::Database,
+                Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
+                    checksum,
+                    msg_index: n,
+                    msgs_total: chunks_total,
+                    serialized_state_chunk: chunk,
+                    swap_id,
+                }),
+            )?;
+        }
+    } else {
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            ServiceId::Wallet,
+            ServiceId::Database,
+            Request::Checkpoint(Checkpoint { swap_id, state }),
+        )?;
+    }
+    Ok(())
 }
 
 pub fn create_funding(

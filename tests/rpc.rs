@@ -98,7 +98,7 @@ fn spawn_swap() {
         .get_processes()
         .iter()
         .filter(|(_pid, process)| {
-            ["peerd", "swapd", "walletd"].contains(&process.name())
+            ["peerd", "swapd", "walletd", "databased"].contains(&process.name())
                 && [farcasterd_maker.id(), farcasterd_taker.id()]
                     .contains(&(process.parent().unwrap() as u32))
         })
@@ -127,7 +127,14 @@ fn spawn_swap() {
             .stdout;
 
         use regex::RegexSet;
-        let re = RegexSet::new(&[r" farcasterd", r" peerd", r" swapd", r" walletd"]).unwrap();
+        let re = RegexSet::new(&[
+            r" farcasterd",
+            r" peerd",
+            r" swapd",
+            r" walletd",
+            r" databased",
+        ])
+        .unwrap();
 
         let matches: Vec<_> = re
             .matches(std::str::from_utf8(&ps_out).unwrap())

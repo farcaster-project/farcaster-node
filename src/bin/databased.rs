@@ -24,18 +24,15 @@
     missing_docs
 )]
 
-//! Main executable for walletd: farcaster node wallet microservice.
+//! Main executable for databased: farcaster node databaseing microservice.
 
 #[macro_use]
 extern crate log;
 
 use clap::Parser;
 
+use farcaster_node::databased::{self, Opts};
 use farcaster_node::ServiceConfig;
-use farcaster_node::{
-    rpc::request::Token,
-    walletd::{self, NodeSecrets, Opts},
-};
 
 fn main() {
     let mut opts = Opts::parse();
@@ -48,13 +45,8 @@ fn main() {
     debug!("MSG RPC socket {}", &service_config.msg_endpoint);
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    let wallet_token = Token(opts.wallet_token.token);
-
-    let node_secrets = NodeSecrets::new(opts.key_opts.key_file.clone());
-
     debug!("Starting runtime ...");
-    walletd::run(service_config, wallet_token, node_secrets)
-        .expect("Error running walletd runtime");
+    databased::run(service_config, opts.shared.data_dir).expect("Error running databased runtime");
 
     unreachable!()
 }
