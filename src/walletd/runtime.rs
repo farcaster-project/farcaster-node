@@ -1,3 +1,5 @@
+use crate::databased::checkpoint_handle_multipart_receive;
+use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use request::{Checkpoint, CheckpointMultipartChunk};
@@ -697,9 +699,11 @@ impl Runtime {
                             // checkpoint here after proof verification and potentially sending RevealProof
                             let swap_id = get_swap_id(&source)?;
                             trace!("checkpointing bob pre lock.");
-                            checkpoint_state(
+                            checkpoint_send(
                                 endpoints,
                                 swap_id,
+                                ServiceId::Wallet,
+                                ServiceId::Database,
                                 request::CheckpointState::CheckpointWalletBob(BobState {
                                     bob: bob.clone(),
                                     local_params: local_params.clone(),
@@ -824,9 +828,11 @@ impl Runtime {
                 // TODO: checkpointing before .get_mut call for now, but should do this later
                 trace!("checkpointing bob pre buy.");
                 if let Some(Wallet::Bob(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_state(
+                    checkpoint_send(
                         endpoints,
                         swap_id,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
                         request::CheckpointState::CheckpointWalletBob(state.clone()),
                     )?;
                 } else {
@@ -957,9 +963,11 @@ impl Runtime {
                 let my_id = self.identity();
                 trace!("checkpointing alice pre lock.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_state(
+                    checkpoint_send(
                         endpoints,
                         swap_id,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
                         request::CheckpointState::CheckpointWalletAlice(state.clone()),
                     )?;
                 } else {
@@ -1091,9 +1099,11 @@ impl Runtime {
                 let id = self.identity();
                 trace!("checkpointing alice pre buy.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_state(
+                    checkpoint_send(
                         endpoints,
                         swap_id,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
                         request::CheckpointState::CheckpointWalletAlice(state.clone()),
                     )?;
                 } else {
@@ -1535,64 +1545,12 @@ impl Runtime {
                 self.clean_up_after_swap(&swap_id);
             }
 
-            Request::CheckpointMultipartChunk(request::CheckpointMultipartChunk {
-                checksum,
-                msg_index,
-                msgs_total,
-                serialized_state_chunk,
-                swap_id,
-            }) => {
-                debug!("received checkpoint multipart message");
-                if self.pending_checkpoint_chunks.contains_key(&checksum) {
-                    let chunks = self
-                        .pending_checkpoint_chunks
-                        .get_mut(&checksum)
-                        .expect("checked with contains_key");
-                    chunks.insert(CheckpointChunk {
-                        msg_index,
-                        serialized_state_chunk,
-                    });
-                } else {
-                    let mut chunk = HashSet::new();
-                    chunk.insert(CheckpointChunk {
-                        msg_index,
-                        serialized_state_chunk,
-                    });
-                    self.pending_checkpoint_chunks.insert(checksum, chunk);
-                }
-                let mut chunks = self
-                    .pending_checkpoint_chunks
-                    .get(&checksum)
-                    .unwrap_or(&HashSet::new())
-                    .clone();
-                if chunks.len() >= msgs_total {
-                    let mut chunk_tup_vec = chunks
-                        .drain()
-                        .map(|chunk| (chunk.msg_index, chunk.serialized_state_chunk))
-                        .collect::<Vec<(usize, Vec<u8>)>>(); // map the hashset to a vec for sorting
-                    chunk_tup_vec.sort_by(|(msg_number_a, _), (msg_number_b, _)| {
-                        msg_number_a.cmp(&msg_number_b)
-                    }); // sort in ascending order
-                    let chunk_vec = chunk_tup_vec
-                        .drain(..)
-                        .map(|(_, chunk)| chunk)
-                        .collect::<Vec<Vec<u8>>>(); // drop the extra integer index
-                    let serialized_checkpoint =
-                        chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // collect the chunked messages into a single serialized message
-                    if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
-                        // this should never happen
-                        error!("Unable to checkpoint the message, checksum did not match");
-                        return Ok(());
-                    }
-                    // serialize request and recurse to handle the actual request
-                    let request = Request::Checkpoint(request::Checkpoint {
-                        swap_id,
-                        state: CheckpointState::strict_decode(std::io::Cursor::new(
-                            serialized_checkpoint,
-                        ))
-                        .map_err(|err| Error::Farcaster(err.to_string()))?,
-                    });
-                    self.handle_rpc_ctl(endpoints, source, request)?;
+            Request::CheckpointMultipartChunk(checkpoint_multipart_chunk) => {
+                if let Some(checkpoint_request) = checkpoint_handle_multipart_receive(
+                    checkpoint_multipart_chunk,
+                    &mut self.pending_checkpoint_chunks,
+                )? {
+                    self.handle_rpc_ctl(endpoints, source, checkpoint_request)?;
                 }
             }
 
@@ -1620,56 +1578,6 @@ impl Runtime {
         }
         Ok(())
     }
-}
-
-pub fn checkpoint_state(
-    endpoints: &mut Endpoints,
-    swap_id: SwapId,
-    state: request::CheckpointState,
-) -> Result<(), Error> {
-    let mut serialized_state = vec![];
-    let size = state.strict_encode(&mut serialized_state).unwrap();
-
-    // if the size exceeds a boundary, send a multi-part message
-    let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
-    debug!("checkpointing wallet state");
-    if size > max_chunk_size {
-        let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
-        debug!("need to chunk the checkpoint message");
-        let chunks: Vec<(usize, Vec<u8>)> = serialized_state
-            .chunks_mut(max_chunk_size)
-            .enumerate()
-            .map(|(n, chunk)| (n, chunk.to_vec()))
-            .collect();
-        let chunks_total = chunks.len();
-        for (n, chunk) in chunks {
-            debug!(
-                "sending chunked checkpoint message {} of a total {}",
-                n + 1,
-                chunks_total
-            );
-            endpoints.send_to(
-                ServiceBus::Ctl,
-                ServiceId::Wallet,
-                ServiceId::Database,
-                Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
-                    checksum,
-                    msg_index: n,
-                    msgs_total: chunks_total,
-                    serialized_state_chunk: chunk,
-                    swap_id,
-                }),
-            )?;
-        }
-    } else {
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            ServiceId::Wallet,
-            ServiceId::Database,
-            Request::Checkpoint(Checkpoint { swap_id, state }),
-        )?;
-    }
-    Ok(())
 }
 
 pub fn create_funding(

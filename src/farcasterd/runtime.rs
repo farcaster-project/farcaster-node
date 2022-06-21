@@ -896,6 +896,18 @@ impl Runtime {
             }
 
             Request::RestoreCheckpoint(swap_id) => {
+                if self.running_swaps.contains(&swap_id) {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source,
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: "Cannot restore an already running swap".to_string(),
+                        }),
+                    )?;
+                    return Ok(());
+                }
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Farcasterd,
