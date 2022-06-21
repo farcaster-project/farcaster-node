@@ -635,6 +635,9 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     println!("waiting for the bitcoin funding info to clear");
     retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
 
+    // sleep a bit to ensure arb lock is broadcasted
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+
     // generate some bitcoin blocks to finalize the bitcoin arb lock tx
     bitcoin_rpc
         .generate_to_address(3, &reusable_btc_address())

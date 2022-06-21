@@ -86,6 +86,7 @@ impl SyncerState {
     pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
+        self.tasks.txids.insert(tx_label, txid);
         info!(
             "{} | Watching {} transaction ({})",
             self.swap_id.bright_blue_italic(),

@@ -2243,12 +2243,12 @@ impl Runtime {
                             Request::SyncerTask(task),
                         )?;
                     }
-                    if xmr_addr_addendum.is_some() {
-                        let XmrAddressAddendum {
-                            view_key,
-                            spend_key,
-                            from_height,
-                        } = xmr_addr_addendum.expect("checked");
+                    if let Some(XmrAddressAddendum {
+                        view_key,
+                        spend_key,
+                        from_height,
+                    }) = xmr_addr_addendum
+                    {
                         let task = self.syncer_state.watch_addr_xmr(
                             spend_key,
                             view_key,
