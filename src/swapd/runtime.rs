@@ -35,9 +35,9 @@ use std::{
 
 use super::{
     storage::{self, Driver},
-    temporal_safety::TemporalSafety,
     swap_state::{AliceState, BobState, State},
     syncer_client::{log_tx_received, log_tx_seen, SyncerState, SyncerTasks},
+    temporal_safety::TemporalSafety,
 };
 use crate::rpc::{
     request::{self, Msg},
