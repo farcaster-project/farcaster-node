@@ -8,7 +8,7 @@ use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::syncer_state::WatchedTransaction;
-use crate::syncerd::types::{AddressAddendum, Boolean, Task};
+use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
 use crate::syncerd::BroadcastTransaction;
 use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::EstimateFee;
@@ -32,6 +32,8 @@ use electrum_client::Hex32Bytes;
 use electrum_client::{raw_client::ElectrumSslStream, HeaderNotification};
 use electrum_client::{raw_client::RawClient, GetHistoryRes};
 use electrum_client::{Client, ElectrumApi};
+use farcaster_core::bitcoin::segwitv0::signature_hash;
+use farcaster_core::bitcoin::transaction::TxInRef;
 use farcaster_core::blockchain::Network;
 use farcaster_core::consensus;
 use internet2::zmqsocket::Connection;
@@ -411,6 +413,107 @@ fn query_addr_history(
     Ok(addr_txs)
 }
 
+fn p2wpkh_script_code(script: &bitcoin::Script) -> Script {
+    bitcoin::blockdata::script::Builder::new()
+        .push_opcode(bitcoin::blockdata::opcodes::all::OP_DUP)
+        .push_opcode(bitcoin::blockdata::opcodes::all::OP_HASH160)
+        .push_slice(&script[2..])
+        .push_opcode(bitcoin::blockdata::opcodes::all::OP_EQUALVERIFY)
+        .push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG)
+        .into_script()
+}
+
+fn sweep_address(
+    private_key: [u8; 32],
+    address: bitcoin::Address,
+    destination_address: bitcoin::Address,
+    electrum_server: String,
+) -> Result<Vec<Vec<u8>>, Error> {
+    match address.address_type() {
+        Some(bitcoin::AddressType::P2wpkh) => {}
+        Some(address_type) => {
+            return Err(Error::Farcaster(format!(
+                "Sweeping addresses only supports native segwit v1 addresses. Address has type: {}",
+                address_type
+            )));
+        }
+        None => return Err(Error::Farcaster(format!("Invalid to be swept address"))),
+    }
+
+    let sk = bitcoin::PrivateKey::from_slice(&private_key, bitcoin::Network::Testnet)?;
+    let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &sk);
+
+    let client = Client::new(&electrum_server)?;
+    let unspent_txs = client.script_list_unspent(&address.script_pubkey())?;
+
+    if unspent_txs.len() == 0 {
+        return Ok(vec![]);
+    }
+
+    let in_amount = unspent_txs
+        .iter()
+        .fold(0, |acc, unspent_tx| acc + unspent_tx.value);
+    let inputs: Vec<bitcoin::TxIn> = unspent_txs
+        .iter()
+        .map(|unspent_output| bitcoin::TxIn {
+            previous_output: bitcoin::OutPoint {
+                txid: unspent_output.tx_hash,
+                vout: unspent_output.tx_pos as u32,
+            },
+            script_sig: bitcoin::Script::default(),
+            sequence: (1 << 31) as u32,
+            witness: bitcoin::Witness::new(),
+        })
+        .collect();
+
+    let mut unsigned_tx = bitcoin::Transaction {
+        version: 2,
+        lock_time: 0,
+        input: inputs,
+        output: vec![bitcoin::TxOut {
+            value: in_amount,
+            script_pubkey: destination_address.script_pubkey(),
+        }],
+    };
+    unsigned_tx.output[0].value = in_amount - 2 * unsigned_tx.vsize() as u64;
+    let mut psbt = bitcoin::util::psbt::PartiallySignedTransaction::from_unsigned_tx(unsigned_tx)
+        .map_err(|_| Error::Syncer(SyncerError::InvalidPsbt))?;
+    psbt.outputs[0].witness_script = Some(destination_address.script_pubkey());
+
+    // sign the inputs and collect the witness data
+    for (index, input) in psbt.inputs.iter_mut().enumerate() {
+        input.witness_utxo = Some(bitcoin::TxOut {
+            value: unspent_txs[index].value,
+            script_pubkey: address.script_pubkey(),
+        });
+        let script = p2wpkh_script_code(&address.script_pubkey());
+        input.witness_script = Some(script.clone());
+        let txin = TxInRef::new(&psbt.unsigned_tx, index);
+        let sig_hash = signature_hash(
+            txin,
+            &script,
+            unspent_txs[index].value,
+            bitcoin::EcdsaSighashType::All,
+        );
+        let message = bitcoin::secp256k1::Message::from_slice(&sig_hash)?;
+        let signature = bitcoin::secp256k1::SECP256K1.sign_ecdsa(&message, &sk.inner);
+        let sig_all = bitcoin::util::ecdsa::EcdsaSig::sighash_all(signature);
+        input.partial_sigs.insert(pk, sig_all);
+        let (pubkey, full_sig) = input.partial_sigs.iter().next().ok_or(Error::Farcaster(
+            "to be signed sweep input empty".to_string(),
+        ))?;
+        input.final_script_witness = Some(bitcoin::Witness::from_vec(vec![
+            full_sig.to_vec(),
+            pubkey.to_bytes(),
+        ]));
+    }
+    let finalized_signed_tx = psbt.extract_tx();
+    let tx_hash =
+        client.transaction_broadcast_raw(&bitcoin::consensus::serialize(&finalized_signed_tx))?;
+
+    Ok(vec![tx_hash.to_vec()])
+}
+
 async fn run_syncerd_bridge_event_sender(
     tx: zmq::Socket,
     mut event_rx: TokioReceiver<SyncerdBridgeEvent>,
@@ -465,9 +568,21 @@ async fn run_syncerd_task_receiver(
                                 .await
                                 .expect("failed on estimate fee sender");
                         }
-                        Task::SweepAddress(_) => {
-                            error!("sweep address not implemented for bitcoin syncer");
-                        }
+                        Task::SweepAddress(task) => match task.addendum.clone() {
+                            SweepAddressAddendum::Bitcoin(sweep) => {
+                                let addr = sweep.address;
+                                debug!("Sweeping address: {}", addr.addr());
+                                let mut state_guard = state.lock().await;
+                                state_guard.sweep_address(task, syncerd_task.source);
+                            }
+                            _ => {
+                                error!("Aborting sweep address task - unable to decode sweep address addendum");
+                                let mut state_guard = state.lock().await;
+                                state_guard
+                                    .abort(TaskTarget::TaskId(task.id), syncerd_task.source, true)
+                                    .await;
+                            }
+                        },
                         Task::Abort(task) => {
                             let mut state_guard = state.lock().await;
                             let respond = match task.respond {
@@ -784,6 +899,41 @@ fn estimate_fee(
     })
 }
 
+fn sweep_polling(
+    state: Arc<Mutex<SyncerState>>,
+    electrum_server: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        loop {
+            let state_guard = state.lock().await;
+            let sweep_addresses = state_guard.sweep_addresses.clone();
+            drop(state_guard);
+            for (id, sweep_address_task) in sweep_addresses.iter() {
+                if let SweepAddressAddendum::Bitcoin(addendum) = sweep_address_task.addendum.clone()
+                {
+                    let sweep_address_txs = sweep_address(
+                        addendum.private_key,
+                        addendum.address,
+                        addendum.destination_address,
+                        electrum_server.clone(),
+                    )
+                    .unwrap_or_else(|err| {
+                        warn!("error polling sweep address {:?}, retrying", err);
+                        vec![]
+                    });
+                    debug!("sweep address transaction: {:?}", sweep_address_txs);
+                    if !sweep_address_txs.is_empty() {
+                        let mut state_guard = state.lock().await;
+                        state_guard.success_sweep(id, sweep_address_txs).await;
+                        drop(state_guard);
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    })
+}
+
 fn transaction_fetcher(
     electrum_server: String,
     mut transaction_get_rx: TokioReceiver<(GetTx, ServiceId)>,
@@ -905,7 +1055,9 @@ impl Synclet for BitcoinSyncer {
                     );
 
                     let estimate_fee_handle =
-                        estimate_fee(electrum_server, estimate_fee_rx, event_tx.clone());
+                        estimate_fee(electrum_server.clone(), estimate_fee_rx, event_tx);
+
+                    let sweep_handle = sweep_polling(Arc::clone(&state), electrum_server);
 
                     let res = tokio::try_join!(
                         address_handle,
@@ -914,6 +1066,7 @@ impl Synclet for BitcoinSyncer {
                         transaction_broadcast_handle,
                         transaction_get_handle,
                         estimate_fee_handle,
+                        sweep_handle,
                     );
                     debug!("exiting bitcoin synclet run routine with: {:?}", res);
                 });

@@ -99,6 +99,13 @@ pub enum Error {
     /// Checkpoint
     #[from(lmdb::Error)]
     Checkpoint(lmdb::Error),
+
+    /// BitcoinKey
+    #[display(inner)]
+    BitcoinKey(bitcoin::util::key::Error),
+
+    /// BitcoinSecp256k1
+    BitcoinSecp256k1(bitcoin::secp256k1::Error),
 }
 
 #[derive(Debug, Display)]
@@ -122,6 +129,8 @@ pub enum SyncerError {
     InvalidConfig,
     #[display("height did not increment")]
     NoIncrementToHeight,
+    #[display("could not construct psbt")]
+    InvalidPsbt,
 }
 
 impl microservices::error::Error for Error {}
@@ -212,6 +221,18 @@ impl From<rustc_hex::FromHexError> for Error {
 impl From<bitcoin::hashes::Error> for Error {
     fn from(err: bitcoin::hashes::Error) -> Self {
         Error::BitcoinHashes(err)
+    }
+}
+
+impl From<bitcoin::util::key::Error> for Error {
+    fn from(err: bitcoin::util::key::Error) -> Self {
+        Error::BitcoinKey(err)
+    }
+}
+
+impl From<bitcoin::secp256k1::Error> for Error {
+    fn from(err: bitcoin::secp256k1::Error) -> Self {
+        Error::BitcoinSecp256k1(err)
     }
 }
 
