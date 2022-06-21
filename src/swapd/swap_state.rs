@@ -190,7 +190,9 @@ impl State {
             State::Alice(AliceState::CommitA { local_params, .. })
             | State::Bob(BobState::CommitB { local_params, .. })
             | State::Alice(AliceState::RevealA { local_params, .. })
-            | State::Bob(BobState::RevealB { local_params, .. }) => Some(local_params),
+            | State::Alice(AliceState::RefundSigA { local_params, .. })
+            | State::Bob(BobState::RevealB { local_params, .. })
+            | State::Bob(BobState::CorearbB { local_params, .. }) => Some(local_params),
             _ => None,
         }
     }
