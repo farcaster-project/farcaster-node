@@ -446,6 +446,8 @@ impl Runtime {
                         {
                             debug!("{:?} sets remote_params", self.state.swap_role());
                             self.state.sup_remote_params(remote_params_candidate);
+                        } else {
+                            error!("Revealed remote params not preimage of commitment");
                         }
 
                         // Specific to swap roles
@@ -1323,7 +1325,7 @@ impl Runtime {
                                 if self.state.a_refundsig()
                                     && !self.state.a_xmr_locked()
                                     && !self.state.a_buy_published()
-                                    && self.state.remote_params().is_some()
+                                    && self.state.local_params().is_some()
                                     && self.state.remote_params().is_some()
                                     && !self.syncer_state.acc_lock_watched() =>
                             {
@@ -1769,7 +1771,10 @@ impl Runtime {
                         )?
                     }
                 } else {
-                    error!("remote_params not set, state {}", self.state)
+                    error!(
+                        "local_params or remote_params not set, state {}",
+                        self.state
+                    )
                 }
             }
             Request::Tx(transaction) => {
