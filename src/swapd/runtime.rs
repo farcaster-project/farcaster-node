@@ -869,11 +869,14 @@ impl Runtime {
 
                         let remote_commit = self.state.remote_commit().cloned().unwrap();
 
-                        if let Ok(remote_params_candidate) =
-                            remote_params_candidate(reveal, remote_commit)
-                        {
-                            debug!("{:?} sets remote_params", self.state.swap_role());
-                            self.state.sup_remote_params(remote_params_candidate);
+                        match remote_params_candidate(reveal, remote_commit) {
+                            Ok(remote_params_candidate) => {
+                                debug!("{:?} sets remote_params", self.state.swap_role());
+                                self.state.sup_remote_params(remote_params_candidate);
+                            }
+                            Err(err) => {
+                                error!("Error processing remote params: {}", err);
+                            }
                         }
 
                         // Specific to swap roles
