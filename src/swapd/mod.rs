@@ -17,6 +17,7 @@ mod opts;
 mod runtime;
 #[allow(dead_code)]
 pub(self) mod storage;
+mod swap_state;
 mod syncer_client;
 mod temporal_safety;
 
@@ -24,4 +25,3 @@ mod temporal_safety;
 pub use opts::Opts;
 pub use runtime::get_swap_id;
 pub use runtime::run;
-pub use runtime::State;
