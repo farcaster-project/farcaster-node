@@ -9,10 +9,8 @@ participant cli
 == State Recovery Procedure
 entryspacing 0.8
 farcasterd -> databased : launch
-cli -> farcasterd : RetrieveAllCheckpointInfo
-farcasterd -> databased : RetrieveAllCheckpointInfo
-databased -> farcasterd : CheckpointList
-farcasterd -> cli : CheckpointList
+cli -> databased : RetrieveAllCheckpointInfo
+databased -> cli : CheckpointList
 cli -> farcasterd : RestoreCheckpoint
 farcasterd -> databased : RestoreCheckpoint
 databased -> walletd : Checkpoint

@@ -198,7 +198,7 @@ impl Runtime {
                     .collect();
                 endpoints.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Wallet,
+                    ServiceId::Database,
                     source,
                     Request::CheckpointList(checkpointed_pub_offers),
                 )?;
