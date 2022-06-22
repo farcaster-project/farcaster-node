@@ -500,12 +500,9 @@ fn sweep_address(
         let signature = bitcoin::secp256k1::SECP256K1.sign_ecdsa(&message, &sk.inner);
         let sig_all = bitcoin::util::ecdsa::EcdsaSig::sighash_all(signature);
         input.partial_sigs.insert(pk, sig_all);
-        let (pubkey, full_sig) = input.partial_sigs.iter().next().ok_or(Error::Farcaster(
-            "to be signed sweep input empty".to_string(),
-        ))?;
         input.final_script_witness = Some(bitcoin::Witness::from_vec(vec![
-            full_sig.to_vec(),
-            pubkey.to_bytes(),
+            sig_all.to_vec(),
+            pk.to_bytes(),
         ]));
     }
     let finalized_signed_tx = psbt.extract_tx();
