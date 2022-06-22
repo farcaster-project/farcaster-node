@@ -927,6 +927,8 @@ fn sweep_polling(
                         state_guard.success_sweep(id, sweep_address_txs).await;
                         drop(state_guard);
                     }
+                } else {
+                    error!("Not sweeping address - is not using a bitcoin sweep address addendum");
                 }
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
