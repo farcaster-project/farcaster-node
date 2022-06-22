@@ -15,6 +15,7 @@
 #![allow(clippy::clone_on_copy)]
 
 use crate::swapd::CheckpointSwapd;
+use crate::syncerd::SweepBitcoinAddress;
 use crate::walletd::{
     runtime::{AliceState, CheckpointWallet},
     NodeSecrets,
@@ -413,6 +414,14 @@ pub enum Request {
     #[display("get_keys({0})")]
     GetKeys(GetKeys),
 
+    #[api(type = 36)]
+    #[display("get_sweep_bitcoin_address")]
+    GetSweepBitcoinAddress(bitcoin::Address),
+
+    #[api(type = 37)]
+    #[display("funding_key")]
+    FundingKey(FundingKey),
+
     #[api(type = 29)]
     #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
@@ -520,6 +529,10 @@ pub enum Request {
     #[api(type = 193)]
     #[display("revoke_offer({0})")]
     RevokeOffer(PublicOffer<BtcXmr>),
+
+    #[api(type = 192)]
+    #[display("cancel_swap")]
+    CancelSwap,
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]
@@ -688,6 +701,11 @@ pub enum Request {
     #[api(type = 1309)]
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(SwapId),
+
+    #[api(type = 1310)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SweepBitcoinAddress(SweepBitcoinAddress),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -698,6 +716,8 @@ pub enum Outcome {
     Refund,
     #[display("Failure(Punished)")]
     Punish,
+    #[display("Failure(Canceled)")]
+    Cancel,
 }
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display("funding_info")]
@@ -724,6 +744,13 @@ pub struct CheckpointEntry {
 pub struct CheckpointChunk {
     pub msg_index: usize,
     pub serialized_state_chunk: Vec<u8>,
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode, Display)]
+#[display("funding key")]
+pub struct FundingKey {
+    pub funding_key: [u8; 32],
+    pub destination_address: bitcoin::Address,
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]

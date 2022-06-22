@@ -193,6 +193,7 @@ pub fn run(
         pending_peer_request: none!(),
         pending_checkpoint_chunks: map![],
         txs: none!(),
+        awaiting_btc_sweep: false,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -216,6 +217,7 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
+    awaiting_btc_sweep: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -831,6 +833,7 @@ impl Runtime {
                 | ServiceId::Wallet
                 | ServiceId::Database
             ) => {}
+            (Request::CancelSwap, ServiceId::Client(_)) => {}
             (Request::GetInfo(_), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
@@ -840,12 +843,23 @@ impl Runtime {
 
         match request {
             Request::Terminate if source == ServiceId::Farcasterd => {
-                info!(
-                    "{} | {}",
-                    self.swap_id.bright_blue_italic(),
-                    format!("Terminating {}", self.identity()).bright_white_bold()
-                );
-                std::process::exit(0);
+                if self.awaiting_btc_sweep {
+                    self.pending_requests.insert(
+                        ServiceId::Farcasterd,
+                        vec![PendingRequest {
+                            dest: self.identity(),
+                            bus_id: ServiceBus::Ctl,
+                            request: Request::Terminate,
+                        }],
+                    );
+                } else {
+                    info!(
+                        "{} | {}",
+                        self.swap_id.bright_blue_italic(),
+                        format!("Terminating {}", self.identity()).bright_white_bold()
+                    );
+                    std::process::exit(0);
+                }
             }
             Request::SweepXmrAddress(SweepXmrAddress {
                 view_key,
@@ -1450,7 +1464,7 @@ impl Runtime {
                     {
                         let (_tx_label, task) =
                             self.syncer_state.tasks.retrieving_txs.get(id).unwrap();
-                        std::thread::sleep(core::time::Duration::from_millis(500));
+                        // std::thread::sleep(core::time::Duration::from_millis(500));
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -1933,9 +1947,11 @@ impl Runtime {
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(endpoints, Msg::CoreArbitratingSetup(core_arb_setup))?;
                 let next_state = State::Bob(BobState::CorearbB {
+                    received_refund_procedure_signatures: false,
                     local_params: self.state.local_params().cloned().unwrap(),
                     cancel_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
+                    b_address: self.state.b_address().cloned().unwrap(),
                 });
                 self.state_update(endpoints, next_state)?;
             }
@@ -2002,6 +2018,33 @@ impl Runtime {
                         }
                     }
                     _ => {}
+                }
+            }
+
+            Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
+                info!(
+                    "{} | Sweeping source (funding) address: {} to destination address: {}",
+                    self.swap_id,
+                    sweep_bitcoin_address.source_address,
+                    sweep_bitcoin_address.destination_address
+                );
+
+                let task = self.syncer_state.sweep_btc(sweep_bitcoin_address);
+
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(task),
+                )?;
+
+                if self.awaiting_btc_sweep {
+                    if let Some((source, request)) =
+                        self.pending_requests.remove_entry(&ServiceId::Farcasterd)
+                    {
+                        self.handle_rpc_ctl(endpoints, source, request[0].request.clone())?;
+                    }
+                    self.awaiting_btc_sweep = false;
                 }
             }
 
@@ -2103,6 +2146,48 @@ impl Runtime {
                 } else {
                     error!("removed a pending request by mistake")
                 };
+            }
+
+            Request::CancelSwap => {
+                if self.state.a_start() || self.state.a_commit() || self.state.a_reveal() {
+                    // just cancel the swap, no additional logic required
+                    self.state_update(
+                        endpoints,
+                        State::Alice(AliceState::FinishA(Outcome::Cancel)),
+                    )?;
+                    self.cancel_swap(endpoints, source)?;
+                } else if self.state.b_start() {
+                    // just cancel the swap, no additional logic required, since funding was not yet retrieved
+                    self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Cancel)))?;
+                    self.cancel_swap(endpoints, source)?;
+                } else if self.state.b_commit()
+                    || self.state.b_reveal()
+                    || !self.state.b_received_refund_procedure_signatures()
+                {
+                    self.send_ctl(
+                        endpoints,
+                        ServiceId::Wallet,
+                        Request::GetSweepBitcoinAddress(self.state.b_address().cloned().unwrap()),
+                    )?;
+                    self.awaiting_btc_sweep = true;
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Farcasterd,
+                        Request::FundingCanceled(Coin::Bitcoin),
+                    )?;
+                    self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Cancel)))?;
+                    self.cancel_swap(endpoints, source)?;
+                } else {
+                    warn!(
+                        "{} | swap is already locked-in, cannot manually cancel anymore",
+                        self.swap_id
+                    );
+                }
+                // TODO add rule for canceling alice swap if bob never locks,
+                // but she is already in RefundSigA. This is not that critical,
+                // since Alice won't lock her funds either, but it could leave a
+                // swap running forever
             }
 
             Request::GetInfo(_) => {
@@ -2320,6 +2405,19 @@ impl Runtime {
         };
 
         Ok(commitment)
+    }
+
+    fn cancel_swap(&mut self, endpoints: &mut Endpoints, source: ServiceId) -> Result<(), Error> {
+        let swap_success_req = Request::SwapOutcome(Outcome::Cancel);
+        self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
+        self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
+        info!("{} | Canceled swap.", self.swap_id);
+        self.send_ctl(
+            endpoints,
+            source,
+            Request::String("Canceled swap".to_string()),
+        )?;
+        Ok(())
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::syncerd::SweepBitcoinAddress;
 use crate::{
     service::LogStyle,
     syncerd::{
@@ -266,6 +267,18 @@ impl SyncerState {
         });
         self.tasks.tasks.insert(id, task.clone());
         task
+    }
+    pub fn sweep_btc(&mut self, sweep_bitcoin_address: SweepBitcoinAddress) -> Task {
+        let id = self.tasks.new_taskid();
+        let lifetime = self.task_lifetime(Coin::Bitcoin);
+        let addendum = SweepAddressAddendum::Bitcoin(sweep_bitcoin_address);
+        let sweep_task = SweepAddress {
+            id,
+            lifetime,
+            addendum,
+            from_height: None,
+        };
+        Task::SweepAddress(sweep_task)
     }
 
     pub fn acc_lock_watched(&self) -> bool {
