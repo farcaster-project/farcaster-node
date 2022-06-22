@@ -428,6 +428,7 @@ fn sweep_address(
     address: bitcoin::Address,
     destination_address: bitcoin::Address,
     electrum_server: String,
+    network: bitcoin::Network,
 ) -> Result<Vec<Vec<u8>>, Error> {
     match address.address_type() {
         Some(bitcoin::AddressType::P2wpkh) => {}
@@ -440,7 +441,7 @@ fn sweep_address(
         None => return Err(Error::Farcaster(format!("Invalid to be swept address"))),
     }
 
-    let sk = bitcoin::PrivateKey::from_slice(&private_key, bitcoin::Network::Testnet)?;
+    let sk = bitcoin::PrivateKey::from_slice(&private_key, network)?;
     let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &sk);
 
     let client = Client::new(&electrum_server)?;
@@ -902,6 +903,7 @@ fn estimate_fee(
 fn sweep_polling(
     state: Arc<Mutex<SyncerState>>,
     electrum_server: String,
+    network: bitcoin::Network,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
@@ -916,6 +918,7 @@ fn sweep_polling(
                         addendum.address,
                         addendum.destination_address,
                         electrum_server.clone(),
+                        network,
                     )
                     .unwrap_or_else(|err| {
                         warn!("error polling sweep address {:?}, retrying", err);
@@ -986,9 +989,14 @@ impl Synclet for BitcoinSyncer {
         tx: zmq::Socket,
         syncer_address: Vec<u8>,
         opts: &Opts,
-        _network: Network,
+        network: Network,
         polling: bool,
     ) -> Result<(), Error> {
+        let btc_network = match network {
+            Network::Mainnet => bitcoin::Network::Bitcoin,
+            Network::Testnet => bitcoin::Network::Testnet,
+            Network::Local => bitcoin::Network::Regtest,
+        };
         if let Some(electrum_server) = &opts.electrum_server {
             let electrum_server = electrum_server.clone();
             std::thread::spawn(move || {
@@ -1057,7 +1065,8 @@ impl Synclet for BitcoinSyncer {
                     let estimate_fee_handle =
                         estimate_fee(electrum_server.clone(), estimate_fee_rx, event_tx);
 
-                    let sweep_handle = sweep_polling(Arc::clone(&state), electrum_server);
+                    let sweep_handle =
+                        sweep_polling(Arc::clone(&state), electrum_server, btc_network);
 
                     let res = tokio::try_join!(
                         address_handle,
