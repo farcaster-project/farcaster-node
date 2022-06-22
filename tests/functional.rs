@@ -942,7 +942,7 @@ fn bitcoin_syncer_sweep_address_test() {
     let (tx, rx_event) = create_bitcoin_syncer(false, "broadcast");
 
     // 294 Satoshi is the dust limit for a segwit transaction
-    let amount = bitcoin::Amount::ONE_SAT * 500;
+    let amount = bitcoin::Amount::ONE_SAT * 1000;
     // send some coins to address1
     let _txid = bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
@@ -982,8 +982,6 @@ fn bitcoin_syncer_sweep_address_test() {
     info!("received balance: {:?}", balance_1);
     assert!(balance_1.as_sat() > 0);
 
-    // 294 Satoshi is the dust limit for a segwit transaction
-    let amount = bitcoin::Amount::ONE_SAT * 500;
     // send some coins to address1
     let _txid = bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)

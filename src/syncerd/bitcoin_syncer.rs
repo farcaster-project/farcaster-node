@@ -476,7 +476,15 @@ fn sweep_address(
             script_pubkey: destination_address.script_pubkey(),
         }],
     };
-    unsigned_tx.output[0].value = in_amount - 2 * unsigned_tx.vsize() as u64;
+
+    let blocks_until_confirmation = 2;
+    let fee_btc_per_kvb = client.estimate_fee(blocks_until_confirmation)?;
+    let fee_sat_per_vb = fee_btc_per_kvb * 1e5;
+    let vsize_per_input_witness = 28;
+    let signed_tx_size = unsigned_tx.vsize() + vsize_per_input_witness * unspent_txs.len();
+    let fee = (fee_sat_per_vb.ceil() as u64) * signed_tx_size as u64;
+
+    unsigned_tx.output[0].value = in_amount - fee;
     let mut psbt = bitcoin::util::psbt::PartiallySignedTransaction::from_unsigned_tx(unsigned_tx)
         .map_err(|_| Error::Syncer(SyncerError::InvalidPsbt))?;
     psbt.outputs[0].witness_script = Some(destination_address.script_pubkey());
