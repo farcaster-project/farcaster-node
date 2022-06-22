@@ -1559,12 +1559,16 @@ impl Runtime {
                     info!("Restoring alice wallet for swap {}", swap_id);
                     if !self.wallets.contains_key(&swap_id) {
                         self.wallets.insert(swap_id, Wallet::Alice(alice_state));
+                    } else {
+                        error!("Did not restore, the runtime already contains an Alice wallet for swap {}", swap_id)
                     }
                 }
                 CheckpointState::CheckpointWalletBob(bob_state) => {
                     info!("Restoring bob wallet for swap {}", swap_id);
                     if !self.wallets.contains_key(&swap_id) {
                         self.wallets.insert(swap_id, Wallet::Bob(bob_state));
+                    } else {
+                        error!("Did not restore wallet, the runtime already contains a Bob wallet for swap {}", swap_id)
                     }
                 }
             },
