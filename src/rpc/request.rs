@@ -688,6 +688,22 @@ pub enum Request {
     #[api(type = 1309)]
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(SwapId),
+
+    #[api(type = 1310)]
+    #[display("address_secret_key")]
+    AddressSecretKey(AddressSecretKey),
+
+    #[api(type = 1311)]
+    #[display("get_address_secret_key")]
+    GetAddressSecretKey(bitcoin::Address),
+
+    #[api(type = 1312)]
+    #[display("get_addresses")]
+    GetAddresses,
+
+    #[api(type = 1313)]
+    #[display("address_list({0})")]
+    AddressList(List<bitcoin::Address>),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -749,6 +765,13 @@ pub enum CheckpointState {
     CheckpointWallet(CheckpointWallet),
     #[display("Checkpoint Swap")]
     CheckpointSwapd(CheckpointSwapd),
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("address_secret_key")]
+pub struct AddressSecretKey {
+    pub address: bitcoin::Address,
+    pub secret_key: [u8; 32],
 }
 
 impl FromStr for BitcoinFundingInfo {

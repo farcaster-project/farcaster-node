@@ -20,6 +20,7 @@ use crate::swapd::get_swap_id;
 use crate::Endpoints;
 use crate::LogStyle;
 use bitcoin::hashes::{ripemd160, Hash};
+use bitcoin::secp256k1::SecretKey;
 
 use crate::{
     rpc::{
@@ -217,7 +218,7 @@ impl Runtime {
             }
 
             Request::RetrieveAllCheckpointInfo => {
-                let pairs = self.database.get_all_key_value_pairs()?;
+                let pairs = self.database.get_checkpoint_key_value_pairs()?;
                 let checkpointed_pub_offers: List<CheckpointEntry> = pairs
                     .iter()
                     .filter_map(|(checkpoint_key, state)| {
@@ -270,6 +271,40 @@ impl Runtime {
                     swap_id,
                     service_id: ServiceId::Swap(swap_id),
                 })?;
+            }
+
+            Request::AddressSecretKey(request::AddressSecretKey {
+                address,
+                secret_key,
+            }) => {
+                self.database.set_address(
+                    &address,
+                    &SecretKey::from_slice(&secret_key)
+                        .expect("secret key is not valid secp256k1 secret key"),
+                )?;
+            }
+
+            Request::GetAddressSecretKey(address) => {
+                let secret_key = self.database.get_address_secret_key(&address)?;
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Database,
+                    source,
+                    Request::AddressSecretKey(request::AddressSecretKey {
+                        address,
+                        secret_key: secret_key.secret_bytes(),
+                    }),
+                )?;
+            }
+
+            Request::GetAddresses => {
+                let addresses = self.database.get_all_addresses()?;
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Database,
+                    source,
+                    Request::AddressList(addresses.into()),
+                )?;
             }
 
             _ => {
@@ -429,17 +464,72 @@ impl From<Vec<u8>> for CheckpointKey {
 
 struct Database(lmdb::Environment);
 
+const LMDB_CHECKPOINTS: &str = "checkpoints";
+const LMDB_ADDRESSES: &str = "addresses";
+
 impl Database {
     fn new(path: PathBuf) -> Result<Database, lmdb::Error> {
         let env = lmdb::Environment::new()
             .set_map_size(10485760 * 1024 * 64)
+            .set_max_dbs(2)
             .open(&path)?;
-        env.create_db(None, lmdb::DatabaseFlags::empty())?;
+        env.create_db(Some(LMDB_CHECKPOINTS), lmdb::DatabaseFlags::empty())?;
+        env.create_db(Some(LMDB_ADDRESSES), lmdb::DatabaseFlags::empty())?;
         Ok(Database(env))
     }
 
+    fn set_address(
+        &mut self,
+        address: &bitcoin::Address,
+        secret_key: &SecretKey,
+    ) -> Result<(), lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_ADDRESSES))?;
+        let mut tx = self.0.begin_rw_txn()?;
+        let mut key = vec![];
+        let _key_size = address.strict_encode(&mut key);
+        if tx.get(db, &key).is_err() {
+            tx.put(
+                db,
+                &key,
+                &secret_key.secret_bytes(),
+                lmdb::WriteFlags::empty(),
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn get_address_secret_key(
+        &mut self,
+        address: &bitcoin::Address,
+    ) -> Result<SecretKey, lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_ADDRESSES))?;
+        let tx = self.0.begin_ro_txn()?;
+        let mut key = vec![];
+        let _key_size = address.strict_encode(&mut key);
+        let val = SecretKey::from_slice(tx.get(db, &key)?)
+            .expect("we only insert private keys, so retrieving one should not fail");
+        tx.abort();
+        Ok(val)
+    }
+
+    fn get_all_addresses(&mut self) -> Result<Vec<bitcoin::Address>, lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_ADDRESSES))?;
+        let tx = self.0.begin_ro_txn()?;
+        let mut cursor = tx.open_ro_cursor(db)?;
+        let res = cursor
+            .iter()
+            .filter_map(|(key, _)| {
+                bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec())).ok()
+            })
+            .collect();
+        drop(cursor);
+        tx.abort();
+        Ok(res)
+    }
+
     fn set_checkpoint_state(&mut self, key: &CheckpointKey, val: &[u8]) -> Result<(), lmdb::Error> {
-        let db = self.0.open_db(None)?;
+        let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let mut tx = self.0.begin_rw_txn()?;
         if !tx.get(db, &Vec::from(key.clone())).is_err() {
             tx.del(db, &Vec::from(key.clone()), None)?;
@@ -450,7 +540,7 @@ impl Database {
     }
 
     fn get_checkpoint_state(&mut self, key: &CheckpointKey) -> Result<Vec<u8>, lmdb::Error> {
-        let db = self.0.open_db(None)?;
+        let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let tx = self.0.begin_ro_txn()?;
         let val: Vec<u8> = tx.get(db, &Vec::from(key.clone()))?.into();
         tx.abort();
@@ -458,7 +548,7 @@ impl Database {
     }
 
     fn delete_checkpoint_state(&mut self, key: CheckpointKey) -> Result<(), lmdb::Error> {
-        let db = self.0.open_db(None)?;
+        let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let mut tx = self.0.begin_rw_txn()?;
         if let Err(err) = tx.del(db, &Vec::from(key), None) {
             error!("{}", err);
@@ -467,8 +557,10 @@ impl Database {
         Ok(())
     }
 
-    fn get_all_key_value_pairs(&mut self) -> Result<Vec<(CheckpointKey, Vec<u8>)>, lmdb::Error> {
-        let db = self.0.open_db(None)?;
+    fn get_checkpoint_key_value_pairs(
+        &mut self,
+    ) -> Result<Vec<(CheckpointKey, Vec<u8>)>, lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
@@ -507,5 +599,16 @@ fn test_lmdb_state() {
     database.delete_checkpoint_state(key2.clone()).unwrap();
     let res = database.get_checkpoint_state(&key2);
     assert!(res.is_err());
-    database.get_all_key_value_pairs().unwrap();
+    database.get_checkpoint_key_value_pairs().unwrap();
+
+    let sk = SecretKey::new(&mut bitcoin::secp256k1::rand::thread_rng());
+    let private_key =
+        bitcoin::PrivateKey::from_slice(&sk.secret_bytes(), bitcoin::Network::Testnet).unwrap();
+    let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &private_key);
+    let addr = bitcoin::Address::p2wpkh(&pk, bitcoin::Network::Testnet).unwrap();
+    database.set_address(&addr, &sk).unwrap();
+    let val_retrieved = database.get_address_secret_key(&addr).unwrap();
+    assert_eq!(sk, val_retrieved);
+    let addrs = database.get_all_addresses().unwrap();
+    assert!(addrs.contains(&addr));
 }
