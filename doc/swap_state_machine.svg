@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<svg width="1246pt" height="252pt" viewBox="0.00 0.00 1245.82 252.30" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 248.2954)">
+<title>finite_state_machine</title>
+<polygon fill="#ffffff" stroke="transparent" points="-4,4 -4,-248.2954 1241.8207,-248.2954 1241.8207,4 -4,4"/>
+<!-- FinishA -->
+<g id="node1" class="node">
+<title>FinishA</title>
+<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-60.9446" rx="43.4357" ry="43.4357"/>
+<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-60.9446" rx="47.455" ry="47.455"/>
+<text text-anchor="middle" x="1190.5937" y="-56.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">FinishA</text>
+</g>
+<!-- FinishB -->
+<g id="node2" class="node">
+<title>FinishB</title>
+<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-191.9446" rx="43.4357" ry="43.4357"/>
+<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-191.9446" rx="47.455" ry="47.455"/>
+<text text-anchor="middle" x="1190.5937" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">FinishB</text>
+</g>
+<!-- StartA -->
+<g id="node3" class="node">
+<title>StartA</title>
+<ellipse fill="none" stroke="#000000" cx="37.8674" cy="-60.9446" rx="37.7352" ry="37.7352"/>
+<text text-anchor="middle" x="37.8674" y="-56.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">StartA</text>
+</g>
+<!-- CommitA -->
+<g id="node4" class="node">
+<title>CommitA</title>
+<ellipse fill="none" stroke="#000000" cx="276.0518" cy="-60.9446" rx="50.9599" ry="50.9599"/>
+<text text-anchor="middle" x="276.0518" y="-56.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">CommitA</text>
+</g>
+<!-- StartA&#45;&gt;CommitA -->
+<g id="edge1" class="edge">
+<title>StartA-&gt;CommitA</title>
+<path fill="none" stroke="#000000" d="M75.8718,-60.9446C113.3221,-60.9446 171.1458,-60.9446 215.0351,-60.9446"/>
+<polygon fill="#000000" stroke="#000000" points="215.3044,-64.4447 225.3044,-60.9446 215.3044,-57.4447 215.3044,-64.4447"/>
+<text text-anchor="middle" x="150.5285" y="-65.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Request::InitSwap</text>
+</g>
+<!-- RevealA -->
+<g id="node5" class="node">
+<title>RevealA</title>
+<ellipse fill="none" stroke="#000000" cx="488.0909" cy="-60.9446" rx="47.5486" ry="47.5486"/>
+<text text-anchor="middle" x="488.0909" y="-56.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">RevealA</text>
+</g>
+<!-- CommitA&#45;&gt;RevealA -->
+<g id="edge2" class="edge">
+<title>CommitA-&gt;RevealA</title>
+<path fill="none" stroke="#000000" d="M326.8404,-60.9446C357.9063,-60.9446 397.7499,-60.9446 430.0583,-60.9446"/>
+<polygon fill="#000000" stroke="#000000" points="430.2626,-64.4447 440.2625,-60.9446 430.2625,-57.4447 430.2626,-64.4447"/>
+<text text-anchor="middle" x="383.6739" y="-65.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Msg::Reveal</text>
+</g>
+<!-- RefundsigA -->
+<g id="node6" class="node">
+<title>RefundsigA</title>
+<ellipse fill="none" stroke="#000000" cx="843.39" cy="-60.9446" rx="60.8892" ry="60.8892"/>
+<text text-anchor="middle" x="843.39" y="-56.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">RefundsigA</text>
+</g>
+<!-- RevealA&#45;&gt;RefundsigA -->
+<g id="edge3" class="edge">
+<title>RevealA-&gt;RefundsigA</title>
+<path fill="none" stroke="#000000" d="M535.6395,-60.9446C596.3768,-60.9446 702.0277,-60.9446 772.3349,-60.9446"/>
+<polygon fill="#000000" stroke="#000000" points="772.4422,-64.4447 782.4421,-60.9446 772.4421,-57.4447 772.4422,-64.4447"/>
+<text text-anchor="middle" x="659.0303" y="-65.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Msg::RefundProcedureSignatures</text>
+</g>
+<!-- RefundsigA&#45;&gt;FinishA -->
+<g id="edge4" class="edge">
+<title>RefundsigA-&gt;FinishA</title>
+<path fill="none" stroke="#000000" d="M904.6638,-60.9446C969.2081,-60.9446 1070.0562,-60.9446 1133.1272,-60.9446"/>
+<polygon fill="#000000" stroke="#000000" points="1133.2967,-64.4447 1143.2966,-60.9446 1133.2966,-57.4447 1133.2967,-64.4447"/>
+<text text-anchor="middle" x="1023.8507" y="-65.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Event::TransactionConfirmations</text>
+</g>
+<!-- StartB -->
+<g id="node7" class="node">
+<title>StartB</title>
+<ellipse fill="none" stroke="#000000" cx="37.8674" cy="-191.9446" rx="37.7352" ry="37.7352"/>
+<text text-anchor="middle" x="37.8674" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">StartB</text>
+</g>
+<!-- CommitB -->
+<g id="node8" class="node">
+<title>CommitB</title>
+<ellipse fill="none" stroke="#000000" cx="276.0518" cy="-191.9446" rx="50.9599" ry="50.9599"/>
+<text text-anchor="middle" x="276.0518" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">CommitB</text>
+</g>
+<!-- StartB&#45;&gt;CommitB -->
+<g id="edge5" class="edge">
+<title>StartB-&gt;CommitB</title>
+<path fill="none" stroke="#000000" d="M75.8718,-191.9446C113.3221,-191.9446 171.1458,-191.9446 215.0351,-191.9446"/>
+<polygon fill="#000000" stroke="#000000" points="215.3044,-195.4447 225.3044,-191.9446 215.3044,-188.4447 215.3044,-195.4447"/>
+<text text-anchor="middle" x="150.5285" y="-196.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Request::InitSwap</text>
+</g>
+<!-- RevealB -->
+<g id="node9" class="node">
+<title>RevealB</title>
+<ellipse fill="none" stroke="#000000" cx="488.0909" cy="-191.9446" rx="47.5486" ry="47.5486"/>
+<text text-anchor="middle" x="488.0909" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">RevealB</text>
+</g>
+<!-- CommitB&#45;&gt;RevealB -->
+<g id="edge6" class="edge">
+<title>CommitB-&gt;RevealB</title>
+<path fill="none" stroke="#000000" d="M326.8404,-191.9446C357.9063,-191.9446 397.7499,-191.9446 430.0583,-191.9446"/>
+<polygon fill="#000000" stroke="#000000" points="430.2626,-195.4447 440.2625,-191.9446 430.2625,-188.4447 430.2626,-195.4447"/>
+<text text-anchor="middle" x="383.6739" y="-196.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Msg::Reveal</text>
+</g>
+<!-- CorearbB -->
+<g id="node10" class="node">
+<title>CorearbB</title>
+<ellipse fill="none" stroke="#000000" cx="843.39" cy="-191.9446" rx="52.2021" ry="52.2021"/>
+<text text-anchor="middle" x="843.39" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">CorearbB</text>
+</g>
+<!-- RevealB&#45;&gt;CorearbB -->
+<g id="edge7" class="edge">
+<title>RevealB-&gt;CorearbB</title>
+<path fill="none" stroke="#000000" d="M535.6395,-191.9446C598.9,-191.9446 710.8834,-191.9446 780.9085,-191.9446"/>
+<polygon fill="#000000" stroke="#000000" points="780.9249,-195.4447 790.9248,-191.9446 780.9248,-188.4447 780.9249,-195.4447"/>
+<text text-anchor="middle" x="659.0303" y="-196.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Msg::CoreArbitratingSetup</text>
+</g>
+<!-- CorearbB&#45;&gt;FinishB -->
+<g id="edge8" class="edge">
+<title>CorearbB-&gt;FinishB</title>
+<path fill="none" stroke="#000000" d="M895.7458,-191.9446C959.4928,-191.9446 1066.805,-191.9446 1132.8833,-191.9446"/>
+<polygon fill="#000000" stroke="#000000" points="1133.1215,-195.4447 1143.1214,-191.9446 1133.1214,-188.4447 1133.1215,-195.4447"/>
+<text text-anchor="middle" x="1023.8507" y="-196.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Event::TransactionConfirmations</text>
+</g>
+</g>
+</svg>
