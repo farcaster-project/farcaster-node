@@ -12,6 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use farcaster_core::negotiation::Offer;
+use farcaster_core::swap::btcxmr::BtcXmr;
 use std::{
     convert::TryFrom,
     io::{self, Read, Write},
@@ -159,6 +161,13 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
+            Command::OfferInfo {
+                public_offer: PublicOffer { offer, .. },
+            } => {
+                println!("\n Trading {}\n", offer_buy_information(&offer));
+                println!("{}\n", offer);
+            }
+
             Command::Take {
                 public_offer,
                 bitcoin_address,
@@ -180,25 +189,9 @@ impl Exec for Command {
                     peer_address,
                 } = public_offer.clone();
                 if !without_validation {
-                    let taker_role = offer.maker_role.other();
-                    let arb_amount = offer.arbitrating_amount;
-                    let acc_amount = offer.accordant_amount;
                     println!(
                         "\nWant to buy {}?\n\nCarefully validate offer!\n",
-                        match taker_role {
-                            SwapRole::Alice => format!(
-                                "{} for {} at {} BTC/XMR",
-                                arb_amount,
-                                acc_amount,
-                                arb_amount.as_btc() / acc_amount.as_xmr()
-                            ),
-                            SwapRole::Bob => format!(
-                                "{} for {} at {} XMR/BTC",
-                                acc_amount,
-                                arb_amount,
-                                acc_amount.as_xmr() / arb_amount.as_btc()
-                            ),
-                        }
+                        offer_buy_information(&offer)
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
                     println!("{}\n", offer);
@@ -261,5 +254,22 @@ fn take_offer() -> bool {
             false
         }
         _ => take_offer(),
+    }
+}
+
+fn offer_buy_information(offer: &Offer<BtcXmr>) -> String {
+    match offer.maker_role.other() {
+        SwapRole::Alice => format!(
+            "{} for {} at {} BTC/XMR",
+            offer.arbitrating_amount,
+            offer.accordant_amount,
+            offer.arbitrating_amount.as_btc() / offer.accordant_amount.as_xmr()
+        ),
+        SwapRole::Bob => format!(
+            "{} for {} at {} XMR/BTC",
+            offer.accordant_amount,
+            offer.arbitrating_amount,
+            offer.accordant_amount.as_xmr() / offer.arbitrating_amount.as_btc()
+        ),
     }
 }
