@@ -1,3 +1,6 @@
+use crate::databased::runtime::request::OfferStatus;
+use crate::databased::runtime::request::OfferStatusPair;
+use crate::databased::runtime::request::OfferStatusSelector;
 use crate::farcaster_core::consensus::Encodable;
 use crate::walletd::runtime::{CheckpointWallet, Wallet};
 use farcaster_core::negotiation::PublicOffer;
@@ -307,6 +310,20 @@ impl Runtime {
                 )?;
             }
 
+            Request::SetOfferStatus(OfferStatusPair { offer, status }) => {
+                self.database.set_offer_status(&offer, &status)?;
+            }
+
+            Request::RetrieveOffers(selector) => {
+                let offer_status_pairs = self.database.get_offers(selector)?;
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Database,
+                    source,
+                    Request::OfferStatusList(offer_status_pairs.into()),
+                )?;
+            }
+
             _ => {
                 error!("Request {} is not supported by the CTL interface", request);
             }
@@ -466,16 +483,69 @@ struct Database(lmdb::Environment);
 
 const LMDB_CHECKPOINTS: &str = "checkpoints";
 const LMDB_ADDRESSES: &str = "addresses";
+const LMDB_OFFER_HISTORY: &str = "history";
 
 impl Database {
     fn new(path: PathBuf) -> Result<Database, lmdb::Error> {
         let env = lmdb::Environment::new()
             .set_map_size(10485760 * 1024 * 64)
-            .set_max_dbs(2)
+            .set_max_dbs(3)
             .open(&path)?;
         env.create_db(Some(LMDB_CHECKPOINTS), lmdb::DatabaseFlags::empty())?;
         env.create_db(Some(LMDB_ADDRESSES), lmdb::DatabaseFlags::empty())?;
+        env.create_db(Some(LMDB_OFFER_HISTORY), lmdb::DatabaseFlags::empty())?;
         Ok(Database(env))
+    }
+
+    fn set_offer_status(
+        &mut self,
+        offer: &PublicOffer<BtcXmr>,
+        status: &OfferStatus,
+    ) -> Result<(), lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
+        let mut tx = self.0.begin_rw_txn()?;
+        let mut key = vec![];
+        let _key_size = offer.strict_encode(&mut key);
+        if !tx.get(db, &key).is_err() {
+            tx.del(db, &key.clone(), None)?;
+        }
+        let mut val = vec![];
+        let _key_size = status.strict_encode(&mut val);
+        tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn get_offers(
+        &mut self,
+        selector: OfferStatusSelector,
+    ) -> Result<Vec<OfferStatusPair>, lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
+        let tx = self.0.begin_ro_txn()?;
+        let mut cursor = tx.open_ro_cursor(db)?;
+        let res = cursor
+            .iter()
+            .filter_map(|(key, val)| {
+                let status = OfferStatus::strict_decode(std::io::Cursor::new(val.to_vec())).ok()?;
+                let filtered_status = match status {
+                    OfferStatus::Open if selector == OfferStatusSelector::Open => Some(status),
+                    OfferStatus::InProgress if selector == OfferStatusSelector::InProgress => {
+                        Some(status)
+                    }
+                    OfferStatus::Ended(_) if selector == OfferStatusSelector::Ended => Some(status),
+                    _ if selector == OfferStatusSelector::All => Some(status),
+                    _ => None,
+                }?;
+                let offer =
+                    PublicOffer::<BtcXmr>::strict_decode(std::io::Cursor::new(key.to_vec()))
+                        .ok()?;
+                Some(OfferStatusPair {
+                    offer,
+                    status: filtered_status,
+                })
+            })
+            .collect();
+        Ok(res)
     }
 
     fn set_address(
@@ -616,4 +686,46 @@ fn test_lmdb_state() {
     assert_eq!(sk, val_retrieved);
     let addrs = database.get_all_addresses().unwrap();
     assert!(addrs.contains(&addr));
+
+    let offer_1 = PublicOffer::<BtcXmr>::from_str("Offer:Cke4ftrP5A71LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TUGURtskxM3BUGLBGAdFDhJQVMQmiPUsL5vSTKhyBKw3Lh11111111111111111111111111111111111111111AfZ113XRBuStRU5H").unwrap();
+    let offer_2 = PublicOffer::<BtcXmr>::from_str("Offer:Cke4ftrP5A71LQM2fvVdFMNR4grq1wi1D11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TUGURtskxM3BUGLBGAdFDhJQVMQmiPUsL5vSTKhyBKw3Lh11111111111111111111111111111111111111111AfZ113W5EEpvY61v").unwrap();
+
+    database
+        .set_offer_status(&offer_1, &OfferStatus::Open)
+        .unwrap();
+    let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
+    assert_eq!(offer_1, offers_retrieved[0].offer);
+
+    let offers_retrieved = database.get_offers(OfferStatusSelector::Open).unwrap();
+    assert_eq!(offer_1, offers_retrieved[0].offer);
+
+    database
+        .set_offer_status(&offer_1, &OfferStatus::InProgress)
+        .unwrap();
+    let offers_retrieved = database
+        .get_offers(OfferStatusSelector::InProgress)
+        .unwrap();
+    assert_eq!(offer_1, offers_retrieved[0].offer);
+
+    database
+        .set_offer_status(&offer_1, &OfferStatus::Ended(request::Outcome::Buy))
+        .unwrap();
+    let offers_retrieved = database.get_offers(OfferStatusSelector::Ended).unwrap();
+    assert_eq!(offer_1, offers_retrieved[0].offer);
+
+    database
+        .set_offer_status(&offer_2, &OfferStatus::Open)
+        .unwrap();
+    let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
+    let status_1 = OfferStatusPair {
+        offer: offer_1,
+        status: OfferStatus::Ended(request::Outcome::Buy),
+    };
+    let status_2 = OfferStatusPair {
+        offer: offer_2,
+        status: OfferStatus::Open,
+    };
+    assert!(offers_retrieved.len() == 2);
+    assert!(offers_retrieved.contains(&status_1));
+    assert!(offers_retrieved.contains(&status_2));
 }

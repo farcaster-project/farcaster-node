@@ -704,9 +704,66 @@ pub enum Request {
     #[api(type = 1313)]
     #[display("address_list({0})")]
     AddressList(List<bitcoin::Address>),
+
+    #[api(type = 1314)]
+    #[display("set_offer_history({0})")]
+    SetOfferStatus(OfferStatusPair),
+
+    #[api(type = 1315)]
+    #[display("retrieve_offers")]
+    RetrieveOffers(OfferStatusSelector),
+
+    #[api(type = 1316)]
+    #[display("offer_status_list({0})")]
+    OfferStatusList(List<OfferStatusPair>),
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[display("{offer}, {status}")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(OfferStatusPair::to_yaml_string)]
+pub struct OfferStatusPair {
+    pub offer: PublicOffer<BtcXmr>,
+    pub status: OfferStatus,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+pub enum OfferStatusSelector {
+    #[display("Open")]
+    Open,
+    #[display("In Progress")]
+    InProgress,
+    #[display("Ended")]
+    Ended,
+    #[display("All")]
+    All,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+pub enum OfferStatus {
+    #[display("Open")]
+    Open,
+    #[display("In Progress")]
+    InProgress,
+    #[display("Ended({0})")]
+    Ended(Outcome),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum Outcome {
     #[display("Success(Swapped)")]
     Buy,
@@ -715,6 +772,7 @@ pub enum Outcome {
     #[display("Failure(Punished)")]
     Punish,
 }
+
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display("funding_info")]
 pub enum FundingInfo {
@@ -1113,6 +1171,8 @@ impl ToYamlString for SwapProgress {}
 impl ToYamlString for ProgressEvent {}
 #[cfg(feature = "serde")]
 impl ToYamlString for CheckpointEntry {}
+#[cfg(feature = "serde")]
+impl ToYamlString for OfferStatusPair {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]
