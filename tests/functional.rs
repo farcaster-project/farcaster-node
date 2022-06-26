@@ -968,7 +968,7 @@ fn bitcoin_syncer_sweep_address_test() {
             lifetime: blocks,
             from_height: None,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
-                private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
+                source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
                 source_address: sweep_source_address.clone(),
                 destination_address: sweep_destination_address_1.clone(),
             }),
@@ -1029,7 +1029,7 @@ fn bitcoin_syncer_sweep_address_test() {
             lifetime: blocks,
             from_height: None,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
-                private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
+                source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
                 source_address: sweep_source_address,
                 destination_address: sweep_destination_address_2.clone(),
             }),

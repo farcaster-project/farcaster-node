@@ -142,7 +142,7 @@ impl StrictDecode for SweepXmrAddress {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct SweepBitcoinAddress {
-    pub private_key: [u8; 32],
+    pub source_private_key: [u8; 32],
     pub source_address: bitcoin::Address,
     pub destination_address: bitcoin::Address,
 }
