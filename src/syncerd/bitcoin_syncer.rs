@@ -482,6 +482,7 @@ fn sweep_address(
         }],
     };
 
+    // TODO (maybe): make blocks_until_confirmation or fee_btc_per_kvb configurable by user (see FeeStrategy)
     let blocks_until_confirmation = 2;
     let fee_btc_per_kvb = client.estimate_fee(blocks_until_confirmation)?;
     let fee_sat_per_vb = fee_btc_per_kvb * 1e5;
