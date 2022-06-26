@@ -896,14 +896,22 @@ impl Runtime {
             }
 
             Request::RestoreCheckpoint(swap_id) => {
-                if self.running_swaps.contains(&swap_id) {
+                if endpoints
+                    .send_to(
+                        ServiceBus::Msg,
+                        ServiceId::Farcasterd,
+                        ServiceId::Wallet,
+                        Request::Hello,
+                    )
+                    .is_err()
+                {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd,
                         source,
                         Request::Failure(Failure {
                             code: 1,
-                            info: "Cannot restore an already running swap".to_string(),
+                            info: "Cannot restore a swap when walletd is not running".to_string(),
                         }),
                     )?;
                     return Ok(());
