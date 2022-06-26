@@ -920,6 +920,7 @@ impl Runtime {
             }
 
             Request::RestoreCheckpoint(swap_id) => {
+                // check if wallet is running
                 if endpoints
                     .send_to(
                         ServiceBus::Msg,
@@ -936,6 +937,28 @@ impl Runtime {
                         Request::Failure(Failure {
                             code: 1,
                             info: "Cannot restore a swap when walletd is not running".to_string(),
+                        }),
+                    )?;
+                    return Ok(());
+                }
+
+                // check if swapd is not running
+                if endpoints
+                    .send_to(
+                        ServiceBus::Msg,
+                        ServiceId::Farcasterd,
+                        ServiceId::Swap(swap_id.clone()),
+                        Request::Hello,
+                    )
+                    .is_ok()
+                {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source,
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: "Cannot restore a checkpoint into a running swap.".to_string(),
                         }),
                     )?;
                     return Ok(());
