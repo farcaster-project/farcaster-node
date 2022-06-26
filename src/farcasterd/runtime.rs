@@ -556,6 +556,7 @@ impl Runtime {
                     ServiceId::Swap(swap_id) => {
                         if self.restoring_swap_id.remove(swap_id) {
                             info!("Restoring swap {}", swap_id.bright_blue_italic());
+                            self.stats.incr_initiated();
                             endpoints.send_to(
                                 ServiceBus::Ctl,
                                 ServiceId::Farcasterd,
