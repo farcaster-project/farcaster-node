@@ -490,7 +490,7 @@ fn sweep_address(
     // The items in the witness are discounted by a factor of 4 (witness discount)
     // The size used here is ceil(input p2wpkh witness)
     // Input Witness:= ceil(nr. of items field + (length field + signature + public key) / p2wpkh witness discount
-    // Input Witness:= ceil(0.25               + 1         + (73       + 34) / 4))
+    // Input Witness:= ceil(0.25               + (1         + 73       + 34) / 4))
     //              := ceil(27.25)
     let vsize_per_p2wpkh_input_witness = 28;
     let signed_tx_size = unsigned_tx.vsize() + vsize_per_p2wpkh_input_witness * unspent_txs.len();
