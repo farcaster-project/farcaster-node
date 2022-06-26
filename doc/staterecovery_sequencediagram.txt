@@ -1,32 +1,16 @@
 title State Recovery Procedure
 
-participant syncerd
 // TODO: remove walletd once it's stateless
 participant walletd
-participant swapd
-participant checkpointd
+participant databased
 participant farcasterd
 participant cli
-participant peerd
 
 == State Recovery Procedure
 entryspacing 0.8
-farcasterd -> checkpointd : launch
-checkpointd -> farcasterd : RecoverableStates
-farcasterd -> cli : RecoverableStates
-cli -> farcasterd : RecoverSelectedState
-farcasterd -> walletd : launch
-farcasterd -> swapd : launch
-farcasterd -> syncerd : launch
-farcasterd -> peerd : launch
-walletd -> farcasterd : Ctl Hello
-swapd -> farcasterd : Ctl Hello
-syncerd -> farcasterd : Ctl Hello
-peerd -> farcasterd : Ctl Hello
-farcasterd -> checkpointd : RecoverSelectedState
-checkpointd -> walletd : RecoverWallet
-checkpointd -> peerd : RecoverPeerd
-checkpointd -> swapd : RecoverSwap
-// these tasks could be checkpointed, but can probably be recreated from scratch based on recovered state in swapd (and currently also walletd)
-swapd -> syncerd : WatchTasks
-swapd -> swapd : ResumeSwap
+farcasterd -> databased : launch
+cli -> databased : RetrieveAllCheckpointInfo
+databased -> cli : CheckpointList
+cli -> farcasterd : RestoreCheckpoint
+farcasterd -> databased : RestoreCheckpoint
+databased -> walletd : Checkpoint

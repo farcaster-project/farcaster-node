@@ -1,4 +1,6 @@
 use crate::farcaster_core::consensus::Encodable;
+use farcaster_core::negotiation::PublicOffer;
+use farcaster_core::swap::btcxmr::BtcXmr;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use std::path::PathBuf;
@@ -21,7 +23,9 @@ use bitcoin::hashes::{ripemd160, Hash};
 use crate::{
     rpc::{
         request::{
-            self, BitcoinAddress, Commit, Keys, MoneroAddress, Msg, Params, Reveal, Token, Tx,
+            self, BitcoinAddress, Checkpoint, CheckpointChunk, CheckpointEntry,
+            CheckpointMultipartChunk, Commit, Keys, List, MoneroAddress, Msg, Params, Reveal,
+            Token, Tx,
         },
         Request, ServiceBus,
     },
@@ -41,12 +45,6 @@ pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     };
 
     Service::run(config, runtime, false)
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-struct CheckpointChunk {
-    pub msg_index: usize,
-    pub serialized_state_chunk: Vec<u8>,
 }
 
 pub struct Runtime {
@@ -124,97 +122,97 @@ impl Runtime {
                 }
             },
 
-            Request::CheckpointMultipartChunk(request::CheckpointMultipartChunk {
-                checksum,
-                msg_index,
-                msgs_total,
-                serialized_state_chunk,
-                swap_id,
-            }) => {
-                debug!("received checkpoint multipart message");
-                if self.pending_checkpoint_chunks.contains_key(&checksum) {
-                    let chunks = self
-                        .pending_checkpoint_chunks
-                        .get_mut(&checksum)
-                        .expect("checked with contains_key");
-                    chunks.insert(CheckpointChunk {
-                        msg_index,
-                        serialized_state_chunk,
-                    });
-                } else {
-                    let mut chunk = HashSet::new();
-                    chunk.insert(CheckpointChunk {
-                        msg_index,
-                        serialized_state_chunk,
-                    });
-                    self.pending_checkpoint_chunks.insert(checksum, chunk);
-                }
-                let mut chunks = self
-                    .pending_checkpoint_chunks
-                    .get(&checksum)
-                    .unwrap_or(&HashSet::new())
-                    .clone();
-                if chunks.len() >= msgs_total {
-                    let mut chunk_tup_vec = chunks
-                        .drain()
-                        .map(|chunk| (chunk.msg_index, chunk.serialized_state_chunk))
-                        .collect::<Vec<(usize, Vec<u8>)>>(); // map the hashset to a vec for sorting
-                    chunk_tup_vec.sort_by(|(msg_number_a, _), (msg_number_b, _)| {
-                        msg_number_a.cmp(&msg_number_b)
-                    }); // sort in ascending order
-                    let chunk_vec = chunk_tup_vec
-                        .drain(..)
-                        .map(|(_, chunk)| chunk)
-                        .collect::<Vec<Vec<u8>>>(); // drop the extra integer index
-                    let serialized_checkpoint =
-                        chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // collect the chunked messages into a single serialized message
-                    if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
-                        // this should never happen
-                        error!("Unable to checkpoint the message, checksum did not match");
-                        return Ok(());
-                    }
-                    // serialize request and recurse to handle the actual request
-                    let request = Request::Checkpoint(request::Checkpoint {
-                        swap_id,
-                        state: request::CheckpointState::strict_decode(std::io::Cursor::new(
-                            serialized_checkpoint,
-                        ))
-                        .map_err(|err| Error::Farcaster(err.to_string()))?,
-                    });
-                    self.handle_rpc_ctl(endpoints, source, request)?;
+            Request::CheckpointMultipartChunk(checkpoint_multipart_chunk) => {
+                if let Some(checkpoint_request) = checkpoint_handle_multipart_receive(
+                    checkpoint_multipart_chunk,
+                    &mut self.pending_checkpoint_chunks,
+                )? {
+                    self.handle_rpc_ctl(endpoints, source, checkpoint_request)?;
                 }
             }
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
-                debug!("setting checkpoint");
                 let key = CheckpointKey {
                     swap_id,
                     service_id: source,
                 };
                 let mut state_encoded = vec![];
                 let _state_size = state.strict_encode(&mut state_encoded);
-                self.database
-                    .set_checkpoint_state(&key, &state_encoded)
-                    .expect("failed to set checkpoint state");
+                self.database.set_checkpoint_state(&key, &state_encoded)?;
+                debug!("checkpoint set");
+            }
+
+            Request::RestoreCheckpoint(swap_id) => {
+                match self.database.get_checkpoint_state(&CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                }) {
+                    Ok(raw_state) => {
+                        let state = request::CheckpointState::strict_decode(std::io::Cursor::new(
+                            raw_state,
+                        ))
+                        .expect("decoding the checkpoint should not fail");
+                        checkpoint_send(
+                            endpoints,
+                            swap_id,
+                            ServiceId::Database,
+                            ServiceId::Wallet,
+                            state,
+                        )?;
+                    }
+                    Err(err) => {
+                        error!(
+                            "Failed to retrieve checkpointed state for swap {}: {}",
+                            swap_id, err
+                        );
+                    }
+                }
             }
 
             Request::RetrieveAllCheckpointInfo => {
-                let _pairs = self.database.get_all_key_value_pairs();
+                let pairs = self.database.get_all_key_value_pairs()?;
+                let checkpointed_pub_offers: List<CheckpointEntry> = pairs
+                    .iter()
+                    .filter_map(|(checkpoint_key, state)| {
+                        let state =
+                            request::CheckpointState::strict_decode(std::io::Cursor::new(state))
+                                .ok()?;
+                        match checkpoint_key.service_id {
+                            ServiceId::Wallet => match state {
+                                request::CheckpointState::CheckpointWalletAlice(checkpoint) => {
+                                    Some(CheckpointEntry {
+                                        swap_id: checkpoint_key.swap_id,
+                                        public_offer: checkpoint.pub_offer,
+                                    })
+                                }
+                                request::CheckpointState::CheckpointWalletBob(checkpoint) => {
+                                    Some(CheckpointEntry {
+                                        swap_id: checkpoint_key.swap_id,
+                                        public_offer: checkpoint.pub_offer,
+                                    })
+                                }
+                            },
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Database,
+                    source,
+                    Request::CheckpointList(checkpointed_pub_offers),
+                )?;
             }
 
-            Request::DeleteCheckpoint(swap_id) => {
-                self.database
-                    .delete_checkpoint_state(CheckpointKey {
-                        swap_id,
-                        service_id: ServiceId::Wallet,
-                    })
-                    .expect("failed to delete Wallet state");
-                self.database
-                    .delete_checkpoint_state(CheckpointKey {
-                        swap_id,
-                        service_id: ServiceId::Swap(swap_id),
-                    })
-                    .expect("failed to delete Swap state");
+            Request::RemoveCheckpoint(swap_id) => {
+                self.database.delete_checkpoint_state(CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                })?;
+                self.database.delete_checkpoint_state(CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Swap(swap_id),
+                })?;
             }
 
             _ => {
@@ -223,6 +221,124 @@ impl Runtime {
         }
         Ok(())
     }
+}
+
+pub fn checkpoint_handle_multipart_receive(
+    checkpoint_multipart_chunk: request::CheckpointMultipartChunk,
+    pending_checkpoint_chunks: &mut HashMap<[u8; 20], HashSet<CheckpointChunk>>,
+) -> Result<Option<request::Request>, Error> {
+    let request::CheckpointMultipartChunk {
+        checksum,
+        msg_index,
+        msgs_total,
+        serialized_state_chunk,
+        swap_id,
+    } = checkpoint_multipart_chunk;
+    debug!("received checkpoint multipart message");
+    if pending_checkpoint_chunks.contains_key(&checksum) {
+        let chunks = pending_checkpoint_chunks
+            .get_mut(&checksum)
+            .expect("checked with contains_key");
+        chunks.insert(CheckpointChunk {
+            msg_index,
+            serialized_state_chunk,
+        });
+    } else {
+        let mut chunk = HashSet::new();
+        chunk.insert(CheckpointChunk {
+            msg_index,
+            serialized_state_chunk,
+        });
+        pending_checkpoint_chunks.insert(checksum, chunk);
+    }
+    let mut chunks = pending_checkpoint_chunks
+        .get(&checksum)
+        .unwrap_or(&HashSet::new())
+        .clone();
+    if chunks.len() >= msgs_total {
+        let mut chunk_tup_vec = chunks
+            .drain()
+            .map(|chunk| (chunk.msg_index, chunk.serialized_state_chunk))
+            .collect::<Vec<(usize, Vec<u8>)>>(); // map the hashset to a vec for sorting
+        chunk_tup_vec
+            .sort_by(|(msg_number_a, _), (msg_number_b, _)| msg_number_a.cmp(&msg_number_b)); // sort in ascending order
+        let chunk_vec = chunk_tup_vec
+            .drain(..)
+            .map(|(_, chunk)| chunk)
+            .collect::<Vec<Vec<u8>>>(); // drop the extra integer index
+        let serialized_checkpoint = chunk_vec.into_iter().flatten().collect::<Vec<u8>>(); // collect the chunked messages into a single serialized message
+        if ripemd160::Hash::hash(&serialized_checkpoint).into_inner() != checksum {
+            // this should never happen
+            return Err(Error::Farcaster(
+                "Unable to checkpoint the message, checksum did not match".to_string(),
+            ));
+        }
+        // serialize request and return it
+        let request = Request::Checkpoint(request::Checkpoint {
+            swap_id,
+            state: request::CheckpointState::strict_decode(std::io::Cursor::new(
+                serialized_checkpoint,
+            ))
+            .map_err(|err| Error::Farcaster(err.to_string()))?,
+        });
+        Ok(Some(request))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn checkpoint_send(
+    endpoints: &mut Endpoints,
+    swap_id: SwapId,
+    source: ServiceId,
+    destination: ServiceId,
+    state: request::CheckpointState,
+) -> Result<(), Error> {
+    let mut serialized_state = vec![];
+    let size = state
+        .strict_encode(&mut serialized_state)
+        .expect("strict encode of a checkpoint should not fail");
+
+    // if the size exceeds a boundary, send a multi-part message
+    let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
+    debug!("checkpointing wallet state");
+    if size > max_chunk_size {
+        let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
+        debug!("need to chunk the checkpoint message");
+        let chunks: Vec<(usize, Vec<u8>)> = serialized_state
+            .chunks_mut(max_chunk_size)
+            .enumerate()
+            .map(|(n, chunk)| (n, chunk.to_vec()))
+            .collect();
+        let chunks_total = chunks.len();
+        for (n, chunk) in chunks {
+            debug!(
+                "sending chunked checkpoint message {} of a total {}",
+                n + 1,
+                chunks_total
+            );
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                source.clone(),
+                destination.clone(),
+                Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
+                    checksum,
+                    msg_index: n,
+                    msgs_total: chunks_total,
+                    serialized_state_chunk: chunk,
+                    swap_id,
+                }),
+            )?;
+        }
+    } else {
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            source,
+            destination,
+            Request::Checkpoint(Checkpoint { swap_id, state }),
+        )?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

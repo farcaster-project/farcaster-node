@@ -18,4 +18,6 @@ mod runtime;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;
+pub use runtime::checkpoint_handle_multipart_receive;
+pub use runtime::checkpoint_send;
 pub use runtime::run;

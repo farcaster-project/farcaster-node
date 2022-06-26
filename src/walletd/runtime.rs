@@ -1,3 +1,5 @@
+use crate::databased::checkpoint_handle_multipart_receive;
+use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use request::{Checkpoint, CheckpointMultipartChunk};
@@ -65,7 +67,7 @@ use farcaster_core::{
 };
 use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
 use microservices::esb::{self, Handler};
-use request::{LaunchSwap, NodeId};
+use request::{CheckpointChunk, CheckpointState, LaunchSwap, NodeId};
 
 pub fn run(
     config: ServiceConfig,
@@ -80,6 +82,7 @@ pub fn run(
         swaps: none!(),
         btc_addrs: none!(),
         xmr_addrs: none!(),
+        pending_checkpoint_chunks: map![],
     };
 
     Service::run(config, runtime, false)
@@ -93,6 +96,7 @@ pub struct Runtime {
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
     xmr_addrs: HashMap<SwapId, monero::Address>,
+    pending_checkpoint_chunks: HashMap<[u8; 20], HashSet<CheckpointChunk>>,
 }
 
 impl Runtime {
@@ -120,7 +124,7 @@ pub struct AliceState {
     local_params: AliceParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
     key_manager: KeyManager,
-    pub_offer: PublicOffer<BtcXmr>,
+    pub pub_offer: PublicOffer<BtcXmr>,
     remote_commit: Option<CommitBobParameters<BtcXmr>>,
     remote_params: Option<BobParameters<BtcXmr>>,
     remote_proof: Option<Proof<BtcXmr>>,
@@ -202,7 +206,7 @@ pub struct BobState {
     local_params: BobParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
     key_manager: KeyManager,
-    pub_offer: PublicOffer<BtcXmr>,
+    pub pub_offer: PublicOffer<BtcXmr>,
     funding_tx: Option<FundingTx>,
     remote_commit_params: Option<CommitAliceParameters<BtcXmr>>,
     remote_params: Option<AliceParameters<BtcXmr>>,
@@ -695,10 +699,12 @@ impl Runtime {
                             // checkpoint here after proof verification and potentially sending RevealProof
                             let swap_id = get_swap_id(&source)?;
                             trace!("checkpointing bob pre lock.");
-                            checkpoint_state(
+                            checkpoint_send(
                                 endpoints,
                                 swap_id,
-                                request::CheckpointState::CheckpointWalletBobPreLock(BobState {
+                                ServiceId::Wallet,
+                                ServiceId::Database,
+                                request::CheckpointState::CheckpointWalletBob(BobState {
                                     bob: bob.clone(),
                                     local_params: local_params.clone(),
                                     local_proof: local_proof.clone(),
@@ -822,10 +828,12 @@ impl Runtime {
                 // TODO: checkpointing before .get_mut call for now, but should do this later
                 trace!("checkpointing bob pre buy.");
                 if let Some(Wallet::Bob(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_state(
+                    checkpoint_send(
                         endpoints,
                         swap_id,
-                        request::CheckpointState::CheckpointWalletBobPreBuy(state.clone()),
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        request::CheckpointState::CheckpointWalletBob(state.clone()),
                     )?;
                 } else {
                     error!(
@@ -955,10 +963,12 @@ impl Runtime {
                 let my_id = self.identity();
                 trace!("checkpointing alice pre lock.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_state(
+                    checkpoint_send(
                         endpoints,
                         swap_id,
-                        request::CheckpointState::CheckpointWalletAlicePreLock(state.clone()),
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        request::CheckpointState::CheckpointWalletAlice(state.clone()),
                     )?;
                 } else {
                     error!(
@@ -1089,10 +1099,12 @@ impl Runtime {
                 let id = self.identity();
                 trace!("checkpointing alice pre buy.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_state(
+                    checkpoint_send(
                         endpoints,
                         swap_id,
-                        request::CheckpointState::CheckpointWalletAlicePreBuy(state.clone()),
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        request::CheckpointState::CheckpointWalletAlice(state.clone()),
                     )?;
                 } else {
                     error!(
@@ -1533,6 +1545,34 @@ impl Runtime {
                 self.clean_up_after_swap(&swap_id);
             }
 
+            Request::CheckpointMultipartChunk(checkpoint_multipart_chunk) => {
+                if let Some(checkpoint_request) = checkpoint_handle_multipart_receive(
+                    checkpoint_multipart_chunk,
+                    &mut self.pending_checkpoint_chunks,
+                )? {
+                    self.handle_rpc_ctl(endpoints, source, checkpoint_request)?;
+                }
+            }
+
+            Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
+                CheckpointState::CheckpointWalletAlice(alice_state) => {
+                    info!("Restoring alice wallet for swap {}", swap_id);
+                    if !self.wallets.contains_key(&swap_id) {
+                        self.wallets.insert(swap_id, Wallet::Alice(alice_state));
+                    } else {
+                        error!("Did not restore, the runtime already contains an Alice wallet for swap {}", swap_id)
+                    }
+                }
+                CheckpointState::CheckpointWalletBob(bob_state) => {
+                    info!("Restoring bob wallet for swap {}", swap_id);
+                    if !self.wallets.contains_key(&swap_id) {
+                        self.wallets.insert(swap_id, Wallet::Bob(bob_state));
+                    } else {
+                        error!("Did not restore wallet, the runtime already contains a Bob wallet for swap {}", swap_id)
+                    }
+                }
+            },
+
             _ => {
                 error!(
                     "Request {:?} is not supported by the CTL interface",
@@ -1542,56 +1582,6 @@ impl Runtime {
         }
         Ok(())
     }
-}
-
-pub fn checkpoint_state(
-    endpoints: &mut Endpoints,
-    swap_id: SwapId,
-    state: request::CheckpointState,
-) -> Result<(), Error> {
-    let mut serialized_state = vec![];
-    let size = state.strict_encode(&mut serialized_state).unwrap();
-
-    // if the size exceeds a boundary, send a multi-part message
-    let max_chunk_size = internet2::transport::MAX_FRAME_SIZE - 1024;
-    debug!("checkpointing wallet state");
-    if size > max_chunk_size {
-        let checksum: [u8; 20] = ripemd160::Hash::hash(&serialized_state).into_inner();
-        debug!("need to chunk the checkpoint message");
-        let chunks: Vec<(usize, Vec<u8>)> = serialized_state
-            .chunks_mut(max_chunk_size)
-            .enumerate()
-            .map(|(n, chunk)| (n, chunk.to_vec()))
-            .collect();
-        let chunks_total = chunks.len();
-        for (n, chunk) in chunks {
-            debug!(
-                "sending chunked checkpoint message {} of a total {}",
-                n + 1,
-                chunks_total
-            );
-            endpoints.send_to(
-                ServiceBus::Ctl,
-                ServiceId::Wallet,
-                ServiceId::Database,
-                Request::CheckpointMultipartChunk(CheckpointMultipartChunk {
-                    checksum,
-                    msg_index: n,
-                    msgs_total: chunks_total,
-                    serialized_state_chunk: chunk,
-                    swap_id,
-                }),
-            )?;
-        }
-    } else {
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            ServiceId::Wallet,
-            ServiceId::Database,
-            Request::Checkpoint(Checkpoint { swap_id, state }),
-        )?;
-    }
-    Ok(())
 }
 
 pub fn create_funding(

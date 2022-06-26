@@ -307,6 +307,12 @@ impl Runtime {
                 Request::Terminate,
             )?;
         }
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            self.identity(),
+            ServiceId::Database,
+            Request::RemoveCheckpoint(*swapid),
+        )?;
         let mut offerid = None;
         self.consumed_offers = self
             .consumed_offers
@@ -886,6 +892,41 @@ impl Runtime {
                     ServiceId::Farcasterd, // source
                     source,                // destination
                     Request::ListenList(listen_url),
+                )?;
+            }
+
+            Request::RestoreCheckpoint(swap_id) => {
+                if endpoints
+                    .send_to(
+                        ServiceBus::Msg,
+                        ServiceId::Farcasterd,
+                        ServiceId::Wallet,
+                        Request::Hello,
+                    )
+                    .is_err()
+                {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source,
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: "Cannot restore a swap when walletd is not running".to_string(),
+                        }),
+                    )?;
+                    return Ok(());
+                }
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    ServiceId::Database,
+                    Request::RestoreCheckpoint(swap_id),
+                )?;
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    source,
+                    Request::String("Restored checkpoint.".to_string()),
                 )?;
             }
 
