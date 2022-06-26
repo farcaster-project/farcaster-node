@@ -1417,7 +1417,7 @@ impl Runtime {
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend,
-                        address,
+                        dest_address: address,
                         minimum_balance: pub_offer.offer.accordant_amount,
                     };
                     endpoints.send_to(
@@ -1501,7 +1501,7 @@ impl Runtime {
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend,
-                        address,
+                        dest_address: address,
                         minimum_balance: pub_offer.offer.accordant_amount,
                     };
                     endpoints.send_to(

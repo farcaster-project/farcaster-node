@@ -210,7 +210,7 @@ impl SyncerState {
         &mut self,
         view_key: monero::PrivateKey,
         spend_key: monero::PrivateKey,
-        address: monero::Address,
+        dest_address: monero::Address,
         from_height: Option<u64>,
         minimum_balance: monero::Amount,
     ) -> Task {
@@ -220,7 +220,7 @@ impl SyncerState {
         let addendum = SweepAddressAddendum::Monero(SweepXmrAddress {
             view_key,
             spend_key,
-            address,
+            dest_address,
             minimum_balance,
         });
         let sweep_task = SweepAddress {

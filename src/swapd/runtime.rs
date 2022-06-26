@@ -678,7 +678,7 @@ impl Runtime {
             Request::SweepXmrAddress(SweepXmrAddress {
                 view_key,
                 spend_key,
-                address,
+                dest_address,
                 minimum_balance,
                 ..
             }) if source == ServiceId::Wallet => {
@@ -686,7 +686,7 @@ impl Runtime {
                 let task = self.syncer_state.sweep_xmr(
                     view_key,
                     spend_key,
-                    address,
+                    dest_address,
                     from_height,
                     minimum_balance,
                 );
@@ -705,7 +705,7 @@ impl Runtime {
                     "{} | {} reaches your address {} around block {}",
                     self.swap_id.bright_blue_italic(),
                     Coin::Monero.bright_white_bold(),
-                    address.bright_yellow_bold(),
+                    dest_address.bright_yellow_bold(),
                     sweep_block.bright_blue_bold(),
                 );
                 warn!(

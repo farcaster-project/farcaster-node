@@ -430,12 +430,12 @@ fn p2wpkh_script_code(script: &bitcoin::Script) -> Script {
 
 fn sweep_address(
     private_key: [u8; 32],
-    address: bitcoin::Address,
-    destination_address: bitcoin::Address,
+    source_address: bitcoin::Address,
+    dest_address: bitcoin::Address,
     electrum_server: String,
     network: bitcoin::Network,
 ) -> Result<Vec<Vec<u8>>, Error> {
-    match address.address_type() {
+    match source_address.address_type() {
         Some(bitcoin::AddressType::P2wpkh) => {}
         Some(address_type) => {
             return Err(Error::Farcaster(format!(
@@ -450,7 +450,7 @@ fn sweep_address(
     let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &sk);
 
     let client = Client::new(&electrum_server)?;
-    let unspent_txs = client.script_list_unspent(&address.script_pubkey())?;
+    let unspent_txs = client.script_list_unspent(&source_address.script_pubkey())?;
 
     if unspent_txs.len() == 0 {
         return Ok(vec![]);
@@ -478,7 +478,7 @@ fn sweep_address(
         input: inputs,
         output: vec![bitcoin::TxOut {
             value: in_amount,
-            script_pubkey: destination_address.script_pubkey(),
+            script_pubkey: dest_address.script_pubkey(),
         }],
     };
 
@@ -492,15 +492,15 @@ fn sweep_address(
     unsigned_tx.output[0].value = in_amount - fee;
     let mut psbt = bitcoin::util::psbt::PartiallySignedTransaction::from_unsigned_tx(unsigned_tx)
         .map_err(|_| Error::Syncer(SyncerError::InvalidPsbt))?;
-    psbt.outputs[0].witness_script = Some(destination_address.script_pubkey());
+    psbt.outputs[0].witness_script = Some(dest_address.script_pubkey());
 
     // sign the inputs and collect the witness data
     for (index, input) in psbt.inputs.iter_mut().enumerate() {
         input.witness_utxo = Some(bitcoin::TxOut {
             value: unspent_txs[index].value,
-            script_pubkey: address.script_pubkey(),
+            script_pubkey: source_address.script_pubkey(),
         });
-        let script = p2wpkh_script_code(&address.script_pubkey());
+        let script = p2wpkh_script_code(&source_address.script_pubkey());
         input.witness_script = Some(script.clone());
         let txin = TxInRef::new(&psbt.unsigned_tx, index);
         let sig_hash = signature_hash(
@@ -581,7 +581,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::SweepAddress(task) => match task.addendum.clone() {
                             SweepAddressAddendum::Bitcoin(sweep) => {
-                                let addr = sweep.address;
+                                let addr = sweep.source_address;
                                 debug!("Sweeping address: {}", addr.addr());
                                 let mut state_guard = state.lock().await;
                                 state_guard.sweep_address(task, syncerd_task.source);
@@ -925,7 +925,7 @@ fn sweep_polling(
                 {
                     let sweep_address_txs = sweep_address(
                         addendum.private_key,
-                        addendum.address,
+                        addendum.source_address,
                         addendum.destination_address,
                         electrum_server.clone(),
                         network,

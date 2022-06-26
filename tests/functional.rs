@@ -969,7 +969,7 @@ fn bitcoin_syncer_sweep_address_test() {
             from_height: None,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
-                address: sweep_source_address.clone(),
+                source_address: sweep_source_address.clone(),
                 destination_address: sweep_destination_address_1.clone(),
             }),
         }),
@@ -1030,7 +1030,7 @@ fn bitcoin_syncer_sweep_address_test() {
             from_height: None,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
-                address: sweep_source_address,
+                source_address: sweep_source_address,
                 destination_address: sweep_destination_address_2.clone(),
             }),
         }),
@@ -1241,7 +1241,7 @@ async fn monero_syncer_sweep_test() {
             addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
                 spend_key,
                 view_key,
-                address: dest_address,
+                dest_address,
                 minimum_balance: monero::Amount::from_pico(1000000000000),
             }),
         }),
