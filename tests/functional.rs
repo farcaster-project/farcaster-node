@@ -47,7 +47,7 @@ const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
 const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 
 /*
-These tests need to run serialy, otherwise we cannot verify events based on the
+These tests need to run serially, otherwise we cannot verify events based on the
 state of electrum and bitcoin, for that we use `--test-threads=1` when running
 `cargo test`
 
@@ -934,18 +934,27 @@ fn bitcoin_syncer_sweep_address_test() {
     setup_logging(None);
     let bitcoin_rpc = bitcoin_setup();
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    let destination_address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
-    let destination_address_2 = bitcoin_rpc.get_new_address(None, None).unwrap();
-    let wif_private_key = bitcoin_rpc.dump_private_key(&address).unwrap();
+    let sweep_source_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let sweep_destination_address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let sweep_destination_address_2 = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let wif_private_key = bitcoin_rpc.dump_private_key(&sweep_source_address).unwrap();
 
     let (tx, rx_event) = create_bitcoin_syncer(false, "broadcast");
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 1000;
-    // send some coins to address1
+    // send some coins to sweep_source_address
     let _txid = bitcoin_rpc
-        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .send_to_address(
+            &sweep_source_address,
+            amount,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         .unwrap();
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -960,8 +969,8 @@ fn bitcoin_syncer_sweep_address_test() {
             from_height: None,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
-                address: address.clone(),
-                destination_address: destination_address_1.clone(),
+                address: sweep_source_address.clone(),
+                destination_address: sweep_destination_address_1.clone(),
             }),
         }),
         source: SOURCE1.clone(),
@@ -977,18 +986,36 @@ fn bitcoin_syncer_sweep_address_test() {
         .unwrap();
 
     let balance_1 = bitcoin_rpc
-        .get_received_by_address(&destination_address_1, None)
+        .get_received_by_address(&sweep_destination_address_1, None)
         .unwrap();
     info!("received balance: {:?}", balance_1);
     assert!(balance_1.as_sat() > 0);
 
-    // send some coins to address1
+    // send some coins to sweep_source_address
     let _txid = bitcoin_rpc
-        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .send_to_address(
+            &sweep_source_address,
+            amount,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         .unwrap();
-    // send some coins to address1
+    // send some coins to sweep_source_address
     let _txid = bitcoin_rpc
-        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .send_to_address(
+            &sweep_source_address,
+            amount,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         .unwrap();
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -1003,8 +1030,8 @@ fn bitcoin_syncer_sweep_address_test() {
             from_height: None,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
-                address: address,
-                destination_address: destination_address_2.clone(),
+                address: sweep_source_address,
+                destination_address: sweep_destination_address_2.clone(),
             }),
         }),
         source: SOURCE1.clone(),
@@ -1020,7 +1047,7 @@ fn bitcoin_syncer_sweep_address_test() {
         .unwrap();
 
     let balance_2 = bitcoin_rpc
-        .get_received_by_address(&destination_address_2, None)
+        .get_received_by_address(&sweep_destination_address_2, None)
         .unwrap();
     info!("received balance: {:?}", balance_2);
     assert!(balance_2.as_sat() > balance_1.as_sat());
