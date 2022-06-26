@@ -413,6 +413,11 @@ fn query_addr_history(
     Ok(addr_txs)
 }
 
+/// Returns the script code used for spending a P2WPKH output if this script is a script pubkey
+/// for a P2WPKH output. The `scriptCode` is described in [BIP143].
+///
+/// [BIP143]: <https://github.com/bitcoin/bips/blob/99701f68a88ce33b2d0838eb84e115cef505b4c2/bip-0143.mediawiki>
+/// FIXME: switch to impl in https://github.com/rust-bitcoin/rust-bitcoin/commit/d882b68a2cbba8e643695552f38e4b36558f9617 once released
 fn p2wpkh_script_code(script: &bitcoin::Script) -> Script {
     bitcoin::blockdata::script::Builder::new()
         .push_opcode(bitcoin::blockdata::opcodes::all::OP_DUP)
