@@ -486,8 +486,14 @@ fn sweep_address(
     let blocks_until_confirmation = 2;
     let fee_btc_per_kvb = client.estimate_fee(blocks_until_confirmation)?;
     let fee_sat_per_vb = fee_btc_per_kvb * 1e5;
-    let vsize_per_input_witness = 28;
-    let signed_tx_size = unsigned_tx.vsize() + vsize_per_input_witness * unspent_txs.len();
+    // Transaction size calculation: https://bitcoinops.org/en/tools/calc-size/
+    // The items in the witness are discounted by a factor of 4 (witness discount)
+    // The size used here is ceil(input p2wpkh witness)
+    // Input Witness:= ceil(nr. of items field + (length field + signature + public key) / p2wpkh witness discount
+    // Input Witness:= ceil(0.25               + 1         + (73       + 34) / 4))
+    //              := ceil(27.25)
+    let vsize_per_p2wpkh_input_witness = 28;
+    let signed_tx_size = unsigned_tx.vsize() + vsize_per_p2wpkh_input_witness * unspent_txs.len();
     let fee = (fee_sat_per_vb.ceil() as u64) * signed_tx_size as u64;
 
     unsigned_tx.output[0].value = in_amount - fee;
