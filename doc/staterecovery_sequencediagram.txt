@@ -1,6 +1,7 @@
 title State Recovery Procedure
 
 // TODO: remove walletd once it's stateless
+participant swapd
 participant walletd
 participant databased
 participant farcasterd
@@ -8,9 +9,13 @@ participant cli
 
 == State Recovery Procedure
 entryspacing 0.8
+farcasterd -> walletd : launch
 farcasterd -> databased : launch
 cli -> databased : RetrieveAllCheckpointInfo
-databased -> cli : CheckpointList
+databased -> farcasterd : CheckpointList
+farcasterd -> cli : CheckpointList
 cli -> farcasterd : RestoreCheckpoint
+farcasterd -> swapd : launch
 farcasterd -> databased : RestoreCheckpoint
 databased -> walletd : Checkpoint
+databased -> swapd: Checkpoint
