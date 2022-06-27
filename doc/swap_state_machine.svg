@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<svg width="1246pt" height="252pt" viewBox="0.00 0.00 1245.82 252.30" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg width="1581pt" height="252pt" viewBox="0.00 0.00 1580.98 252.30" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
 <g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 248.2954)">
 <title>finite_state_machine</title>
-<polygon fill="#ffffff" stroke="transparent" points="-4,4 -4,-248.2954 1241.8207,-248.2954 1241.8207,4 -4,4"/>
+<polygon fill="#ffffff" stroke="transparent" points="-4,4 -4,-248.2954 1576.9831,-248.2954 1576.9831,4 -4,4"/>
 <!-- FinishA -->
 <g id="node1" class="node">
 <title>FinishA</title>
-<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-60.9446" rx="43.4357" ry="43.4357"/>
-<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-60.9446" rx="47.455" ry="47.455"/>
-<text text-anchor="middle" x="1190.5937" y="-56.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">FinishA</text>
+<ellipse fill="none" stroke="#000000" cx="1191.4319" cy="-60.9446" rx="43.4357" ry="43.4357"/>
+<ellipse fill="none" stroke="#000000" cx="1191.4319" cy="-60.9446" rx="47.455" ry="47.455"/>
+<text text-anchor="middle" x="1191.4319" y="-56.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">FinishA</text>
 </g>
 <!-- FinishB -->
 <g id="node2" class="node">
 <title>FinishB</title>
-<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-191.9446" rx="43.4357" ry="43.4357"/>
-<ellipse fill="none" stroke="#000000" cx="1190.5937" cy="-191.9446" rx="47.455" ry="47.455"/>
-<text text-anchor="middle" x="1190.5937" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">FinishB</text>
+<ellipse fill="none" stroke="#000000" cx="1525.7561" cy="-191.9446" rx="43.4357" ry="43.4357"/>
+<ellipse fill="none" stroke="#000000" cx="1525.7561" cy="-191.9446" rx="47.455" ry="47.455"/>
+<text text-anchor="middle" x="1525.7561" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">FinishB</text>
 </g>
 <!-- StartA -->
 <g id="node3" class="node">
@@ -65,8 +65,8 @@
 <!-- RefundsigA&#45;&gt;FinishA -->
 <g id="edge4" class="edge">
 <title>RefundsigA-&gt;FinishA</title>
-<path fill="none" stroke="#000000" d="M904.6638,-60.9446C969.2081,-60.9446 1070.0562,-60.9446 1133.1272,-60.9446"/>
-<polygon fill="#000000" stroke="#000000" points="1133.2967,-64.4447 1143.2966,-60.9446 1133.2966,-57.4447 1133.2967,-64.4447"/>
+<path fill="none" stroke="#000000" d="M904.4125,-60.9446C969.1408,-60.9446 1070.6158,-60.9446 1133.9602,-60.9446"/>
+<polygon fill="#000000" stroke="#000000" points="1134.1719,-64.4447 1144.1719,-60.9446 1134.1719,-57.4447 1134.1719,-64.4447"/>
 <text text-anchor="middle" x="1023.8507" y="-65.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Event::TransactionConfirmations</text>
 </g>
 <!-- StartB -->
@@ -114,12 +114,25 @@
 <polygon fill="#000000" stroke="#000000" points="780.9249,-195.4447 790.9248,-191.9446 780.9248,-188.4447 780.9249,-195.4447"/>
 <text text-anchor="middle" x="659.0303" y="-196.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Msg::CoreArbitratingSetup</text>
 </g>
-<!-- CorearbB&#45;&gt;FinishB -->
+<!-- BuySigB -->
+<g id="node11" class="node">
+<title>BuySigB</title>
+<ellipse fill="none" stroke="#000000" cx="1191.4319" cy="-191.9446" rx="48.1303" ry="48.1303"/>
+<text text-anchor="middle" x="1191.4319" y="-187.7446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">BuySigB</text>
+</g>
+<!-- CorearbB&#45;&gt;BuySigB -->
 <g id="edge8" class="edge">
-<title>CorearbB-&gt;FinishB</title>
-<path fill="none" stroke="#000000" d="M895.7458,-191.9446C959.4928,-191.9446 1066.805,-191.9446 1132.8833,-191.9446"/>
-<polygon fill="#000000" stroke="#000000" points="1133.1215,-195.4447 1143.1214,-191.9446 1133.1214,-188.4447 1133.1215,-195.4447"/>
+<title>CorearbB-&gt;BuySigB</title>
+<path fill="none" stroke="#000000" d="M895.8722,-191.9446C959.5929,-191.9446 1066.7378,-191.9446 1133.0206,-191.9446"/>
+<polygon fill="#000000" stroke="#000000" points="1133.2948,-195.4447 1143.2948,-191.9446 1133.2948,-188.4447 1133.2948,-195.4447"/>
 <text text-anchor="middle" x="1023.8507" y="-196.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Event::TransactionConfirmations</text>
+</g>
+<!-- BuySigB&#45;&gt;FinishB -->
+<g id="edge9" class="edge">
+<title>BuySigB-&gt;FinishB</title>
+<path fill="none" stroke="#000000" d="M1239.6884,-191.9446C1300.1939,-191.9446 1403.7912,-191.9446 1468.3172,-191.9446"/>
+<polygon fill="#000000" stroke="#000000" points="1468.3252,-195.4447 1478.3252,-191.9446 1468.3252,-188.4447 1468.3252,-195.4447"/>
+<text text-anchor="middle" x="1359.0131" y="-196.1446" font-family="Helvetica,Arial,sans-serif" font-size="14.00" fill="#000000">Event::TransactionConfirmations</text>
 </g>
 </g>
 </svg>

@@ -10,10 +10,11 @@ digraph finite_state_machine {
 	CommitA -> RevealA [label = "Msg::Reveal"];
 	RevealA -> RefundsigA [label = "Msg::RefundProcedureSignatures"]
 	RefundsigA-> FinishA [label = "Event::TransactionConfirmations"]
-	
+
 	# Bob
 	StartB -> CommitB [label = "Request::InitSwap"];
 	CommitB -> RevealB [label = "Msg::Reveal"];
 	RevealB -> CorearbB [label = "Msg::CoreArbitratingSetup"];
-	CorearbB -> FinishB [label = "Event::TransactionConfirmations"]
+	CorearbB -> BuySigB [label = "Event::TransactionConfirmations"];
+	BuySigB -> FinishB [label = "Event::TransactionConfirmations"];
 }
