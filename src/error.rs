@@ -102,6 +102,7 @@ pub enum Error {
 
     /// BitcoinKey
     #[display(inner)]
+    #[from(bitcoin::util::key::Error)]
     BitcoinKey(bitcoin::util::key::Error),
 
     /// BitcoinSecp256k1
@@ -221,12 +222,6 @@ impl From<rustc_hex::FromHexError> for Error {
 impl From<bitcoin::hashes::Error> for Error {
     fn from(err: bitcoin::hashes::Error) -> Self {
         Error::BitcoinHashes(err)
-    }
-}
-
-impl From<bitcoin::util::key::Error> for Error {
-    fn from(err: bitcoin::util::key::Error) -> Self {
-        Error::BitcoinKey(err)
     }
 }
 
