@@ -432,7 +432,7 @@ fn sweep_address(
     source_private_key: [u8; 32],
     source_address: bitcoin::Address,
     dest_address: bitcoin::Address,
-    electrum_server: String,
+    client: &Client,
     network: bitcoin::Network,
 ) -> Result<Vec<Vec<u8>>, Error> {
     match source_address.address_type() {
@@ -449,7 +449,6 @@ fn sweep_address(
     let sk = bitcoin::PrivateKey::from_slice(&source_private_key, network)?;
     let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &sk);
 
-    let client = Client::new(&electrum_server)?;
     let unspent_txs = client.script_list_unspent(&source_address.script_pubkey())?;
 
     if unspent_txs.len() == 0 {
@@ -931,30 +930,42 @@ fn sweep_polling(
             let state_guard = state.lock().await;
             let sweep_addresses = state_guard.sweep_addresses.clone();
             drop(state_guard);
-            for (id, sweep_address_task) in sweep_addresses.iter() {
-                if let SweepAddressAddendum::Bitcoin(addendum) = sweep_address_task.addendum.clone()
-                {
-                    let sweep_address_txs = sweep_address(
-                        addendum.source_private_key,
-                        addendum.source_address,
-                        addendum.destination_address,
-                        electrum_server.clone(),
-                        network,
-                    )
-                    .unwrap_or_else(|err| {
-                        warn!("error polling sweep address {:?}, retrying", err);
-                        vec![]
-                    });
-                    debug!("sweep address transaction: {:?}", sweep_address_txs);
-                    if !sweep_address_txs.is_empty() {
-                        let mut state_guard = state.lock().await;
-                        state_guard.success_sweep(id, sweep_address_txs).await;
-                        drop(state_guard);
+            match Client::new(&electrum_server) {
+                Err(err) => {
+                    error!(
+                        "Failed to create btc sweep electrum client: {}, retrying",
+                        err
+                    );
+                }
+                Ok(client) => {
+                    for (id, sweep_address_task) in sweep_addresses.iter() {
+                        if let SweepAddressAddendum::Bitcoin(addendum) =
+                            sweep_address_task.addendum.clone()
+                        {
+                            let sweep_address_txs = sweep_address(
+                                addendum.source_private_key,
+                                addendum.source_address,
+                                addendum.destination_address,
+                                &client,
+                                network,
+                            )
+                            .unwrap_or_else(|err| {
+                                warn!("error polling sweep address {:?}, retrying", err);
+                                vec![]
+                            });
+                            debug!("sweep address transaction: {:?}", sweep_address_txs);
+                            if !sweep_address_txs.is_empty() {
+                                let mut state_guard = state.lock().await;
+                                state_guard.success_sweep(id, sweep_address_txs).await;
+                                drop(state_guard);
+                            }
+                        } else {
+                            error!("Not sweeping address - is not using a bitcoin sweep address addendum");
+                        }
                     }
-                } else {
-                    error!("Not sweeping address - is not using a bitcoin sweep address addendum");
                 }
             }
+
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     })
