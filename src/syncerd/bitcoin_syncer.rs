@@ -453,6 +453,10 @@ fn sweep_address(
     let unspent_txs = client.script_list_unspent(&source_address.script_pubkey())?;
 
     if unspent_txs.len() == 0 {
+        debug!(
+            "No sweepable outputs detected for address: {}",
+            source_address
+        );
         return Ok(vec![]);
     }
 
