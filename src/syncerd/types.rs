@@ -92,7 +92,7 @@ pub enum SweepAddressAddendum {
 pub struct SweepXmrAddress {
     pub spend_key: monero::PrivateKey,
     pub view_key: monero::PrivateKey,
-    pub address: monero::Address,
+    pub dest_address: monero::Address,
     pub minimum_balance: monero::Amount,
 }
 
@@ -110,7 +110,7 @@ impl StrictEncode for SweepXmrAddress {
             .consensus_encode(&mut e)
             .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
         len += self
-            .address
+            .dest_address
             .consensus_encode(&mut e)
             .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
         Ok(len
@@ -129,7 +129,7 @@ impl StrictDecode for SweepXmrAddress {
                 .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
             view_key: monero::PrivateKey::consensus_decode(&mut d)
                 .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            address: monero::Address::consensus_decode(&mut d)
+            dest_address: monero::Address::consensus_decode(&mut d)
                 .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
             minimum_balance: monero::Amount::from_pico(
                 u64::consensus_decode(&mut d)
@@ -142,8 +142,9 @@ impl StrictDecode for SweepXmrAddress {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct SweepBitcoinAddress {
-    pub private_key: [u8; 32],
-    pub address: bitcoin::Address,
+    pub source_private_key: [u8; 32],
+    pub source_address: bitcoin::Address,
+    pub destination_address: bitcoin::Address,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

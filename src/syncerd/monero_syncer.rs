@@ -263,8 +263,8 @@ async fn sweep_address(
 ) -> Result<Vec<Vec<u8>>, Error> {
     let keypair = monero::KeyPair { view, spend };
     let password = s!(" ");
-    let address = monero::Address::from_keypair(*network, &keypair);
-    let wallet_filename = format!("sweep:{}", address);
+    let source_address = monero::Address::from_keypair(*network, &keypair);
+    let wallet_filename = format!("sweep:{}", source_address);
 
     let wallet = wallet_mutex.lock().await;
     trace!("taking sweep wallet lock");
@@ -281,7 +281,7 @@ async fn sweep_address(
             .generate_from_keys(GenerateFromKeysArgs {
                 restore_height,
                 filename: wallet_filename.clone(),
-                address,
+                address: source_address,
                 spendkey: Some(keypair.spend),
                 viewkey: keypair.view,
                 password: password.clone(),
@@ -299,7 +299,7 @@ async fn sweep_address(
     if balance.unlocked_balance >= minimum_balance.as_pico() {
         info!(
             "Sweeping address {} with unlocked balance {} into {}",
-            address.addr(),
+            source_address.addr(),
             monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold(),
             dest_address.addr(),
         );
@@ -337,8 +337,8 @@ async fn sweep_address(
         // delete all the associated wallet data if possible
         if let Some(path) = wallet_dir_path {
             if let Some(raw_path) = path.to_str() {
-                let watch_wallet_filename = format!("/watch:{}", address);
-                let sweep_wallet_filename = format!("/sweep:{}", address);
+                let watch_wallet_filename = format!("/watch:{}", source_address);
+                let sweep_wallet_filename = format!("/sweep:{}", source_address);
                 if let Err(error) = fs::remove_file(raw_path.to_string() + &sweep_wallet_filename)
                     .and(fs::remove_file(
                         raw_path.to_string() + &sweep_wallet_filename + ".keys",
@@ -365,7 +365,7 @@ async fn sweep_address(
                 warn!("No associated wallet data cleaned up after sweep. The path used for the wallet directory is probably malformed");
             }
         } else {
-            info!("{}", format!("Completed operations on Monero wallets with address {} . These wallets can now be safely deleted", address));
+            info!("{}", format!("Completed operations on Monero wallets with address {} . These wallets can now be safely deleted", source_address));
         }
         Ok(tx_ids)
     } else {
@@ -410,7 +410,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::SweepAddress(task) => match task.addendum.clone() {
                             SweepAddressAddendum::Monero(sweep) => {
-                                let addr = sweep.address;
+                                let addr = sweep.dest_address;
                                 debug!("Sweeping address: {}", addr.addr());
                                 let mut state_guard = state.lock().await;
                                 state_guard.sweep_address(task, syncerd_task.source);
@@ -664,7 +664,7 @@ fn sweep_polling(
                 if let SweepAddressAddendum::Monero(addendum) = sweep_address_task.addendum.clone()
                 {
                     let sweep_address_txs = sweep_address(
-                        addendum.address,
+                        addendum.dest_address,
                         addendum.view_key,
                         addendum.spend_key,
                         addendum.minimum_balance,

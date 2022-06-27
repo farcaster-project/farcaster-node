@@ -6,6 +6,7 @@ use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
 use farcaster_node::syncerd::opts::{Coin, Opts};
 use farcaster_node::syncerd::runtime::SyncerdTask;
+use farcaster_node::syncerd::SweepBitcoinAddress;
 use farcaster_node::syncerd::{
     runtime::Synclet, SweepAddress, SweepAddressAddendum, SweepXmrAddress, TaskId, TaskTarget,
     XmrAddressAddendum,
@@ -19,6 +20,7 @@ use internet2::ZMQ_CONTEXT;
 use monero_rpc::GetBlockHeaderSelector;
 use paste::paste;
 use rand::{distributions::Alphanumeric, Rng};
+use std::convert::TryInto;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
@@ -45,7 +47,7 @@ const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
 const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
 
 /*
-These tests need to run serialy, otherwise we cannot verify events based on the
+These tests need to run serially, otherwise we cannot verify events based on the
 state of electrum and bitcoin, for that we use `--test-threads=1` when running
 `cargo test`
 
@@ -915,6 +917,142 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     assert_transaction_broadcasted(request, false, None);
 }
 
+/*
+We test the following scenarios in the broadcast tx tests:
+
+- Submit a sweep address task sweeping an address owning a single output,
+receive a success event and check that the address balance is sweeped
+
+- Submit a sweep address task sweeping an address owning two outputs,
+receive a success event and check that the address balance is sweeped
+
+*/
+#[test]
+#[timeout(600000)]
+#[ignore]
+fn bitcoin_syncer_sweep_address_test() {
+    setup_logging(None);
+    let bitcoin_rpc = bitcoin_setup();
+    let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let sweep_source_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let sweep_destination_address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let sweep_destination_address_2 = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let wif_private_key = bitcoin_rpc.dump_private_key(&sweep_source_address).unwrap();
+
+    let (tx, rx_event) = create_bitcoin_syncer(false, "broadcast");
+
+    // 294 Satoshi is the dust limit for a segwit transaction
+    let amount = bitcoin::Amount::ONE_SAT * 1000;
+    // send some coins to sweep_source_address
+    let _txid = bitcoin_rpc
+        .send_to_address(
+            &sweep_source_address,
+            amount,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+    let blocks = bitcoin_rpc.get_block_count().unwrap();
+    // allow some time for things to happen, like the electrum server catching up
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
+
+    let task = SyncerdTask {
+        task: Task::SweepAddress(SweepAddress {
+            id: TaskId(0),
+            lifetime: blocks,
+            from_height: None,
+            addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
+                source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
+                source_address: sweep_source_address.clone(),
+                destination_address: sweep_destination_address_1.clone(),
+            }),
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    // allow some time for things to happen, like the electrum server catching up
+    info!("waiting for address sweeped message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("address sweeped");
+    let _request = get_request_from_message(message);
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_address)
+        .unwrap();
+
+    let balance_1 = bitcoin_rpc
+        .get_received_by_address(&sweep_destination_address_1, None)
+        .unwrap();
+    info!("received balance: {:?}", balance_1);
+    assert!(balance_1.as_sat() > 0);
+
+    // send some coins to sweep_source_address
+    let _txid = bitcoin_rpc
+        .send_to_address(
+            &sweep_source_address,
+            amount,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    // send some coins to sweep_source_address
+    let _txid = bitcoin_rpc
+        .send_to_address(
+            &sweep_source_address,
+            amount,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+    let blocks = bitcoin_rpc.get_block_count().unwrap();
+    // allow some time for things to happen, like the electrum server catching up
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
+
+    let task = SyncerdTask {
+        task: Task::SweepAddress(SweepAddress {
+            id: TaskId(0),
+            lifetime: blocks,
+            from_height: None,
+            addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
+                source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
+                source_address: sweep_source_address,
+                destination_address: sweep_destination_address_2.clone(),
+            }),
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    // allow some time for things to happen, like the electrum server catching up
+    info!("waiting for address sweeped message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("address sweeped");
+    let _request = get_request_from_message(message);
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_address)
+        .unwrap();
+
+    let balance_2 = bitcoin_rpc
+        .get_received_by_address(&sweep_destination_address_2, None)
+        .unwrap();
+    info!("received balance: {:?}", balance_2);
+    assert!(balance_2.as_sat() > balance_1.as_sat());
+}
+
 fn create_bitcoin_syncer(
     polling: bool,
     socket_name: &str,
@@ -1103,7 +1241,7 @@ async fn monero_syncer_sweep_test() {
             addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
                 spend_key,
                 view_key,
-                address: dest_address,
+                dest_address,
                 minimum_balance: monero::Amount::from_pico(1000000000000),
             }),
         }),
