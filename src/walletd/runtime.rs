@@ -1604,7 +1604,7 @@ impl Runtime {
                         Request::SweepXmrAddress(sweep_keys),
                     )?;
                 } else {
-                    error!("\n\nnot an Alice wallet!\n\n");
+                    error!("Call to refund transaction expects an Alice wallet");
                 }
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
