@@ -439,7 +439,7 @@ fn sweep_address(
         Some(bitcoin::AddressType::P2wpkh) => {}
         Some(address_type) => {
             return Err(Error::Farcaster(format!(
-                "Sweeping addresses only supports native segwit v1 addresses. Address has type: {}",
+                "Sweeping addresses only supports native segwit v0 addresses. Address has type: {}",
                 address_type
             )));
         }
