@@ -747,7 +747,7 @@ pub struct Checkpoint {
 pub enum CheckpointState {
     #[display("Checkpoint Wallet")]
     CheckpointWallet(CheckpointWallet),
-    #[display("Checkpoint Wallet")]
+    #[display("Checkpoint Swap")]
     CheckpointSwapd(CheckpointSwapd),
 }
 
