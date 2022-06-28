@@ -1365,10 +1365,10 @@ impl Runtime {
                             let swap_success_req = Request::SwapOutcome(success);
                             self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
                             self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-                            // remove txs from outdated states
-                            self.txs.remove(&TxLabel::Lock);
+                            // remove txs to invalidate outdated states
                             self.txs.remove(&TxLabel::Cancel);
                             self.txs.remove(&TxLabel::Refund);
+                            self.txs.remove(&TxLabel::Buy);
                             self.txs.remove(&TxLabel::Punish);
                         }
                     }
@@ -1712,8 +1712,6 @@ impl Runtime {
                                     swap_success_req.clone(),
                                 )?;
                                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-                                // remove txs from outdated states
-                                self.txs.remove(&TxLabel::Lock);
                                 self.txs.remove(&TxLabel::Buy);
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Punish);
@@ -1815,8 +1813,7 @@ impl Runtime {
                                     swap_success_req.clone(),
                                 )?;
                                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-                                // remove txs from outdated states
-                                self.txs.remove(&TxLabel::Lock);
+                                // remove txs to invalidate outdated states
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Refund);
                                 self.txs.remove(&TxLabel::Buy);
@@ -1859,8 +1856,7 @@ impl Runtime {
                                     swap_success_req.clone(),
                                 )?;
                                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-                                // remove txs from outdated states
-                                self.txs.remove(&TxLabel::Lock);
+                                // remove txs to invalidate outdated states
                                 self.txs.remove(&TxLabel::Cancel);
                                 self.txs.remove(&TxLabel::Refund);
                                 self.txs.remove(&TxLabel::Buy);
