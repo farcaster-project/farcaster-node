@@ -2221,15 +2221,6 @@ impl Runtime {
                     )?;
 
                     trace!("Watching transactions");
-                    for (tx_label, tx) in txs.iter() {
-                        let task = self.syncer_state.watch_tx_btc(tx.txid(), tx_label.clone());
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(task),
-                        )?;
-                    }
                     for (tx_label, txid) in txids.iter() {
                         let task = self
                             .syncer_state
