@@ -811,6 +811,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     println!("waiting for the bitcoin funding info to clear");
     retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
 
+    tokio::time::sleep(time::Duration::from_secs(5)).await;
+
     // kill all the daemons and start them again
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
     let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;

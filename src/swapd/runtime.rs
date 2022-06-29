@@ -1579,8 +1579,9 @@ impl Runtime {
                                     && self.state.safe_cancel()
                                     && self.txs.contains_key(&TxLabel::Cancel) =>
                             {
-                                let cancel_tx = self.txs.get(&TxLabel::Cancel).unwrap().clone();
-                                self.broadcast(cancel_tx, TxLabel::Cancel, endpoints)?
+                                let (tx_label, cancel_tx) =
+                                    self.txs.remove_entry(&TxLabel::Cancel).unwrap();
+                                self.broadcast(cancel_tx, tx_label, endpoints)?
                             }
                             TxLabel::Lock
                                 if self.temporal_safety.safe_buy(*confirmations)
@@ -1593,9 +1594,10 @@ impl Runtime {
                                     && self.state.local_params().is_some() =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
-                                if let Some(buy_tx) = self.txs.get(&TxLabel::Buy) {
-                                    let buy_tx = buy_tx.clone();
-                                    self.broadcast(buy_tx, TxLabel::Buy, endpoints)?;
+                                if let Some((txlabel, buy_tx)) =
+                                    self.txs.remove_entry(&TxLabel::Buy)
+                                {
+                                    self.broadcast(buy_tx, txlabel, endpoints)?;
                                     self.state = State::Alice(AliceState::RefundSigA {
                                         local_params: self.state.local_params().cloned().unwrap(),
                                         buy_published: true,
@@ -1642,12 +1644,12 @@ impl Runtime {
                             {
                                 trace!("Alice publishes punish tx");
 
-                                let punish_tx = self.txs.get(&TxLabel::Punish).unwrap().clone();
+                                let (tx_label, punish_tx) =
+                                    self.txs.remove_entry(&TxLabel::Punish).unwrap();
                                 // syncer's watch punish tx task
-                                if !self.syncer_state.is_watched_tx(&TxLabel::Punish) {
-                                    let txid = punish_tx.clone().txid();
-                                    let task =
-                                        self.syncer_state.watch_tx_btc(txid, TxLabel::Punish);
+                                if !self.syncer_state.is_watched_tx(&tx_label) {
+                                    let txid = punish_tx.txid();
+                                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                                     endpoints.send_to(
                                         ServiceBus::Ctl,
                                         self.identity(),
@@ -1656,7 +1658,7 @@ impl Runtime {
                                     )?;
                                 }
 
-                                self.broadcast(punish_tx, TxLabel::Punish, endpoints)?;
+                                self.broadcast(punish_tx, tx_label, endpoints)?;
                             }
 
                             TxLabel::Cancel
@@ -1665,8 +1667,9 @@ impl Runtime {
                                     && self.txs.contains_key(&TxLabel::Refund) =>
                             {
                                 trace!("here Bob publishes refund tx");
-                                let refund_tx = self.txs.get(&TxLabel::Refund).unwrap().clone();
-                                self.broadcast(refund_tx, TxLabel::Refund, endpoints)?;
+                                let (tx_label, refund_tx) =
+                                    self.txs.remove_entry(&TxLabel::Refund).unwrap();
+                                self.broadcast(refund_tx, tx_label, endpoints)?;
                             }
                             TxLabel::Cancel
                                 if (self.state.swap_role() == SwapRole::Alice
@@ -1959,7 +1962,6 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            // TODO: checkpoint here or in caller of this
             Request::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
                 log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, endpoints)?;

@@ -940,8 +940,8 @@ impl Runtime {
                         }),
                     )?;
 
-                    // *refund_sigs = Some(refund_proc_sigs);
                     {
+                        // lock
                         let signed_arb_lock =
                             bob.sign_arbitrating_lock(key_manager, core_arb_txs)?;
                         let sig = signed_arb_lock.lock_sig;
@@ -951,8 +951,6 @@ impl Runtime {
                         lock_tx.add_witness(lock_pubkey, sig)?;
                         let finalized_lock_tx: bitcoin::Transaction =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
-
-                        // TODO: checkpoint here
 
                         endpoints.send_to(
                             ServiceBus::Ctl,
