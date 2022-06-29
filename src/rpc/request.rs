@@ -14,6 +14,7 @@
 
 #![allow(clippy::clone_on_copy)]
 
+use crate::cli::OfferSelector;
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::SweepBitcoinAddress;
 use crate::walletd::{
@@ -453,10 +454,9 @@ pub enum Request {
     #[display("list_tasks()")]
     ListTasks,
 
-    // TODO: only list offers matching list of OfferIds
     #[api(type = 104)]
     #[display("list_offers()")]
-    ListOffers,
+    ListOffers(OfferStatusSelector),
 
     // #[api(type = 105)]
     // #[display("list_offer_ids()")]
@@ -755,6 +755,29 @@ pub enum OfferStatusSelector {
     Ended,
     #[display("All")]
     All,
+}
+
+impl From<OfferSelector> for OfferStatusSelector {
+    fn from(offer_selector: OfferSelector) -> OfferStatusSelector {
+        match offer_selector {
+            OfferSelector::Open => OfferStatusSelector::Open,
+            OfferSelector::InProgress => OfferStatusSelector::InProgress,
+            OfferSelector::Ended => OfferStatusSelector::Ended,
+            OfferSelector::All => OfferStatusSelector::All,
+        }
+    }
+}
+
+impl FromStr for OfferStatusSelector {
+    type Err = ();
+    fn from_str(input: &str) -> Result<OfferStatusSelector, Self::Err> {
+        match input {
+            "open" | "Open" => Ok(OfferStatusSelector::Open),
+            "in_progress" | "inprogress" => Ok(OfferStatusSelector::Open),
+            "ended" | "Ended" => Ok(OfferStatusSelector::Ended),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]

@@ -89,6 +89,8 @@ _arguments "${_arguments_options[@]}" \
 ;;
 (list-offers)
 _arguments "${_arguments_options[@]}" \
+'-s+[]:SELECT:(open Open inprogress in_progress ended Ended all All)' \
+'--select=[]:SELECT:(open Open inprogress in_progress ended Ended all All)' \
 '-d+[Data directory path]:DATA_DIR:_files -/' \
 '--data-dir=[Data directory path]:DATA_DIR:_files -/' \
 '-T+[Use Tor]:TOR_PROXY:_hosts' \

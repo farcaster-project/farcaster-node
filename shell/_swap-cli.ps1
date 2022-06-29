@@ -98,6 +98,8 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             break
         }
         'swap-cli;list-offers' {
+            [CompletionResult]::new('-s', 's', [CompletionResultType]::ParameterName, 's')
+            [CompletionResult]::new('--select', 'select', [CompletionResultType]::ParameterName, 'select')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')

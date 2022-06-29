@@ -340,12 +340,20 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__list__offers)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-s -h -d -v -T -m -x --select --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --select)
+                    COMPREPLY=($(compgen -W "open Open inprogress in_progress ended Ended all All" -- "${cur}"))
+                    return 0
+                    ;;
+                -s)
+                    COMPREPLY=($(compgen -W "open Open inprogress in_progress ended Ended all All" -- "${cur}"))
+                    return 0
+                    ;;
                 --data-dir)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

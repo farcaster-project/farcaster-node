@@ -15,4 +15,4 @@
 mod command;
 mod opts;
 
-pub use opts::{Command, Opts};
+pub use opts::{Command, OfferSelector, Opts};

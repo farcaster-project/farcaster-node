@@ -14,8 +14,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::farcasterd::runtime::request::{
-    CheckpointEntry, MadeOffer, OfferStatus, OfferStatusPair, ProgressEvent, SwapProgress,
-    TookOffer,
+    CheckpointEntry, MadeOffer, OfferStatus, OfferStatusPair, OfferStatusSelector, ProgressEvent,
+    SwapProgress, TookOffer,
 };
 use crate::{
     clap::Parser,
@@ -891,20 +891,35 @@ impl Runtime {
                 )?;
             }
 
-            // TODO: only list offers matching list of OfferIds
-            Request::ListOffers => {
-                let pub_offers = self
-                    .public_offers
-                    .iter()
-                    .filter(|k| !self.consumed_offers_contains(k.clone()))
-                    .cloned()
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::OfferList(pub_offers),
-                )?;
+            Request::ListOffers(offer_status_selector) => {
+                match offer_status_selector {
+                    OfferStatusSelector::Open => {
+                        let pub_offers = self
+                            .public_offers
+                            .iter()
+                            .filter(|k| !self.consumed_offers_contains(k))
+                            .cloned()
+                            .collect();
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd, // source
+                            source,                // destination
+                            Request::OfferList(pub_offers),
+                        )?;
+                    }
+                    OfferStatusSelector::InProgress => {
+                        let pub_offers = self.consumed_offers.keys().cloned().collect();
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd,
+                            source,
+                            Request::OfferList(pub_offers),
+                        )?;
+                    }
+                    _ => {
+                        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Database, request)?;
+                    }
+                };
             }
 
             Request::RevokeOffer(public_offer) => {
