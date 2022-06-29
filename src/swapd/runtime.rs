@@ -154,6 +154,7 @@ pub fn run(
         sweeping_addr: none!(),
         txids: none!(),
         final_txs: none!(),
+        tasks: none!(),
     };
     let syncer_state = SyncerState {
         swap_id,
@@ -529,29 +530,21 @@ impl Runtime {
                                 )?;
                             }
                         }
-
-                        trace!("Watch height bitcoin");
-                        let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
-                            id: self.syncer_state.tasks.new_taskid(),
-                            lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                        });
+                        let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
                             self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(watch_height_bitcoin),
+                            Request::SyncerTask(watch_height_btc_task),
                         )?;
 
-                        trace!("Watch height monero");
-                        let watch_height_monero = Task::WatchHeight(WatchHeight {
-                            id: self.syncer_state.tasks.new_taskid(),
-                            lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                        });
+                        let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
+
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
                             self.syncer_state.monero_syncer(),
-                            Request::SyncerTask(watch_height_monero),
+                            Request::SyncerTask(watch_height_xmr_task),
                         )?;
                         self.send_wallet(msg_bus, endpoints, request)?;
                     }
@@ -701,28 +694,20 @@ impl Runtime {
                                     )?;
                                 }
                             }
-                            trace!("Watch height bitcoin");
-                            let watch_height_bitcoin = Task::WatchHeight(WatchHeight {
-                                id: self.syncer_state.tasks.new_taskid(),
-                                lifetime: self.syncer_state.task_lifetime(Coin::Bitcoin),
-                            });
+                            let watch_height_btc = self.syncer_state.watch_height(Coin::Bitcoin);
                             endpoints.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 self.syncer_state.bitcoin_syncer(),
-                                Request::SyncerTask(watch_height_bitcoin),
+                                Request::SyncerTask(watch_height_btc),
                             )?;
 
-                            trace!("Watch height monero");
-                            let watch_height_monero = Task::WatchHeight(WatchHeight {
-                                id: self.syncer_state.tasks.new_taskid(),
-                                lifetime: self.syncer_state.task_lifetime(Coin::Monero),
-                            });
+                            let watch_height_xmr = self.syncer_state.watch_height(Coin::Monero);
                             endpoints.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 self.syncer_state.monero_syncer(),
-                                Request::SyncerTask(watch_height_monero),
+                                Request::SyncerTask(watch_height_xmr),
                             )?;
                         }
                     }
@@ -1135,10 +1120,7 @@ impl Runtime {
                             )?;
                         }
                         if self.syncer_state.tasks.watched_addrs.remove(id).is_some() {
-                            let abort_task = Task::Abort(Abort {
-                                task_target: TaskTarget::TaskId(*id),
-                                respond: Boolean::False,
-                            });
+                            let abort_task = self.syncer_state.abort_task(*id);
                             endpoints.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),
@@ -1176,11 +1158,7 @@ impl Runtime {
                                     Request::SyncerTask(watch_tx),
                                 )?;
                             }
-
-                            let abort_task = Task::Abort(Abort {
-                                task_target: TaskTarget::TaskId(*id),
-                                respond: Boolean::False,
-                            });
+                            let abort_task = self.syncer_state.abort_task(*id);
                             endpoints.send_to(
                                 ServiceBus::Ctl,
                                 self.identity(),

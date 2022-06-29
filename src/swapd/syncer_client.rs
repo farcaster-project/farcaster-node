@@ -1,8 +1,9 @@
 use crate::{
     service::LogStyle,
     syncerd::{
-        AddressAddendum, Boolean, BtcAddressAddendum, Coin, GetTx, SweepAddress,
-        SweepAddressAddendum, SweepXmrAddress, WatchAddress, WatchTransaction, XmrAddressAddendum,
+        Abort, AddressAddendum, Boolean, BtcAddressAddendum, Coin, GetTx, SweepAddress,
+        SweepAddressAddendum, SweepXmrAddress, TaskTarget, WatchAddress, WatchHeight,
+        WatchTransaction, XmrAddressAddendum,
     },
 };
 use bitcoin::{Script, Txid};
@@ -25,6 +26,7 @@ pub struct SyncerTasks {
     pub sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
     pub txids: HashMap<TxLabel, Txid>,
+    pub tasks: HashMap<TaskId, Task>,
 }
 
 impl SyncerTasks {
@@ -83,6 +85,13 @@ impl SyncerState {
             warn!("block height did not increment, maybe syncer sends multiple events");
         }
     }
+    pub fn abort_task(&mut self, id: TaskId) -> Task {
+        Task::Abort(Abort {
+            task_target: TaskTarget::TaskId(id),
+            respond: Boolean::False,
+        })
+    }
+
     pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.watched_txs.insert(id, tx_label);
@@ -93,12 +102,14 @@ impl SyncerState {
             tx_label.bright_white_bold(),
             txid.bright_yellow_italic()
         );
-        Task::WatchTransaction(WatchTransaction {
+        let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Coin::Bitcoin),
             hash: txid.to_vec(),
             confirmation_bound: self.confirmation_bound,
-        })
+        });
+        self.tasks.tasks.insert(id, task.clone());
+        task
     }
     pub fn is_watched_tx(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_txs.values().any(|tx| tx == tx_label)
@@ -113,12 +124,14 @@ impl SyncerState {
             hex::encode(&hash).bright_yellow_italic(),
         );
         debug!("Watching transaction {} with {}", hex::encode(&hash), id);
-        Task::WatchTransaction(WatchTransaction {
+        let task = Task::WatchTransaction(WatchTransaction {
             id,
             lifetime: self.task_lifetime(Coin::Monero),
             hash,
             confirmation_bound: self.confirmation_bound,
-        })
+        });
+        self.tasks.tasks.insert(id, task.clone());
+        task
     }
     pub fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
@@ -129,6 +142,7 @@ impl SyncerState {
         self.tasks
             .retrieving_txs
             .insert(id, (tx_label, task.clone()));
+        self.tasks.tasks.insert(id, task.clone());
         task
     }
     pub fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
@@ -146,12 +160,14 @@ impl SyncerState {
             from_height,
             script_pubkey,
         };
-        Task::WatchAddress(WatchAddress {
+        let task = Task::WatchAddress(WatchAddress {
             id,
             lifetime: self.task_lifetime(Coin::Bitcoin),
             addendum: AddressAddendum::Bitcoin(addendum),
             include_tx: Boolean::True,
-        })
+        });
+        self.tasks.tasks.insert(id, task.clone());
+        task
     }
 
     pub fn is_watched_addr(&self, tx_label: &TxLabel) -> bool {
@@ -209,7 +225,9 @@ impl SyncerState {
             addendum: AddressAddendum::Monero(addendum),
             include_tx: Boolean::False,
         };
-        Task::WatchAddress(watch_addr)
+        let task = Task::WatchAddress(watch_addr);
+        self.tasks.tasks.insert(id, task.clone());
+        task
     }
     pub fn sweep_xmr(
         &mut self,
@@ -234,7 +252,20 @@ impl SyncerState {
             addendum,
             from_height,
         };
-        Task::SweepAddress(sweep_task)
+        let task = Task::SweepAddress(sweep_task);
+        self.tasks.tasks.insert(id, task.clone());
+        task
+    }
+
+    pub fn watch_height(&mut self, coin: Coin) -> Task {
+        let id = self.tasks.new_taskid();
+        trace!("Watch height {}", coin);
+        let task = Task::WatchHeight(WatchHeight {
+            id,
+            lifetime: self.task_lifetime(coin),
+        });
+        self.tasks.tasks.insert(id, task.clone());
+        task
     }
 
     pub fn acc_lock_watched(&self) -> bool {
