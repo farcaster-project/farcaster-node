@@ -24,6 +24,7 @@ use crate::{
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
     },
 };
+use microservices::rpc::Failure;
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -748,6 +749,7 @@ impl Runtime {
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) if self.state.b_core_arb() => {
+                        self.state.sup_received_refund_procedure_signatures();
                         self.send_wallet(msg_bus, endpoints, request)?;
                     }
                     // alice receives, bob sends
@@ -2162,7 +2164,8 @@ impl Runtime {
                     self.cancel_swap(endpoints, source)?;
                 } else if self.state.b_commit()
                     || self.state.b_reveal()
-                    || !self.state.b_received_refund_procedure_signatures()
+                    || (!self.state.b_received_refund_procedure_signatures()
+                        && self.state.b_core_arb())
                 {
                     self.send_ctl(
                         endpoints,
@@ -2179,10 +2182,15 @@ impl Runtime {
                     self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Cancel)))?;
                     self.cancel_swap(endpoints, source)?;
                 } else {
-                    warn!(
-                        "{} | swap is already locked-in, cannot manually cancel anymore",
-                        self.swap_id
-                    );
+                    let msg =
+                        "Swap is already locked-in, cannot manually cancel anymore.".to_string();
+                    warn!("{} | {}", self.swap_id, msg);
+
+                    self.send_ctl(
+                        endpoints,
+                        source,
+                        Request::Failure(Failure { code: 1, info: msg }),
+                    )?;
                 }
                 // TODO add rule for canceling alice swap if bob never locks,
                 // but she is already in RefundSigA. This is not that critical,
