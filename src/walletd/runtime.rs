@@ -1647,18 +1647,22 @@ impl Runtime {
                 }
             }
 
-            Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
-                CheckpointState::CheckpointWallet(CheckpointWallet { wallet, xmr_addr }) => {
-                    info!("Restoring wallet for swap {}", swap_id);
-                    if !self.wallets.contains_key(&swap_id) {
-                        self.wallets.insert(swap_id, wallet);
+            Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
+                match state {
+                    CheckpointState::CheckpointWallet(CheckpointWallet { wallet, xmr_addr }) => {
+                        info!("Restoring wallet for swap {}", swap_id);
+                        if !self.wallets.contains_key(&swap_id) {
+                            self.wallets.insert(swap_id, wallet);
+                        } else {
+                            warn!("Did not restore full wallet, a wallet with this key already exists.");
+                        }
+                        self.xmr_addrs.insert(swap_id, xmr_addr);
                     }
-                    self.xmr_addrs.insert(swap_id, xmr_addr);
+                    s => {
+                        error!("Checkpoint {} not supported in walletd", s);
+                    }
                 }
-                s => {
-                    error!("Checkpoint {} not supported in walletd", s);
-                }
-            },
+            }
 
             _ => {
                 error!(
