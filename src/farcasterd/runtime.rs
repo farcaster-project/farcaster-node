@@ -13,10 +13,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::farcasterd::runtime::request::CheckpointEntry;
-use crate::farcasterd::runtime::request::MadeOffer;
-use crate::farcasterd::runtime::request::TookOffer;
-use crate::farcasterd::runtime::request::{ProgressEvent, SwapProgress};
+use crate::farcasterd::runtime::request::{
+    CheckpointEntry, MadeOffer, OfferStatus, OfferStatusPair, ProgressEvent, SwapProgress,
+    TookOffer,
+};
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -723,6 +723,16 @@ impl Runtime {
 
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
+                let public_offer = self.public_offers
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    ServiceId::Database,
+                    Request::SetOfferStatus(OfferStatusPair {
+                        offer: public_offer.clone(),
+                        status: OfferStatus::Ended(success.clone()),
+                    }),
+                )?;
                 self.clean_up_after_swap(&swapid, endpoints)?;
                 self.stats.incr_outcome(&success);
                 match success {
@@ -767,6 +777,16 @@ impl Runtime {
                     }
                 };
                 if self.public_offers.remove(&public_offer) {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Database,
+                        Request::SetOfferStatus(OfferStatusPair {
+                            offer: public_offer.clone(),
+                            status: OfferStatus::InProgress,
+                        }),
+                    )?;
+
                     trace!(
                         "launching swapd with swap_id: {}",
                         swap_id.bright_yellow_bold()
@@ -1096,7 +1116,7 @@ impl Runtime {
                     let public_offer = offer.to_public_v1(node_id, public_addr.into());
                     let pub_offer_id = public_offer.id();
                     let serialized_offer = public_offer.to_string();
-                    if !self.public_offers.insert(public_offer) {
+                    if !self.public_offers.insert(public_offer.clone()) {
                         let msg = s!("This Public offer was previously registered");
                         error!("{}", msg.err());
                         return Err(Error::Other(msg));
@@ -1110,6 +1130,10 @@ impl Runtime {
                     self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
                     self.acc_addrs
                         .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
+                    endpoints.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, ServiceId::Database, Request::SetOfferStatus(OfferStatusPair {
+                        offer: public_offer,
+                        status: OfferStatus::Open,
+                    }))?;
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd, // source
