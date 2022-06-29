@@ -170,7 +170,7 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashMap<OfferId, (SwapId, ServiceId)>,
+    consumed_offers: HashMap<PublicOffer<BtcXmr>, (SwapId, ServiceId)>,
     node_ids: HashMap<OfferId, PublicKey>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
     peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
     wallet_token: Token,
@@ -337,7 +337,7 @@ impl Runtime {
                 if swapid != &swap_id {
                     Some((k, (swap_id, service_id)))
                 } else {
-                    offerid = Some(k);
+                    offerid = Some(k.offer.id());
                     None
                 }
             })
@@ -410,8 +410,8 @@ impl Runtime {
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offerid: &OfferId) -> bool {
-        self.consumed_offers.contains_key(offerid)
+    fn consumed_offers_contains(&self, offer: &PublicOffer<BtcXmr>) -> bool {
+        self.consumed_offers.contains_key(offer)
     }
 
     fn _send_walletd(
@@ -723,16 +723,27 @@ impl Runtime {
 
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
-                let public_offer = self.public_offers
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd,
-                    ServiceId::Database,
-                    Request::SetOfferStatus(OfferStatusPair {
-                        offer: public_offer.clone(),
-                        status: OfferStatus::Ended(success.clone()),
-                    }),
-                )?;
+                if let Some(public_offer) =
+                    self.consumed_offers
+                        .iter()
+                        .find_map(|(public_offer, (o_swap_id, _))| {
+                            if *o_swap_id == swapid {
+                                Some(public_offer)
+                            } else {
+                                None
+                            }
+                        })
+                {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Database,
+                        Request::SetOfferStatus(OfferStatusPair {
+                            offer: public_offer.clone(),
+                            status: OfferStatus::Ended(success.clone()),
+                        }),
+                    )?;
+                }
                 self.clean_up_after_swap(&swapid, endpoints)?;
                 self.stats.incr_outcome(&success);
                 match success {
@@ -793,7 +804,7 @@ impl Runtime {
                     );
 
                     self.consumed_offers
-                        .insert(public_offer.offer.id(), (swap_id, peer.clone()));
+                        .insert(public_offer.clone(), (swap_id, peer.clone()));
                     self.stats.incr_initiated();
                     launch_swapd(
                         self,
@@ -885,7 +896,7 @@ impl Runtime {
                 let pub_offers = self
                     .public_offers
                     .iter()
-                    .filter(|k| !self.consumed_offers_contains(&k.offer.id()))
+                    .filter(|k| !self.consumed_offers_contains(k.clone()))
                     .cloned()
                     .collect();
                 endpoints.send_to(
@@ -1165,7 +1176,7 @@ impl Runtime {
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
-                    || self.consumed_offers_contains(&public_offer.offer.id())
+                    || self.consumed_offers_contains(&public_offer)
                 {
                     let msg = format!(
                         "{} already exists or was already taken, ignoring request",
