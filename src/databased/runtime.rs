@@ -494,6 +494,11 @@ impl Database {
                 &secret_key.secret_bytes(),
                 lmdb::WriteFlags::empty(),
             )?;
+        } else {
+            warn!(
+                "address {} was already persisted with its secret key",
+                address
+            );
         }
         tx.commit()?;
         Ok(())
