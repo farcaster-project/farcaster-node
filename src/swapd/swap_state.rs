@@ -220,6 +220,9 @@ impl State {
     pub fn b_buy_sig(&self) -> bool {
         matches!(self, State::Bob(BobState::BuySigB { .. }))
     }
+    pub fn b_outcome_cancel(&self) -> bool {
+        matches!(self, State::Bob(BobState::FinishB(Outcome::Cancel)))
+    }
     pub fn remote_commit(&self) -> Option<&Commit> {
         match self {
             State::Alice(AliceState::CommitA { remote_commit, .. })

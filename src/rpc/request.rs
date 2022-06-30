@@ -418,10 +418,6 @@ pub enum Request {
     #[display("get_sweep_bitcoin_address")]
     GetSweepBitcoinAddress(bitcoin::Address),
 
-    #[api(type = 37)]
-    #[display("funding_key")]
-    FundingKey(FundingKey),
-
     #[api(type = 29)]
     #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
@@ -645,7 +641,7 @@ pub enum Request {
     FundingCompleted(Coin),
 
     #[api(type = 1112)]
-    #[display("read_funding")]
+    #[display("funding_canceld")]
     FundingCanceled(Coin),
 
     // #[api(type = 1203)]
@@ -744,13 +740,6 @@ pub struct CheckpointEntry {
 pub struct CheckpointChunk {
     pub msg_index: usize,
     pub serialized_state_chunk: Vec<u8>,
-}
-
-#[derive(Clone, Debug, StrictEncode, StrictDecode, Display)]
-#[display("funding key")]
-pub struct FundingKey {
-    pub funding_key: [u8; 32],
-    pub destination_address: bitcoin::Address,
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]

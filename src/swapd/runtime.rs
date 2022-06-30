@@ -194,7 +194,6 @@ pub fn run(
         pending_peer_request: none!(),
         pending_checkpoint_chunks: map![],
         txs: none!(),
-        awaiting_btc_sweep: false,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -218,7 +217,6 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    awaiting_btc_sweep: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -845,23 +843,12 @@ impl Runtime {
 
         match request {
             Request::Terminate if source == ServiceId::Farcasterd => {
-                if self.awaiting_btc_sweep {
-                    self.pending_requests.insert(
-                        ServiceId::Farcasterd,
-                        vec![PendingRequest {
-                            dest: self.identity(),
-                            bus_id: ServiceBus::Ctl,
-                            request: Request::Terminate,
-                        }],
-                    );
-                } else {
-                    info!(
-                        "{} | {}",
-                        self.swap_id.bright_blue_italic(),
-                        format!("Terminating {}", self.identity()).bright_white_bold()
-                    );
-                    std::process::exit(0);
-                }
+                info!(
+                    "{} | {}",
+                    self.swap_id.bright_blue_italic(),
+                    format!("Terminating {}", self.identity()).bright_white_bold()
+                );
+                std::process::exit(0);
             }
             Request::SweepXmrAddress(SweepXmrAddress {
                 view_key,
@@ -1290,7 +1277,6 @@ impl Runtime {
                             self.temporal_safety.xmr_finality_thr,
                         );
                     }
-
                     Event::TaskAborted(_) => {}
                     Event::SweepSuccess(SweepSuccess { id, .. })
                         if (self.state.b_buy_sig() || self.state.a_xmr_locked())
@@ -1886,6 +1872,23 @@ impl Runtime {
                     Event::TaskAborted(event) => {
                         debug!("{}", event)
                     }
+                    Event::SweepSuccess(SweepSuccess { id, .. })
+                        if self.state.b_outcome_cancel()
+                            && self.syncer_state.tasks.sweeping_addr.is_some()
+                            && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
+                    {
+                        self.state_update(
+                            endpoints,
+                            State::Bob(BobState::FinishB(Outcome::Cancel)),
+                        )?;
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCanceled(Coin::Bitcoin),
+                        )?;
+                        self.cancel_swap(endpoints, source)?;
+                    }
                     Event::SweepSuccess(event) => {
                         debug!("{}", event)
                     }
@@ -2032,22 +2035,12 @@ impl Runtime {
                 );
 
                 let task = self.syncer_state.sweep_btc(sweep_bitcoin_address);
-
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     self.syncer_state.bitcoin_syncer(),
                     Request::SyncerTask(task),
                 )?;
-
-                if self.awaiting_btc_sweep {
-                    if let Some((source, request)) =
-                        self.pending_requests.remove_entry(&ServiceId::Farcasterd)
-                    {
-                        self.handle_rpc_ctl(endpoints, source, request[0].request.clone())?;
-                    }
-                    self.awaiting_btc_sweep = false;
-                }
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs))
@@ -2172,15 +2165,8 @@ impl Runtime {
                         ServiceId::Wallet,
                         Request::GetSweepBitcoinAddress(self.state.b_address().cloned().unwrap()),
                     )?;
-                    self.awaiting_btc_sweep = true;
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        ServiceId::Farcasterd,
-                        Request::FundingCanceled(Coin::Bitcoin),
-                    )?;
+                    // cancel the swap to invalidate its state
                     self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Cancel)))?;
-                    self.cancel_swap(endpoints, source)?;
                 } else {
                     let msg =
                         "Swap is already locked-in, cannot manually cancel anymore.".to_string();

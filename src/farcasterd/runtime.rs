@@ -314,7 +314,6 @@ impl Runtime {
         &mut self,
         swapid: &SwapId,
         endpoints: &mut Endpoints,
-        success: &Outcome,
     ) -> Result<(), Error> {
         if self.running_swaps.remove(swapid) {
             endpoints.send_to(
@@ -373,11 +372,6 @@ impl Runtime {
                     }
                 }
             }
-        }
-
-        // do not kill the syncers if the swap was canceled by the user
-        if let Outcome::Cancel = success {
-            return Ok(());
         }
 
         self.syncer_clients = self
@@ -729,7 +723,7 @@ impl Runtime {
 
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
-                self.clean_up_after_swap(&swapid, endpoints, &success)?;
+                self.clean_up_after_swap(&swapid, endpoints)?;
                 self.stats.incr_outcome(&success);
                 match success {
                     Outcome::Buy => {
