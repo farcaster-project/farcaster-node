@@ -24,8 +24,9 @@ pub use request::Request;
 
 use microservices::esb::BusId;
 use microservices::rpc_connection::Api;
+use strict_encoding::{StrictDecode, StrictEncode};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Display)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Display, StrictEncode, StrictDecode)]
 pub enum ServiceBus {
     #[display("MSG")]
     Msg,

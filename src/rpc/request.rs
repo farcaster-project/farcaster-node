@@ -14,8 +14,11 @@
 
 #![allow(clippy::clone_on_copy)]
 
-use crate::walletd::runtime::BobState;
-use crate::walletd::{runtime::AliceState, NodeSecrets};
+use crate::swapd::CheckpointSwapd;
+use crate::walletd::{
+    runtime::{AliceState, CheckpointWallet},
+    NodeSecrets,
+};
 use crate::{
     farcasterd,
     syncerd::{
@@ -675,7 +678,7 @@ pub enum Request {
     RetrieveAllCheckpointInfo,
 
     #[api(type = 1307)]
-    #[display("delete_checkpoint")]
+    #[display("remove_checkpoint")]
     RemoveCheckpoint(SwapId),
 
     #[api(type = 1308)]
@@ -710,10 +713,11 @@ pub enum FundingInfo {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(NodeInfo::to_yaml_string)]
+#[display(CheckpointEntry::to_yaml_string)]
 pub struct CheckpointEntry {
     pub swap_id: SwapId,
     pub public_offer: PublicOffer<BtcXmr>,
+    pub trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -740,10 +744,11 @@ pub struct Checkpoint {
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display(Debug)]
 pub enum CheckpointState {
-    CheckpointWalletAlice(AliceState),
-    CheckpointWalletBob(BobState),
+    #[display("Checkpoint Wallet")]
+    CheckpointWallet(CheckpointWallet),
+    #[display("Checkpoint Swap")]
+    CheckpointSwapd(CheckpointSwapd),
 }
 
 impl FromStr for BitcoinFundingInfo {

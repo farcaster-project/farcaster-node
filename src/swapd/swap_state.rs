@@ -3,10 +3,11 @@ use farcaster_core::{
     role::{SwapRole, TradeRole},
     swap::btcxmr::BtcXmr,
 };
+use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::rpc::request::{Commit, Outcome, Params};
 
-#[derive(Display, Clone)]
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum AliceState {
     // #[display("Start: {0:#?} {1:#?}")]
     #[display("Start")]
@@ -44,7 +45,7 @@ pub enum AliceState {
     FinishA(Outcome),
 }
 
-#[derive(Display, Clone)]
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum BobState {
     // #[display("Start {0:#?} {1:#?}")]
     #[display("Start")]
@@ -84,7 +85,7 @@ pub enum BobState {
     FinishB(Outcome),
 }
 
-#[derive(Display, Clone)]
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 #[display(inner)]
 pub enum State {
     #[display("AliceState({0})")]

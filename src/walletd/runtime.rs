@@ -2,6 +2,7 @@ use crate::databased::checkpoint_handle_multipart_receive;
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
+use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 use request::{Checkpoint, CheckpointMultipartChunk};
 use std::path::PathBuf;
 use std::{
@@ -112,6 +113,29 @@ use strict_encoding::{
     strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
 };
 
+#[derive(Clone, Debug)]
+pub struct CheckpointWallet {
+    pub wallet: Wallet,
+    pub xmr_addr: monero::Address,
+}
+
+impl StrictEncode for CheckpointWallet {
+    fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
+        let mut len = self.wallet.strict_encode(&mut e)?;
+        len += self.xmr_addr.consensus_encode(&mut e)?;
+        Ok(len)
+    }
+}
+
+impl StrictDecode for CheckpointWallet {
+    fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
+        let wallet = Wallet::strict_decode(&mut d)?;
+        let xmr_addr = monero::Address::consensus_decode(&mut d)
+            .map_err(|err| strict_encoding::Error::DataIntegrityError(err.to_string()))?;
+        Ok(CheckpointWallet { wallet, xmr_addr })
+    }
+}
+
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub enum Wallet {
     Alice(AliceState),
@@ -121,6 +145,7 @@ pub enum Wallet {
 #[derive(Clone, Debug)]
 pub struct AliceState {
     alice: Alice<BtcXmr>,
+    pub local_trade_role: TradeRole,
     local_params: AliceParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
     key_manager: KeyManager,
@@ -136,6 +161,7 @@ pub struct AliceState {
 impl Encodable for AliceState {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.alice.consensus_encode(writer)?;
+        len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.local_proof.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
@@ -144,10 +170,10 @@ impl Encodable for AliceState {
         len += self.remote_params.consensus_encode(writer)?;
         len += self.remote_proof.consensus_encode(writer)?;
         len += self.core_arb_setup.consensus_encode(writer)?;
-        len += self
-            .alice_cancel_signature
-            .as_canonical_bytes()
-            .consensus_encode(writer)?;
+        len += farcaster_core::consensus::Encodable::consensus_encode(
+            &self.alice_cancel_signature.as_canonical_bytes(),
+            writer,
+        )?;
         len += self.adaptor_refund.consensus_encode(writer)?;
         Ok(len)
     }
@@ -157,6 +183,7 @@ impl Decodable for AliceState {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
         Ok(AliceState {
             alice: Decodable::consensus_decode(d)?,
+            local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             local_proof: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
@@ -178,6 +205,7 @@ impl_strict_encoding!(AliceState);
 impl AliceState {
     fn new(
         alice: Alice<BtcXmr>,
+        local_trade_role: TradeRole,
         local_params: AliceParameters<BtcXmr>,
         local_proof: Proof<BtcXmr>,
         key_manager: KeyManager,
@@ -186,6 +214,7 @@ impl AliceState {
     ) -> Self {
         Self {
             alice,
+            local_trade_role,
             local_params,
             local_proof,
             key_manager,
@@ -203,6 +232,7 @@ impl AliceState {
 #[derive(Clone, Debug)]
 pub struct BobState {
     bob: Bob<BtcXmr>,
+    pub local_trade_role: TradeRole,
     local_params: BobParameters<BtcXmr>,
     local_proof: Proof<BtcXmr>,
     key_manager: KeyManager,
@@ -218,6 +248,7 @@ pub struct BobState {
 impl Encodable for BobState {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut len = self.bob.consensus_encode(writer)?;
+        len += self.local_trade_role.consensus_encode(writer)?;
         len += self.local_params.consensus_encode(writer)?;
         len += self.local_proof.consensus_encode(writer)?;
         len += self.key_manager.consensus_encode(writer)?;
@@ -236,6 +267,7 @@ impl Decodable for BobState {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
         Ok(BobState {
             bob: Decodable::consensus_decode(d)?,
+            local_trade_role: Decodable::consensus_decode(d)?,
             local_params: Decodable::consensus_decode(d)?,
             local_proof: Decodable::consensus_decode(d)?,
             key_manager: Decodable::consensus_decode(d)?,
@@ -253,6 +285,7 @@ impl Decodable for BobState {
 impl BobState {
     fn new(
         bob: Bob<BtcXmr>,
+        local_trade_role: TradeRole,
         local_params: BobParameters<BtcXmr>,
         local_proof: Proof<BtcXmr>,
         key_manager: KeyManager,
@@ -262,6 +295,7 @@ impl BobState {
     ) -> Self {
         Self {
             bob,
+            local_trade_role,
             local_params,
             local_proof,
             key_manager,
@@ -410,11 +444,13 @@ impl Runtime {
                                 swap_id.bright_blue_italic(),
                                 "Wallet::Bob".bright_yellow()
                             );
+                            let local_trade_role = TradeRole::Maker;
                             if let request::Commit::AliceParameters(remote_commit) =
                                 remote_commit.clone()
                             {
                                 let bob_wallet = BobState::new(
                                     bob,
+                                    local_trade_role,
                                     local_params.clone(),
                                     local_proof,
                                     key_manager,
@@ -428,7 +464,7 @@ impl Runtime {
                                 return Ok(());
                             }
                             let launch_swap = LaunchSwap {
-                                local_trade_role: TradeRole::Maker,
+                                local_trade_role,
                                 public_offer: pub_offer,
                                 local_params: Params::Bob(local_params),
                                 swap_id,
@@ -461,8 +497,10 @@ impl Runtime {
                             if let request::Commit::BobParameters(bob_commit) =
                                 remote_commit.clone()
                             {
+                                let local_trade_role = TradeRole::Maker;
                                 let alice_state = AliceState::new(
                                     alice,
+                                    local_trade_role,
                                     local_params.clone(),
                                     local_proof,
                                     key_manager,
@@ -473,7 +511,7 @@ impl Runtime {
                                 self.wallets.insert(swap_id, Wallet::Alice(alice_state));
 
                                 let launch_swap = LaunchSwap {
-                                    local_trade_role: TradeRole::Maker,
+                                    local_trade_role,
                                     public_offer: pub_offer,
                                     local_params: Params::Alice(local_params),
                                     swap_id,
@@ -647,6 +685,7 @@ impl Runtime {
                     Reveal::AliceParameters(reveal) => {
                         if let Some(Wallet::Bob(BobState {
                             bob,
+                            local_trade_role,
                             local_params,
                             local_proof,
                             key_manager,
@@ -698,24 +737,32 @@ impl Runtime {
 
                             // checkpoint here after proof verification and potentially sending RevealProof
                             let swap_id = get_swap_id(&source)?;
-                            trace!("checkpointing bob pre lock.");
+                            debug!("checkpointing bob pre lock.");
                             checkpoint_send(
                                 endpoints,
                                 swap_id,
                                 ServiceId::Wallet,
                                 ServiceId::Database,
-                                request::CheckpointState::CheckpointWalletBob(BobState {
-                                    bob: bob.clone(),
-                                    local_params: local_params.clone(),
-                                    local_proof: local_proof.clone(),
-                                    key_manager: key_manager.clone(),
-                                    pub_offer: pub_offer.clone(),
-                                    funding_tx: Some(funding_tx.clone()),
-                                    remote_commit_params: remote_commit_params.clone(),
-                                    remote_params: remote_params.clone(),
-                                    remote_proof: Some(remote_proof.clone()),
-                                    core_arb_setup: core_arb_setup.clone(),
-                                    adaptor_buy: adaptor_buy.clone(),
+                                request::CheckpointState::CheckpointWallet(CheckpointWallet {
+                                    xmr_addr: self
+                                        .xmr_addrs
+                                        .get(&swap_id)
+                                        .expect("checked at start of swap")
+                                        .clone(),
+                                    wallet: Wallet::Bob(BobState {
+                                        bob: bob.clone(),
+                                        local_trade_role: local_trade_role.clone(),
+                                        local_params: local_params.clone(),
+                                        local_proof: local_proof.clone(),
+                                        key_manager: key_manager.clone(),
+                                        pub_offer: pub_offer.clone(),
+                                        funding_tx: Some(funding_tx.clone()),
+                                        remote_commit_params: remote_commit_params.clone(),
+                                        remote_params: remote_params.clone(),
+                                        remote_proof: Some(remote_proof.clone()),
+                                        core_arb_setup: core_arb_setup.clone(),
+                                        adaptor_buy: adaptor_buy.clone(),
+                                    }),
                                 }),
                             )?;
 
@@ -825,23 +872,7 @@ impl Runtime {
             })) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
-                // TODO: checkpointing before .get_mut call for now, but should do this later
-                trace!("checkpointing bob pre buy.");
-                if let Some(Wallet::Bob(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_send(
-                        endpoints,
-                        swap_id,
-                        ServiceId::Wallet,
-                        ServiceId::Database,
-                        request::CheckpointState::CheckpointWalletBob(state.clone()),
-                    )?;
-                } else {
-                    error!(
-                        "{:#} | Unknown wallet and swap_id {:#}",
-                        swap_id.bright_blue_italic(),
-                        swap_id.bright_white_bold(),
-                    );
-                };
+
                 if let Some(Wallet::Bob(BobState {
                     bob,
                     local_params,
@@ -850,7 +881,11 @@ impl Runtime {
                     remote_params: Some(remote_params),
                     core_arb_setup: Some(core_arb_setup),
                     adaptor_buy, // None
-                    ..
+                    funding_tx,
+                    local_proof,
+                    local_trade_role,
+                    remote_commit_params,
+                    remote_proof,
                 })) = self.wallets.get_mut(&swap_id)
                 {
                     let core_arb_txs = &(core_arb_setup.clone()).into();
@@ -864,8 +899,49 @@ impl Runtime {
                         signed_adaptor_refund,
                     )?;
 
-                    // *refund_sigs = Some(refund_proc_sigs);
+                    if adaptor_buy.is_some() {
+                        error!("{} | adaptor_buy already set", swap_id.bright_blue_italic());
+                        return Ok(());
+                    }
+                    *adaptor_buy = Some(bob.sign_adaptor_buy(
+                        key_manager,
+                        remote_params,
+                        local_params,
+                        core_arb_txs,
+                        pub_offer,
+                    )?);
+
+                    debug!("checkpointing bob pre buy sig.");
+                    checkpoint_send(
+                        endpoints,
+                        swap_id,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        request::CheckpointState::CheckpointWallet(CheckpointWallet {
+                            xmr_addr: self
+                                .xmr_addrs
+                                .get(&swap_id)
+                                .expect("checked at start of swap")
+                                .clone(),
+                            wallet: Wallet::Bob(BobState {
+                                bob: bob.clone(),
+                                local_params: local_params.clone(),
+                                key_manager: key_manager.clone(),
+                                pub_offer: pub_offer.clone(),
+                                remote_params: Some(remote_params.clone()),
+                                core_arb_setup: Some(core_arb_setup.clone()),
+                                adaptor_buy: adaptor_buy.clone(),
+                                funding_tx: funding_tx.clone(),
+                                local_proof: local_proof.clone(),
+                                local_trade_role: local_trade_role.clone(),
+                                remote_commit_params: remote_commit_params.clone(),
+                                remote_proof: remote_proof.clone(),
+                            }),
+                        }),
+                    )?;
+
                     {
+                        // lock
                         let signed_arb_lock =
                             bob.sign_arbitrating_lock(key_manager, core_arb_txs)?;
                         let sig = signed_arb_lock.lock_sig;
@@ -876,38 +952,11 @@ impl Runtime {
                         let finalized_lock_tx: bitcoin::Transaction =
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut lock_tx)?;
 
-                        // TODO: checkpoint here
-
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
                             Request::Tx(request::Tx::Lock(finalized_lock_tx)),
-                        )?;
-                    }
-
-                    {
-                        if adaptor_buy.is_some() {
-                            error!("{} | adaptor_buy already set", swap_id.bright_blue_italic());
-                            return Ok(());
-                        }
-                        *adaptor_buy = Some(bob.sign_adaptor_buy(
-                            key_manager,
-                            remote_params,
-                            local_params,
-                            core_arb_txs,
-                            pub_offer,
-                        )?);
-                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from((
-                            swap_id,
-                            adaptor_buy.clone().unwrap(),
-                        ));
-                        let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(), // destination swapd
-                            Request::Protocol(buy_proc_sig),
                         )?;
                     }
 
@@ -926,6 +975,7 @@ impl Runtime {
                             Request::Tx(Tx::Cancel(finalized_cancel_tx)),
                         )?;
                     }
+
                     {
                         // refund
                         let FullySignedRefund {
@@ -945,9 +995,23 @@ impl Runtime {
                             Broadcastable::<BitcoinSegwitV0>::finalize_and_extract(&mut refund_tx)?;
                         endpoints.send_to(
                             ServiceBus::Ctl,
+                            my_id.clone(),
+                            source.clone(), // destination swapd
+                            Request::Tx(Tx::Refund(final_refund_tx)),
+                        )?;
+                    }
+
+                    {
+                        let buy_proc_sig = BuyProcedureSignature::<BtcXmr>::from((
+                            swap_id,
+                            adaptor_buy.clone().unwrap(),
+                        ));
+                        let buy_proc_sig = Msg::BuyProcedureSignature(buy_proc_sig);
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
                             my_id,
                             source, // destination swapd
-                            Request::Tx(Tx::Refund(final_refund_tx)),
+                            Request::Protocol(buy_proc_sig),
                         )?;
                     }
                 } else {
@@ -961,22 +1025,6 @@ impl Runtime {
             Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
-                trace!("checkpointing alice pre lock.");
-                if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
-                    checkpoint_send(
-                        endpoints,
-                        swap_id,
-                        ServiceId::Wallet,
-                        ServiceId::Database,
-                        request::CheckpointState::CheckpointWalletAlice(state.clone()),
-                    )?;
-                } else {
-                    error!(
-                        "{:#} | Unknown wallet and swap_id {:#}",
-                        swap_id.bright_blue_italic(),
-                        swap_id.bright_white_bold(),
-                    );
-                };
 
                 if let Some(Wallet::Alice(AliceState {
                     alice,
@@ -987,7 +1035,10 @@ impl Runtime {
                     core_arb_setup,         // None
                     alice_cancel_signature, // None
                     adaptor_refund,         // None
-                    ..
+                    local_proof,
+                    local_trade_role,
+                    remote_commit,
+                    remote_proof,
                 })) = self.wallets.get_mut(&swap_id)
                 {
                     if core_arb_setup.is_some() {
@@ -1028,6 +1079,36 @@ impl Runtime {
                         signed_adaptor_refund,
                     ));
                     *alice_cancel_signature = Some(refund_proc_signatures.cancel_sig);
+
+                    debug!("checkpointing alice pre lock.");
+                    checkpoint_send(
+                        endpoints,
+                        swap_id,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        request::CheckpointState::CheckpointWallet(CheckpointWallet {
+                            xmr_addr: self
+                                .xmr_addrs
+                                .get(&swap_id)
+                                .expect("checked at start of swap")
+                                .clone(),
+                            wallet: Wallet::Alice(AliceState {
+                                alice: alice.clone(),
+                                local_params: local_params.clone(),
+                                pub_offer: pub_offer.clone(),
+                                remote_params: Some(bob_parameters.clone()),
+                                core_arb_setup: core_arb_setup.clone(),
+                                alice_cancel_signature: alice_cancel_signature.clone(),
+                                adaptor_refund: adaptor_refund.clone(),
+                                key_manager: key_manager.clone(),
+                                local_proof: local_proof.clone(),
+                                local_trade_role: local_trade_role.clone(),
+                                remote_commit: remote_commit.clone(),
+                                remote_proof: remote_proof.clone(),
+                            }),
+                        }),
+                    )?;
+
                     // NOTE: if this is the right spot for the Ctl message, it should also be replayed upon state recovery
                     {
                         // cancel
@@ -1097,14 +1178,21 @@ impl Runtime {
                     buy_adaptor_sig: buy_encrypted_sig,
                 };
                 let id = self.identity();
-                trace!("checkpointing alice pre buy.");
+                debug!("checkpointing alice pre buy sig.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
                     checkpoint_send(
                         endpoints,
                         swap_id,
                         ServiceId::Wallet,
                         ServiceId::Database,
-                        request::CheckpointState::CheckpointWalletAlice(state.clone()),
+                        request::CheckpointState::CheckpointWallet(CheckpointWallet {
+                            xmr_addr: self
+                                .xmr_addrs
+                                .get(&swap_id)
+                                .expect("checked at start of swap")
+                                .clone(),
+                            wallet: Wallet::Alice(state.clone()),
+                        }),
                     )?;
                 } else {
                     error!(
@@ -1232,7 +1320,7 @@ impl Runtime {
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
                         let funding = create_funding(&mut key_manager, offer.network)?;
                         let funding_addr = funding.get_address()?;
-                        let funding_fee = bitcoin::Amount::from_sat(150);
+                        let funding_fee = bitcoin::Amount::from_sat(200);
                         let funding_amount = offer.arbitrating_amount + funding_fee;
                         debug!(
                             "{} | Send {} to {}",
@@ -1245,9 +1333,11 @@ impl Runtime {
                             swap_id.bright_blue_italic(),
                             "Wallet::Bob".bright_yellow()
                         );
+                        let local_trade_role = TradeRole::Taker;
                         if self.wallets.get(&swap_id).is_none() {
                             let local_wallet = BobState::new(
                                 bob,
+                                local_trade_role,
                                 local_params.clone(),
                                 local_proof,
                                 key_manager,
@@ -1261,7 +1351,7 @@ impl Runtime {
                             return Ok(());
                         }
                         let launch_swap = LaunchSwap {
-                            local_trade_role: TradeRole::Taker,
+                            local_trade_role,
                             public_offer,
                             local_params: Params::Bob(local_params),
                             swap_id,
@@ -1281,6 +1371,7 @@ impl Runtime {
                             alice.generate_parameters(&mut key_manager, &public_offer)?;
                         let wallet_seed = self.node_secrets.wallet_seed;
                         let key_manager = KeyManager::new(wallet_seed, wallet_index)?;
+                        let local_trade_role = TradeRole::Taker;
 
                         if self.wallets.get(&swap_id).is_none() {
                             // TODO instead of storing in state, start building
@@ -1291,6 +1382,7 @@ impl Runtime {
                             );
                             let wallet = AliceState::new(
                                 alice,
+                                local_trade_role,
                                 local_params.clone(),
                                 local_proof,
                                 key_manager,
@@ -1302,7 +1394,7 @@ impl Runtime {
                             error!("{} | Wallet already exists", swap_id.bright_blue_italic());
                         }
                         let launch_swap = LaunchSwap {
-                            local_trade_role: TradeRole::Taker,
+                            local_trade_role,
                             public_offer,
                             local_params: Params::Alice(local_params),
                             swap_id,
@@ -1353,7 +1445,6 @@ impl Runtime {
                     local_params,
                     key_manager,
                     remote_params: Some(alice_params),
-                    core_arb_setup: Some(_),
                     adaptor_buy: Some(adaptor_buy),
                     pub_offer,
                     ..
@@ -1430,16 +1521,16 @@ impl Runtime {
             }
             Request::Tx(Tx::Refund(refund_tx)) => {
                 let swap_id = get_swap_id(&source)?;
+
                 if let Some(Wallet::Alice(AliceState {
                     alice,
                     local_params,
                     key_manager,
                     remote_params: Some(bob_params), //remote
-                    remote_proof: Some(_),
                     adaptor_refund: Some(adaptor_refund),
                     pub_offer,
                     ..
-                })) = self.wallets.get_mut(&get_swap_id(&source)?)
+                })) = self.wallets.get_mut(&swap_id)
                 {
                     let sk_b_btc = alice.recover_accordant_key(
                         key_manager,
@@ -1510,6 +1601,8 @@ impl Runtime {
                         source,
                         Request::SweepXmrAddress(sweep_keys),
                     )?;
+                } else {
+                    error!("Call to refund transaction expects an Alice wallet");
                 }
             }
             Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
@@ -1554,24 +1647,22 @@ impl Runtime {
                 }
             }
 
-            Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
-                CheckpointState::CheckpointWalletAlice(alice_state) => {
-                    info!("Restoring alice wallet for swap {}", swap_id);
-                    if !self.wallets.contains_key(&swap_id) {
-                        self.wallets.insert(swap_id, Wallet::Alice(alice_state));
-                    } else {
-                        error!("Did not restore, the runtime already contains an Alice wallet for swap {}", swap_id)
+            Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
+                match state {
+                    CheckpointState::CheckpointWallet(CheckpointWallet { wallet, xmr_addr }) => {
+                        info!("Restoring wallet for swap {}", swap_id);
+                        if !self.wallets.contains_key(&swap_id) {
+                            self.wallets.insert(swap_id, wallet);
+                        } else {
+                            warn!("Did not restore full wallet, a wallet with this key already exists.");
+                        }
+                        self.xmr_addrs.insert(swap_id, xmr_addr);
+                    }
+                    s => {
+                        error!("Checkpoint {} not supported in walletd", s);
                     }
                 }
-                CheckpointState::CheckpointWalletBob(bob_state) => {
-                    info!("Restoring bob wallet for swap {}", swap_id);
-                    if !self.wallets.contains_key(&swap_id) {
-                        self.wallets.insert(swap_id, Wallet::Bob(bob_state));
-                    } else {
-                        error!("Did not restore wallet, the runtime already contains a Bob wallet for swap {}", swap_id)
-                    }
-                }
-            },
+            }
 
             _ => {
                 error!(

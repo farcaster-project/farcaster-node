@@ -25,3 +25,5 @@ mod temporal_safety;
 pub use opts::Opts;
 pub use runtime::get_swap_id;
 pub use runtime::run;
+pub use runtime::CheckpointSwapd;
+pub use swap_state::State;
