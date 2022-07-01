@@ -24,6 +24,7 @@ use crate::{
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
     },
 };
+use microservices::rpc::Failure;
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -746,6 +747,7 @@ impl Runtime {
                     }
                     // bob receives, alice sends
                     Msg::RefundProcedureSignatures(_) if self.state.b_core_arb() => {
+                        self.state.sup_received_refund_procedure_signatures();
                         self.send_wallet(msg_bus, endpoints, request)?;
                     }
                     // alice receives, bob sends
@@ -831,6 +833,7 @@ impl Runtime {
                 | ServiceId::Wallet
                 | ServiceId::Database
             ) => {}
+            (Request::CancelSwap, ServiceId::Client(_)) => {}
             (Request::GetInfo(_), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
@@ -1870,6 +1873,23 @@ impl Runtime {
                     Event::TaskAborted(event) => {
                         debug!("{}", event)
                     }
+                    Event::SweepSuccess(SweepSuccess { id, .. })
+                        if self.state.b_outcome_cancel()
+                            && self.syncer_state.tasks.sweeping_addr.is_some()
+                            && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
+                    {
+                        self.state_update(
+                            endpoints,
+                            State::Bob(BobState::FinishB(Outcome::Cancel)),
+                        )?;
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Farcasterd,
+                            Request::FundingCanceled(Coin::Bitcoin),
+                        )?;
+                        self.cancel_swap(endpoints)?;
+                    }
                     Event::SweepSuccess(event) => {
                         debug!("{}", event)
                     }
@@ -1933,9 +1953,11 @@ impl Runtime {
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
                 self.send_peer(endpoints, Msg::CoreArbitratingSetup(core_arb_setup))?;
                 let next_state = State::Bob(BobState::CorearbB {
+                    received_refund_procedure_signatures: false,
                     local_params: self.state.local_params().cloned().unwrap(),
                     cancel_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
+                    b_address: self.state.b_address().cloned().unwrap(),
                 });
                 self.state_update(endpoints, next_state)?;
             }
@@ -2003,6 +2025,23 @@ impl Runtime {
                     }
                     _ => {}
                 }
+            }
+
+            Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
+                info!(
+                    "{} | Sweeping source (funding) address: {} to destination address: {}",
+                    self.swap_id,
+                    sweep_bitcoin_address.source_address,
+                    sweep_bitcoin_address.destination_address
+                );
+
+                let task = self.syncer_state.sweep_btc(sweep_bitcoin_address);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(task),
+                )?;
             }
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs))
@@ -2105,6 +2144,66 @@ impl Runtime {
                 };
             }
 
+            Request::CancelSwap
+                if self.state.a_start() || self.state.a_commit() || self.state.a_reveal() =>
+            {
+                // just cancel the swap, no additional logic required
+                self.state_update(
+                    endpoints,
+                    State::Alice(AliceState::FinishA(Outcome::Cancel)),
+                )?;
+                self.cancel_swap(endpoints)?;
+                self.send_ctl(
+                    endpoints,
+                    source,
+                    Request::String("Canceled swap".to_string()),
+                )?;
+            }
+            Request::CancelSwap if self.state.b_start() => {
+                // just cancel the swap, no additional logic required, since funding was not yet retrieved
+                self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Cancel)))?;
+                self.cancel_swap(endpoints)?;
+                self.send_ctl(
+                    endpoints,
+                    source,
+                    Request::String("Canceled swap".to_string()),
+                )?;
+            }
+            Request::CancelSwap
+                if self.state.b_commit()
+                    || self.state.b_reveal()
+                    || (!self.state.b_received_refund_procedure_signatures()
+                        && self.state.b_core_arb()) =>
+            {
+                self.send_ctl(
+                    endpoints,
+                    ServiceId::Wallet,
+                    Request::GetSweepBitcoinAddress(self.state.b_address().cloned().unwrap()),
+                )?;
+                // cancel the swap to invalidate its state
+                self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Cancel)))?;
+                self.send_ctl(
+                    endpoints,
+                    source,
+                    Request::String(
+                        "Cancelling swap, checking if funds can be sweeped.".to_string(),
+                    ),
+                )?;
+            }
+            Request::CancelSwap => {
+                let msg = "Swap is already locked-in, cannot manually cancel anymore.".to_string();
+                warn!("{} | {}", self.swap_id, msg);
+
+                self.send_ctl(
+                    endpoints,
+                    source,
+                    Request::Failure(Failure { code: 1, info: msg }),
+                )?;
+            }
+            // TODO add rule for canceling alice swap if bob never locks,
+            // but she is already in RefundSigA. This is not that critical,
+            // since Alice won't lock her funds either, but it could leave a
+            // swap running forever
             Request::GetInfo(_) => {
                 fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
                 where
@@ -2320,6 +2419,14 @@ impl Runtime {
         };
 
         Ok(commitment)
+    }
+
+    fn cancel_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        let swap_success_req = Request::SwapOutcome(Outcome::Cancel);
+        self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
+        self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
+        info!("{} | Canceled swap.", self.swap_id);
+        Ok(())
     }
 }
 

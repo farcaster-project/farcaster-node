@@ -1,6 +1,7 @@
 use crate::databased::checkpoint_handle_multipart_receive;
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
+use crate::syncerd::SweepBitcoinAddress;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 use request::{Checkpoint, CheckpointMultipartChunk};
@@ -419,7 +420,7 @@ impl Runtime {
                     &pub_offer
                 );
                 let PublicOffer { offer, .. } = pub_offer.clone();
-                let external_address = self.btc_addrs.remove(&swap_id).expect("checked above");
+                let external_address = self.btc_addrs.get(&swap_id).expect("checked above").clone();
                 match offer.maker_role {
                     SwapRole::Bob => {
                         let bob = Bob::<BtcXmr>::new(external_address, FeePriority::Low);
@@ -1622,6 +1623,33 @@ impl Runtime {
                         request_id,
                     )),
                 )?
+            }
+            Request::GetSweepBitcoinAddress(source_address) => {
+                let swap_id = get_swap_id(&source)?;
+                if let Some(Wallet::Bob(BobState { key_manager, .. })) =
+                    self.wallets.get_mut(&swap_id)
+                {
+                    let source_private_key = key_manager
+                        .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?
+                        .secret_bytes();
+                    let destination_address = self
+                        .btc_addrs
+                        .get(&swap_id)
+                        .expect("checked at start of swap")
+                        .clone();
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        Request::SweepBitcoinAddress(SweepBitcoinAddress {
+                            source_private_key,
+                            source_address,
+                            destination_address,
+                        }),
+                    )?;
+                } else {
+                    error!("get funding key requires a bob wallet")
+                }
             }
             Request::SwapOutcome(success) => {
                 let swap_id = get_swap_id(&source)?;

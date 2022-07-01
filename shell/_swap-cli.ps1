@@ -46,6 +46,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('make', 'make', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening for incoming connections. Command used to to print the resulting public offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer')
             [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to maker''s daemon to start the trade')
             [CompletionResult]::new('revoke-offer', 'revoke-offer', [CompletionResultType]::ParameterValue, 'Revoke offer accepts an offer and revokes it within the runtime')
+            [CompletionResult]::new('cancel-swap', 'cancel-swap', [CompletionResultType]::ParameterValue, 'Cancel a swap if it has not locked yet')
             [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request swap progress report')
             [CompletionResult]::new('needs-funding', 'needs-funding', [CompletionResultType]::ParameterValue, 'Returns addresses and amounts that require funding for coin')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -228,6 +229,21 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             break
         }
         'swap-cli;revoke-offer' {
+            [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
+            [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
+            [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
+            [CompletionResult]::new('--tor-proxy', 'tor-proxy', [CompletionResultType]::ParameterName, 'Use Tor')
+            [CompletionResult]::new('-m', 'm', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
+            [CompletionResult]::new('--msg-socket', 'msg-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
+            [CompletionResult]::new('-x', 'x', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
+            [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
+            [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
+            [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
+            [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
+            [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
+            break
+        }
+        'swap-cli;cancel-swap' {
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')

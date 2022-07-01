@@ -15,6 +15,7 @@
 #![allow(clippy::clone_on_copy)]
 
 use crate::swapd::CheckpointSwapd;
+use crate::syncerd::SweepBitcoinAddress;
 use crate::walletd::{
     runtime::{AliceState, CheckpointWallet},
     NodeSecrets,
@@ -413,6 +414,10 @@ pub enum Request {
     #[display("get_keys({0})")]
     GetKeys(GetKeys),
 
+    #[api(type = 36)]
+    #[display("get_sweep_bitcoin_address")]
+    GetSweepBitcoinAddress(bitcoin::Address),
+
     #[api(type = 29)]
     #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
@@ -520,6 +525,10 @@ pub enum Request {
     #[api(type = 193)]
     #[display("revoke_offer({0})")]
     RevokeOffer(PublicOffer<BtcXmr>),
+
+    #[api(type = 192)]
+    #[display("cancel_swap")]
+    CancelSwap,
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]
@@ -632,7 +641,7 @@ pub enum Request {
     FundingCompleted(Coin),
 
     #[api(type = 1112)]
-    #[display("read_funding")]
+    #[display("funding_canceled")]
     FundingCanceled(Coin),
 
     // #[api(type = 1203)]
@@ -690,8 +699,9 @@ pub enum Request {
     RestoreCheckpoint(SwapId),
 
     #[api(type = 1310)]
-    #[display("address_secret_key")]
-    AddressSecretKey(AddressSecretKey),
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SweepBitcoinAddress(SweepBitcoinAddress),
 
     #[api(type = 1311)]
     #[display("get_address_secret_key")]
@@ -706,14 +716,18 @@ pub enum Request {
     AddressList(List<bitcoin::Address>),
 
     #[api(type = 1314)]
+    #[display("address_secret_key")]
+    AddressSecretKey(AddressSecretKey),
+
+    #[api(type = 1315)]
     #[display("set_offer_history({0})")]
     SetOfferStatus(OfferStatusPair),
 
-    #[api(type = 1315)]
+    #[api(type = 1316)]
     #[display("retrieve_offers")]
     RetrieveOffers(OfferStatusSelector),
 
-    #[api(type = 1316)]
+    #[api(type = 1317)]
     #[display("offer_status_list({0})")]
     OfferStatusList(List<OfferStatusPair>),
 }
@@ -771,6 +785,8 @@ pub enum Outcome {
     Refund,
     #[display("Failure(Punished)")]
     Punish,
+    #[display("Failure(Canceled)")]
+    Cancel,
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]

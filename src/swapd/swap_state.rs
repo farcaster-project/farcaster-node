@@ -75,9 +75,11 @@ pub enum BobState {
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB {
+        received_refund_procedure_signatures: bool,
         cancel_seen: bool,
         remote_params: Params,
         local_params: Params,
+        b_address: bitcoin::Address,
     }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
     BuySigB { buy_tx_seen: bool },
@@ -171,11 +173,55 @@ impl State {
             _ => false,
         }
     }
+    pub fn sup_received_refund_procedure_signatures(&mut self) -> bool {
+        match self {
+            State::Bob(BobState::CorearbB {
+                received_refund_procedure_signatures,
+                ..
+            }) => {
+                *received_refund_procedure_signatures = true;
+                true
+            }
+            _ => false,
+        }
+    }
+    pub fn b_received_refund_procedure_signatures(&self) -> bool {
+        if let State::Bob(BobState::CorearbB {
+            received_refund_procedure_signatures,
+            ..
+        }) = self
+        {
+            *received_refund_procedure_signatures
+        } else {
+            false
+        }
+    }
+    pub fn a_start(&self) -> bool {
+        matches!(self, State::Alice(AliceState::StartA { .. }))
+    }
+    pub fn a_commit(&self) -> bool {
+        matches!(self, State::Alice(AliceState::CommitA { .. }))
+    }
+    pub fn a_reveal(&self) -> bool {
+        matches!(self, State::Alice(AliceState::RevealA { .. }))
+    }
+    pub fn b_start(&self) -> bool {
+        matches!(self, State::Bob(BobState::StartB { .. }))
+    }
+    pub fn b_commit(&self) -> bool {
+        matches!(self, State::Bob(BobState::CommitB { .. }))
+    }
+    pub fn b_reveal(&self) -> bool {
+        matches!(self, State::Bob(BobState::RevealB { .. }))
+    }
     pub fn b_core_arb(&self) -> bool {
         matches!(self, State::Bob(BobState::CorearbB { .. }))
     }
     pub fn b_buy_sig(&self) -> bool {
         matches!(self, State::Bob(BobState::BuySigB { .. }))
+    }
+    pub fn b_outcome_cancel(&self) -> bool {
+        matches!(self, State::Bob(BobState::FinishB(Outcome::Cancel)))
     }
     pub fn remote_commit(&self) -> Option<&Commit> {
         match self {
@@ -207,7 +253,8 @@ impl State {
     pub fn b_address(&self) -> Option<&bitcoin::Address> {
         match self {
             State::Bob(BobState::CommitB { b_address, .. })
-            | State::Bob(BobState::RevealB { b_address, .. }) => Some(b_address),
+            | State::Bob(BobState::RevealB { b_address, .. })
+            | State::Bob(BobState::CorearbB { b_address, .. }) => Some(b_address),
             _ => None,
         }
     }
