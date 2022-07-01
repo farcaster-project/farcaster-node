@@ -483,7 +483,7 @@ struct Database(lmdb::Environment);
 
 const LMDB_CHECKPOINTS: &str = "checkpoints";
 const LMDB_ADDRESSES: &str = "addresses";
-const LMDB_OFFER_HISTORY: &str = "history";
+const LMDB_OFFER_HISTORY: &str = "offer_history";
 
 impl Database {
     fn new(path: PathBuf) -> Result<Database, lmdb::Error> {
