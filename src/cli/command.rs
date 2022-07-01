@@ -224,6 +224,11 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
+            Command::CancelSwap { swap_id } => {
+                runtime.request(ServiceId::Swap(swap_id), Request::CancelSwap)?;
+                runtime.report_response_or_fail()?;
+            }
+
             Command::Progress { swapid, follow } => {
                 if follow {
                     // subscribe to progress event and loop until Finish event is received or user

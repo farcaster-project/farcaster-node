@@ -192,12 +192,14 @@ struct Stats {
     success: u64,
     refund: u64,
     punish: u64,
+    cancel: u64,
     initialized: u64,
     awaiting_funding_btc: u64,
     awaiting_funding_xmr: u64,
     funded_xmr: u64,
     funded_btc: u64,
     funding_canceled_xmr: u64,
+    funding_canceled_btc: u64,
 }
 
 impl Stats {
@@ -206,6 +208,7 @@ impl Stats {
             Outcome::Buy => self.success += 1,
             Outcome::Refund => self.refund += 1,
             Outcome::Punish => self.punish += 1,
+            Outcome::Cancel => self.cancel += 1,
         };
     }
     fn incr_initiated(&mut self) {
@@ -233,31 +236,39 @@ impl Stats {
         self.awaiting_funding_xmr -= 1;
         self.funding_canceled_xmr += 1;
     }
+    fn incr_funding_bitcoin_canceled(&mut self) {
+        self.awaiting_funding_btc -= 1;
+        self.funding_canceled_btc += 1;
+    }
     fn success_rate(&self) -> f64 {
         let Stats {
             success,
             refund,
             punish,
+            cancel,
             initialized,
             awaiting_funding_btc,
             awaiting_funding_xmr,
             funded_btc,
             funded_xmr,
             funding_canceled_xmr,
+            funding_canceled_btc,
         } = self;
-        let total = success + refund + punish;
+        let total = success + refund + punish + cancel;
         let rate = *success as f64 / (total as f64);
         info!(
-            "Swapped({}) | Refunded({}) / Punished({}) | Initialized({}) / AwaitingFundingXMR({}) / AwaitingFundingBTC({}) / FundedXMR({}) / FundedBTC({}) / FundingCanceledXMR({}) ",
+            "Swapped({}) | Refunded({}) / Punished({}) | Canceled({}) | Initialized({}) / AwaitingFundingXMR({}) / AwaitingFundingBTC({}) / FundedXMR({}) / FundedBTC({}) / FundingCanceledXMR({}) / FundingCanceledBTC({})",
             success.bright_white_bold(),
             refund.bright_white_bold(),
             punish.bright_white_bold(),
+            cancel.bright_white_bold(),
             initialized,
             awaiting_funding_xmr.bright_white_bold(),
             awaiting_funding_btc.bright_white_bold(),
             funded_xmr.bright_white_bold(),
             funded_btc.bright_white_bold(),
             funding_canceled_xmr.bright_white_bold(),
+            funding_canceled_btc.bright_white_bold(),
         );
         info!(
             "{} = {:>4.3}%",
@@ -395,7 +406,6 @@ impl Runtime {
             .drain()
             .filter(|(k, _)| clients.contains_key(k))
             .collect();
-        // self.connections.into_iter().filter(|(o, r)| )
 
         Ok(())
     }
@@ -724,6 +734,9 @@ impl Runtime {
                     }
                     Outcome::Punish => {
                         warn!("Punish on swap {}", &swapid);
+                    }
+                    Outcome::Cancel => {
+                        warn!("Canceled swap {}", &swapid);
                     }
                 }
                 self.stats.success_rate();
@@ -1506,17 +1519,28 @@ impl Runtime {
 
             Request::FundingCanceled(coin) => {
                 let swapid = get_swap_id(&source)?;
-                if match coin {
-                    Coin::Bitcoin => self.funding_btc.remove(&get_swap_id(&source)?).is_some(),
-                    Coin::Monero => self.funding_xmr.remove(&get_swap_id(&source)?).is_some(),
-                } {
-                    self.stats.incr_funding_monero_canceled();
-                    info!(
-                        "{} | Your {} funding was canceled",
-                        swapid.bright_blue_italic(),
-                        coin.bright_green_bold()
-                    );
-                }
+                match coin {
+                    Coin::Bitcoin => {
+                        if self.funding_btc.remove(&get_swap_id(&source)?).is_some() {
+                            self.stats.incr_funding_bitcoin_canceled();
+                            info!(
+                                "{} | Your {} funding was canceled",
+                                swapid.bright_blue_italic(),
+                                coin.bright_green_bold()
+                            );
+                        }
+                    }
+                    Coin::Monero => {
+                        if self.funding_xmr.remove(&get_swap_id(&source)?).is_some() {
+                            self.stats.incr_funding_monero_canceled();
+                            info!(
+                                "{} | Your {} funding was canceled",
+                                swapid.bright_blue_italic(),
+                                coin.bright_green_bold()
+                            );
+                        }
+                    }
+                };
             }
 
             Request::NeedsFunding(Coin::Monero) => {
