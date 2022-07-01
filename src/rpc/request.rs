@@ -641,7 +641,7 @@ pub enum Request {
     FundingCompleted(Coin),
 
     #[api(type = 1112)]
-    #[display("funding_canceld")]
+    #[display("funding_canceled")]
     FundingCanceled(Coin),
 
     // #[api(type = 1203)]

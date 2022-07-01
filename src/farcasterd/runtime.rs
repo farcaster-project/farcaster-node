@@ -1519,30 +1519,28 @@ impl Runtime {
 
             Request::FundingCanceled(coin) => {
                 let swapid = get_swap_id(&source)?;
-                if match coin {
+                match coin {
                     Coin::Bitcoin => {
                         if self.funding_btc.remove(&get_swap_id(&source)?).is_some() {
                             self.stats.incr_funding_bitcoin_canceled();
-                            true
-                        } else {
-                            false
+                            info!(
+                                "{} | Your {} funding was canceled",
+                                swapid.bright_blue_italic(),
+                                coin.bright_green_bold()
+                            );
                         }
                     }
                     Coin::Monero => {
                         if self.funding_xmr.remove(&get_swap_id(&source)?).is_some() {
                             self.stats.incr_funding_monero_canceled();
-                            true
-                        } else {
-                            false
+                            info!(
+                                "{} | Your {} funding was canceled",
+                                swapid.bright_blue_italic(),
+                                coin.bright_green_bold()
+                            );
                         }
                     }
-                } {
-                    info!(
-                        "{} | Your {} funding was canceled",
-                        swapid.bright_blue_italic(),
-                        coin.bright_green_bold()
-                    );
-                }
+                };
             }
 
             Request::NeedsFunding(Coin::Monero) => {
