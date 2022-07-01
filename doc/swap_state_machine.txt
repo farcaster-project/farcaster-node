@@ -1,0 +1,20 @@
+digraph finite_state_machine {
+	fontname="Helvetica,Arial,sans-serif"
+	node [fontname="Helvetica,Arial,sans-serif"]
+	edge [fontname="Helvetica,Arial,sans-serif"]
+	rankdir=LR;
+	node [shape = doublecircle]; FinishA FinishB;
+	node [shape = circle];
+	# Alice
+	StartA -> CommitA [label = "Request::InitSwap"];
+	CommitA -> RevealA [label = "Msg::Reveal"];
+	RevealA -> RefundsigA [label = "Msg::RefundProcedureSignatures"]
+	RefundsigA-> FinishA [label = "Event::TransactionConfirmations"]
+
+	# Bob
+	StartB -> CommitB [label = "Request::InitSwap"];
+	CommitB -> RevealB [label = "Msg::Reveal"];
+	RevealB -> CorearbB [label = "Msg::CoreArbitratingSetup"];
+	CorearbB -> BuySigB [label = "Event::TransactionConfirmations"];
+	BuySigB -> FinishB [label = "Event::TransactionConfirmations"];
+}
