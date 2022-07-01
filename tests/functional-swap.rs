@@ -1864,9 +1864,6 @@ async fn run_user_cancel_swap(
     // cancel the swap on Alice's side
     cancel_swap(swap_id, data_dir_alice);
 
-    // wait a bit for sweep to happen
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
-
     // fund the bitcoin address
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
@@ -1876,8 +1873,7 @@ async fn run_user_cancel_swap(
     println!("waiting for the bitcoin funding info to clear");
     retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
 
-    println!("\n\n Cancelling Bob\n\n");
-    // cance lthe swap on Bob's side
+    // cancel the swap on Bob's side
     cancel_swap(swap_id, data_dir_bob);
 
     // wait a bit for sweep to happen
