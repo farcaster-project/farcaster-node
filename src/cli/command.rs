@@ -12,6 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::rpc::request::AddressSecretKey;
+use crate::syncerd::SweepBitcoinAddress;
 use farcaster_core::negotiation::Offer;
 use farcaster_core::swap::btcxmr::BtcXmr;
 use std::{
@@ -251,6 +253,29 @@ impl Exec for Command {
             Command::NeedsFunding { coin } => {
                 runtime.request(ServiceId::Farcasterd, Request::NeedsFunding(coin))?;
                 runtime.report_response_or_fail()?;
+            }
+
+            Command::SweepAddress {
+                source_address,
+                destination_address,
+            } => {
+                runtime.request(
+                    ServiceId::Database,
+                    Request::GetAddressSecretKey(source_address.clone()),
+                )?;
+                if let Request::AddressSecretKey(AddressSecretKey { secret_key, .. }) =
+                    runtime.report_failure()?
+                {
+                    runtime.request(
+                        ServiceId::Farcasterd,
+                        Request::SweepBitcoinAddress(SweepBitcoinAddress {
+                            source_address,
+                            source_private_key: secret_key,
+                            destination_address,
+                        }),
+                    )?;
+                    runtime.report_response_or_fail()?;
+                }
             }
         }
 

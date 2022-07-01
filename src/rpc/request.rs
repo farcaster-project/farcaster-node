@@ -530,6 +530,10 @@ pub enum Request {
     #[display("cancel_swap")]
     CancelSwap,
 
+    #[api(type = 191)]
+    #[display("sweep_address({0})")]
+    SweepAddress(SweepAddress),
+
     #[api(type = 205)]
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
@@ -995,6 +999,13 @@ pub struct InitSwap {
 pub enum Progress {
     Message(String),
     StateTransition(String),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display("{source_address}, {destination_address}")]
+pub struct SweepAddress {
+    pub source_address: Address,
+    pub destination_address: Address,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
