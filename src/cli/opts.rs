@@ -217,10 +217,10 @@ pub enum Command {
         public_offer: PublicOffer<BtcXmr>,
     },
 
-    /// Cancel a swap if it has not locked yet.
-    #[display("cancel-swap<{swap_id}>")]
-    CancelSwap {
-        /// The swap to be canceled
+    /// Abort a swap if it has not locked yet.
+    #[display("abort-swap<{swap_id}>")]
+    AbortSwap {
+        /// The swap to be aborted
         swap_id: SwapId,
     },
 

@@ -12,8 +12,8 @@ _swap-cli() {
             "$1")
                 cmd="swap__cli"
                 ;;
-            cancel-swap)
-                cmd+="__cancel__swap"
+            abort-swap)
+                cmd+="__abort__swap"
                 ;;
             help)
                 cmd+="__help"
@@ -67,7 +67,7 @@ _swap-cli() {
 
     case "${cmd}" in
         swap__cli)
-            opts="-h -V -d -v -T -m -x --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket info peers list-swaps list-offers offer-info list-listens list-checkpoints restore-checkpoint make take revoke-offer cancel-swap progress needs-funding sweep-address help"
+            opts="-h -V -d -v -T -m -x --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket info peers list-swaps list-offers offer-info list-listens list-checkpoints restore-checkpoint make take revoke-offer abort-swap progress needs-funding sweep-address help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -112,7 +112,7 @@ _swap-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        swap__cli__cancel__swap)
+        swap__cli__abort__swap)
             opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SWAP_ID>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

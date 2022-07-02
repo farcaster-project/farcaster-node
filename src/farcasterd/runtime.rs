@@ -200,7 +200,7 @@ struct Stats {
     success: u64,
     refund: u64,
     punish: u64,
-    cancel: u64,
+    abort: u64,
     initialized: u64,
     awaiting_funding_btc: u64,
     awaiting_funding_xmr: u64,
@@ -216,7 +216,7 @@ impl Stats {
             Outcome::Buy => self.success += 1,
             Outcome::Refund => self.refund += 1,
             Outcome::Punish => self.punish += 1,
-            Outcome::Cancel => self.cancel += 1,
+            Outcome::Abort => self.abort += 1,
         };
     }
     fn incr_initiated(&mut self) {
@@ -253,7 +253,7 @@ impl Stats {
             success,
             refund,
             punish,
-            cancel,
+            abort,
             initialized,
             awaiting_funding_btc,
             awaiting_funding_xmr,
@@ -262,14 +262,14 @@ impl Stats {
             funding_canceled_xmr,
             funding_canceled_btc,
         } = self;
-        let total = success + refund + punish + cancel;
+        let total = success + refund + punish + abort;
         let rate = *success as f64 / (total as f64);
         info!(
-            "Swapped({}) | Refunded({}) / Punished({}) | Canceled({}) | Initialized({}) / AwaitingFundingXMR({}) / AwaitingFundingBTC({}) / FundedXMR({}) / FundedBTC({}) / FundingCanceledXMR({}) / FundingCanceledBTC({})",
+            "Swapped({}) | Refunded({}) / Punished({}) | Aborted({}) | Initialized({}) / AwaitingFundingXMR({}) / AwaitingFundingBTC({}) / FundedXMR({}) / FundedBTC({}) / FundingCanceledXMR({}) / FundingCanceledBTC({})",
             success.bright_white_bold(),
             refund.bright_white_bold(),
             punish.bright_white_bold(),
-            cancel.bright_white_bold(),
+            abort.bright_white_bold(),
             initialized,
             awaiting_funding_xmr.bright_white_bold(),
             awaiting_funding_btc.bright_white_bold(),
@@ -774,8 +774,8 @@ impl Runtime {
                     Outcome::Punish => {
                         warn!("Punish on swap {}", &swapid);
                     }
-                    Outcome::Cancel => {
-                        warn!("Canceled swap {}", &swapid);
+                    Outcome::Abort => {
+                        warn!("Aborted swap {}", &swapid);
                     }
                 }
                 self.stats.success_rate();

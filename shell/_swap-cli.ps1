@@ -46,7 +46,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('make', 'make', [CompletionResultType]::ParameterValue, 'Maker creates offer and start listening for incoming connections. Command used to to print the resulting public offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer')
             [CompletionResult]::new('take', 'take', [CompletionResultType]::ParameterValue, 'Taker accepts offer and connects to maker''s daemon to start the trade')
             [CompletionResult]::new('revoke-offer', 'revoke-offer', [CompletionResultType]::ParameterValue, 'Revoke offer accepts an offer and revokes it within the runtime')
-            [CompletionResult]::new('cancel-swap', 'cancel-swap', [CompletionResultType]::ParameterValue, 'Cancel a swap if it has not locked yet')
+            [CompletionResult]::new('abort-swap', 'abort-swap', [CompletionResultType]::ParameterValue, 'Abort a swap if it has not locked yet')
             [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request swap progress report')
             [CompletionResult]::new('needs-funding', 'needs-funding', [CompletionResultType]::ParameterValue, 'Returns addresses and amounts that require funding for coin')
             [CompletionResult]::new('sweep-address', 'sweep-address', [CompletionResultType]::ParameterValue, 'Attempts to sweep any funds on a given funding address')
@@ -246,7 +246,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
             break
         }
-        'swap-cli;cancel-swap' {
+        'swap-cli;abort-swap' {
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')

@@ -527,8 +527,8 @@ pub enum Request {
     RevokeOffer(PublicOffer<BtcXmr>),
 
     #[api(type = 192)]
-    #[display("cancel_swap")]
-    CancelSwap,
+    #[display("abort_swap")]
+    AbortSwap,
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]
@@ -808,8 +808,8 @@ pub enum Outcome {
     Refund,
     #[display("Failure(Punished)")]
     Punish,
-    #[display("Failure(Canceled)")]
-    Cancel,
+    #[display("Failure(Aborted)")]
+    Abort,
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
