@@ -153,6 +153,7 @@ pub fn run(
         watched_txs: none!(),
         retrieving_txs: none!(),
         sweeping_addr: none!(),
+        broadcasting_txs: none!(),
         txids: none!(),
         final_txs: none!(),
         tasks: none!(),
@@ -262,6 +263,7 @@ pub struct CheckpointSwapd {
     pub temporal_safety: TemporalSafety,
     pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     pub txids: HashMap<TxLabel, Txid>,
+    pub pending_broadcasts: Vec<bitcoin::Transaction>,
     pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
 }
 
@@ -272,6 +274,7 @@ impl StrictEncode for CheckpointSwapd {
         len += self.enquirer.strict_encode(&mut e)?;
         len += self.xmr_addr_addendum.strict_encode(&mut e)?;
         len += self.temporal_safety.strict_encode(&mut e)?;
+        len += self.pending_broadcasts.strict_encode(&mut e)?;
 
         len += self.txs.len().strict_encode(&mut e)?;
         let res: Result<usize, strict_encoding::Error> =
@@ -329,6 +332,7 @@ impl StrictDecode for CheckpointSwapd {
         let enquirer = Option::<ServiceId>::strict_decode(&mut d)?;
         let xmr_addr_addendum = Option::<XmrAddressAddendum>::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
+        let pending_broadcasts = Vec::<bitcoin::Transaction>::strict_decode(&mut d)?;
 
         let len = usize::strict_decode(&mut d)?;
         let mut txs = HashMap::<TxLabel, bitcoin::Transaction>::new();
@@ -371,6 +375,7 @@ impl StrictDecode for CheckpointSwapd {
             txs,
             txids,
             pending_requests,
+            pending_broadcasts,
         })
     }
 }
@@ -460,22 +465,18 @@ impl Runtime {
         tx_label: TxLabel,
         endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
-        let req = Request::SyncerTask(Task::BroadcastTransaction(BroadcastTransaction {
-            id: self.syncer_state.tasks.new_taskid(),
-            tx: bitcoin::consensus::serialize(&tx),
-        }));
-
         info!(
             "{} | Broadcasting {} tx ({})",
             self.swap_id.bright_blue_italic(),
             tx_label.bright_white_bold(),
             tx.txid().bright_yellow_italic()
         );
+        let task = self.syncer_state.broadcast(tx);
         Ok(endpoints.send_to(
             ServiceBus::Ctl,
             self.identity(),
             self.syncer_state.bitcoin_syncer(),
-            req,
+            Request::SyncerTask(task),
         )?)
     }
 
@@ -785,6 +786,7 @@ impl Runtime {
                                     txs: self.txs.clone(),
                                     txids: self.syncer_state.tasks.txids.clone(),
                                     pending_requests: self.pending_requests.clone(),
+                                    pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                                     xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                                 }),
                             )?;
@@ -1880,7 +1882,7 @@ impl Runtime {
                         );
                     }
                     Event::TransactionBroadcasted(event) => {
-                        debug!("{}", event)
+                        self.syncer_state.transaction_broadcasted(event)
                     }
                     Event::TaskAborted(event) => {
                         debug!("{}", event)
@@ -1937,6 +1939,7 @@ impl Runtime {
                             txs: self.txs.clone(),
                             txids: self.syncer_state.tasks.txids.clone(),
                             pending_requests: self.pending_requests.clone(),
+                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         }),
                     )?;
@@ -2083,6 +2086,7 @@ impl Runtime {
                             txs: self.txs.clone(),
                             txids: self.syncer_state.tasks.txids.clone(),
                             pending_requests: self.pending_requests.clone(),
+                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         }),
                     )?;
@@ -2126,6 +2130,7 @@ impl Runtime {
                             txs: self.txs.clone(),
                             txids: self.syncer_state.tasks.txids.clone(),
                             pending_requests: self.pending_requests.clone(),
+                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         }),
                     )?;
@@ -2285,6 +2290,7 @@ impl Runtime {
                     txs,
                     txids,
                     pending_requests,
+                    pending_broadcasts,
                     xmr_addr_addendum,
                 }) => {
                     info!("{} | Restoring swap", swap_id);
@@ -2323,6 +2329,18 @@ impl Runtime {
                             Request::SyncerTask(task),
                         )?;
                     }
+
+                    trace!("broadcasting txs pending broadcast");
+                    for tx in pending_broadcasts.iter() {
+                        let task = self.syncer_state.broadcast(tx.clone());
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
+
                     if let Some(XmrAddressAddendum {
                         view_key,
                         spend_key,

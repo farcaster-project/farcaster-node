@@ -1,4 +1,6 @@
+use crate::syncerd::BroadcastTransaction;
 use crate::syncerd::SweepBitcoinAddress;
+use crate::syncerd::TransactionBroadcasted;
 use crate::{
     service::LogStyle,
     syncerd::{
@@ -7,9 +9,11 @@ use crate::{
         WatchTransaction, XmrAddressAddendum,
     },
 };
+use bitcoin::consensus::Decodable;
 use bitcoin::{Script, Txid};
 use farcaster_core::{swap::SwapId, transaction::TxLabel};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::{
     rpc::Request,
@@ -24,6 +28,7 @@ pub struct SyncerTasks {
     pub final_txs: HashMap<TxLabel, bool>,
     pub watched_addrs: HashMap<TaskId, TxLabel>,
     pub retrieving_txs: HashMap<TaskId, (TxLabel, Task)>,
+    pub broadcasting_txs: HashSet<TaskId>,
     pub sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
     pub txids: HashMap<TxLabel, Txid>,
@@ -282,6 +287,38 @@ impl SyncerState {
         let task = Task::SweepAddress(sweep_task);
         self.tasks.tasks.insert(id, task.clone());
         task
+    }
+    pub fn broadcast(&mut self, tx: bitcoin::Transaction) -> Task {
+        let id = self.tasks.new_taskid();
+        let task = Task::BroadcastTransaction(BroadcastTransaction {
+            id,
+            tx: bitcoin::consensus::serialize(&tx),
+        });
+        self.tasks.tasks.insert(id, task.clone());
+        self.tasks.broadcasting_txs.insert(id);
+        task
+    }
+    pub fn transaction_broadcasted(&mut self, event: &TransactionBroadcasted) {
+        self.tasks.broadcasting_txs.remove(&event.id);
+        self.tasks.tasks.remove(&event.id);
+    }
+    pub fn pending_broadcast_txs(&mut self) -> Vec<bitcoin::Transaction> {
+        self.tasks
+            .broadcasting_txs
+            .iter()
+            .filter_map(|id| {
+                if let Task::BroadcastTransaction(broadcast_tx) = self.tasks.tasks.get(id)? {
+                    Some(
+                        bitcoin::Transaction::consensus_decode(std::io::Cursor::new(
+                            broadcast_tx.tx.clone(),
+                        ))
+                        .ok()?,
+                    )
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn acc_lock_watched(&self) -> bool {
