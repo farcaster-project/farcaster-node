@@ -30,9 +30,11 @@ pub enum AliceState {
         local_params: Params,
         remote_commit: Commit,
         remote_params: Option<Params>,
+        checkpoint: Option<SwapCheckpointType>,
     }, // local, remote, remote
     #[display("RefundSigs(xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen}))")]
     RefundSigA {
+        checkpoint: SwapCheckpointType,
         xmr_locked: bool,
         buy_published: bool,
         cancel_seen: bool,
@@ -66,6 +68,7 @@ pub enum BobState {
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
     RevealB {
+        checkpoint: Option<SwapCheckpointType>,
         local_params: Params,
         remote_commit: Commit,
         b_address: bitcoin::Address,
@@ -75,6 +78,7 @@ pub enum BobState {
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB {
+        checkpoint: SwapCheckpointType,
         received_refund_procedure_signatures: bool,
         cancel_seen: bool,
         remote_params: Params,
@@ -82,7 +86,10 @@ pub enum BobState {
         b_address: bitcoin::Address,
     }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
-    BuySigB { buy_tx_seen: bool },
+    BuySigB {
+        buy_tx_seen: bool,
+        checkpoint: SwapCheckpointType,
+    },
     #[display("Finish({0})")]
     FinishB(Outcome),
 }
@@ -94,6 +101,19 @@ pub enum State {
     Alice(AliceState),
     #[display("BobState({0})")]
     Bob(BobState),
+}
+
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
+#[display(inner)]
+pub enum SwapCheckpointType {
+    #[display("CheckpointBobPreLock")]
+    CheckpointBobPreLock,
+    #[display("CheckpointBobPreBuy")]
+    CheckpointBobPreBuy,
+    #[display("CheckpointAlicePreLock")]
+    CheckpointAlicePreLock,
+    #[display("CheckpointAlicePreBuy")]
+    CheckpointAlicePreBuy,
 }
 
 // The state impl is not public and may contain code not used yet, we can relax the linter and
@@ -277,6 +297,16 @@ impl State {
             State::Alice(AliceState::RevealA { .. }) | State::Bob(BobState::RevealB { .. })
         )
     }
+    pub fn checkpoint(&self) -> Option<SwapCheckpointType> {
+        match self {
+            State::Alice(AliceState::RevealA { checkpoint, .. })
+            | State::Bob(BobState::RevealB { checkpoint, .. }) => checkpoint.clone(),
+            State::Alice(AliceState::RefundSigA { checkpoint, .. })
+            | State::Bob(BobState::CorearbB { checkpoint, .. })
+            | State::Bob(BobState::BuySigB { checkpoint, .. }) => Some(checkpoint.clone()),
+            _ => None,
+        }
+    }
     pub fn a_refundsig(&self) -> bool {
         matches!(self, State::Alice(AliceState::RefundSigA { .. }))
     }
@@ -285,7 +315,7 @@ impl State {
             return false;
         }
         match self {
-            State::Bob(BobState::BuySigB { buy_tx_seen }) => *buy_tx_seen,
+            State::Bob(BobState::BuySigB { buy_tx_seen, .. }) => *buy_tx_seen,
             _ => unreachable!("conditional early return"),
         }
     }
@@ -393,6 +423,7 @@ impl State {
                 local_params,
                 remote_commit,
                 remote_params,
+                checkpoint: None,
             }),
 
             State::Bob(BobState::CommitB {
@@ -408,6 +439,7 @@ impl State {
                 b_address,
                 local_trade_role,
                 remote_params,
+                checkpoint: None,
             }),
 
             _ => unreachable!("checked state on pattern to be Commit"),
@@ -446,7 +478,9 @@ impl State {
             return;
         }
         match self {
-            State::Bob(BobState::BuySigB { buy_tx_seen }) if !(*buy_tx_seen) => *buy_tx_seen = true,
+            State::Bob(BobState::BuySigB { buy_tx_seen, .. }) if !(*buy_tx_seen) => {
+                *buy_tx_seen = true
+            }
             _ => unreachable!("checked state"),
         }
     }
@@ -478,6 +512,62 @@ impl State {
             }
         } else {
             error!("Not on RefundSig state");
+            false
+        }
+    }
+    pub fn a_sup_checkpoint_pre_lock(&mut self) -> bool {
+        if let State::Alice(AliceState::RevealA { checkpoint, .. }) = self {
+            if checkpoint.is_none() {
+                *checkpoint = Some(SwapCheckpointType::CheckpointAlicePreLock);
+                true
+            } else {
+                debug!("checkpoint alice pre lock already set");
+                false
+            }
+        } else {
+            error!("Not on RevealA state");
+            false
+        }
+    }
+    pub fn a_sup_checkpoint_pre_buy(&mut self) -> bool {
+        if let State::Alice(AliceState::RefundSigA { checkpoint, .. }) = self {
+            if let SwapCheckpointType::CheckpointAlicePreLock = *checkpoint {
+                *checkpoint = SwapCheckpointType::CheckpointAlicePreBuy;
+                true
+            } else {
+                debug!("checkpoint alice pre buy already set");
+                false
+            }
+        } else {
+            error!("Not on RefundSigA state");
+            false
+        }
+    }
+    pub fn b_sup_checkpoint_pre_lock(&mut self) -> bool {
+        if let State::Bob(BobState::RevealB { checkpoint, .. }) = self {
+            if checkpoint.is_none() {
+                *checkpoint = Some(SwapCheckpointType::CheckpointBobPreLock);
+                true
+            } else {
+                debug!("checkpoint bob pre lock already set");
+                false
+            }
+        } else {
+            error!("Not on RevealB state");
+            false
+        }
+    }
+    pub fn b_sup_checkpoint_pre_buy(&mut self) -> bool {
+        if let State::Bob(BobState::CorearbB { checkpoint, .. }) = self {
+            if let SwapCheckpointType::CheckpointBobPreLock = *checkpoint {
+                *checkpoint = SwapCheckpointType::CheckpointBobPreBuy;
+                true
+            } else {
+                debug!("checkpoint bob pre buy already set");
+                false
+            }
+        } else {
+            error!("Not on CoreArbB state");
             false
         }
     }
