@@ -945,7 +945,7 @@ checksum = "56899898ce76aaf4a0f24d914c97ea6ed976d42fec6ad33fcbb0a1103e07b2b0"
 [[package]]
 name = "ecdsa_fun"
 version = "0.7.1"
-source = "git+https://github.com/farcaster-project/secp256kfun.git?branch=secp256k1/0.22#4eaac7849d06cebb05014bb53a5c248f66d5daa9"
+source = "git+https://github.com/farcaster-project/secp256kfun.git?branch=secp256k1/0.22#088edd8f6ccf35bbc50a3102a3049b3f3d8f61ff"
 dependencies = [
  "bincode",
  "rand_chacha 0.3.1",
@@ -2957,7 +2957,7 @@ dependencies = [
 [[package]]
 name = "secp256kfun"
 version = "0.7.1"
-source = "git+https://github.com/farcaster-project/secp256kfun.git?branch=secp256k1/0.22#4eaac7849d06cebb05014bb53a5c248f66d5daa9"
+source = "git+https://github.com/farcaster-project/secp256kfun.git?branch=secp256k1/0.22#088edd8f6ccf35bbc50a3102a3049b3f3d8f61ff"
 dependencies = [
  "digest 0.9.0",
  "rand_core 0.6.3",
@@ -3193,7 +3193,7 @@ dependencies = [
 [[package]]
 name = "sigma_fun"
 version = "0.4.1"
-source = "git+https://github.com/farcaster-project/secp256kfun.git?branch=secp256k1/0.22#4eaac7849d06cebb05014bb53a5c248f66d5daa9"
+source = "git+https://github.com/farcaster-project/secp256kfun.git?branch=secp256k1/0.22#088edd8f6ccf35bbc50a3102a3049b3f3d8f61ff"
 dependencies = [
  "curve25519-dalek-ng",
  "digest 0.9.0",
