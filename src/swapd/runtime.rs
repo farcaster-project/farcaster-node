@@ -1244,7 +1244,7 @@ impl Runtime {
                             debug!("sent buyproceduresignature at state {}", &self.state);
                             let next_state = State::Bob(BobState::BuySigB {
                                 buy_tx_seen: false,
-                                checkpoint: self.state.checkpoint().unwrap(),
+                                last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
                             });
                             self.state_update(endpoints, next_state)?;
                         } else {
@@ -1591,7 +1591,10 @@ impl Runtime {
                                         cancel_seen: false,
                                         refund_seen: false,
                                         remote_params: self.state.remote_params().unwrap(),
-                                        checkpoint: self.state.checkpoint().unwrap(),
+                                        last_checkpoint_type: self
+                                            .state
+                                            .last_checkpoint_type()
+                                            .unwrap(),
                                     });
                                 } else {
                                     warn!(
@@ -1966,7 +1969,7 @@ impl Runtime {
                     cancel_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
                     b_address: self.state.b_address().cloned().unwrap(),
-                    checkpoint: self.state.checkpoint().unwrap(),
+                    last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
                 });
                 self.state_update(endpoints, next_state)?;
             }
@@ -2085,7 +2088,7 @@ impl Runtime {
                 self.send_peer(endpoints, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
                 trace!("sent peer RefundProcedureSignatures msg");
                 let next_state = State::Alice(AliceState::RefundSigA {
-                    checkpoint: SwapCheckpointType::CheckpointAlicePreLock,
+                    last_checkpoint_type: SwapCheckpointType::CheckpointAlicePreLock,
                     local_params: self.state.local_params().cloned().unwrap(),
                     xmr_locked: false,
                     buy_published: false,
