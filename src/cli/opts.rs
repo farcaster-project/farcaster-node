@@ -241,6 +241,15 @@ pub enum Command {
         /// The coin funding required needs to be checked against.
         coin: Coin,
     },
+
+    /// Attempts to sweep any funds on a given funding address
+    #[display("sweep-address<{source_address} {destination_address}>")]
+    SweepAddress {
+        /// The source address to be swept.
+        source_address: BtcAddress,
+        /// The destination address receiving the coins.
+        destination_address: BtcAddress,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
