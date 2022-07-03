@@ -1707,6 +1707,8 @@ impl Runtime {
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
                     if let Some(xs) = self.syncer_clients.get_mut(&k) {
                         xs.insert(source.clone());
+                    } else {
+                        self.syncer_clients.insert(k, set![source.clone()]);
                     }
                     self.pending_sweep_requests.insert(source, request);
                 } else {
