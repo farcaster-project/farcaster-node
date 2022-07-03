@@ -275,6 +275,8 @@ impl Exec for Command {
                         }),
                     )?;
                     runtime.report_response_or_fail()?;
+                } else {
+                    return Err(Error::Farcaster("Received unexpected response".to_string()));
                 }
             }
         }
