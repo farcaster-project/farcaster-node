@@ -72,7 +72,7 @@ async fn swap_bob_maker_normal() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_bob_maker_user_cancel_sweep_btc() {
+async fn swap_bob_maker_user_abort_sweep_btc() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
@@ -90,7 +90,7 @@ async fn swap_bob_maker_user_cancel_sweep_btc() {
     )
     .await;
 
-    run_user_cancel_swap(
+    run_user_abort_swap(
         swap_id,
         data_dir_taker,
         data_dir_maker,
@@ -1842,7 +1842,7 @@ async fn run_swaps_parallel(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn run_user_cancel_swap(
+async fn run_user_abort_swap(
     swap_id: SwapId,
     data_dir_alice: Vec<String>,
     data_dir_bob: Vec<String>,
@@ -1861,8 +1861,8 @@ async fn run_user_cancel_swap(
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
-    // cancel the swap on Alice's side
-    cancel_swap(swap_id, data_dir_alice);
+    // abort the swap on Alice's side
+    abort_swap(swap_id, data_dir_alice);
 
     // fund the bitcoin address
     bitcoin_rpc
@@ -1873,8 +1873,8 @@ async fn run_user_cancel_swap(
     println!("waiting for the bitcoin funding info to clear");
     retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
 
-    // cancel the swap on Bob's side
-    cancel_swap(swap_id, data_dir_bob);
+    // abort the swap on Bob's side
+    abort_swap(swap_id, data_dir_bob);
 
     // wait a bit for sweep to happen
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -2262,10 +2262,10 @@ fn revoke_offer_args(data_dir: Vec<String>, offer: String) -> Vec<String> {
         .collect()
 }
 
-fn cancel_swap_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
+fn abort_swap_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
     data_dir
         .into_iter()
-        .chain(vec!["cancel-swap".to_string(), format!("{:#?}", swap_id)])
+        .chain(vec!["abort-swap".to_string(), format!("{:#?}", swap_id)])
         .collect()
 }
 
@@ -2300,8 +2300,8 @@ fn get_info(args: Vec<String>) -> NodeInfo {
     cli_output_to_node_info(stdout)
 }
 
-fn cancel_swap(swap_id: SwapId, data_dir: Vec<String>) {
-    let res = run("../swap-cli", cancel_swap_args(data_dir, swap_id)).unwrap();
+fn abort_swap(swap_id: SwapId, data_dir: Vec<String>) {
+    let res = run("../swap-cli", abort_swap_args(data_dir, swap_id)).unwrap();
     println!("res: {:?}", res);
 }
 

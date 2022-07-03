@@ -246,7 +246,7 @@ _arguments "${_arguments_options[@]}" \
 ':public-offer -- The offer to be canceled:' \
 && ret=0
 ;;
-(cancel-swap)
+(abort-swap)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]:DATA_DIR:_files -/' \
 '--data-dir=[Data directory path]:DATA_DIR:_files -/' \
@@ -260,7 +260,7 @@ _arguments "${_arguments_options[@]}" \
 '--help[Print help information]' \
 '*-v[Set verbosity level]' \
 '*--verbose[Set verbosity level]' \
-':swap-id -- The swap to be canceled:' \
+':swap-id -- The swap to be aborted:' \
 && ret=0
 ;;
 (progress)
@@ -351,7 +351,7 @@ _swap-cli_commands() {
 'make:Maker creates offer and start listening for incoming connections. Command used to to print the resulting public offer that shall be shared with Taker. Additionally it spins up the listener awaiting for connection related to this offer' \
 'take:Taker accepts offer and connects to maker'\''s daemon to start the trade' \
 'revoke-offer:Revoke offer accepts an offer and revokes it within the runtime' \
-'cancel-swap:Cancel a swap if it has not locked yet' \
+'abort-swap:Abort a swap if it has not locked yet' \
 'progress:Request swap progress report' \
 'needs-funding:Returns addresses and amounts that require funding for coin' \
 'sweep-address:Attempts to sweep any funds on a given funding address' \
@@ -359,10 +359,10 @@ _swap-cli_commands() {
     )
     _describe -t commands 'swap-cli commands' commands "$@"
 }
-(( $+functions[_swap-cli__cancel-swap_commands] )) ||
-_swap-cli__cancel-swap_commands() {
+(( $+functions[_swap-cli__abort-swap_commands] )) ||
+_swap-cli__abort-swap_commands() {
     local commands; commands=()
-    _describe -t commands 'swap-cli cancel-swap commands' commands "$@"
+    _describe -t commands 'swap-cli abort-swap commands' commands "$@"
 }
 (( $+functions[_swap-cli__help_commands] )) ||
 _swap-cli__help_commands() {

@@ -226,8 +226,8 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::CancelSwap { swap_id } => {
-                runtime.request(ServiceId::Swap(swap_id), Request::CancelSwap)?;
+            Command::AbortSwap { swap_id } => {
+                runtime.request(ServiceId::Swap(swap_id), Request::AbortSwap)?;
                 runtime.report_response_or_fail()?;
             }
 
