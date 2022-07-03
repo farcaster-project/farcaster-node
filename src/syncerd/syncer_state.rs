@@ -5,7 +5,7 @@ use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::{TaskId, TaskTarget};
 use crate::Error;
 use crate::ServiceId;
-use microservices::rpc_connection::Request;
+use microservices::rpc::Request;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;

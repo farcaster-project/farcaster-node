@@ -33,7 +33,6 @@ use crate::{
 use amplify::Wrapper;
 use bitcoin::hashes::Hash as BitcoinHash;
 use clap::IntoApp;
-use internet2::LIGHTNING_P2P_DEFAULT_PORT;
 use request::{Commit, List, Params};
 use std::io;
 use std::iter::FromIterator;
@@ -60,12 +59,11 @@ use bitcoin::{
     Address,
 };
 use internet2::{
-    addr::InetSocketAddr, NodeAddr, RemoteNodeAddr, RemoteSocketAddr, ToNodeAddr, TypedEnum,
-    UrlString,
+    addr::NodeAddr,
+    addr::{InetSocketAddr, NodeId},
+    TypedEnum, UrlString,
 };
-use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
-use microservices::rpc::Failure;
 
 use farcaster_core::{
     blockchain::Network,
@@ -74,7 +72,9 @@ use farcaster_core::{
 };
 
 use crate::farcasterd::Opts;
-use crate::rpc::request::{GetKeys, IntoProgressOrFailure, Msg, NodeInfo, OptionDetails};
+use crate::rpc::request::{
+    Failure, FailureCode, GetKeys, IntoProgressOrFailure, Msg, NodeInfo, OptionDetails,
+};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
@@ -165,7 +165,7 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,
-    listens: HashMap<OfferId, RemoteSocketAddr>,
+    listens: HashMap<OfferId, InetSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
     report_peerd_reconnect: HashMap<NodeAddr, ServiceId>,
@@ -178,7 +178,7 @@ pub struct Runtime {
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
     consumed_offers: HashMap<PublicOffer<BtcXmr>, (SwapId, ServiceId)>,
-    node_ids: HashMap<OfferId, PublicKey>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
+    node_ids: HashMap<OfferId, NodeId>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
     peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
@@ -367,10 +367,7 @@ impl Runtime {
                     .count()
                     == 0
                 {
-                    let connectionid = NodeAddr::Remote(RemoteNodeAddr {
-                        node_id,
-                        remote_addr,
-                    });
+                    let connectionid = NodeAddr::new(node_id, remote_addr);
 
                     if self.connections.remove(&connectionid) {
                         endpoints.send_to(
@@ -434,7 +431,7 @@ impl Runtime {
         endpoints.send_to(ServiceBus::Ctl, self.identity(), ServiceId::Wallet, message)?;
         Ok(())
     }
-    fn node_ids(&self) -> Vec<PublicKey> {
+    fn node_ids(&self) -> Vec<NodeId> {
         self.node_ids
             .values()
             .into_iter()
@@ -790,12 +787,10 @@ impl Runtime {
                 let peerd_id = self.peerd_ids.get(&offerid); // Some for Maker after TakerCommit, None for Taker
                 let peer: ServiceId = match local_trade_role {
                     TradeRole::Maker if peerd_id.is_some() => peerd_id.unwrap().clone(),
-                    TradeRole::Taker => internet2::RemoteNodeAddr {
-                        node_id: public_offer.node_id,
-                        remote_addr: internet2::RemoteSocketAddr::Ftcp(public_offer.peer_address),
-                    }
-                    .to_node_addr(internet2::LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?
+                    TradeRole::Taker => internet2::addr::NodeAddr::new(
+                        NodeId::from(public_offer.node_id),
+                        public_offer.peer_address,
+                    )
                     .into(),
                     _ => {
                         error!("peerd_id must exist for Maker after TakerCommit msg!");
@@ -973,7 +968,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         source,
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: "Coulod not find to be revoked offer.".to_string(),
                         }),
                     )?;
@@ -993,7 +988,7 @@ impl Runtime {
                     self.listens
                         .clone()
                         .values()
-                        .map(|listen| listen.to_url_string()),
+                        .map(|listen| format!("{}", listen)),
                 );
                 endpoints.send_to(
                     ServiceBus::Ctl,
@@ -1029,7 +1024,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         source,
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: "Cannot restore a swap when walletd is not running".to_string(),
                         }),
                     )?;
@@ -1051,7 +1046,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         source,
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: "Cannot restore a checkpoint into a running swap.".to_string(),
                         }),
                     )?;
@@ -1074,7 +1069,7 @@ impl Runtime {
                             ServiceId::Farcasterd,
                             source,
                             Request::Failure(Failure {
-                                code: 1,
+                                code: FailureCode::Unknown,
                                 info: "No checkpoint found with given swap id, aborting restore."
                                     .to_string(),
                             }),
@@ -1134,9 +1129,9 @@ impl Runtime {
                     .listens
                     .iter()
                     .find(|(_, a)| a == &&bind_addr)
-                    .and_then(|(k, v)| self.node_ids.get(k).map(|pk| (pk, v)))
+                    .and_then(|(k, v)| self.node_ids.get(k).map(|pk| (pk.public_key(), v)))
                 {
-                    (Some(bindaddr), Some(*pk))
+                    (Some(bindaddr), Some(pk))
                 } else {
                     (None, peer_public_key)
                 };
@@ -1151,16 +1146,17 @@ impl Runtime {
                             "Starting listener".bright_blue_bold(),
                             bind_addr.bright_blue_bold()
                         );
-                        self.listen(&bind_addr, sk).and_then(|_| {
+                        let node_id = NodeId::from(pk);
+                        self.listen(NodeAddr::new(node_id, bind_addr), sk).and_then(|_| {
                             self.listens.insert(offer.id(), bind_addr);
-                            self.node_ids.insert(offer.id(), pk);
+                            self.node_ids.insert(offer.id(), node_id);
                             Ok(())
                         })
                     }
                     (Some(&addr), _, Some(pk)) => {
                         // no need for the keys, because peerd already knows them
                         self.listens.insert(offer.id(), addr);
-                        self.node_ids.insert(offer.id(), pk);
+                        self.node_ids.insert(offer.id(), NodeId::from(pk));
                         let msg = format!("Already listening on {}", &bind_addr);
                         debug!("{}", &msg);
                         Ok(())
@@ -1173,7 +1169,7 @@ impl Runtime {
                         bind_addr
                     );
                     let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
-                    let public_offer = offer.to_public_v1(node_id, public_addr.into());
+                    let public_offer = offer.to_public_v1(node_id.public_key(), public_addr.into());
                     let pub_offer_id = public_offer.id();
                     let serialized_offer = public_offer.to_string();
                     if !self.public_offers.insert(public_offer.clone()) {
@@ -1211,7 +1207,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         source.clone(),
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: err.to_string(),
                         }),
                     )?
@@ -1236,7 +1232,10 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd, // source
                         source.clone(),        // destination
-                        Request::Failure(Failure { code: 1, info: msg }),
+                        Request::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: msg,
+                        }),
                     )?;
                     return Ok(());
                 }
@@ -1247,13 +1246,10 @@ impl Runtime {
                     peer_address, // InetSocketAddr
                 } = public_offer;
 
-                let daemon_service = internet2::RemoteNodeAddr {
-                    node_id,                                           // checked above
-                    remote_addr: RemoteSocketAddr::Ftcp(peer_address), /* expected RemoteSocketAddr */
+                let peer = internet2::addr::NodeAddr {
+                    id: NodeId::from(node_id), // checked above
+                    addr: peer_address,
                 };
-                let peer = daemon_service
-                    .to_node_addr(LIGHTNING_P2P_DEFAULT_PORT)
-                    .ok_or(internet2::presentation::Error::InvalidEndpoint)?;
 
                 // Connect
                 let res = match (self.connections.contains(&peer), peer_secret_key) {
@@ -1318,7 +1314,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         source.clone(),
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: err.to_string(),
                         }),
                     )?
@@ -1376,7 +1372,10 @@ impl Runtime {
                     };
                     report_to.push((
                         Some(source.clone()),
-                        Request::Failure(Failure { code: 1, info }),
+                        Request::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info,
+                        }),
                     ));
                 }
             }
@@ -1419,7 +1418,7 @@ impl Runtime {
                     report_to.push((
                         Some(source.clone()),
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: "Unknown swapd".to_string(),
                         }),
                     ));
@@ -1918,44 +1917,39 @@ impl Runtime {
         Ok(())
     }
 
-    fn listen(&mut self, addr: &RemoteSocketAddr, sk: SecretKey) -> Result<(), Error> {
-        if let RemoteSocketAddr::Ftcp(inet) = *addr {
-            let socket_addr = SocketAddr::try_from(inet)?;
-            let ip = socket_addr.ip();
-            let port = socket_addr.port();
+    fn listen(&mut self, addr: NodeAddr, sk: SecretKey) -> Result<(), Error> {
+        let address = addr.addr.address();
+        let port = addr.addr.port().ok_or(Error::Farcaster(
+            "listen requires the port to listen on".to_string(),
+        ))?;
 
-            debug!("Instantiating peerd...");
-            let child = launch(
-                "peerd",
-                &[
-                    "--listen",
-                    &ip.to_string(),
-                    "--port",
-                    &port.to_string(),
-                    "--peer-secret-key",
-                    &format!("{}", sk.display_secret()),
-                    "--token",
-                    &self.wallet_token.clone().to_string(),
-                ],
-            );
+        debug!("Instantiating peerd...");
+        let child = launch(
+            "peerd",
+            &[
+                "--listen",
+                &format!("{}", address),
+                "--port",
+                &port.to_string(),
+                "--peer-secret-key",
+                &format!("{}", sk.display_secret()),
+                "--token",
+                &self.wallet_token.clone().to_string(),
+            ],
+        );
 
-            // in case it can't connect wait for it to crash
-            std::thread::sleep(Duration::from_secs_f32(0.5));
+        // in case it can't connect wait for it to crash
+        std::thread::sleep(Duration::from_secs_f32(0.5));
 
-            // status is Some if peerd returns because it crashed
-            let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
+        // status is Some if peerd returns because it crashed
+        let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 
-            if status.is_some() {
-                return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
-            }
-
-            debug!("New instance of peerd launched with PID {}", child.id());
-            Ok(())
-        } else {
-            Err(Error::Other(s!(
-                "Only TCP is supported for now as an overlay protocol"
-            )))
+        if status.is_some() {
+            return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
         }
+
+        debug!("New instance of peerd launched with PID {}", child.id());
+        Ok(())
     }
 
     fn connect_peer(

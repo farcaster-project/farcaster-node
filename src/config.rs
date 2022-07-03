@@ -14,7 +14,7 @@
 
 use crate::Error;
 use farcaster_core::blockchain::Network;
-use internet2::NodeAddr;
+use internet2::addr::NodeAddr;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;

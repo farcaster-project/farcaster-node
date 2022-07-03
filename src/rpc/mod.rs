@@ -13,19 +13,16 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 mod client;
-pub mod messages;
-mod reply;
 pub mod request;
 
 use crate::ServiceId;
 pub use client::Client;
-pub use reply::Reply;
 #[cfg(feature = "shell")]
 pub use request::OfferStatusSelector;
-pub use request::Request;
+pub use request::{Failure, FailureCode, Request};
 
 use microservices::esb::BusId;
-use microservices::rpc_connection::Api;
+use microservices::rpc::Api;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Display, StrictEncode, StrictDecode)]
@@ -43,8 +40,3 @@ impl BusId for ServiceBus {
 }
 
 pub struct Rpc {}
-
-impl Api for Rpc {
-    type Request = Request;
-    type Reply = Reply;
-}

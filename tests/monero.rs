@@ -12,7 +12,7 @@ use farcaster_node::syncerd::{
     XmrAddressAddendum,
 };
 use farcaster_node::ServiceId;
-use internet2::ZMQ_CONTEXT;
+use microservices::ZMQ_CONTEXT;
 use monero_rpc::GetBlockHeaderSelector;
 use ntest::timeout;
 use rand::{distributions::Alphanumeric, Rng};

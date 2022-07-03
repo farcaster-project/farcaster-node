@@ -15,7 +15,6 @@
 #![allow(clippy::clone_on_copy)]
 
 use crate::cli::OfferSelector;
-use crate::rpc::messages::Ping;
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::SweepBitcoinAddress;
 use crate::walletd::{
@@ -36,10 +35,8 @@ use farcaster_core::{
     consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable},
     negotiation::PublicOfferId,
 };
-use internet2::addr::InetSocketAddr;
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
-use lightning_encoding::{strategies::AsStrict, LightningDecode, LightningEncode};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 #[cfg(feature = "serde")]
 use serde_with::{skip_serializing_none, DisplayFromStr, DurationSeconds, Same};
@@ -77,16 +74,15 @@ use farcaster_core::{
     swap::btcxmr::BtcXmr,
     swap::{Swap, SwapId},
 };
+use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
-use internet2::{NodeAddr, RemoteSocketAddr};
-use microservices::rpc::Failure;
-use microservices::rpc_connection;
+use microservices::rpc;
 use strict_encoding::{
     strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
 };
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
-#[api(encoding = "lightning")]
+#[api(encoding = "strict")]
 #[display(inner)]
 pub enum Msg {
     #[api(type = 28)]
@@ -111,8 +107,8 @@ pub enum Msg {
     #[display("buyprocsig_b(...)")]
     BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
     #[api(type = 29)]
-    #[display(inner)]
-    Ping(Ping),
+    #[display("ping({0})")]
+    Ping(u16),
     #[api(type = 31)]
     #[display("pong(...)")]
     Pong(Vec<u8>),
@@ -124,7 +120,7 @@ pub enum Msg {
     PeerReceiverRuntimeShutdown,
     #[api(type = 35)]
     #[display("identity")]
-    Identity(bitcoin::secp256k1::PublicKey),
+    Identity(internet2::addr::NodeId),
 }
 
 impl Msg {
@@ -178,35 +174,8 @@ impl Msg {
     }
 }
 
-impl LightningEncode for Msg {
-    fn lightning_encode<E: io::Write>(&self, e: E) -> Result<usize, lightning_encoding::Error> {
-        Payload::from(self.clone()).lightning_encode(e)
-    }
-}
-
 lazy_static! {
     pub static ref UNMARSHALLER: Unmarshaller<Msg> = Msg::create_unmarshaller();
-}
-
-impl LightningDecode for Msg {
-    fn lightning_decode<D: io::Read>(d: D) -> Result<Self, lightning_encoding::Error> {
-        Ok((&*UNMARSHALLER
-            .unmarshall(&*Vec::<u8>::lightning_decode(d)?)
-            .map_err(|_| {
-                lightning_encoding::Error::DataIntegrityError(s!("can't unmarshall FWP message"))
-            })?)
-            .clone())
-    }
-}
-
-impl lightning_encoding::Strategy for Commit {
-    type Strategy = AsStrict;
-}
-impl lightning_encoding::Strategy for TakeCommit {
-    type Strategy = AsStrict;
-}
-impl lightning_encoding::Strategy for Reveal {
-    type Strategy = AsStrict;
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -344,20 +313,6 @@ use crate::{Error, ServiceId};
 #[api(encoding = "strict")]
 #[non_exhaustive]
 pub enum Request {
-    // Part I: Generic messages outside of channel operations
-    // ======================================================
-    /// Once authentication is complete, the first message reveals the features
-    /// supported or required by this node, even if this is a reconnection.
-    // #[api(type = 16)]
-    // #[display(inner)]
-    // Init(message::Init),
-
-    /// For simplicity of diagnosis, it's often useful to tell a peer that
-    /// something is incorrect.
-    // #[api(type = 17)]
-    // #[display(inner)]
-    // Error(message::Error),
-
     /// In order to allow for the existence of long-lived TCP connections, at
     /// times it may be required that both ends keep alive the TCP connection
     /// at the application level. Such messages also allow obfuscation of
@@ -464,7 +419,7 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[api(type = 200)]
     #[display("listen({0})")]
-    Listen(RemoteSocketAddr),
+    Listen(InetSocketAddr),
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 201)]
@@ -736,6 +691,60 @@ pub enum Request {
     AddressSecretKey(AddressSecretKey),
 }
 
+/// Information about server-side failure returned through RPC API
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[derive(
+    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, StrictEncode, StrictDecode,
+)]
+#[display("{info}", alt = "Server returned failure #{code}: {info}")]
+pub struct Failure {
+    /// Failure code
+    pub code: FailureCode,
+
+    /// Detailed information about the failure
+    pub info: String,
+}
+
+#[derive(
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, StrictEncode, StrictDecode,
+)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub enum FailureCode {
+    /// Catch-all: TODO: Expand
+    Unknown = 0xFFF,
+}
+
+impl From<u16> for FailureCode {
+    fn from(value: u16) -> Self {
+        match value {
+            _ => FailureCode::Unknown,
+        }
+    }
+}
+
+impl From<FailureCode> for u16 {
+    fn from(code: FailureCode) -> Self {
+        code as u16
+    }
+}
+
+impl From<FailureCode> for rpc::FailureCode<FailureCode> {
+    fn from(code: FailureCode) -> Self {
+        rpc::FailureCode::Other(code)
+    }
+}
+
+impl rpc::FailureCodeExt for FailureCode {}
+
 #[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
 #[display("{offer}, {status}")]
 #[cfg_attr(
@@ -988,7 +997,7 @@ pub struct MoneroFundingInfo {
     pub address: monero::Address,
 }
 
-impl rpc_connection::Request for Request {}
+impl rpc::Request for Request {}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("{source}, {event}")]
@@ -1026,8 +1035,8 @@ pub enum Progress {
 pub struct NodeInfo {
     #[serde(skip_serializing)]
     pub id: Option<u64>,
-    pub node_ids: Vec<secp256k1::PublicKey>,
-    pub listens: Vec<RemoteSocketAddr>,
+    pub node_ids: Vec<internet2::addr::NodeId>,
+    pub listens: Vec<InetSocketAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
@@ -1079,8 +1088,8 @@ pub struct MoneroAddress(pub SwapId, pub monero::Address);
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
     pub offer: Offer<BtcXmr>,
-    pub public_addr: RemoteSocketAddr,
-    pub bind_addr: RemoteSocketAddr,
+    pub public_addr: InetSocketAddr,
+    pub bind_addr: InetSocketAddr,
     pub arbitrating_addr: bitcoin::Address,
     pub accordant_addr: String,
     pub peer_secret_key: Option<SecretKey>,
@@ -1168,8 +1177,8 @@ pub struct SyncerInfo {
 )]
 #[display(PeerInfo::to_yaml_string)]
 pub struct PeerInfo {
-    pub local_id: secp256k1::PublicKey,
-    pub remote_id: Vec<secp256k1::PublicKey>,
+    pub local_id: internet2::addr::NodeId,
+    pub remote_id: Vec<internet2::addr::NodeId>,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub local_socket: Option<InetSocketAddr>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
@@ -1294,7 +1303,10 @@ impl OptionDetails {
 
 impl From<crate::Error> for Request {
     fn from(err: crate::Error) -> Self {
-        Request::Failure(Failure::from(err))
+        Request::Failure(Failure {
+            code: FailureCode::Unknown,
+            info: err.to_string(),
+        })
     }
 }
 

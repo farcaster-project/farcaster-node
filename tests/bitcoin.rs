@@ -13,7 +13,7 @@ use farcaster_node::syncerd::types::{
 use farcaster_node::syncerd::SweepBitcoinAddress;
 use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
 use farcaster_node::ServiceId;
-use internet2::ZMQ_CONTEXT;
+use microservices::ZMQ_CONTEXT;
 use ntest::timeout;
 use paste::paste;
 use std::convert::TryInto;

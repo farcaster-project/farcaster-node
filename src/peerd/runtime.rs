@@ -12,9 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use internet2::LocalNode;
-use internet2::RemoteNodeAddr;
-use internet2::RemoteSocketAddr;
+use internet2::addr::LocalNode;
 use microservices::peer::PeerReceiver;
 use microservices::peer::RecvMessage;
 use std::thread::JoinHandle;
@@ -26,12 +24,16 @@ use amplify::Bipolar;
 use bitcoin::secp256k1::rand::{self, Rng, RngCore};
 use bitcoin::secp256k1::PublicKey;
 use internet2::{addr::InetSocketAddr, CreateUnmarshaller, Unmarshall, Unmarshaller};
-use internet2::{presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType, ZMQ_CONTEXT};
-
-use crate::rpc::messages::Ping;
+use internet2::{
+    addr::NodeAddr,
+    presentation, transport,
+    zeromq::{Carrier, ZmqSocketType},
+    TypedEnum,
+};
 use microservices::esb::{self, Handler};
 use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
+use microservices::ZMQ_CONTEXT;
 
 use crate::rpc::{
     request::{self, Msg, PeerInfo, TakeCommit, Token},
@@ -43,7 +45,7 @@ use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, Servi
 pub fn run(
     config: ServiceConfig,
     connection: PeerConnection,
-    remote_node_addr: Option<RemoteNodeAddr>,
+    remote_node_addr: Option<NodeAddr>,
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
     // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
@@ -66,9 +68,11 @@ pub fn run(
             "sent message with local node id {} to the maker",
             local_node.node_id()
         );
-        ServiceId::Peer(NodeAddr::Remote(remote_node_addr.clone().expect(
-            "remote node addr should never be None in taker (connect) case",
-        )))
+        ServiceId::Peer(
+            remote_node_addr
+                .clone()
+                .expect("remote node addr should never be None in taker (connect) case"),
+        )
     } else {
         // maker's case
         let unmarshaller: Unmarshaller<Msg> = Msg::create_unmarshaller();
@@ -82,10 +86,10 @@ pub fn run(
             }
             _ => None,
         };
-        ServiceId::Peer(NodeAddr::Remote(RemoteNodeAddr {
-            node_id: *id.expect("remote id should always be some in maker's case"),
-            remote_addr: RemoteSocketAddr::Ftcp(local_socket.unwrap()),
-        }))
+        ServiceId::Peer(NodeAddr {
+            id: *id.expect("remote id should always be some in maker's case"),
+            addr: local_socket.unwrap(),
+        })
     };
 
     debug!("Opening bridge between runtime and peer receiver threads");
@@ -102,13 +106,13 @@ pub fn run(
         bridge: esb::Controller::with(
             map! {
                 ServiceBus::Bridge => esb::BusConfig {
-                    carrier: zmqsocket::Carrier::Socket(tx),
+                    carrier: Carrier::Socket(tx),
                     router: None,
                     queued: true,
+                    api_type: ZmqSocketType::Rep,
                 }
             },
             BridgeHandler,
-            ZmqType::Rep,
         )?,
         _thread_flag_rx,
         awaiting_pong: false,
@@ -268,7 +272,7 @@ impl peer::Handler<Msg> for PeerReceiverRuntime {
 
 pub struct Runtime {
     identity: ServiceId,
-    remote_node_addr: Option<RemoteNodeAddr>,
+    remote_node_addr: Option<NodeAddr>,
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
 
@@ -303,7 +307,6 @@ impl esb::Handler<ServiceBus> for Runtime {
                 self.remote_node_addr
                     .clone()
                     .expect("remote node addr is never None if forked from listener")
-                    .remote_addr,
             );
         }
         Ok(())
@@ -395,13 +398,13 @@ impl Runtime {
                     remote_id: self
                         .remote_node_addr
                         .clone()
-                        .map(|addr| vec![addr.node_id])
+                        .map(|addr| vec![addr.id])
                         .unwrap_or_default(),
                     local_socket: self.local_socket,
                     remote_socket: self
                         .remote_node_addr
                         .clone()
-                        .map(|addr| vec![addr.remote_addr.into()])
+                        .map(|addr| vec![addr.addr])
                         .unwrap_or_default(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
@@ -431,11 +434,11 @@ impl Runtime {
         info!("Attempting to reconnect to remote peerd");
         // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
         // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
-        let mut connection = PeerConnection::connect(
+        let mut connection = PeerConnection::connect_brontide(
+            self.local_node.clone(),
             self.remote_node_addr
                 .clone()
                 .expect("is some if not forked from listener"),
-            &self.local_node,
         );
         let mut attempt = 0;
 
@@ -444,11 +447,11 @@ impl Runtime {
             attempt += 1;
             warn!("reconnect failed attempting again in {} seconds", attempt);
             std::thread::sleep(std::time::Duration::from_secs(attempt));
-            connection = PeerConnection::connect(
+            connection = PeerConnection::connect_brontide(
+                self.local_node.clone(),
                 self.remote_node_addr
                     .clone()
                     .expect("is some if not forked from listener"),
-                &self.local_node,
             );
         }
         let (peer_receiver, peer_sender) = connection.expect("checked with is_err()").split();
@@ -489,7 +492,7 @@ impl Runtime {
         match &request {
             Request::Protocol(Msg::PingPeer) => self.ping()?,
 
-            Request::Protocol(Msg::Ping(Ping { pong_size, .. })) => {
+            Request::Protocol(Msg::Ping(pong_size)) => {
                 debug!("receiving ping, ponging back");
                 self.pong(*pong_size)?
             }
@@ -558,10 +561,7 @@ impl Runtime {
         rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.peer_sender.send_message(Msg::Ping(Ping {
-            ignored: noise,
-            pong_size,
-        }))?;
+        self.peer_sender.send_message(Msg::Ping(pong_size))?;
         self.awaited_pong = Some(pong_size);
         Ok(())
     }
@@ -602,13 +602,13 @@ fn restart_receiver_runtime(
         bridge: esb::Controller::with(
             map! {
                 ServiceBus::Bridge => esb::BusConfig {
-                    carrier: zmqsocket::Carrier::Socket(tx),
+                    carrier: Carrier::Socket(tx),
                     router: None,
                     queued: true,
+                    api_type: ZmqSocketType::Rep
                 }
             },
             BridgeHandler,
-            ZmqType::Rep,
         )
         .expect("error re-creating receiver runtime bridge"),
         awaiting_pong: false,
