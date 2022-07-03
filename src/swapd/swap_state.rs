@@ -30,9 +30,11 @@ pub enum AliceState {
         local_params: Params,
         remote_commit: Commit,
         remote_params: Option<Params>,
+        last_checkpoint_type: Option<SwapCheckpointType>,
     }, // local, remote, remote
     #[display("RefundSigs(xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen}))")]
     RefundSigA {
+        last_checkpoint_type: SwapCheckpointType,
         btc_locked: bool,
         xmr_locked: bool,
         buy_published: bool,
@@ -67,6 +69,7 @@ pub enum BobState {
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
     RevealB {
+        last_checkpoint_type: Option<SwapCheckpointType>,
         local_params: Params,
         remote_commit: Commit,
         b_address: bitcoin::Address,
@@ -76,6 +79,7 @@ pub enum BobState {
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
     CorearbB {
+        last_checkpoint_type: SwapCheckpointType,
         received_refund_procedure_signatures: bool,
         cancel_seen: bool,
         remote_params: Params,
@@ -83,7 +87,10 @@ pub enum BobState {
         b_address: bitcoin::Address,
     }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
-    BuySigB { buy_tx_seen: bool },
+    BuySigB {
+        buy_tx_seen: bool,
+        last_checkpoint_type: SwapCheckpointType,
+    },
     #[display("Finish({0})")]
     FinishB(Outcome),
 }
@@ -95,6 +102,19 @@ pub enum State {
     Alice(AliceState),
     #[display("BobState({0})")]
     Bob(BobState),
+}
+
+#[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
+#[display(inner)]
+pub enum SwapCheckpointType {
+    #[display("CheckpointBobPreLock")]
+    CheckpointBobPreLock,
+    #[display("CheckpointBobPreBuy")]
+    CheckpointBobPreBuy,
+    #[display("CheckpointAlicePreLock")]
+    CheckpointAlicePreLock,
+    #[display("CheckpointAlicePreBuy")]
+    CheckpointAlicePreBuy,
 }
 
 // The state impl is not public and may contain code not used yet, we can relax the linter and
@@ -285,6 +305,31 @@ impl State {
             State::Alice(AliceState::RevealA { .. }) | State::Bob(BobState::RevealB { .. })
         )
     }
+    pub fn last_checkpoint_type(&self) -> Option<SwapCheckpointType> {
+        match self {
+            State::Alice(AliceState::RevealA {
+                last_checkpoint_type,
+                ..
+            })
+            | State::Bob(BobState::RevealB {
+                last_checkpoint_type,
+                ..
+            }) => last_checkpoint_type.clone(),
+            State::Alice(AliceState::RefundSigA {
+                last_checkpoint_type,
+                ..
+            })
+            | State::Bob(BobState::CorearbB {
+                last_checkpoint_type,
+                ..
+            })
+            | State::Bob(BobState::BuySigB {
+                last_checkpoint_type,
+                ..
+            }) => Some(last_checkpoint_type.clone()),
+            _ => None,
+        }
+    }
     pub fn a_refundsig(&self) -> bool {
         matches!(self, State::Alice(AliceState::RefundSigA { .. }))
     }
@@ -293,7 +338,7 @@ impl State {
             return false;
         }
         match self {
-            State::Bob(BobState::BuySigB { buy_tx_seen }) => *buy_tx_seen,
+            State::Bob(BobState::BuySigB { buy_tx_seen, .. }) => *buy_tx_seen,
             _ => unreachable!("conditional early return"),
         }
     }
@@ -401,6 +446,7 @@ impl State {
                 local_params,
                 remote_commit,
                 remote_params,
+                last_checkpoint_type: None,
             }),
 
             State::Bob(BobState::CommitB {
@@ -416,6 +462,7 @@ impl State {
                 b_address,
                 local_trade_role,
                 remote_params,
+                last_checkpoint_type: None,
             }),
 
             _ => unreachable!("checked state on pattern to be Commit"),
@@ -454,7 +501,9 @@ impl State {
             return;
         }
         match self {
-            State::Bob(BobState::BuySigB { buy_tx_seen }) if !(*buy_tx_seen) => *buy_tx_seen = true,
+            State::Bob(BobState::BuySigB { buy_tx_seen, .. }) if !(*buy_tx_seen) => {
+                *buy_tx_seen = true
+            }
             _ => unreachable!("checked state"),
         }
     }
@@ -502,6 +551,78 @@ impl State {
             }
         } else {
             error!("Not on RefundSig state");
+            false
+        }
+    }
+    pub fn a_sup_checkpoint_pre_lock(&mut self) -> bool {
+        if let State::Alice(AliceState::RevealA {
+            last_checkpoint_type,
+            ..
+        }) = self
+        {
+            if last_checkpoint_type.is_none() {
+                *last_checkpoint_type = Some(SwapCheckpointType::CheckpointAlicePreLock);
+                true
+            } else {
+                debug!("checkpoint alice pre lock already set");
+                false
+            }
+        } else {
+            error!("Not on RevealA state");
+            false
+        }
+    }
+    pub fn a_sup_checkpoint_pre_buy(&mut self) -> bool {
+        if let State::Alice(AliceState::RefundSigA {
+            last_checkpoint_type,
+            ..
+        }) = self
+        {
+            if let SwapCheckpointType::CheckpointAlicePreLock = *last_checkpoint_type {
+                *last_checkpoint_type = SwapCheckpointType::CheckpointAlicePreBuy;
+                true
+            } else {
+                debug!("checkpoint alice pre buy already set");
+                false
+            }
+        } else {
+            error!("Not on RefundSigA state");
+            false
+        }
+    }
+    pub fn b_sup_checkpoint_pre_lock(&mut self) -> bool {
+        if let State::Bob(BobState::RevealB {
+            last_checkpoint_type,
+            ..
+        }) = self
+        {
+            if last_checkpoint_type.is_none() {
+                *last_checkpoint_type = Some(SwapCheckpointType::CheckpointBobPreLock);
+                true
+            } else {
+                debug!("checkpoint bob pre lock already set");
+                false
+            }
+        } else {
+            error!("Not on RevealB state");
+            false
+        }
+    }
+    pub fn b_sup_checkpoint_pre_buy(&mut self) -> bool {
+        if let State::Bob(BobState::CorearbB {
+            last_checkpoint_type,
+            ..
+        }) = self
+        {
+            if let SwapCheckpointType::CheckpointBobPreLock = *last_checkpoint_type {
+                *last_checkpoint_type = SwapCheckpointType::CheckpointBobPreBuy;
+                true
+            } else {
+                debug!("checkpoint bob pre buy already set");
+                false
+            }
+        } else {
+            error!("Not on CoreArbB state");
             false
         }
     }
