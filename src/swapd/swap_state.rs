@@ -33,6 +33,7 @@ pub enum AliceState {
     }, // local, remote, remote
     #[display("RefundSigs(xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen}))")]
     RefundSigA {
+        btc_locked: bool,
         xmr_locked: bool,
         buy_published: bool,
         cancel_seen: bool,
@@ -131,6 +132,13 @@ impl State {
                 true
             }
             _ => false,
+        }
+    }
+    pub fn a_btc_locked(&self) -> bool {
+        if let State::Alice(AliceState::RefundSigA { btc_locked, .. }) = self {
+            *btc_locked
+        } else {
+            false
         }
     }
     pub fn a_xmr_locked(&self) -> bool {
@@ -448,6 +456,22 @@ impl State {
         match self {
             State::Bob(BobState::BuySigB { buy_tx_seen }) if !(*buy_tx_seen) => *buy_tx_seen = true,
             _ => unreachable!("checked state"),
+        }
+    }
+    /// Update Alice RefundSig state from BTC unlocked to locked state
+    pub fn a_sup_refundsig_btclocked(&mut self) -> bool {
+        if let State::Alice(AliceState::RefundSigA { btc_locked, .. }) = self {
+            if !*btc_locked {
+                trace!("setting btc_locked");
+                *btc_locked = true;
+                true
+            } else {
+                trace!("btc_locked was already set to true");
+                false
+            }
+        } else {
+            error!("Not on RefundSig state");
+            false
         }
     }
     /// Update Alice RefundSig state from XMR unlocked to locked state
