@@ -13,10 +13,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::farcasterd::runtime::request::CheckpointEntry;
-use crate::farcasterd::runtime::request::MadeOffer;
-use crate::farcasterd::runtime::request::TookOffer;
-use crate::farcasterd::runtime::request::{ProgressEvent, SwapProgress};
+use crate::farcasterd::runtime::request::{
+    CheckpointEntry, MadeOffer, OfferStatus, OfferStatusPair, OfferStatusSelector, ProgressEvent,
+    SwapProgress, TookOffer,
+};
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -170,7 +170,7 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashMap<OfferId, (SwapId, ServiceId)>,
+    consumed_offers: HashMap<PublicOffer<BtcXmr>, (SwapId, ServiceId)>,
     node_ids: HashMap<OfferId, PublicKey>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
     peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
     wallet_token: Token,
@@ -337,7 +337,7 @@ impl Runtime {
                 if swapid != &swap_id {
                     Some((k, (swap_id, service_id)))
                 } else {
-                    offerid = Some(k);
+                    offerid = Some(k.offer.id());
                     None
                 }
             })
@@ -410,8 +410,8 @@ impl Runtime {
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offerid: &OfferId) -> bool {
-        self.consumed_offers.contains_key(offerid)
+    fn consumed_offers_contains(&self, offer: &PublicOffer<BtcXmr>) -> bool {
+        self.consumed_offers.contains_key(offer)
     }
 
     fn _send_walletd(
@@ -723,6 +723,27 @@ impl Runtime {
 
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
+                if let Some(public_offer) =
+                    self.consumed_offers
+                        .iter()
+                        .find_map(|(public_offer, (o_swap_id, _))| {
+                            if *o_swap_id == swapid {
+                                Some(public_offer)
+                            } else {
+                                None
+                            }
+                        })
+                {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Database,
+                        Request::SetOfferStatus(OfferStatusPair {
+                            offer: public_offer.clone(),
+                            status: OfferStatus::Ended(success.clone()),
+                        }),
+                    )?;
+                }
                 self.clean_up_after_swap(&swapid, endpoints)?;
                 self.stats.incr_outcome(&success);
                 match success {
@@ -767,13 +788,23 @@ impl Runtime {
                     }
                 };
                 if self.public_offers.remove(&public_offer) {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Database,
+                        Request::SetOfferStatus(OfferStatusPair {
+                            offer: public_offer.clone(),
+                            status: OfferStatus::InProgress,
+                        }),
+                    )?;
+
                     trace!(
                         "launching swapd with swap_id: {}",
                         swap_id.bright_yellow_bold()
                     );
 
                     self.consumed_offers
-                        .insert(public_offer.offer.id(), (swap_id, peer.clone()));
+                        .insert(public_offer.clone(), (swap_id, peer.clone()));
                     self.stats.incr_initiated();
                     launch_swapd(
                         self,
@@ -860,20 +891,35 @@ impl Runtime {
                 )?;
             }
 
-            // TODO: only list offers matching list of OfferIds
-            Request::ListOffers => {
-                let pub_offers = self
-                    .public_offers
-                    .iter()
-                    .filter(|k| !self.consumed_offers_contains(&k.offer.id()))
-                    .cloned()
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::OfferList(pub_offers),
-                )?;
+            Request::ListOffers(offer_status_selector) => {
+                match offer_status_selector {
+                    OfferStatusSelector::Open => {
+                        let pub_offers = self
+                            .public_offers
+                            .iter()
+                            .filter(|k| !self.consumed_offers_contains(k))
+                            .cloned()
+                            .collect();
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd, // source
+                            source,                // destination
+                            Request::OfferList(pub_offers),
+                        )?;
+                    }
+                    OfferStatusSelector::InProgress => {
+                        let pub_offers = self.consumed_offers.keys().cloned().collect();
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd,
+                            source,
+                            Request::OfferList(pub_offers),
+                        )?;
+                    }
+                    _ => {
+                        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Database, request)?;
+                    }
+                };
             }
 
             Request::RevokeOffer(public_offer) => {
@@ -1096,7 +1142,7 @@ impl Runtime {
                     let public_offer = offer.to_public_v1(node_id, public_addr.into());
                     let pub_offer_id = public_offer.id();
                     let serialized_offer = public_offer.to_string();
-                    if !self.public_offers.insert(public_offer) {
+                    if !self.public_offers.insert(public_offer.clone()) {
                         let msg = s!("This Public offer was previously registered");
                         error!("{}", msg.err());
                         return Err(Error::Other(msg));
@@ -1110,6 +1156,10 @@ impl Runtime {
                     self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
                     self.acc_addrs
                         .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
+                    endpoints.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, ServiceId::Database, Request::SetOfferStatus(OfferStatusPair {
+                        offer: public_offer,
+                        status: OfferStatus::Open,
+                    }))?;
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd, // source
@@ -1141,7 +1191,7 @@ impl Runtime {
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
-                    || self.consumed_offers_contains(&public_offer.offer.id())
+                    || self.consumed_offers_contains(&public_offer)
                 {
                     let msg = format!(
                         "{} already exists or was already taken, ignoring request",

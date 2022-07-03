@@ -20,6 +20,8 @@ pub mod request;
 use crate::ServiceId;
 pub use client::Client;
 pub use reply::Reply;
+#[cfg(feature = "shell")]
+pub use request::OfferStatusSelector;
 pub use request::Request;
 
 use microservices::esb::BusId;

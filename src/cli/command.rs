@@ -89,8 +89,8 @@ impl Exec for Command {
             }
 
             // TODO: only list offers matching list of OfferIds
-            Command::ListOffers => {
-                runtime.request(ServiceId::Farcasterd, Request::ListOffers)?;
+            Command::ListOffers { select } => {
+                runtime.request(ServiceId::Farcasterd, Request::ListOffers(select.into()))?;
                 runtime.report_response_or_fail()?;
             }
 

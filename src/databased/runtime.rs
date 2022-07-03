@@ -314,7 +314,7 @@ impl Runtime {
                 self.database.set_offer_status(&offer, &status)?;
             }
 
-            Request::RetrieveOffers(selector) => {
+            Request::ListOffers(selector) => {
                 let offer_status_pairs = self.database.get_offers(selector)?;
                 endpoints.send_to(
                     ServiceBus::Ctl,
