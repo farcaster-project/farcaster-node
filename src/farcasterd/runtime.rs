@@ -1721,65 +1721,69 @@ impl Runtime {
                 }
             }
 
-            Request::SyncerEvent(Event::SweepSuccess(success)) => {
-                if let Some(client_service_id) = self.syncer_tasks.remove(&success.id) {
-                    if let Some(Some(txid)) = success
-                        .txids
-                        .clone()
-                        .pop()
-                        .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
-                    {
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Farcasterd,
-                            client_service_id.clone(),
-                            Request::String(format!(
-                                "Successfully sweeped address. Transaction Id: {}.",
-                                txid.to_hex()
-                            )),
-                        )?;
-                    } else {
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Farcasterd,
-                            client_service_id.clone(),
-                            Request::String("Nothing to sweep.".to_string()),
-                        )?;
-                    }
-
-                    self.syncer_clients = self
-                        .syncer_clients
-                        .drain()
-                        .filter_map(|((coin, network), mut xs)| {
-                            xs.remove(&client_service_id);
-                            if !xs.is_empty() {
-                                Some(((coin, network), xs))
-                            } else {
-                                let service_id = ServiceId::Syncer(coin, network);
-                                info!("Terminating {}", service_id);
-                                if endpoints
-                                    .send_to(
-                                        ServiceBus::Ctl,
-                                        ServiceId::Farcasterd,
-                                        service_id,
-                                        Request::Terminate,
-                                    )
-                                    .is_ok()
-                                {
-                                    None
-                                } else {
-                                    Some(((coin, network), xs))
-                                }
-                            }
-                        })
-                        .collect();
-                    let clients = &self.syncer_clients;
-                    self.syncer_services = self
-                        .syncer_services
-                        .drain()
-                        .filter(|(k, _)| clients.contains_key(k))
-                        .collect();
+            Request::SyncerEvent(Event::SweepSuccess(success))
+                if self.syncer_tasks.contains_key(&success.id) =>
+            {
+                let client_service_id = self
+                    .syncer_tasks
+                    .remove(&success.id)
+                    .expect("checked by guard");
+                if let Some(Some(txid)) = success
+                    .txids
+                    .clone()
+                    .pop()
+                    .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
+                {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        client_service_id.clone(),
+                        Request::String(format!(
+                            "Successfully sweeped address. Transaction Id: {}.",
+                            txid.to_hex()
+                        )),
+                    )?;
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        client_service_id.clone(),
+                        Request::String("Nothing to sweep.".to_string()),
+                    )?;
                 }
+
+                self.syncer_clients = self
+                    .syncer_clients
+                    .drain()
+                    .filter_map(|((coin, network), mut xs)| {
+                        xs.remove(&client_service_id);
+                        if !xs.is_empty() {
+                            Some(((coin, network), xs))
+                        } else {
+                            let service_id = ServiceId::Syncer(coin, network);
+                            info!("Terminating {}", service_id);
+                            if endpoints
+                                .send_to(
+                                    ServiceBus::Ctl,
+                                    ServiceId::Farcasterd,
+                                    service_id,
+                                    Request::Terminate,
+                                )
+                                .is_ok()
+                            {
+                                None
+                            } else {
+                                Some(((coin, network), xs))
+                            }
+                        }
+                    })
+                    .collect();
+                let clients = &self.syncer_clients;
+                self.syncer_services = self
+                    .syncer_services
+                    .drain()
+                    .filter(|(k, _)| clients.contains_key(k))
+                    .collect();
             }
 
             Request::PeerdTerminated => {
