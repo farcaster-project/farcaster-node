@@ -13,10 +13,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::farcasterd::runtime::request::CheckpointEntry;
-use crate::farcasterd::runtime::request::MadeOffer;
-use crate::farcasterd::runtime::request::TookOffer;
-use crate::farcasterd::runtime::request::{ProgressEvent, SwapProgress};
+use crate::farcasterd::runtime::request::{
+    CheckpointEntry, MadeOffer, OfferStatus, OfferStatusPair, OfferStatusSelector, ProgressEvent,
+    SwapProgress, TookOffer,
+};
+use crate::syncerd::{Event, SweepAddress, SweepAddressAddendum, Task, TaskId};
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -30,6 +31,7 @@ use crate::{
     walletd::NodeSecrets,
 };
 use amplify::Wrapper;
+use bitcoin::hashes::Hash as BitcoinHash;
 use clap::IntoApp;
 use internet2::LIGHTNING_P2P_DEFAULT_PORT;
 use request::{Commit, List, Params};
@@ -140,6 +142,7 @@ pub fn run(
         peerd_ids: none!(),
         wallet_token,
         pending_requests: none!(),
+        pending_sweep_requests: none!(),
         syncer_services: none!(),
         syncer_clients: none!(),
         consumed_offers: none!(),
@@ -151,6 +154,8 @@ pub fn run(
         checkpointed_pub_offers: vec![].into(),
         restoring_swap_id: none!(),
         config,
+        syncer_task_counter: 0,
+        syncer_tasks: none!(),
     };
 
     let broker = true;
@@ -170,13 +175,14 @@ pub struct Runtime {
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashMap<OfferId, (SwapId, ServiceId)>,
+    consumed_offers: HashMap<PublicOffer<BtcXmr>, (SwapId, ServiceId)>,
     node_ids: HashMap<OfferId, PublicKey>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
     peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
+    pending_sweep_requests: HashMap<ServiceId, Request>, // TODO: merge this with pending requests eventually
     syncer_services: HashMap<(Coin, Network), ServiceId>,
-    syncer_clients: HashMap<(Coin, Network), HashSet<SwapId>>,
+    syncer_clients: HashMap<(Coin, Network), HashSet<ServiceId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>,
     funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount, bool)>,
@@ -185,6 +191,8 @@ pub struct Runtime {
     restoring_swap_id: HashSet<SwapId>,
     stats: Stats,
     config: Config,
+    syncer_task_counter: u32,
+    syncer_tasks: HashMap<TaskId, ServiceId>,
 }
 
 #[derive(Default)]
@@ -337,7 +345,7 @@ impl Runtime {
                 if swapid != &swap_id {
                     Some((k, (swap_id, service_id)))
                 } else {
-                    offerid = Some(k);
+                    offerid = Some(k.offer.id());
                     None
                 }
             })
@@ -374,11 +382,13 @@ impl Runtime {
             }
         }
 
+        let client_service_id = ServiceId::Swap(*swapid);
+
         self.syncer_clients = self
             .syncer_clients
             .drain()
             .filter_map(|((coin, network), mut xs)| {
-                xs.remove(swapid);
+                xs.remove(&client_service_id);
                 if !xs.is_empty() {
                     Some(((coin, network), xs))
                 } else {
@@ -410,8 +420,8 @@ impl Runtime {
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offerid: &OfferId) -> bool {
-        self.consumed_offers.contains_key(offerid)
+    fn consumed_offers_contains(&self, offer: &PublicOffer<BtcXmr>) -> bool {
+        self.consumed_offers.contains_key(offer)
     }
 
     fn _send_walletd(
@@ -598,6 +608,14 @@ impl Runtime {
                             &source,
                             self.syncer_services.len().bright_blue_bold()
                         );
+                        for (_, request) in self.pending_sweep_requests.drain() {
+                            endpoints.send_to(
+                                ServiceBus::Ctl,
+                                ServiceId::Farcasterd,
+                                ServiceId::Syncer(*coin, *network),
+                                request,
+                            )?;
+                        }
                     }
                     ServiceId::Syncer(..) => {
                         error!(
@@ -723,6 +741,27 @@ impl Runtime {
 
             Request::SwapOutcome(success) => {
                 let swapid = get_swap_id(&source)?;
+                if let Some(public_offer) =
+                    self.consumed_offers
+                        .iter()
+                        .find_map(|(public_offer, (o_swap_id, _))| {
+                            if *o_swap_id == swapid {
+                                Some(public_offer)
+                            } else {
+                                None
+                            }
+                        })
+                {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Database,
+                        Request::SetOfferStatus(OfferStatusPair {
+                            offer: public_offer.clone(),
+                            status: OfferStatus::Ended(success.clone()),
+                        }),
+                    )?;
+                }
                 self.clean_up_after_swap(&swapid, endpoints)?;
                 self.stats.incr_outcome(&success);
                 match success {
@@ -767,13 +806,23 @@ impl Runtime {
                     }
                 };
                 if self.public_offers.remove(&public_offer) {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Database,
+                        Request::SetOfferStatus(OfferStatusPair {
+                            offer: public_offer.clone(),
+                            status: OfferStatus::InProgress,
+                        }),
+                    )?;
+
                     trace!(
                         "launching swapd with swap_id: {}",
                         swap_id.bright_yellow_bold()
                     );
 
                     self.consumed_offers
-                        .insert(public_offer.offer.id(), (swap_id, peer.clone()));
+                        .insert(public_offer.clone(), (swap_id, peer.clone()));
                     self.stats.incr_initiated();
                     launch_swapd(
                         self,
@@ -860,20 +909,35 @@ impl Runtime {
                 )?;
             }
 
-            // TODO: only list offers matching list of OfferIds
-            Request::ListOffers => {
-                let pub_offers = self
-                    .public_offers
-                    .iter()
-                    .filter(|k| !self.consumed_offers_contains(&k.offer.id()))
-                    .cloned()
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::OfferList(pub_offers),
-                )?;
+            Request::ListOffers(offer_status_selector) => {
+                match offer_status_selector {
+                    OfferStatusSelector::Open => {
+                        let pub_offers = self
+                            .public_offers
+                            .iter()
+                            .filter(|k| !self.consumed_offers_contains(k))
+                            .cloned()
+                            .collect();
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd, // source
+                            source,                // destination
+                            Request::OfferList(pub_offers),
+                        )?;
+                    }
+                    OfferStatusSelector::InProgress => {
+                        let pub_offers = self.consumed_offers.keys().cloned().collect();
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Farcasterd,
+                            source,
+                            Request::OfferList(pub_offers),
+                        )?;
+                    }
+                    _ => {
+                        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Database, request)?;
+                    }
+                };
             }
 
             Request::RevokeOffer(public_offer) => {
@@ -1096,7 +1160,7 @@ impl Runtime {
                     let public_offer = offer.to_public_v1(node_id, public_addr.into());
                     let pub_offer_id = public_offer.id();
                     let serialized_offer = public_offer.to_string();
-                    if !self.public_offers.insert(public_offer) {
+                    if !self.public_offers.insert(public_offer.clone()) {
                         let msg = s!("This Public offer was previously registered");
                         error!("{}", msg.err());
                         return Err(Error::Other(msg));
@@ -1110,6 +1174,10 @@ impl Runtime {
                     self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
                     self.acc_addrs
                         .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
+                    endpoints.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, ServiceId::Database, Request::SetOfferStatus(OfferStatusPair {
+                        offer: public_offer,
+                        status: OfferStatus::Open,
+                    }))?;
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd, // source
@@ -1141,7 +1209,7 @@ impl Runtime {
                 peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
-                    || self.consumed_offers_contains(&public_offer.offer.id())
+                    || self.consumed_offers_contains(&public_offer)
                 {
                     let msg = format!(
                         "{} already exists or was already taken, ignoring request",
@@ -1602,6 +1670,122 @@ impl Runtime {
                 )?;
             }
 
+            Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
+                // remove once conversion is implemented in farcaster core Network type
+                let coin = Coin::Bitcoin;
+                let network = match sweep_bitcoin_address.source_address.network {
+                    bitcoin::Network::Bitcoin => Network::Mainnet,
+                    bitcoin::Network::Testnet => Network::Testnet,
+                    bitcoin::Network::Signet => Network::Testnet,
+                    bitcoin::Network::Regtest => Network::Local,
+                };
+                // check if a bitcoin syncer is up
+                let id = TaskId(self.syncer_task_counter);
+                let request = Request::SyncerTask(Task::SweepAddress(SweepAddress {
+                    id,
+                    lifetime: u64::MAX,
+                    addendum: SweepAddressAddendum::Bitcoin(sweep_bitcoin_address),
+                    from_height: None,
+                }));
+                self.syncer_task_counter += 1;
+                self.syncer_tasks.insert(id, source.clone());
+
+                let k = (coin, network);
+                let s = ServiceId::Syncer(coin, network);
+                if !self.syncer_services.contains_key(&k)
+                    && !self.spawning_services.contains_key(&s)
+                {
+                    let mut args = vec![
+                        "--coin".to_string(),
+                        coin.to_string(),
+                        "--network".to_string(),
+                        network.to_string(),
+                    ];
+                    args.append(&mut syncer_servers_args(&self.config, coin, network)?);
+                    info!("launching syncer with: {:?}", args);
+                    launch("syncerd", args)?;
+                    self.spawning_services.insert(s, ServiceId::Farcasterd);
+                    if let Some(xs) = self.syncer_clients.get_mut(&k) {
+                        xs.insert(source.clone());
+                    } else {
+                        self.syncer_clients.insert(k, set![source.clone()]);
+                    }
+                    self.pending_sweep_requests.insert(source, request);
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Syncer(coin, network),
+                        request,
+                    )?;
+                }
+            }
+
+            Request::SyncerEvent(Event::SweepSuccess(success))
+                if self.syncer_tasks.contains_key(&success.id) =>
+            {
+                let client_service_id = self
+                    .syncer_tasks
+                    .remove(&success.id)
+                    .expect("checked by guard");
+                if let Some(Some(txid)) = success
+                    .txids
+                    .clone()
+                    .pop()
+                    .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
+                {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        client_service_id.clone(),
+                        Request::String(format!(
+                            "Successfully sweeped address. Transaction Id: {}.",
+                            txid.to_hex()
+                        )),
+                    )?;
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        client_service_id.clone(),
+                        Request::String("Nothing to sweep.".to_string()),
+                    )?;
+                }
+
+                self.syncer_clients = self
+                    .syncer_clients
+                    .drain()
+                    .filter_map(|((coin, network), mut xs)| {
+                        xs.remove(&client_service_id);
+                        if !xs.is_empty() {
+                            Some(((coin, network), xs))
+                        } else {
+                            let service_id = ServiceId::Syncer(coin, network);
+                            info!("Terminating {}", service_id);
+                            if endpoints
+                                .send_to(
+                                    ServiceBus::Ctl,
+                                    ServiceId::Farcasterd,
+                                    service_id,
+                                    Request::Terminate,
+                                )
+                                .is_ok()
+                            {
+                                None
+                            } else {
+                                Some(((coin, network), xs))
+                            }
+                        }
+                    })
+                    .collect();
+                let clients = &self.syncer_clients;
+                self.syncer_services = self
+                    .syncer_services
+                    .drain()
+                    .filter(|(k, _)| clients.contains_key(k))
+                    .collect();
+            }
+
             Request::PeerdTerminated => {
                 if let ServiceId::Peer(addr) = source {
                     if self.connections.remove(&addr) {
@@ -1801,7 +1985,7 @@ fn syncers_up(
     source: ServiceId,
     spawning_services: &mut HashMap<ServiceId, ServiceId>,
     services: &HashMap<(Coin, Network), ServiceId>,
-    clients: &mut HashMap<(Coin, Network), HashSet<SwapId>>,
+    clients: &mut HashMap<(Coin, Network), HashSet<ServiceId>>,
     coin: Coin,
     network: Network,
     swap_id: SwapId,
@@ -1823,7 +2007,7 @@ fn syncers_up(
         spawning_services.insert(s, source);
     }
     if let Some(xs) = clients.get_mut(&k) {
-        xs.insert(swap_id);
+        xs.insert(ServiceId::Swap(swap_id));
     }
     Ok(())
 }

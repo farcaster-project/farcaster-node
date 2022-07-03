@@ -68,10 +68,17 @@ pub enum Command {
     #[clap(aliases = &["ls"])]
     ListSwaps,
 
-    // TODO: only list offers matching list of OfferIds
     /// Lists public offers created by daemon
     #[clap(aliases = &["lo"])]
-    ListOffers,
+    ListOffers {
+        #[clap(
+            short,
+            long,
+            default_value = "open",
+            possible_values = &["open", "Open", "inprogress", "in_progress", "ended", "Ended", "all", "All"],
+        )]
+        select: OfferSelector,
+    },
 
     /// Gives information on an open offer
     #[clap(aliases = &["oi"])]
@@ -234,6 +241,47 @@ pub enum Command {
         /// The coin funding required needs to be checked against.
         coin: Coin,
     },
+
+    /// Attempts to sweep any funds on a given funding address
+    #[display("sweep-address<{source_address} {destination_address}>")]
+    SweepAddress {
+        /// The source address to be swept.
+        source_address: BtcAddress,
+        /// The destination address receiving the coins.
+        destination_address: BtcAddress,
+    },
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
+pub enum OfferSelector {
+    #[display("Open")]
+    Open,
+    #[display("In Progress")]
+    InProgress,
+    #[display("Ended")]
+    Ended,
+    #[display("All")]
+    All,
+}
+
+impl FromStr for OfferSelector {
+    type Err = OfferSelectorParseError;
+    fn from_str(input: &str) -> Result<OfferSelector, Self::Err> {
+        match input {
+            "open" | "Open" => Ok(OfferSelector::Open),
+            "in_progress" | "inprogress" => Ok(OfferSelector::InProgress),
+            "ended" | "Ended" => Ok(OfferSelector::Ended),
+            "all" | "All" => Ok(OfferSelector::All),
+            _ => Err(OfferSelectorParseError::Invalid),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
+#[display(doc_comments)]
+pub enum OfferSelectorParseError {
+    /// The provided value can't be parsed as an offer selector
+    Invalid,
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]

@@ -1503,6 +1503,7 @@ impl Runtime {
                                     && self.state.remote_params().is_some()
                                     && !self.syncer_state.acc_lock_watched() =>
                             {
+                                self.state.a_sup_refundsig_btclocked();
                                 // TODO: implement state management here?
                                 if let (
                                     Some(Params::Alice(alice_params)),
@@ -1580,6 +1581,7 @@ impl Runtime {
                                     && self.state.local_params().is_some() =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
+                                let btc_locked = self.state.a_btc_locked();
                                 if let Some((txlabel, buy_tx)) =
                                     self.txs.remove_entry(&TxLabel::Buy)
                                 {
@@ -1587,6 +1589,7 @@ impl Runtime {
                                     self.state = State::Alice(AliceState::RefundSigA {
                                         local_params: self.state.local_params().cloned().unwrap(),
                                         buy_published: true,
+                                        btc_locked,
                                         xmr_locked,
                                         cancel_seen: false,
                                         refund_seen: false,
@@ -2090,6 +2093,7 @@ impl Runtime {
                 let next_state = State::Alice(AliceState::RefundSigA {
                     last_checkpoint_type: SwapCheckpointType::CheckpointAlicePreLock,
                     local_params: self.state.local_params().cloned().unwrap(),
+                    btc_locked: false,
                     xmr_locked: false,
                     buy_published: false,
                     cancel_seen: false,
@@ -2162,7 +2166,10 @@ impl Runtime {
             }
 
             Request::CancelSwap
-                if self.state.a_start() || self.state.a_commit() || self.state.a_reveal() =>
+                if self.state.a_start()
+                    || self.state.a_commit()
+                    || self.state.a_reveal()
+                    || (self.state.a_refundsig() && !self.state.a_btc_locked()) =>
             {
                 // just cancel the swap, no additional logic required
                 self.state_update(
@@ -2217,10 +2224,6 @@ impl Runtime {
                     Request::Failure(Failure { code: 1, info: msg }),
                 )?;
             }
-            // TODO add rule for canceling alice swap if bob never locks,
-            // but she is already in RefundSigA. This is not that critical,
-            // since Alice won't lock her funds either, but it could leave a
-            // swap running forever
             Request::GetInfo(_) => {
                 fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
                 where

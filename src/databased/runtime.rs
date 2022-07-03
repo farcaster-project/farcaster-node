@@ -7,6 +7,7 @@ use farcaster_core::negotiation::PublicOffer;
 use farcaster_core::swap::btcxmr::BtcXmr;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
+use microservices::rpc::Failure;
 use std::path::PathBuf;
 use std::{
     any::Any,
@@ -288,16 +289,28 @@ impl Runtime {
             }
 
             Request::GetAddressSecretKey(address) => {
-                let secret_key = self.database.get_address_secret_key(&address)?;
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Database,
-                    source,
-                    Request::AddressSecretKey(request::AddressSecretKey {
-                        address,
-                        secret_key: secret_key.secret_bytes(),
-                    }),
-                )?;
+                match self.database.get_address_secret_key(&address) {
+                    Err(_) => endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Database,
+                        source,
+                        Request::Failure(Failure {
+                            code: 1,
+                            info: format!("Could not retrieve secret key for address {}", address),
+                        }),
+                    )?,
+                    Ok(secret_key) => {
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            ServiceId::Database,
+                            source,
+                            Request::AddressSecretKey(request::AddressSecretKey {
+                                address,
+                                secret_key: secret_key.secret_bytes(),
+                            }),
+                        )?;
+                    }
+                }
             }
 
             Request::GetAddresses => {
@@ -314,7 +327,7 @@ impl Runtime {
                 self.database.set_offer_status(&offer, &status)?;
             }
 
-            Request::RetrieveOffers(selector) => {
+            Request::ListOffers(selector) => {
                 let offer_status_pairs = self.database.get_offers(selector)?;
                 endpoints.send_to(
                     ServiceBus::Ctl,
