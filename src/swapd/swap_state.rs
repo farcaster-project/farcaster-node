@@ -40,6 +40,8 @@ pub enum AliceState {
         remote_params: Params,
         /* #[display("local_view_share({0})")] */
         local_params: Params,
+        required_funding_amount: Option<u64>, // TODO: Should be monero::Amount
+        overfunded: bool,
     },
     #[display("Finish({0})")]
     FinishA(Outcome),
@@ -320,6 +322,24 @@ impl State {
     pub fn a_refundsig(&self) -> bool {
         matches!(self, State::Alice(AliceState::RefundSigA { .. }))
     }
+    pub fn a_required_funding_amount(&self) -> Option<u64> {
+        match self {
+            State::Alice(AliceState::RefundSigA {
+                required_funding_amount,
+                ..
+            }) => required_funding_amount.clone(),
+            _ => None,
+        }
+    }
+    pub fn a_overfunded(&self) -> bool {
+        matches!(
+            self,
+            State::Alice(AliceState::RefundSigA {
+                overfunded: true,
+                ..
+            })
+        )
+    }
     pub fn b_buy_tx_seen(&self) -> bool {
         if !self.b_buy_sig() {
             return false;
@@ -510,6 +530,19 @@ impl State {
             false
         }
     }
+    /// Update Alice RefundSig state from overfunded=false to overfunded=true
+    pub fn a_sup_overfunded(&mut self) {
+        if let State::Alice(AliceState::RefundSigA { overfunded, .. }) = self {
+            if !*overfunded {
+                trace!("setting overfunded");
+                *overfunded = true;
+            } else {
+                trace!("overfunded was already set to true");
+            }
+        } else {
+            error!("Not on RefundSig state");
+        }
+    }
     /// Update Alice RefundSig state from XMR unlocked to locked state
     pub fn a_sup_refundsig_xmrlocked(&mut self) -> bool {
         if let State::Alice(AliceState::RefundSigA { xmr_locked, .. }) = self {
@@ -526,6 +559,23 @@ impl State {
             false
         }
     }
+    /// Update Alice RefundSig state with the required Monero funding amount
+    pub fn a_sup_required_funding_amount(&mut self, amount: monero::Amount) {
+        if let State::Alice(AliceState::RefundSigA {
+            required_funding_amount,
+            ..
+        }) = self
+        {
+            if required_funding_amount.is_none() {
+                *required_funding_amount = Some(amount.as_pico());
+            } else {
+                trace!("required funding amount was already set");
+            }
+        } else {
+            error!("Not on RefundSig state");
+        }
+    }
+
     pub fn a_sup_refundsig_refund_seen(&mut self) -> bool {
         if let State::Alice(AliceState::RefundSigA { refund_seen, .. }) = self {
             if !*refund_seen {
