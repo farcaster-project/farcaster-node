@@ -20,6 +20,7 @@ in pkgs.mkShell {
     cargo
     cargo-watch
     rust-analyzer
+    rustc
     openssl
     clang
     cmake
