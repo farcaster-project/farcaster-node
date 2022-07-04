@@ -1177,19 +1177,11 @@ pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub swap_id: Option<SwapId>,
     // pub state: crate::swapd::State,
-    // #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
-    // pub funding_outpoint: OutPoint,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub maker_peer: Vec<NodeAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    //// FIXME serde::Serialize/Deserialize missing
-    // #[serde_as(as = "Option<DisplayFromStr)>")]
-    // pub params: Option<Params>,
-    pub local_keys: lnp::channel::bolt::LocalKeyset,
-    #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
-    pub remote_keys: BTreeMap<NodeAddr, lnp::channel::bolt::RemoteKeyset>,
     pub public_offer: PublicOffer<BtcXmr>,
 }
 

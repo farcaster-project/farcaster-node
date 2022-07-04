@@ -2211,16 +2211,6 @@ impl Runtime {
                 )?;
             }
             Request::GetInfo(_) => {
-                fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
-                where
-                    T: Clone,
-                {
-                    remote_peer
-                        .as_ref()
-                        .map(|p| bmap! { p.clone() => v.clone() })
-                        .unwrap_or_default()
-                }
-
                 let swap_id = if self.swap_id() == zero!() {
                     None
                 } else {
@@ -2238,10 +2228,6 @@ impl Runtime {
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
-                    // params: self.params, // FIXME
-                    // serde::Serialize/Deserialize missing
-                    local_keys: dumb!(),
-                    remote_keys: bmap(&self.maker_peer, &dumb!()),
                     public_offer: self.public_offer.clone(),
                 };
                 self.send_ctl(endpoints, source, Request::SwapInfo(info))?;
