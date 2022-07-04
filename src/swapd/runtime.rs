@@ -116,14 +116,8 @@ pub fn run(
     };
 
     let init_state = match local_swap_role {
-        SwapRole::Alice => State::Alice(AliceState::StartA {
-            local_trade_role,
-            public_offer,
-        }),
-        SwapRole::Bob => State::Bob(BobState::StartB {
-            local_trade_role,
-            public_offer,
-        }),
+        SwapRole::Alice => State::Alice(AliceState::StartA { local_trade_role }),
+        SwapRole::Bob => State::Bob(BobState::StartB { local_trade_role }),
     };
     let sweep_monero_thr = 10;
     info!(
@@ -195,6 +189,7 @@ pub fn run(
         pending_peer_request: none!(),
         pending_checkpoint_chunks: map![],
         txs: none!(),
+        public_offer,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -218,6 +213,7 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
+    public_offer: PublicOffer<BtcXmr>,
 }
 
 #[derive(Debug, Clone)]
@@ -945,14 +941,9 @@ impl Runtime {
                     funding_address,
                     None,
                 );
-                let public_offer = self
-                    .state
-                    .public_offer()
-                    .map(|offer| offer.to_string())
-                    .expect("state Start has puboffer");
                 let take_swap = TakeCommit {
                     commit: local_commit,
-                    public_offer,
+                    public_offer: self.public_offer.to_string(),
                     swap_id,
                 };
                 self.send_peer(endpoints, Msg::TakerCommit(take_swap))?;
@@ -2225,16 +2216,6 @@ impl Runtime {
                 )?;
             }
             Request::GetInfo(_) => {
-                fn bmap<T>(remote_peer: &Option<NodeAddr>, v: &T) -> BTreeMap<NodeAddr, T>
-                where
-                    T: Clone,
-                {
-                    remote_peer
-                        .as_ref()
-                        .map(|p| bmap! { p.clone() => v.clone() })
-                        .unwrap_or_default()
-                }
-
                 let swap_id = if self.swap_id() == zero!() {
                     None
                 } else {
@@ -2252,10 +2233,7 @@ impl Runtime {
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
-                    // params: self.params, // FIXME
-                    // serde::Serialize/Deserialize missing
-                    local_keys: dumb!(),
-                    remote_keys: bmap(&self.maker_peer, &dumb!()),
+                    public_offer: self.public_offer.clone(),
                 };
                 self.send_ctl(endpoints, source, Request::SwapInfo(info))?;
             }
