@@ -21,6 +21,7 @@ in pkgs.mkShell {
     cargo-watch
     rust-analyzer
     rustc
+    rustfmt
     openssl
     clang
     cmake
