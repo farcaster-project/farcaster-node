@@ -261,6 +261,7 @@ pub struct CheckpointSwapd {
     pub txids: HashMap<TxLabel, Txid>,
     pub pending_broadcasts: Vec<bitcoin::Transaction>,
     pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
+    pub tasks: HashMap<TaskId, (ServiceId, Task)>,
 }
 
 impl StrictEncode for CheckpointSwapd {
@@ -302,20 +303,26 @@ impl StrictEncode for CheckpointSwapd {
                 })?;
                 Ok(acc)
             });
-        len = match res {
-            Ok(val) => Ok(val),
-            Err(err) => Err(strict_encoding::Error::DataIntegrityError(format!(
-                "{}",
-                err
-            ))),
-        }?;
+        len = res?;
 
         len += self.pending_requests.len().strict_encode(&mut e)?;
-        self.pending_requests
+        let res: Result<usize, strict_encoding::Error> =
+            self.pending_requests
+                .iter()
+                .try_fold(len, |mut acc, (key, val)| {
+                    acc += key.strict_encode(&mut e)?;
+                    acc += val.strict_encode(&mut e)?;
+                    Ok(acc)
+                });
+
+        len = res?;
+        len += self.tasks.len().strict_encode(&mut e)?;
+        self.tasks
             .iter()
-            .try_fold(len, |mut acc, (key, val)| {
+            .try_fold(len, |mut acc, (key, (val0, val1))| {
                 acc += key.strict_encode(&mut e)?;
-                acc += val.strict_encode(&mut e)?;
+                acc += val0.strict_encode(&mut e)?;
+                acc += val1.strict_encode(&mut e)?;
                 Ok(acc)
             })
     }
@@ -362,6 +369,20 @@ impl StrictDecode for CheckpointSwapd {
             }
             pending_requests.insert(key, val);
         }
+
+        let len = usize::strict_decode(&mut d)?;
+        let mut tasks = HashMap::<TaskId, (ServiceId, Task)>::new();
+        for _ in 0..len {
+            let key = TaskId::strict_decode(&mut d)?;
+            let val = (
+                ServiceId::strict_decode(&mut d)?,
+                Task::strict_decode(&mut d)?,
+            );
+            if tasks.contains_key(&key) {
+                return Err(strict_encoding::Error::RepeatedValue(format!("{:?}", key)));
+            }
+            tasks.insert(key, val);
+        }
         Ok(CheckpointSwapd {
             state,
             last_msg,
@@ -372,6 +393,7 @@ impl StrictDecode for CheckpointSwapd {
             txids,
             pending_requests,
             pending_broadcasts,
+            tasks,
         })
     }
 }
@@ -784,6 +806,7 @@ impl Runtime {
                                     pending_requests: self.pending_requests.clone(),
                                     pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                                     xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                                    tasks: self.syncer_state.tasks.tasks.clone(),
                                 }),
                             )?;
                         }
@@ -1932,6 +1955,7 @@ impl Runtime {
                             pending_requests: self.pending_requests.clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                            tasks: self.syncer_state.tasks.tasks.clone(),
                         }),
                     )?;
                 }
@@ -2079,6 +2103,7 @@ impl Runtime {
                             pending_requests: self.pending_requests.clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                            tasks: self.syncer_state.tasks.tasks.clone(),
                         }),
                     )?;
                 }
@@ -2123,6 +2148,7 @@ impl Runtime {
                             pending_requests: self.pending_requests.clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                            tasks: self.syncer_state.tasks.tasks.clone(),
                         }),
                     )?;
                 }
@@ -2265,6 +2291,7 @@ impl Runtime {
                     pending_requests,
                     pending_broadcasts,
                     xmr_addr_addendum,
+                    tasks,
                 }) => {
                     info!("{} | Restoring swap", swap_id);
                     self.state = state;
@@ -2272,44 +2299,11 @@ impl Runtime {
                     self.temporal_safety = temporal_safety;
                     self.pending_requests = pending_requests;
                     self.txs = txs.clone();
-                    trace!("Watch height bitcoin");
-                    let watch_height_bitcoin = self.syncer_state.watch_height(Coin::Bitcoin);
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        Request::SyncerTask(watch_height_bitcoin),
-                    )?;
-
-                    trace!("Watch height monero");
-                    let watch_height_monero = self.syncer_state.watch_height(Coin::Monero);
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.monero_syncer(),
-                        Request::SyncerTask(watch_height_monero),
-                    )?;
-
-                    trace!("Watching transactions");
-                    for (tx_label, txid) in txids.iter() {
-                        let task = self
-                            .syncer_state
-                            .watch_tx_btc(txid.clone(), tx_label.clone());
+                    for (_id, (syncer_service_id, task)) in tasks {
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(task),
-                        )?;
-                    }
-
-                    trace!("broadcasting txs pending broadcast");
-                    for tx in pending_broadcasts.iter() {
-                        let task = self.syncer_state.broadcast(tx.clone());
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
+                            syncer_service_id,
                             Request::SyncerTask(task),
                         )?;
                     }

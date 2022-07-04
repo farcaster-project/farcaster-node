@@ -32,7 +32,7 @@ pub struct SyncerTasks {
     pub sweeping_addr: Option<TaskId>,
     // external address: needed to subscribe for buy (bob) or refund (alice) address_txs
     pub txids: HashMap<TxLabel, Txid>,
-    pub tasks: HashMap<TaskId, Task>,
+    pub tasks: HashMap<TaskId, (ServiceId, Task)>,
 }
 
 impl SyncerTasks {
@@ -114,7 +114,9 @@ impl SyncerState {
             hash: txid.to_vec(),
             confirmation_bound: self.confirmation_bound,
         });
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.bitcoin_syncer(), task.clone()));
         task
     }
     pub fn is_watched_tx(&self, tx_label: &TxLabel) -> bool {
@@ -136,7 +138,9 @@ impl SyncerState {
             hash,
             confirmation_bound: self.confirmation_bound,
         });
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.monero_syncer(), task.clone()));
         task
     }
     pub fn retrieve_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {
@@ -148,7 +152,9 @@ impl SyncerState {
         self.tasks
             .retrieving_txs
             .insert(id, (tx_label, task.clone()));
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.bitcoin_syncer(), task.clone()));
         task
     }
     pub fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
@@ -172,7 +178,9 @@ impl SyncerState {
             addendum: AddressAddendum::Bitcoin(addendum),
             include_tx: Boolean::True,
         });
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.bitcoin_syncer(), task.clone()));
         task
     }
 
@@ -232,7 +240,9 @@ impl SyncerState {
             include_tx: Boolean::False,
         };
         let task = Task::WatchAddress(watch_addr);
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.monero_syncer(), task.clone()));
         task
     }
     pub fn sweep_xmr(
@@ -259,7 +269,9 @@ impl SyncerState {
             from_height,
         };
         let task = Task::SweepAddress(sweep_task);
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.monero_syncer(), task.clone()));
         task
     }
 
@@ -270,7 +282,11 @@ impl SyncerState {
             id,
             lifetime: self.task_lifetime(coin),
         });
-        self.tasks.tasks.insert(id, task.clone());
+        let syncer = match coin {
+            Coin::Bitcoin => self.bitcoin_syncer(),
+            Coin::Monero => self.monero_syncer(),
+        };
+        self.tasks.tasks.insert(id, (syncer, task.clone()));
         task
     }
     pub fn sweep_btc(&mut self, sweep_bitcoin_address: SweepBitcoinAddress) -> Task {
@@ -285,7 +301,9 @@ impl SyncerState {
             from_height: None,
         };
         let task = Task::SweepAddress(sweep_task);
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.bitcoin_syncer(), task.clone()));
         task
     }
     pub fn broadcast(&mut self, tx: bitcoin::Transaction) -> Task {
@@ -294,7 +312,9 @@ impl SyncerState {
             id,
             tx: bitcoin::consensus::serialize(&tx),
         });
-        self.tasks.tasks.insert(id, task.clone());
+        self.tasks
+            .tasks
+            .insert(id, (self.bitcoin_syncer(), task.clone()));
         self.tasks.broadcasting_txs.insert(id);
         task
     }
@@ -307,7 +327,7 @@ impl SyncerState {
             .broadcasting_txs
             .iter()
             .filter_map(|id| {
-                if let Task::BroadcastTransaction(broadcast_tx) = self.tasks.tasks.get(id)? {
+                if let (_, Task::BroadcastTransaction(broadcast_tx)) = self.tasks.tasks.get(id)? {
                     Some(
                         bitcoin::Transaction::consensus_decode(std::io::Cursor::new(
                             broadcast_tx.tx.clone(),
