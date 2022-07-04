@@ -163,15 +163,15 @@ fn assert_fee_estimation_received(request: Request) {
                 Event::FeeEstimation(FeeEstimation {
                     fee_estimations:
                         FeeEstimations::BitcoinFeeEstimation {
-                            high_priority_sats_per_vbyte,
-                            low_priority_sats_per_vbyte,
+                            high_priority_sats_per_kvbyte,
+                            low_priority_sats_per_kvbyte,
                         },
                     ..
                 }),
             ..
         }) => {
-            assert!(high_priority_sats_per_vbyte >= 1);
-            assert!(low_priority_sats_per_vbyte >= 1);
+            assert!(high_priority_sats_per_kvbyte >= 1000);
+            assert!(low_priority_sats_per_kvbyte >= 1000);
         }
         _ => {
             panic!("expected syncerd bridge event");

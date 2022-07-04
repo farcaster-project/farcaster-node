@@ -305,10 +305,11 @@ pub struct FeeEstimation {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
+// the sats per kvB is because we need u64 for Eq, PartialEq and Hash
 pub enum FeeEstimations {
     BitcoinFeeEstimation {
-        high_priority_sats_per_vbyte: u64,
-        low_priority_sats_per_vbyte: u64,
+        high_priority_sats_per_kvbyte: u64,
+        low_priority_sats_per_kvbyte: u64,
     },
 }
 
