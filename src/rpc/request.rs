@@ -1190,6 +1190,7 @@ pub struct SwapInfo {
     pub local_keys: lnp::channel::bolt::LocalKeyset,
     #[serde_as(as = "BTreeMap<DisplayFromStr, Same>")]
     pub remote_keys: BTreeMap<NodeAddr, lnp::channel::bolt::RemoteKeyset>,
+    pub public_offer: PublicOffer<BtcXmr>,
 }
 
 #[cfg(feature = "serde")]

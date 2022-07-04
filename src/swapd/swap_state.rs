@@ -11,10 +11,7 @@ use crate::rpc::request::{Commit, Outcome, Params};
 pub enum AliceState {
     // #[display("Start: {0:#?} {1:#?}")]
     #[display("Start")]
-    StartA {
-        local_trade_role: TradeRole,
-        public_offer: PublicOffer<BtcXmr>,
-    }, // local, both
+    StartA { local_trade_role: TradeRole }, // local, both
     // #[display("Commit: {0}")]
     #[display("Commit")]
     CommitA {
@@ -52,10 +49,7 @@ pub enum AliceState {
 pub enum BobState {
     // #[display("Start {0:#?} {1:#?}")]
     #[display("Start")]
-    StartB {
-        local_trade_role: TradeRole,
-        public_offer: PublicOffer<BtcXmr>,
-    }, // local, both
+    StartB { local_trade_role: TradeRole }, // local, both
     // #[display("Commit {0} {1}")]
     #[display("Commit")]
     CommitB {
@@ -268,13 +262,6 @@ impl State {
             | State::Alice(AliceState::RefundSigA { local_params, .. })
             | State::Bob(BobState::RevealB { local_params, .. })
             | State::Bob(BobState::CorearbB { local_params, .. }) => Some(local_params),
-            _ => None,
-        }
-    }
-    pub fn public_offer(&self) -> Option<&PublicOffer<BtcXmr>> {
-        match self {
-            State::Alice(AliceState::StartA { public_offer, .. })
-            | State::Bob(BobState::StartB { public_offer, .. }) => Some(public_offer),
             _ => None,
         }
     }
