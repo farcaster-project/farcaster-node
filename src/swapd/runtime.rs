@@ -1101,9 +1101,10 @@ impl Runtime {
                         );
                         self.state.a_sup_refundsig_xmrlocked();
 
-                        // if the funding amount does not match the expected, abort and wait for the swap to refund
-                        let required_funding_amount =
-                            self.state.a_required_funding_amount().unwrap();
+                        let required_funding_amount = self
+                            .state
+                            .a_required_funding_amount()
+                            .expect("set when monero funding address is displayed");
                         if amount.clone() < required_funding_amount {
                             // Alice still views underfunding as valid in the hope that Bob still passes her BuyProcSig
                             let msg = format!(
@@ -1112,7 +1113,9 @@ impl Runtime {
                                 monero::Amount::from_pico(amount.clone())
                             );
                             error!("{}", msg);
+                            self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg)?;
                         } else if amount.clone() > required_funding_amount {
+                            // Alice set overfunded to ensure that she does not publish the buy transaction if Bob gives her the BuySig.
                             self.state.a_sup_overfunded();
                             let msg = format!(
                                 "Too big amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
@@ -1120,6 +1123,7 @@ impl Runtime {
                                 monero::Amount::from_pico(amount.clone())
                             );
                             error!("{}", msg);
+                            self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg)?;
                         }
 
                         let txlabel = TxLabel::AccLock;
