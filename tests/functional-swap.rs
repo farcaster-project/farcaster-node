@@ -1074,17 +1074,26 @@ async fn run_refund_swap_alice_overfunds(
     )
     .await;
 
-    tokio::time::sleep(time::Duration::from_secs(20)).await;
+    // run until the funding infos are cleared again
+    println!("waiting for the monero funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
 
-    // finalize alice's lock tx
+    // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
         .generate_blocks(10, reusable_xmr_address())
         .await
         .unwrap();
 
+    // run until BobState(BuySig) is received
+    retry_until_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        "BobState(BuySig)".to_string(),
+    )
+    .await;
+
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
-    // generate some bitcoin blocks for confirmations
+    // generate some bitcoin blocks for confirmations and triggering cancel
     bitcoin_rpc
         .generate_to_address(20, &reusable_btc_address())
         .unwrap();
