@@ -1,7 +1,8 @@
-use crate::databased::runtime::request::OfferStatus;
-use crate::databased::runtime::request::OfferStatusPair;
-use crate::databased::runtime::request::OfferStatusSelector;
+use crate::databased::runtime::request::{
+    Address, OfferStatus, OfferStatusPair, OfferStatusSelector,
+};
 use crate::farcaster_core::consensus::Encodable;
+use crate::syncerd::opts::Coin;
 use crate::walletd::runtime::{CheckpointWallet, Wallet};
 use farcaster_core::negotiation::PublicOffer;
 use farcaster_core::swap::btcxmr::BtcXmr;
@@ -277,7 +278,7 @@ impl Runtime {
                 })?;
             }
 
-            Request::AddressSecretKey(request::AddressSecretKey {
+            Request::AddressSecretKey(request::AddressSecretKey::Bitcoin {
                 address,
                 secret_key,
             }) => {
@@ -288,7 +289,7 @@ impl Runtime {
                 )?;
             }
 
-            Request::GetAddressSecretKey(address) => {
+            Request::GetAddressSecretKey(Address::Bitcoin(address)) => {
                 match self.database.get_bitcoin_address_secret_key(&address) {
                     Err(_) => endpoints.send_to(
                         ServiceBus::Ctl,
@@ -304,7 +305,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             ServiceId::Database,
                             source,
-                            Request::AddressSecretKey(request::AddressSecretKey {
+                            Request::AddressSecretKey(request::AddressSecretKey::Bitcoin {
                                 address,
                                 secret_key: secret_key.secret_bytes(),
                             }),
@@ -313,13 +314,13 @@ impl Runtime {
                 }
             }
 
-            Request::GetAddresses => {
+            Request::GetAddresses(Coin::Bitcoin) => {
                 let addresses = self.database.get_all_bitcoin_addresses()?;
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Database,
                     source,
-                    Request::AddressList(addresses.into()),
+                    Request::BitcoinAddressList(addresses.into()),
                 )?;
             }
 

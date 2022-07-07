@@ -57,7 +57,7 @@ use bitcoin::{
         rand::{thread_rng, RngCore},
         SecretKey,
     },
-    Address, OutPoint, PublicKey, Transaction,
+    OutPoint, PublicKey, Transaction,
 };
 use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
@@ -237,12 +237,12 @@ pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 pub struct PubOffer {
     pub public_offer: PublicOffer<BtcXmr>,
     pub peer_secret_key: Option<SecretKey>,
-    pub external_address: Address,
+    pub external_address: bitcoin::Address,
     pub internal_address: String,
 }
 
-impl From<(PublicOffer<BtcXmr>, Address, String)> for PubOffer {
-    fn from(x: (PublicOffer<BtcXmr>, Address, String)) -> Self {
+impl From<(PublicOffer<BtcXmr>, bitcoin::Address, String)> for PubOffer {
+    fn from(x: (PublicOffer<BtcXmr>, bitcoin::Address, String)) -> Self {
         let (public_offer, external_address, internal_address) = x;
         PubOffer {
             public_offer,
@@ -705,15 +705,15 @@ pub enum Request {
 
     #[api(type = 1311)]
     #[display("get_address_secret_key")]
-    GetAddressSecretKey(bitcoin::Address),
+    GetAddressSecretKey(Address),
 
     #[api(type = 1312)]
     #[display("get_addresses")]
-    GetAddresses,
+    GetAddresses(Coin),
 
     #[api(type = 1313)]
     #[display("address_list({0})")]
-    AddressList(List<bitcoin::Address>),
+    BitcoinAddressList(List<bitcoin::Address>),
 
     #[api(type = 1314)]
     #[display("address_secret_key")]
@@ -812,6 +812,13 @@ pub enum Outcome {
     Abort,
 }
 
+#[derive(Eq, PartialEq, Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("address")]
+pub enum Address {
+    Bitcoin(bitcoin::Address),
+    Monero(String),
+}
+
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display("funding_info")]
 pub enum FundingInfo {
@@ -866,9 +873,11 @@ pub enum CheckpointState {
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display("address_secret_key")]
-pub struct AddressSecretKey {
-    pub address: bitcoin::Address,
-    pub secret_key: [u8; 32],
+pub enum AddressSecretKey {
+    Bitcoin {
+        address: bitcoin::Address,
+        secret_key: [u8; 32],
+    },
 }
 
 impl FromStr for BitcoinFundingInfo {
