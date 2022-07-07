@@ -281,7 +281,7 @@ impl Runtime {
                 address,
                 secret_key,
             }) => {
-                self.database.set_address(
+                self.database.set_bitcoin_address(
                     &address,
                     &SecretKey::from_slice(&secret_key)
                         .expect("secret key is not valid secp256k1 secret key"),
@@ -289,7 +289,7 @@ impl Runtime {
             }
 
             Request::GetAddressSecretKey(address) => {
-                match self.database.get_address_secret_key(&address) {
+                match self.database.get_bitcoin_address_secret_key(&address) {
                     Err(_) => endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Database,
@@ -314,7 +314,7 @@ impl Runtime {
             }
 
             Request::GetAddresses => {
-                let addresses = self.database.get_all_addresses()?;
+                let addresses = self.database.get_all_bitcoin_addresses()?;
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Database,
@@ -495,7 +495,7 @@ impl From<Vec<u8>> for CheckpointKey {
 struct Database(lmdb::Environment);
 
 const LMDB_CHECKPOINTS: &str = "checkpoints";
-const LMDB_ADDRESSES: &str = "addresses";
+const LMDB_BITCOIN_ADDRESSES: &str = "bitcoin_addresses";
 const LMDB_OFFER_HISTORY: &str = "offer_history";
 
 impl Database {
@@ -505,7 +505,7 @@ impl Database {
             .set_max_dbs(3)
             .open(&path)?;
         env.create_db(Some(LMDB_CHECKPOINTS), lmdb::DatabaseFlags::empty())?;
-        env.create_db(Some(LMDB_ADDRESSES), lmdb::DatabaseFlags::empty())?;
+        env.create_db(Some(LMDB_BITCOIN_ADDRESSES), lmdb::DatabaseFlags::empty())?;
         env.create_db(Some(LMDB_OFFER_HISTORY), lmdb::DatabaseFlags::empty())?;
         Ok(Database(env))
     }
@@ -561,12 +561,12 @@ impl Database {
         Ok(res)
     }
 
-    fn set_address(
+    fn set_bitcoin_address(
         &mut self,
         address: &bitcoin::Address,
         secret_key: &SecretKey,
     ) -> Result<(), lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_ADDRESSES))?;
+        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
         let _key_size = address.strict_encode(&mut key);
@@ -587,11 +587,11 @@ impl Database {
         Ok(())
     }
 
-    fn get_address_secret_key(
+    fn get_bitcoin_address_secret_key(
         &mut self,
         address: &bitcoin::Address,
     ) -> Result<SecretKey, lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_ADDRESSES))?;
+        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut key = vec![];
         let _key_size = address.strict_encode(&mut key);
@@ -601,8 +601,8 @@ impl Database {
         Ok(val)
     }
 
-    fn get_all_addresses(&mut self) -> Result<Vec<bitcoin::Address>, lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_ADDRESSES))?;
+    fn get_all_bitcoin_addresses(&mut self) -> Result<Vec<bitcoin::Address>, lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
@@ -694,10 +694,10 @@ fn test_lmdb_state() {
         bitcoin::PrivateKey::from_slice(&sk.secret_bytes(), bitcoin::Network::Testnet).unwrap();
     let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &private_key);
     let addr = bitcoin::Address::p2wpkh(&pk, bitcoin::Network::Testnet).unwrap();
-    database.set_address(&addr, &sk).unwrap();
-    let val_retrieved = database.get_address_secret_key(&addr).unwrap();
+    database.set_bitcoin_address(&addr, &sk).unwrap();
+    let val_retrieved = database.get_bitcoin_address_secret_key(&addr).unwrap();
     assert_eq!(sk, val_retrieved);
-    let addrs = database.get_all_addresses().unwrap();
+    let addrs = database.get_all_bitcoin_addresses().unwrap();
     assert!(addrs.contains(&addr));
 
     let offer_1 = PublicOffer::<BtcXmr>::from_str("Offer:Cke4ftrP5A71LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TUGURtskxM3BUGLBGAdFDhJQVMQmiPUsL5vSTKhyBKw3Lh11111111111111111111111111111111111111111AfZ113XRBuStRU5H").unwrap();
