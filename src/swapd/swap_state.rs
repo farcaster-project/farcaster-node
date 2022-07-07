@@ -59,6 +59,7 @@ pub enum BobState {
         local_commit: Commit,
         remote_commit: Option<Commit>,
         b_address: bitcoin::Address,
+        required_funding_amount: Option<bitcoin::Amount>,
     },
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
@@ -69,6 +70,7 @@ pub enum BobState {
         b_address: bitcoin::Address,
         local_trade_role: TradeRole,
         remote_params: Option<Params>,
+        required_funding_amount: Option<bitcoin::Amount>,
     }, // local, remote, local, ..missing, remote
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
@@ -216,6 +218,19 @@ impl State {
             *received_refund_procedure_signatures
         } else {
             false
+        }
+    }
+    pub fn b_required_funding_amount(&self) -> Option<bitcoin::Amount> {
+        match self {
+            State::Bob(BobState::CommitB {
+                required_funding_amount,
+                ..
+            })
+            | State::Bob(BobState::RevealB {
+                required_funding_amount,
+                ..
+            }) => required_funding_amount.clone(),
+            _ => None,
         }
     }
     pub fn a_start(&self) -> bool {
@@ -396,6 +411,7 @@ impl State {
                         remote_commit,
                         remote_params,
                         b_address,
+                        required_funding_amount: None,
                     },
                 )
             }
@@ -442,6 +458,7 @@ impl State {
                 local_trade_role,
                 remote_params,
                 b_address,
+                required_funding_amount,
                 ..
             }) => State::Bob(BobState::RevealB {
                 local_params,
@@ -450,6 +467,7 @@ impl State {
                 local_trade_role,
                 remote_params,
                 last_checkpoint_type: None,
+                required_funding_amount,
             }),
 
             _ => unreachable!("checked state on pattern to be Commit"),
@@ -492,6 +510,28 @@ impl State {
                 *buy_tx_seen = true
             }
             _ => unreachable!("checked state"),
+        }
+    }
+    /// Update Bob with the required Monero funding amount
+    pub fn b_sup_required_funding_amount(&mut self, amount: bitcoin::Amount) {
+        match self {
+            State::Bob(BobState::CommitB {
+                required_funding_amount,
+                ..
+            })
+            | State::Bob(BobState::RevealB {
+                required_funding_amount,
+                ..
+            }) => {
+                if required_funding_amount.is_none() {
+                    *required_funding_amount = Some(amount);
+                } else {
+                    trace!("required funding amount was already set");
+                }
+            }
+            _ => {
+                error!("Not on CommitB or RevealB state");
+            }
         }
     }
     /// Update Alice RefundSig state from BTC unlocked to locked state

@@ -652,6 +652,7 @@ impl Runtime {
                                         amount.bright_green_bold(),
                                         address.addr(),
                                     );
+                                    self.state.b_sup_required_funding_amount(amount);
                                     let req = Request::FundingInfo(FundingInfo::Bitcoin(
                                         BitcoinFundingInfo {
                                             swap_id,
@@ -1362,13 +1363,9 @@ impl Runtime {
                         self.syncer_state
                             .handle_height_change(*height, Coin::Bitcoin);
                     }
-                    Event::AddressTransaction(AddressTransaction {
-                        id,
-                        hash: _,
-                        amount: _,
-                        block: _,
-                        tx,
-                    }) if self.syncer_state.tasks.watched_addrs.get(id).is_some() => {
+                    Event::AddressTransaction(AddressTransaction { id, amount, tx, .. })
+                        if self.syncer_state.tasks.watched_addrs.get(id).is_some() =>
+                    {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
                         info!(
                             "Received AddressTransaction, processing tx {}",
@@ -1387,6 +1384,28 @@ impl Runtime {
                                         Request::FundingCompleted(Coin::Bitcoin),
                                     )?;
                                 }
+                                // If the bitcoin amount does not match the expected funding amount, abort the swap
+                                let amount = bitcoin::Amount::from_sat(*amount);
+                                info!(
+                                    "LMAO: {}, {:?}",
+                                    self.state,
+                                    self.state.b_required_funding_amount()
+                                );
+                                let required_funding_amount =
+                                    self.state.b_required_funding_amount().unwrap();
+
+                                if amount != required_funding_amount {
+                                    let msg = format!("Incorrect amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will abort and atttempt to sweep the Bitcoin to the provided address.", amount, required_funding_amount);
+                                    error!("{}", msg);
+                                    self.report_progress_message_to(
+                                        endpoints,
+                                        ServiceId::Farcasterd,
+                                        msg,
+                                    )?;
+                                    self.handle_rpc_ctl(endpoints, source, Request::AbortSwap)?;
+                                    return Ok(());
+                                }
+
                                 let req = Request::Tx(Tx::Funding(tx));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?;
                             }

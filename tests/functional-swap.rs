@@ -72,6 +72,39 @@ async fn swap_bob_maker_normal() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
+async fn swap_bob_funds_incorrect_amount() {
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (_monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_farcaster_clients().await;
+
+    let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    run_user_funds_incorrect_swap(
+        swap_id,
+        data_dir_taker,
+        data_dir_maker,
+        Arc::clone(&bitcoin_rpc),
+        bitcoin_address,
+    )
+    .await;
+
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
 async fn swap_bob_maker_user_abort_sweep_btc() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (_monero_regtest, monero_wallet) = monero_setup().await;
@@ -1873,6 +1906,61 @@ async fn run_user_abort_swap(
 
     // abort the swap on Bob's side
     abort_swap(swap_id, data_dir_bob);
+
+    // wait a bit for sweep to happen
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    // check that btc was received in the destination address
+    let balance = bitcoin_rpc
+        .get_received_by_address(&destination_btc_address, None)
+        .unwrap();
+    println!("received balance: {}", balance);
+    assert!(balance.as_sat() > 90000000);
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_user_funds_incorrect_swap(
+    swap_id: SwapId,
+    data_dir_alice: Vec<String>,
+    data_dir_bob: Vec<String>,
+    bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
+    destination_btc_address: bitcoin::Address,
+) {
+    let cli_bob_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
+
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    // run until bob has the btc funding address
+    let (address, amount) =
+        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
+            .await;
+
+    // abort the swap on Alice's side
+    abort_swap(swap_id, data_dir_alice);
+
+    // fund the bitcoin address
+    bitcoin_rpc
+        .send_to_address(
+            &address,
+            amount + bitcoin::Amount::from_sat(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+    // run until the funding infos are cleared again
+    println!("waiting for the bitcoin funding info to clear");
+    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
 
     // wait a bit for sweep to happen
     tokio::time::sleep(time::Duration::from_secs(10)).await;
