@@ -1078,6 +1078,8 @@ async fn run_refund_swap_alice_overfunds(
     println!("waiting for the monero funding info to clear");
     retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
 
+    tokio::time::sleep(time::Duration::from_secs(10)).await;
+
     // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
         .generate_blocks(10, reusable_xmr_address())
