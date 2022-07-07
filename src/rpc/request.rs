@@ -712,8 +712,12 @@ pub enum Request {
     GetAddresses(Coin),
 
     #[api(type = 1313)]
-    #[display("address_list({0})")]
+    #[display("bitcoin_address_list({0})")]
     BitcoinAddressList(List<bitcoin::Address>),
+
+    #[api(type = 1318)]
+    #[display("monero_address_list({0})")]
+    MoneroAddressList(List<String>),
 
     #[api(type = 1314)]
     #[display("address_secret_key")]
@@ -877,6 +881,11 @@ pub enum AddressSecretKey {
     Bitcoin {
         address: bitcoin::Address,
         secret_key: [u8; 32],
+    },
+    Monero {
+        address: String,
+        view: [u8; 32],
+        spend: [u8; 32],
     },
 }
 
