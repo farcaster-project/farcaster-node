@@ -608,10 +608,10 @@ impl Runtime {
                             &source,
                             self.syncer_services.len().bright_blue_bold()
                         );
-                        for (_, request) in self.pending_sweep_requests.drain() {
+                        for (source, request) in self.pending_sweep_requests.drain() {
                             endpoints.send_to(
                                 ServiceBus::Ctl,
-                                ServiceId::Farcasterd,
+                                source,
                                 ServiceId::Syncer(*coin, *network),
                                 request,
                             )?;
@@ -1654,6 +1654,7 @@ impl Runtime {
                 let id = TaskId(self.syncer_task_counter);
                 let request = Request::SyncerTask(Task::SweepAddress(SweepAddress {
                     id,
+                    retry: false,
                     lifetime: u64::MAX,
                     addendum: SweepAddressAddendum::Bitcoin(sweep_bitcoin_address),
                     from_height: None,
@@ -1685,7 +1686,7 @@ impl Runtime {
                 } else {
                     endpoints.send_to(
                         ServiceBus::Ctl,
-                        ServiceId::Farcasterd,
+                        source,
                         ServiceId::Syncer(coin, network),
                         request,
                     )?;

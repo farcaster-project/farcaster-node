@@ -642,6 +642,36 @@ impl SyncerState {
         self.drop_lifetimes();
     }
 
+    pub async fn fail_sweep(&mut self, id: &InternalId) {
+        if let Some(sweep_address) = self.sweep_addresses.get(id) {
+            send_event(
+                &self.tx_event,
+                &mut vec![(
+                    Event::TaskAborted(TaskAborted {
+                        id: vec![],
+                        error: Some(
+                            "Sweep failed, did not find any assets associated with the address"
+                                .to_string(),
+                        ),
+                    }),
+                    self.tasks_sources
+                        .get(id)
+                        .cloned()
+                        .expect("task source missing"),
+                )],
+            )
+            .await;
+            if let Some(ids) = self.lifetimes.get_mut(&sweep_address.lifetime) {
+                ids.remove(id);
+                if ids.is_empty() {
+                    self.lifetimes.remove(&sweep_address.lifetime);
+                }
+            }
+            self.sweep_addresses.remove(id);
+            self.tasks_sources.remove(id);
+        }
+    }
+
     fn drop_lifetimes(&mut self) {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
@@ -1033,6 +1063,7 @@ async fn syncer_state_sweep_addresses() {
     let sweep_task = SweepAddress {
         id: TaskId(0),
         lifetime: 11,
+        retry: true,
         from_height: None,
         addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
             view_key: monero::PrivateKey::from_str(
