@@ -325,7 +325,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let watch_address_task_2 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
             id: TaskId(1),
-            lifetime: blocks + 2,
+            lifetime: blocks + 20,
             addendum: addendum_2.clone(),
             include_tx: Boolean::True,
         }),
@@ -389,7 +389,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let watch_address_task_3 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
             id: TaskId(1),
-            lifetime: blocks + 2,
+            lifetime: blocks + 20,
             addendum: addendum_2,
             include_tx: Boolean::True,
         }),
@@ -425,7 +425,7 @@ fn bitcoin_syncer_address_test(polling: bool) {
         tx.send(SyncerdTask {
             task: Task::WatchAddress(WatchAddress {
                 id: TaskId(i),
-                lifetime: blocks + 5,
+                lifetime: blocks + 20,
                 addendum: addendum_4.clone(),
                 include_tx: Boolean::True,
             }),
@@ -451,6 +451,11 @@ fn bitcoin_syncer_address_test(polling: bool) {
         .unwrap();
     bitcoin_rpc.generate_to_address(1, &address).unwrap();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
+    info!("waiting for task aborted message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received task aborted message");
+    let request = get_request_from_message(message);
+    assert_task_aborted(request, None, vec![1]);
 
     let addendum_5 = AddressAddendum::Bitcoin(BtcAddressAddendum {
         address: Some(address5.clone()),
@@ -1345,7 +1350,7 @@ async fn monero_syncer_address_test() {
         let watch_address_task_1 = SyncerdTask {
             task: Task::WatchAddress(WatchAddress {
                 id: TaskId(1),
-                lifetime: blocks + 1,
+                lifetime: blocks + 2,
                 addendum: addendum_1,
                 include_tx: Boolean::True,
             }),
@@ -1383,7 +1388,7 @@ async fn monero_syncer_address_test() {
         let watch_address_task_2 = SyncerdTask {
             task: Task::WatchAddress(WatchAddress {
                 id: TaskId(1),
-                lifetime: blocks + 1,
+                lifetime: blocks + 20,
                 addendum: addendum_2,
                 include_tx: Boolean::True,
             }),
@@ -1411,7 +1416,7 @@ async fn monero_syncer_address_test() {
         let watch_address_task_3 = SyncerdTask {
             task: Task::WatchAddress(WatchAddress {
                 id: TaskId(1),
-                lifetime: blocks + 1,
+                lifetime: blocks + 20,
                 addendum: addendum_3,
                 include_tx: Boolean::True,
             }),
@@ -1448,7 +1453,7 @@ async fn monero_syncer_address_test() {
             tx.send(SyncerdTask {
                 task: Task::WatchAddress(WatchAddress {
                     id: TaskId(i),
-                    lifetime: blocks + 5,
+                    lifetime: blocks + 20,
                     addendum: addendum_4.clone(),
                     include_tx: Boolean::True,
                 }),
@@ -1468,9 +1473,16 @@ async fn monero_syncer_address_test() {
         // generate an address, send Monero to it and ensure that the first transaction sent to it does not show up
         let (address5, view_key5) = new_address(&wallet).await;
         send_monero(&wallet, address5, 1).await;
-        // this transaction should not generate an event, because the task's lifetime expired
-        send_monero(&wallet, address4, 1).await;
         let blocks = regtest.generate_blocks(10, address.address).await.unwrap();
+
+        // this transaction should not generate an event, because the task's lifetime expired
+        send_monero(&wallet, address1, 1).await;
+
+        info!("waiting for task aborted message");
+        let message = rx_event.recv_multipart(0).unwrap();
+        info!("received task aborted message");
+        let request = get_request_from_message(message);
+        assert_task_aborted(request, None, vec![1]);
 
         let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: address5.public_spend,
@@ -1481,7 +1493,7 @@ async fn monero_syncer_address_test() {
         tx.send(SyncerdTask {
             task: Task::WatchAddress(WatchAddress {
                 id: TaskId(5),
-                lifetime: blocks + 5,
+                lifetime: blocks + 10,
                 addendum: addendum_5.clone(),
                 include_tx: Boolean::True,
             }),
@@ -2083,7 +2095,7 @@ fn assert_task_aborted(
         Request::SyncerdBridgeEvent(event) => match event.event {
             Event::TaskAborted(mut task_aborted) => {
                 assert_eq!(
-                    &task_aborted.id.sort_unstable(),
+                    &task_aborted.ids.sort_unstable(),
                     &expected_id.sort_unstable()
                 );
                 assert_eq!(task_aborted.error, expected_error);

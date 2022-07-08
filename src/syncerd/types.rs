@@ -241,7 +241,7 @@ pub enum Task {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct TaskAborted {
-    pub id: Vec<TaskId>,
+    pub ids: Vec<TaskId>,
     pub error: Option<String>,
 }
 

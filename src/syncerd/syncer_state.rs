@@ -229,7 +229,7 @@ impl SyncerState {
                 &self.tx_event,
                 &mut vec![(
                     Event::TaskAborted(TaskAborted {
-                        id: vec![],
+                        ids: vec![],
                         error: Some(format!(
                             "abort failed, task from source {} not found",
                             source
@@ -247,7 +247,7 @@ impl SyncerState {
                 &self.tx_event,
                 &mut vec![(
                     Event::TaskAborted(TaskAborted {
-                        id: aborted_ids,
+                        ids: aborted_ids,
                         error: None,
                     }),
                     source.clone(),
@@ -372,7 +372,6 @@ impl SyncerState {
     pub async fn change_height(&mut self, new_height: u64, block: Vec<u8>) -> bool {
         if self.block_height != new_height || self.block_hash != block {
             self.handle_change_height(new_height, block.clone());
-            self.drop_lifetimes();
 
             // Emit a height_changed event
             for (id, task) in self.watch_height.iter() {
@@ -389,6 +388,8 @@ impl SyncerState {
                 )
                 .await;
             }
+            self.drop_lifetimes().await;
+
             true
         } else {
             false
@@ -431,7 +432,6 @@ impl SyncerState {
         address_addendum: AddressAddendum,
         txs: HashSet<AddressTx>,
     ) {
-        self.drop_lifetimes();
         let mut events: Vec<(Event, ServiceId)> = Vec::new();
         inner(
             &mut self.addresses,
@@ -515,7 +515,6 @@ impl SyncerState {
         confirmations: Option<u32>,
         tx: Vec<u8>,
     ) {
-        self.drop_lifetimes();
         let mut events: Vec<(Event, ServiceId)> = Vec::new();
         inner(
             &mut self.transactions,
@@ -639,7 +638,7 @@ impl SyncerState {
 
             self.fee_estimation = Some(fee_estimations);
         }
-        self.drop_lifetimes();
+        self.drop_lifetimes().await;
     }
 
     pub async fn fail_sweep(&mut self, id: &InternalId) {
@@ -648,7 +647,7 @@ impl SyncerState {
                 &self.tx_event,
                 &mut vec![(
                     Event::TaskAborted(TaskAborted {
-                        id: vec![],
+                        ids: vec![],
                         error: Some(
                             "Sweep failed, did not find any assets associated with the address"
                                 .to_string(),
@@ -672,12 +671,12 @@ impl SyncerState {
         }
     }
 
-    fn drop_lifetimes(&mut self) {
+    async fn drop_lifetimes(&mut self) {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
             if lifetime < self.block_height {
                 warn!("dropping lifetime");
-                self.drop_lifetime(lifetime);
+                self.drop_lifetime(lifetime).await;
             }
         }
     }
@@ -697,16 +696,31 @@ impl SyncerState {
         Ok(())
     }
 
-    fn drop_lifetime(&mut self, lifetime: u64) {
+    async fn drop_lifetime(&mut self, lifetime: u64) {
         if let Some(tasks) = self.lifetimes.remove(&lifetime) {
             for task in &tasks {
-                self.addresses.remove(task);
-                self.transactions.remove(task);
                 self.unseen_transactions.remove(task);
-                self.watch_height.remove(task);
-                self.watch_fee_estimation.remove(task);
-                self.sweep_addresses.remove(task);
-                self.tasks_sources.remove(task);
+                let txs = self.transactions.remove(task).map(|v| v.task.id);
+                let address_txs = self.addresses.remove(task).map(|v| v.task.id);
+                let height = self.watch_height.remove(task).map(|v| v.id);
+                let fee_est = self.watch_fee_estimation.remove(task).map(|v| v.id);
+                let sweep_addrs = self.sweep_addresses.remove(task).map(|v| v.id);
+                let id = address_txs.or(txs).or(fee_est).or(height).or(sweep_addrs);
+                let source = self.tasks_sources.remove(task);
+                if let (Some(source), Some(id)) = (source, id) {
+                    debug!("Lifetime expired, dropping syncer task");
+                    send_event(
+                        &self.tx_event,
+                        &mut vec![(
+                            Event::TaskAborted(TaskAborted {
+                                ids: vec![id],
+                                error: None,
+                            }),
+                            source.clone(),
+                        )],
+                    )
+                    .await;
+                }
             }
         } else {
             error!("Unknown lifetime {}", lifetime);
@@ -891,6 +905,10 @@ async fn syncer_state_transaction() {
     assert_eq!(state.transactions.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.unseen_transactions.len(), 0);
+    assert!(event_rx.try_recv().is_ok()); // receive height changed
+    assert!(event_rx.try_recv().is_ok()); // receive task aborted events for the three watch transaction tasks
+    assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_ok());
     assert!(event_rx.try_recv().is_err());
 }
 
@@ -1015,8 +1033,9 @@ async fn syncer_state_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
+    assert!(event_rx.try_recv().is_ok()); // receive two address transactions
     assert!(event_rx.try_recv().is_ok());
-    assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_err());
 
     let source2 = ServiceId::Syncer(Coin::Monero, Network::Testnet);
     state.watch_address(address_task_two.clone(), source2.clone());
@@ -1026,7 +1045,8 @@ async fn syncer_state_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 1);
-    assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_ok()); // receive task aborted
+    assert!(event_rx.try_recv().is_err());
 
     state.change_height(1, vec![1]).await;
     let height_task = WatchHeight {
@@ -1036,7 +1056,8 @@ async fn syncer_state_addresses() {
     state.watch_height(height_task, source1.clone()).await;
     assert_eq!(state.lifetimes.len(), 2);
     assert_eq!(state.tasks_sources.len(), 2);
-    assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_ok()); // height changed
+    assert!(event_rx.try_recv().is_err());
 
     state.change_height(2, vec![2]).await;
     state
@@ -1048,7 +1069,9 @@ async fn syncer_state_addresses() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.addresses.len(), 0);
-    assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_ok()); // height changed
+    assert!(event_rx.try_recv().is_ok()); //task aborted
+    assert!(event_rx.try_recv().is_err());
 }
 
 #[tokio::test]
@@ -1104,6 +1127,7 @@ async fn syncer_state_sweep_addresses() {
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.sweep_addresses.len(), 0);
     assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_err());
 }
 
 #[tokio::test]
@@ -1150,7 +1174,9 @@ async fn syncer_state_height() {
     assert_eq!(state.lifetimes.len(), 1);
     assert_eq!(state.tasks_sources.len(), 1);
     assert_eq!(state.watch_height.len(), 1);
-    assert!(event_rx.try_recv().is_ok());
+    assert!(event_rx.try_recv().is_ok()); // height changed
+    assert!(event_rx.try_recv().is_ok()); // height changed
+    assert!(event_rx.try_recv().is_ok()); // task aborted
 
     state.change_height(3, vec![3]).await;
     assert_eq!(state.lifetimes.len(), 1);
@@ -1181,5 +1207,7 @@ async fn syncer_state_height() {
     assert_eq!(state.lifetimes.len(), 0);
     assert_eq!(state.tasks_sources.len(), 0);
     assert_eq!(state.watch_height.len(), 0);
+    assert!(event_rx.try_recv().is_ok()); // height changed
+    assert!(event_rx.try_recv().is_ok()); // task aborted
     assert!(event_rx.try_recv().is_err());
 }
