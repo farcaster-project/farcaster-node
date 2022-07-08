@@ -1113,7 +1113,7 @@ impl Runtime {
                                 monero::Amount::from_pico(amount.clone())
                             );
                             error!("{}", msg);
-                            self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg)?;
+                            self.report_progress_message_to(endpoints, self.enquirer.clone(), msg)?;
                         } else if amount.clone() > required_funding_amount {
                             // Alice set overfunded to ensure that she does not publish the buy transaction if Bob gives her the BuySig.
                             self.state.a_sup_overfunded();
@@ -1123,7 +1123,7 @@ impl Runtime {
                                 monero::Amount::from_pico(amount.clone())
                             );
                             error!("{}", msg);
-                            self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg)?;
+                            self.report_progress_message_to(endpoints, self.enquirer.clone(), msg)?;
                         }
 
                         let txlabel = TxLabel::AccLock;
