@@ -531,16 +531,19 @@ impl State {
         }
     }
     /// Update Alice RefundSig state from overfunded=false to overfunded=true
-    pub fn a_sup_overfunded(&mut self) {
+    pub fn a_sup_overfunded(&mut self) -> bool {
         if let State::Alice(AliceState::RefundSigA { overfunded, .. }) = self {
             if !*overfunded {
                 trace!("setting overfunded");
                 *overfunded = true;
+                true
             } else {
-                trace!("overfunded was already set to true");
+                warn!("overfunded was already set to true");
+                false
             }
         } else {
             error!("Not on RefundSig state");
+            false
         }
     }
     /// Update Alice RefundSig state from XMR unlocked to locked state
@@ -560,7 +563,7 @@ impl State {
         }
     }
     /// Update Alice RefundSig state with the required Monero funding amount
-    pub fn a_sup_required_funding_amount(&mut self, amount: monero::Amount) {
+    pub fn a_sup_required_funding_amount(&mut self, amount: monero::Amount) -> bool {
         if let State::Alice(AliceState::RefundSigA {
             required_funding_amount,
             ..
@@ -568,11 +571,14 @@ impl State {
         {
             if required_funding_amount.is_none() {
                 *required_funding_amount = Some(amount.as_pico());
+                true
             } else {
-                trace!("required funding amount was already set");
+                warn!("required funding amount was already set");
+                false
             }
         } else {
             error!("Not on RefundSig state");
+            false
         }
     }
 
