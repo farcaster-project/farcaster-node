@@ -494,26 +494,27 @@ impl State {
     }
 
     /// Update Bob BuySig state from XMR unlocked to locked state
-    pub fn b_sup_buysig_buy_tx_seen(&mut self) {
+    pub fn b_sup_buysig_buy_tx_seen(&mut self) -> bool {
         if !self.b_buy_sig() {
             error!(
                 "Wrong state, not updating. Expected BuySig, found {}",
                 &*self
             );
-            return;
+            return false;
         } else if self.b_buy_tx_seen() {
             error!("Buy tx was previously seen, not updating state");
-            return;
+            return false;
         }
         match self {
             State::Bob(BobState::BuySigB { buy_tx_seen, .. }) if !(*buy_tx_seen) => {
-                *buy_tx_seen = true
+                *buy_tx_seen = true;
+                true
             }
             _ => unreachable!("checked state"),
         }
     }
     /// Update Bob with the required Monero funding amount
-    pub fn b_sup_required_funding_amount(&mut self, amount: bitcoin::Amount) {
+    pub fn b_sup_required_funding_amount(&mut self, amount: bitcoin::Amount) -> bool {
         match self {
             State::Bob(BobState::CommitB {
                 required_funding_amount,
@@ -525,12 +526,15 @@ impl State {
             }) => {
                 if required_funding_amount.is_none() {
                     *required_funding_amount = Some(amount);
+                    true
                 } else {
                     trace!("required funding amount was already set");
+                    false
                 }
             }
             _ => {
                 error!("Not on CommitB or RevealB state");
+                false
             }
         }
     }
