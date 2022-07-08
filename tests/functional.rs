@@ -977,6 +977,7 @@ fn bitcoin_syncer_sweep_address_test() {
             id: TaskId(0),
             lifetime: blocks,
             from_height: None,
+            retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
                 source_address: sweep_source_address.clone(),
@@ -1038,6 +1039,7 @@ fn bitcoin_syncer_sweep_address_test() {
             id: TaskId(0),
             lifetime: blocks,
             from_height: None,
+            retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
                 source_address: sweep_source_address,
@@ -1248,6 +1250,7 @@ async fn monero_syncer_sweep_test() {
             id: TaskId(0),
             lifetime: blocks + 40,
             from_height: None,
+            retry: true,
             addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
                 spend_key,
                 view_key,

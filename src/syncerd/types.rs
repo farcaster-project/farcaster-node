@@ -74,6 +74,7 @@ impl StrictDecode for XmrAddressAddendum {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct SweepAddress {
+    pub retry: bool,
     pub id: TaskId,
     pub lifetime: u64,
     pub addendum: SweepAddressAddendum,

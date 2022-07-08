@@ -242,6 +242,7 @@ impl SyncerState {
         dest_address: monero::Address,
         from_height: Option<u64>,
         minimum_balance: monero::Amount,
+        retry: bool,
     ) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
@@ -256,6 +257,7 @@ impl SyncerState {
             id,
             lifetime,
             addendum,
+            retry,
             from_height,
         };
         let task = Task::SweepAddress(sweep_task);
@@ -273,7 +275,7 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
-    pub fn sweep_btc(&mut self, sweep_bitcoin_address: SweepBitcoinAddress) -> Task {
+    pub fn sweep_btc(&mut self, sweep_bitcoin_address: SweepBitcoinAddress, retry: bool) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
         let lifetime = self.task_lifetime(Coin::Bitcoin);
@@ -282,6 +284,7 @@ impl SyncerState {
             id,
             lifetime,
             addendum,
+            retry,
             from_height: None,
         };
         let task = Task::SweepAddress(sweep_task);

@@ -955,7 +955,11 @@ fn sweep_polling(
                                 });
                                 debug!("sweep address transaction: {:?}", sweep_address_txs);
                                 let mut state_guard = state.lock().await;
-                                state_guard.success_sweep(id, sweep_address_txs).await;
+                                if !sweep_address_txs.is_empty() {
+                                    state_guard.success_sweep(id, sweep_address_txs).await;
+                                } else if !sweep_address_task.retry {
+                                    state_guard.fail_sweep(id).await;
+                                }
                                 drop(state_guard);
                             } else {
                                 error!("Not sweeping address - is not using a bitcoin sweep address addendum");

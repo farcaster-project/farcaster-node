@@ -867,6 +867,7 @@ impl Runtime {
                     dest_address,
                     from_height,
                     minimum_balance,
+                    true,
                 );
                 let acc_confs_needs =
                     self.temporal_safety.sweep_monero_thr - self.temporal_safety.xmr_finality_thr;
@@ -2100,7 +2101,7 @@ impl Runtime {
                     sweep_bitcoin_address.destination_address
                 );
 
-                let task = self.syncer_state.sweep_btc(sweep_bitcoin_address);
+                let task = self.syncer_state.sweep_btc(sweep_bitcoin_address, false);
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
