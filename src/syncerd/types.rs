@@ -219,7 +219,7 @@ pub struct GetTx {
 #[display(Debug)]
 pub struct EstimateFee {
     pub id: TaskId,
-    pub blocks_until_confirmation: usize,
+    pub lifetime: u64,
 }
 
 /// Tasks created by the daemon and handle by syncers to process a blockchain
@@ -300,7 +300,16 @@ pub struct TransactionRetrieved {
 #[display(Debug)]
 pub struct FeeEstimation {
     pub id: TaskId,
-    pub btc_per_kbyte: Option<bitcoin::Amount>,
+    pub fee_estimations: FeeEstimations,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub enum FeeEstimations {
+    BitcoinFeeEstimation {
+        high_priority_sats_per_vbyte: u64,
+        low_priority_sats_per_vbyte: u64,
+    },
 }
 
 /// Events returned by syncers to the daemon to update the blockchain states.

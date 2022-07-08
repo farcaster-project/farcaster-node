@@ -11,6 +11,7 @@ use farcaster_node::syncerd::{
     runtime::Synclet, SweepAddress, SweepAddressAddendum, SweepXmrAddress, TaskId, TaskTarget,
     XmrAddressAddendum,
 };
+use farcaster_node::syncerd::{FeeEstimation, FeeEstimations};
 use farcaster_node::ServiceId;
 use internet2::transport::MAX_FRAME_SIZE;
 use internet2::Decrypt;
@@ -145,7 +146,7 @@ fn bitcoin_syncer_estimate_fee_test() {
     let task = SyncerdTask {
         task: Task::EstimateFee(EstimateFee {
             id: TaskId(1),
-            blocks_until_confirmation: 1,
+            lifetime: 0,
         }),
         source: SOURCE1.clone(),
     };
@@ -158,10 +159,19 @@ fn bitcoin_syncer_estimate_fee_test() {
 fn assert_fee_estimation_received(request: Request) {
     match request {
         Request::SyncerdBridgeEvent(farcaster_node::rpc::request::SyncerdBridgeEvent {
-            event: Event::FeeEstimation(fee_estimation),
+            event:
+                Event::FeeEstimation(FeeEstimation {
+                    fee_estimations:
+                        FeeEstimations::BitcoinFeeEstimation {
+                            high_priority_sats_per_vbyte,
+                            low_priority_sats_per_vbyte,
+                        },
+                    ..
+                }),
             ..
         }) => {
-            assert!(fee_estimation.btc_per_kbyte.is_some());
+            assert!(high_priority_sats_per_vbyte >= 1);
+            assert!(low_priority_sats_per_vbyte >= 1);
         }
         _ => {
             panic!("expected syncerd bridge event");
