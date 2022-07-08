@@ -1373,17 +1373,18 @@ impl Runtime {
                         );
                         let txlabel = self.syncer_state.tasks.watched_addrs.get(id).unwrap();
                         match txlabel {
-                            TxLabel::Funding if self.syncer_state.awaiting_funding => {
+                            TxLabel::Funding
+                                if self.syncer_state.awaiting_funding
+                                    && self.state.b_required_funding_amount().is_some() =>
+                            {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
-                                if self.syncer_state.awaiting_funding {
-                                    self.syncer_state.awaiting_funding = false;
-                                    endpoints.send_to(
-                                        ServiceBus::Ctl,
-                                        self.identity(),
-                                        ServiceId::Farcasterd,
-                                        Request::FundingCompleted(Coin::Bitcoin),
-                                    )?;
-                                }
+                                self.syncer_state.awaiting_funding = false;
+                                endpoints.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Farcasterd,
+                                    Request::FundingCompleted(Coin::Bitcoin),
+                                )?;
                                 // If the bitcoin amount does not match the expected funding amount, abort the swap
                                 let amount = bitcoin::Amount::from_sat(*amount);
                                 info!(
