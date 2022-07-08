@@ -360,11 +360,12 @@ impl SyncerState {
 
     pub fn sweep_address(&mut self, task: SweepAddress, source: ServiceId) {
         self.task_count.increment();
-        // This is technically valid behavior; immediately prune the task for being past
-        // its lifetime by never inserting it
-        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.into()) {
-            error!("{}", e);
-            return;
+        if let Some(lifetimes) = self.lifetimes.get_mut(&task.lifetime) {
+            lifetimes.insert(self.task_count.into());
+        } else {
+            let mut lifetimes = HashSet::new();
+            lifetimes.insert(self.task_count.into());
+            self.lifetimes.insert(task.lifetime, lifetimes);
         }
         self.sweep_addresses.insert(self.task_count.into(), task);
         self.tasks_sources.insert(self.task_count.into(), source);

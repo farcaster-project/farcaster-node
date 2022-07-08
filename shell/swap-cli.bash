@@ -54,8 +54,11 @@ _swap-cli() {
             revoke-offer)
                 cmd+="__revoke__offer"
                 ;;
-            sweep-address)
-                cmd+="__sweep__address"
+            sweep-bitcoin-address)
+                cmd+="__sweep__bitcoin__address"
+                ;;
+            sweep-monero-address)
+                cmd+="__sweep__monero__address"
                 ;;
             take)
                 cmd+="__take"
@@ -67,7 +70,7 @@ _swap-cli() {
 
     case "${cmd}" in
         swap__cli)
-            opts="-h -V -d -v -T -m -x --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket info peers list-swaps list-offers offer-info list-listens list-checkpoints restore-checkpoint make take revoke-offer abort-swap progress needs-funding sweep-address help"
+            opts="-h -V -d -v -T -m -x --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket info peers list-swaps list-offers offer-info list-listens list-checkpoints restore-checkpoint make take revoke-offer abort-swap progress needs-funding sweep-bitcoin-address sweep-monero-address help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -844,7 +847,53 @@ _swap-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        swap__cli__sweep__address)
+        swap__cli__sweep__bitcoin__address)
+            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SOURCE_ADDRESS> <DESTINATION_ADDRESS>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --data-dir)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -d)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --tor-proxy)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -T)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --msg-socket)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -m)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --ctl-socket)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -x)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        swap__cli__sweep__monero__address)
             opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SOURCE_ADDRESS> <DESTINATION_ADDRESS>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

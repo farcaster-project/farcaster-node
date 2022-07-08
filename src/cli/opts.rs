@@ -242,13 +242,22 @@ pub enum Command {
         coin: Coin,
     },
 
-    /// Attempts to sweep any funds on a given funding address
-    #[display("sweep-address<{source_address} {destination_address}>")]
-    SweepAddress {
+    /// Attempts to sweep any funds on a given bitcoin funding address
+    #[display("sweep-bitcoin-address<{source_address} {destination_address}>")]
+    SweepBitcoinAddress {
         /// The source address to be swept.
         source_address: BtcAddress,
         /// The destination address receiving the coins.
         destination_address: BtcAddress,
+    },
+
+    /// Attempts to sweep any funds on a given bitcoin funding address
+    #[display("sweep-monero-address<{source_address} {destination_address}>")]
+    SweepMoneroAddress {
+        /// The source address to be swept.
+        source_address: XmrAddress,
+        /// The destination address receiving the coins.
+        destination_address: XmrAddress,
     },
 }
 

@@ -299,7 +299,25 @@ _arguments "${_arguments_options[@]}" \
 ':coin -- The coin funding required needs to be checked against:' \
 && ret=0
 ;;
-(sweep-address)
+(sweep-bitcoin-address)
+_arguments "${_arguments_options[@]}" \
+'-d+[Data directory path]:DATA_DIR:_files -/' \
+'--data-dir=[Data directory path]:DATA_DIR:_files -/' \
+'-T+[Use Tor]:TOR_PROXY:_hosts' \
+'--tor-proxy=[Use Tor]:TOR_PROXY:_hosts' \
+'-m+[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
+'--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
+'-x+[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
+'--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'*-v[Set verbosity level]' \
+'*--verbose[Set verbosity level]' \
+':source-address -- The source address to be swept:' \
+':destination-address -- The destination address receiving the coins:' \
+&& ret=0
+;;
+(sweep-monero-address)
 _arguments "${_arguments_options[@]}" \
 '-d+[Data directory path]:DATA_DIR:_files -/' \
 '--data-dir=[Data directory path]:DATA_DIR:_files -/' \
@@ -354,7 +372,8 @@ _swap-cli_commands() {
 'abort-swap:Abort a swap if it has not locked yet' \
 'progress:Request swap progress report' \
 'needs-funding:Returns addresses and amounts that require funding for coin' \
-'sweep-address:Attempts to sweep any funds on a given funding address' \
+'sweep-bitcoin-address:Attempts to sweep any funds on a given bitcoin funding address' \
+'sweep-monero-address:Attempts to sweep any funds on a given bitcoin funding address' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'swap-cli commands' commands "$@"
@@ -429,10 +448,15 @@ _swap-cli__revoke-offer_commands() {
     local commands; commands=()
     _describe -t commands 'swap-cli revoke-offer commands' commands "$@"
 }
-(( $+functions[_swap-cli__sweep-address_commands] )) ||
-_swap-cli__sweep-address_commands() {
+(( $+functions[_swap-cli__sweep-bitcoin-address_commands] )) ||
+_swap-cli__sweep-bitcoin-address_commands() {
     local commands; commands=()
-    _describe -t commands 'swap-cli sweep-address commands' commands "$@"
+    _describe -t commands 'swap-cli sweep-bitcoin-address commands' commands "$@"
+}
+(( $+functions[_swap-cli__sweep-monero-address_commands] )) ||
+_swap-cli__sweep-monero-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'swap-cli sweep-monero-address commands' commands "$@"
 }
 (( $+functions[_swap-cli__take_commands] )) ||
 _swap-cli__take_commands() {

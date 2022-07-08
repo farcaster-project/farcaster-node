@@ -1686,6 +1686,59 @@ impl Runtime {
                 )?;
             }
 
+            Request::SweepXmrAddress(sweep_xmr_address) => {
+                // TODO: remove once conversion is implemented in farcaster core Network type
+                let coin = Coin::Monero;
+                let network = match sweep_xmr_address.dest_address.network {
+                    monero::Network::Mainnet => Network::Mainnet,
+                    monero::Network::Stagenet => Network::Testnet,
+                    monero::Network::Testnet => Network::Testnet,
+                };
+                // check if a monero syncer is up
+                let id = TaskId(self.syncer_task_counter);
+                let request = Request::SyncerTask(Task::SweepAddress(SweepAddress {
+                    id,
+                    lifetime: u64::MAX,
+                    addendum: SweepAddressAddendum::Monero(sweep_xmr_address),
+                    from_height: None,
+                }));
+                self.syncer_task_counter += 1;
+                self.syncer_tasks.insert(id, source.clone());
+
+                let k = (coin, network);
+                let s = ServiceId::Syncer(coin, network);
+                if !self.syncer_services.contains_key(&k)
+                    && !self.spawning_services.contains_key(&s)
+                {
+                    let mut args = vec![
+                        "--coin".to_string(),
+                        coin.to_string(),
+                        "--network".to_string(),
+                        network.to_string(),
+                    ];
+                    args.append(
+                        &mut syncer_servers_args(&self.config, coin, network)
+                            .or(syncer_servers_args(&self.config, coin, Network::Local))?,
+                    );
+                    info!("launching syncer with: {:?}", args);
+                    launch("syncerd", args)?;
+                    self.spawning_services.insert(s, ServiceId::Farcasterd);
+                    if let Some(xs) = self.syncer_clients.get_mut(&k) {
+                        xs.insert(source.clone());
+                    } else {
+                        self.syncer_clients.insert(k, set![source.clone()]);
+                    }
+                    self.pending_sweep_requests.insert(source, request);
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Syncer(coin, network),
+                        request,
+                    )?;
+                }
+            }
+
             Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
                 // remove once conversion is implemented in farcaster core Network type
                 let coin = Coin::Bitcoin;
