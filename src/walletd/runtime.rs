@@ -1334,6 +1334,16 @@ impl Runtime {
                         let funding_addr = funding.get_address()?;
                         let funding_fee = bitcoin::Amount::from_sat(200);
                         let funding_amount = offer.arbitrating_amount + funding_fee;
+                        self.send_ctl(
+                            endpoints,
+                            ServiceId::Database,
+                            Request::AddressSecretKey(AddressSecretKey {
+                                address: funding_addr.clone(),
+                                secret_key: key_manager
+                                    .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?
+                                    .secret_bytes(),
+                            }),
+                        )?;
                         debug!(
                             "{} | Send {} to {}",
                             swap_id.bright_blue_italic(),
