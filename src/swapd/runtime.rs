@@ -695,7 +695,7 @@ impl Runtime {
                                         )?
                                     }
                                 } else {
-                                    error!("Not Some(address) or not Some(btc_per_kvb)");
+                                    error!("Not Some(address) or not Some(sat_per_kvb)");
                                 }
                             }
                         }
