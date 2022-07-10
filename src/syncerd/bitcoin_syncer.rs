@@ -488,7 +488,7 @@ fn sweep_address(
     // TODO (maybe): make blocks_until_confirmation or fee_btc_per_kvb configurable by user (see FeeStrategy)
     let blocks_until_confirmation = 2;
     let fee_sat_per_kvb = (client.estimate_fee(blocks_until_confirmation)? * 1.0e8).ceil() as u64;
-    let fee = signed_tx_fee(fee_sat_per_kvb, unsigned_tx.vsize(), unspent_txs.len());
+    let fee = p2wpkh_signed_tx_fee(fee_sat_per_kvb, unsigned_tx.vsize(), unspent_txs.len());
 
     unsigned_tx.output[0].value = in_amount - fee;
     let mut psbt = bitcoin::util::psbt::PartiallySignedTransaction::from_unsigned_tx(unsigned_tx)
@@ -1116,7 +1116,11 @@ fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
 }
 
 /// Input fee in sat_per_kvb, output fee in sat units
-pub fn signed_tx_fee(fee_sat_per_kvb: u64, unsigned_tx_vsize: usize, nr_inputs: usize) -> u64 {
+pub fn p2wpkh_signed_tx_fee(
+    fee_sat_per_kvb: u64,
+    unsigned_tx_vsize: usize,
+    nr_inputs: usize,
+) -> u64 {
     // Transaction size calculation: https://bitcoinops.org/en/tools/calc-size/
     // The items in the witness are discounted by a factor of 4 (witness discount)
     // The size used here is ceil(input p2wpkh witness)

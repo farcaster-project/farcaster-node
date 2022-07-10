@@ -16,7 +16,7 @@
 use crate::databased::checkpoint_handle_multipart_receive;
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
-use crate::syncerd::bitcoin_syncer::signed_tx_fee;
+use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::{FeeEstimation, FeeEstimations};
 use crate::{
     rpc::request::Outcome,
@@ -670,11 +670,9 @@ impl Runtime {
                                     let swap_id = self.swap_id();
                                     let vsize = 94;
                                     let nr_inputs = 1;
-                                    let total_fees = bitcoin::Amount::from_sat(signed_tx_fee(
-                                        sat_per_kvb,
-                                        vsize,
-                                        nr_inputs,
-                                    ));
+                                    let total_fees = bitcoin::Amount::from_sat(
+                                        p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs),
+                                    );
                                     let amount = self.syncer_state.bitcoin_amount + total_fees;
                                     info!(
                                         "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
