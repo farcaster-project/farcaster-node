@@ -586,6 +586,14 @@ impl Runtime {
                                         "Pending requests already existed prior to Reveal::Proof!"
                                     )
                                 }
+                                let btc_fee_task = self.syncer_state.estimate_fee_btc();
+                                endpoints.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    Request::SyncerTask(btc_fee_task),
+                                )?;
+                                std::thread::sleep(Duration::from_secs_f32(10.0));
                             }
                             SwapRole::Alice => {
                                 debug!("Alice: forwarding reveal");
@@ -695,6 +703,11 @@ impl Runtime {
                                         )?
                                     }
                                 } else {
+                                    error!(
+                                        "swap_role: {}, trade_role: {:?}",
+                                        self.state.swap_role(),
+                                        self.state.trade_role()
+                                    );
                                     error!("Not Some(address) or not Some(sat_per_kvb)");
                                 }
                             }
@@ -1037,16 +1050,6 @@ impl Runtime {
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
                 self.state_update(endpoints, next_state)?;
-                if self.state.swap_role() == SwapRole::Bob {
-                    let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        Request::SyncerTask(btc_fee_task),
-                    )?;
-                    std::thread::sleep(Duration::from_secs_f32(10.0));
-                }
             }
             Request::FundingUpdated
                 if source == ServiceId::Wallet
