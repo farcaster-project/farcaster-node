@@ -513,6 +513,23 @@ impl Runtime {
                         trace!("received remote commitment");
                         self.state.t_sup_remote_commit(remote_commit.clone());
 
+                        let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(watch_height_btc_task),
+                        )?;
+
+                        let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
+
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(watch_height_xmr_task),
+                        )?;
+
                         if self.state.swap_role() == SwapRole::Bob {
                             let addr = self
                                 .state
@@ -537,26 +554,8 @@ impl Runtime {
                                 self.syncer_state.bitcoin_syncer(),
                                 Request::SyncerTask(btc_fee_task),
                             )?;
-
-                            // syncer takes too long to give a fee
                             std::thread::sleep(Duration::from_secs_f32(10.0));
                         }
-                        let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(watch_height_btc_task),
-                        )?;
-
-                        let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
-
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.monero_syncer(),
-                            Request::SyncerTask(watch_height_xmr_task),
-                        )?;
 
                         self.send_wallet(msg_bus, endpoints, request)?;
                     }
@@ -1047,6 +1046,17 @@ impl Runtime {
                     Some(remote_commit),
                 );
 
+                let btc_fee_task = self.syncer_state.estimate_fee_btc();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(btc_fee_task),
+                )?;
+
+                // syncer takes too long to give a fee
+                std::thread::sleep(Duration::from_secs_f32(10.0));
+
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
                 self.state_update(endpoints, next_state)?;
@@ -1202,14 +1212,6 @@ impl Runtime {
                                 Request::SyncerTask(abort_task),
                             )?;
                         }
-                        let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(btc_fee_task),
-                        )?;
-                        std::thread::sleep(Duration::from_secs_f32(10.0));
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
