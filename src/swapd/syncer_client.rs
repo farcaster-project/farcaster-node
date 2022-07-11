@@ -1,4 +1,5 @@
 use crate::syncerd::BroadcastTransaction;
+use crate::syncerd::EstimateFee;
 use crate::syncerd::SweepBitcoinAddress;
 use crate::syncerd::TransactionBroadcasted;
 use crate::{
@@ -57,6 +58,7 @@ pub struct SyncerState {
     pub bitcoin_amount: bitcoin::Amount,
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub awaiting_funding: bool,
+    pub btc_fee_estimate_sat_per_kvb: Option<u64>,
 }
 impl SyncerState {
     pub fn task_lifetime(&self, coin: Coin) -> u64 {
@@ -96,6 +98,16 @@ impl SyncerState {
             task_target: TaskTarget::TaskId(id),
             respond: Boolean::False,
         })
+    }
+
+    pub fn estimate_fee_btc(&mut self) -> Task {
+        let id = self.tasks.new_taskid();
+        let task = Task::EstimateFee(EstimateFee {
+            id,
+            lifetime: self.task_lifetime(Coin::Bitcoin),
+        });
+        self.tasks.tasks.insert(id, task.clone());
+        task
     }
 
     pub fn watch_tx_btc(&mut self, txid: Txid, tx_label: TxLabel) -> Task {

@@ -487,17 +487,8 @@ fn sweep_address(
 
     // TODO (maybe): make blocks_until_confirmation or fee_btc_per_kvb configurable by user (see FeeStrategy)
     let blocks_until_confirmation = 2;
-    let fee_btc_per_kvb = client.estimate_fee(blocks_until_confirmation)?;
-    let fee_sat_per_vb = fee_btc_per_kvb * 1e5;
-    // Transaction size calculation: https://bitcoinops.org/en/tools/calc-size/
-    // The items in the witness are discounted by a factor of 4 (witness discount)
-    // The size used here is ceil(input p2wpkh witness)
-    // Input Witness:= ceil(nr. of items field + (length field + signature + public key) / p2wpkh witness discount
-    // Input Witness:= ceil(0.25               + (1         + 73       + 34) / 4))
-    //              := ceil(27.25)
-    let vsize_per_p2wpkh_input_witness = 28;
-    let signed_tx_size = unsigned_tx.vsize() + vsize_per_p2wpkh_input_witness * unspent_txs.len();
-    let fee = (fee_sat_per_vb.ceil() as u64) * signed_tx_size as u64;
+    let fee_sat_per_kvb = (client.estimate_fee(blocks_until_confirmation)? * 1.0e8).ceil() as u64;
+    let fee = p2wpkh_signed_tx_fee(fee_sat_per_kvb, unsigned_tx.vsize(), unspent_txs.len());
 
     unsigned_tx.output[0].value = in_amount - fee;
     let mut psbt = bitcoin::util::psbt::PartiallySignedTransaction::from_unsigned_tx(unsigned_tx)
@@ -886,7 +877,7 @@ fn estimate_fee_polling(
             if let Ok(client) = Client::new(&electrum_server) {
                 loop {
                     match client
-                        .estimate_fee(high_priority_confs)
+                        .estimate_fee(high_priority_confs) // docs say sat/kB, but its BTC/kvB
                         .and_then(
                             |high_priority| match client.estimate_fee(low_priority_confs) {
                                 Ok(low_priority) => Ok((high_priority, low_priority)),
@@ -897,10 +888,9 @@ fn estimate_fee_polling(
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .fee_estimated(FeeEstimations::BitcoinFeeEstimation {
-                                    high_priority_sats_per_vbyte: (high_priority * 1e5 as f64)
-                                        .ceil()
+                                    high_priority_sats_per_kvbyte: (high_priority * 1.0e8).ceil()
                                         as u64,
-                                    low_priority_sats_per_vbyte: (low_priority * 1e5 as f64).ceil()
+                                    low_priority_sats_per_kvbyte: (low_priority * 1.0e8).ceil()
                                         as u64,
                                 })
                                 .await;
@@ -1123,4 +1113,23 @@ fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
             bitcoin::Txid::from_slice(&tx.tx_id).unwrap().addr()
         );
     });
+}
+
+/// Input fee in sat_per_kvb, output fee in sat units
+pub fn p2wpkh_signed_tx_fee(
+    fee_sat_per_kvb: u64,
+    unsigned_tx_vsize: usize,
+    nr_inputs: usize,
+) -> u64 {
+    // Transaction size calculation: https://bitcoinops.org/en/tools/calc-size/
+    // The items in the witness are discounted by a factor of 4 (witness discount)
+    // The size used here is ceil(input p2wpkh witness)
+    // Input Witness:= ceil(nr. of items field + (length field + signature + public key) / p2wpkh witness discount
+    // Input Witness:= ceil(0.25               + (1         + 73       + 34) / 4))
+    //              := ceil(27.25)
+    let vsize_per_p2wpkh_input_witness = 28;
+    let signed_tx_size = unsigned_tx_vsize + vsize_per_p2wpkh_input_witness * nr_inputs;
+    let fee = fee_sat_per_kvb as f64 * signed_tx_size as f64 * 1e-3;
+    // after multiplication we can safely convert
+    fee.ceil() as u64
 }

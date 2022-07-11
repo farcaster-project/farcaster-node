@@ -343,13 +343,13 @@ impl SyncerState {
             .insert(self.task_count.into(), source.clone());
 
         // try to emit an event immediately from the cached values
-        if let Some(fee_estimations) = self.fee_estimation.clone() {
+        if let Some(ref fee_estimations) = &self.fee_estimation {
             send_event(
                 &self.tx_event,
                 &mut vec![(
                     Event::FeeEstimation(FeeEstimation {
                         id: task.id,
-                        fee_estimations,
+                        fee_estimations: fee_estimations.clone(),
                     }),
                     source,
                 )],
@@ -622,7 +622,7 @@ impl SyncerState {
 
     pub async fn fee_estimated(&mut self, fee_estimations: FeeEstimations) {
         // Emit fee estimation events
-        if self.fee_estimation != Some(fee_estimations.clone()) {
+        if self.fee_estimation.as_ref() != Some(&fee_estimations) {
             for (id, task) in self.watch_fee_estimation.iter() {
                 send_event(
                     &self.tx_event,

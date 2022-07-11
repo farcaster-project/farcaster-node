@@ -16,6 +16,8 @@
 use crate::databased::checkpoint_handle_multipart_receive;
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
+use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
+use crate::syncerd::{FeeEstimation, FeeEstimations};
 use crate::{
     rpc::request::Outcome,
     rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
@@ -167,6 +169,7 @@ pub fn run(
         bitcoin_amount,
         awaiting_funding: false,
         xmr_addr_addendum: None,
+        btc_fee_estimate_sat_per_kvb: None,
     };
 
     let runtime = Runtime {
@@ -510,6 +513,23 @@ impl Runtime {
                         trace!("received remote commitment");
                         self.state.t_sup_remote_commit(remote_commit.clone());
 
+                        let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(watch_height_btc_task),
+                        )?;
+
+                        let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
+
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(watch_height_xmr_task),
+                        )?;
+
                         if self.state.swap_role() == SwapRole::Bob {
                             let addr = self
                                 .state
@@ -527,23 +547,16 @@ impl Runtime {
                                     Request::SyncerTask(task),
                                 )?;
                             }
+                            let btc_fee_task = self.syncer_state.estimate_fee_btc();
+                            endpoints.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                self.syncer_state.bitcoin_syncer(),
+                                Request::SyncerTask(btc_fee_task),
+                            )?;
+                            std::thread::sleep(Duration::from_secs_f32(2.0));
                         }
-                        let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(watch_height_btc_task),
-                        )?;
 
-                        let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
-
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.monero_syncer(),
-                            Request::SyncerTask(watch_height_xmr_task),
-                        )?;
                         self.send_wallet(msg_bus, endpoints, request)?;
                     }
                     Msg::TakerCommit(_) => {
@@ -642,15 +655,23 @@ impl Runtime {
                                 }
                                 pending_requests.push(pending_request);
 
-                                if let Some(address) = self.state.b_address().cloned() {
+                                if let (Some(address), Some(sat_per_kvb)) = (
+                                    self.state.b_address().cloned(),
+                                    self.syncer_state.btc_fee_estimate_sat_per_kvb,
+                                ) {
                                     let swap_id = self.swap_id();
-                                    let fees = bitcoin::Amount::from_sat(200); // FIXME
-                                    let amount = self.syncer_state.bitcoin_amount + fees;
+                                    let vsize = 94;
+                                    let nr_inputs = 1;
+                                    let total_fees = bitcoin::Amount::from_sat(
+                                        p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs),
+                                    );
+                                    let amount = self.syncer_state.bitcoin_amount + total_fees;
                                     info!(
-                                        "{} | Send {} to {}",
+                                        "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
                                         swap_id.bright_blue_italic(),
                                         amount.bright_green_bold(),
                                         address.addr(),
+                                        total_fees,
                                     );
                                     self.state.b_sup_required_funding_amount(amount);
                                     let req = Request::FundingInfo(FundingInfo::Bitcoin(
@@ -670,6 +691,13 @@ impl Runtime {
                                             req,
                                         )?
                                     }
+                                } else {
+                                    error!(
+                                        "swap_role: {}, trade_role: {:?}",
+                                        self.state.swap_role(),
+                                        self.state.trade_role()
+                                    );
+                                    error!("Not Some(address) or not Some(sat_per_kvb)");
                                 }
                             }
                         }
@@ -728,6 +756,12 @@ impl Runtime {
                         ]) {
                             let tx = tx.clone().extract_tx();
                             let txid = tx.txid();
+                            debug!(
+                                "tx_label: {}, vsize: {}, outs: {}",
+                                tx_label,
+                                tx.vsize(),
+                                tx.output.len()
+                            );
                             if !self.syncer_state.is_watched_tx(&tx_label) {
                                 let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                                 endpoints.send_to(
@@ -1002,6 +1036,18 @@ impl Runtime {
                     Some(remote_commit),
                 );
 
+                std::thread::sleep(Duration::from_secs_f32(5.0));
+                let btc_fee_task = self.syncer_state.estimate_fee_btc();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(btc_fee_task),
+                )?;
+
+                // syncer takes too long to give a fee
+                std::thread::sleep(Duration::from_secs_f32(2.0));
+
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
                 self.state_update(endpoints, next_state)?;
@@ -1094,7 +1140,9 @@ impl Runtime {
                         tx,
                     }) if self.state.swap_role() == SwapRole::Alice
                         && self.syncer_state.tasks.watched_addrs.contains_key(id)
-                        && !self.state.a_xmr_locked() =>
+                        && !self.state.a_xmr_locked()
+                        && self.syncer_state.tasks.watched_addrs.get(id).unwrap()
+                            == &TxLabel::AccLock =>
                     {
                         debug!(
                             "Event details: {} {:?} {} {:?} {:?}",
@@ -1957,8 +2005,18 @@ impl Runtime {
                     Event::TransactionRetrieved(event) => {
                         debug!("{}", event)
                     }
-                    Event::FeeEstimation(event) => {
-                        debug!("{}", event)
+                    Event::FeeEstimation(FeeEstimation {
+                        fee_estimations:
+                            FeeEstimations::BitcoinFeeEstimation {
+                                high_priority_sats_per_kvbyte,
+                                low_priority_sats_per_kvbyte: _,
+                            },
+                        id: _,
+                    }) => {
+                        // FIXME handle low priority as well
+                        info!("fee: {} sat/kvB", high_priority_sats_per_kvbyte);
+                        self.syncer_state.btc_fee_estimate_sat_per_kvb =
+                            Some(*high_priority_sats_per_kvbyte);
                     }
                 }
             }
