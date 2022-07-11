@@ -585,14 +585,6 @@ impl Runtime {
                                         "Pending requests already existed prior to Reveal::Proof!"
                                     )
                                 }
-                                let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                                endpoints.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    self.syncer_state.bitcoin_syncer(),
-                                    Request::SyncerTask(btc_fee_task),
-                                )?;
-                                std::thread::sleep(Duration::from_secs_f32(2.0));
                             }
                             SwapRole::Alice => {
                                 debug!("Alice: forwarding reveal");

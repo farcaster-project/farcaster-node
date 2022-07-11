@@ -142,7 +142,6 @@ m_swap <- m_syncer : Accordant Lock final
 t_swap <- t_syncer : Accordant Lock final
 parallel off
 
-m_swap->m_syncer:Ctl EstimateFee (btc)
 peerd <- t_swap : Msg BuyProcedureSignature
 m_swap <- peerd : Msg BuyProcedureSignature
 m_swap -> m_checkpoint : Ctl CheckpointSwapAlicePreBuy
