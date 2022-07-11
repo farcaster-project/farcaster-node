@@ -51,6 +51,7 @@ m_swap -> m_wallet : Ctl Hello
 m_farcasterd -> m_farcasterd:launch syncer
 m_farcasterd -> m_swap : Ctl MakeSwap
 
+m_swap->m_syncer:If Bob, Ctl EstimateFee (btc)
 m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
 // TODO: verify that swapd launches no matter what
@@ -62,7 +63,6 @@ t_wallet -> t_swap : Ctl RevealProof (taker is sender)
 t_swap -> peerd : Msg RevealProof (taker is sender)
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg RevealProof (taker is sender)
-m_swap->m_syncer:If Bob, Ctl EstimateFee (btc)
 m_swap -> m_wallet : if Alice, Msg RevealProof (taker is sender) 
 m_swap -> m_swap : if Bob, ADD PENDING Msg RevealProof
 peerd -> m_swap : Msg Reveal (taker is sender)
