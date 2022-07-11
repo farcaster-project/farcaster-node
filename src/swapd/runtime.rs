@@ -554,7 +554,7 @@ impl Runtime {
                                 self.syncer_state.bitcoin_syncer(),
                                 Request::SyncerTask(btc_fee_task),
                             )?;
-                            std::thread::sleep(Duration::from_secs_f32(10.0));
+                            std::thread::sleep(Duration::from_secs_f32(2.0));
                         }
 
                         self.send_wallet(msg_bus, endpoints, request)?;
@@ -592,7 +592,7 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     Request::SyncerTask(btc_fee_task),
                                 )?;
-                                std::thread::sleep(Duration::from_secs_f32(10.0));
+                                std::thread::sleep(Duration::from_secs_f32(2.0));
                             }
                             SwapRole::Alice => {
                                 debug!("Alice: forwarding reveal");
@@ -1044,7 +1044,7 @@ impl Runtime {
                     Some(remote_commit),
                 );
 
-                std::thread::sleep(Duration::from_secs_f32(10.0));
+                std::thread::sleep(Duration::from_secs_f32(2.0));
                 let btc_fee_task = self.syncer_state.estimate_fee_btc();
                 endpoints.send_to(
                     ServiceBus::Ctl,
@@ -1054,7 +1054,7 @@ impl Runtime {
                 )?;
 
                 // syncer takes too long to give a fee
-                std::thread::sleep(Duration::from_secs_f32(10.0));
+                std::thread::sleep(Duration::from_secs_f32(2.0));
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
