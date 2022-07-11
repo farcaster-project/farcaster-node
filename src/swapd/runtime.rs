@@ -1561,8 +1561,7 @@ impl Runtime {
                                         &viewpair,
                                     );
                                     let swap_id = self.swap_id();
-                                    let amount = self.syncer_state.monero_amount
-                                        + monero::Amount::from_xmr(0.02).unwrap();
+                                    let amount = self.syncer_state.monero_amount;
                                     info!(
                                         "{} | Send {} to {}",
                                         swap_id.bright_blue_italic(),
