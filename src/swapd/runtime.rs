@@ -1044,7 +1044,7 @@ impl Runtime {
                     Some(remote_commit),
                 );
 
-                std::thread::sleep(Duration::from_secs_f32(2.0));
+                std::thread::sleep(Duration::from_secs_f32(5.0));
                 let btc_fee_task = self.syncer_state.estimate_fee_btc();
                 endpoints.send_to(
                     ServiceBus::Ctl,
