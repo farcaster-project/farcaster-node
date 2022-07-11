@@ -748,7 +748,9 @@ impl Runtime {
                         self.send_wallet(msg_bus, endpoints, request)?;
                     }
                     // alice receives, bob sends
-                    Msg::BuyProcedureSignature(buy_proc_sig) if self.state.a_refundsig() => {
+                    Msg::BuyProcedureSignature(buy_proc_sig)
+                        if self.state.a_refundsig() && !self.state.a_overfunded() =>
+                    {
                         // Alice verifies that she has sent refund procedure signatures before
                         // processing the buy signatures from Bob
                         let tx_label = TxLabel::Buy;
@@ -1098,6 +1100,32 @@ impl Runtime {
                             id, hash, amount, block, tx
                         );
                         self.state.a_sup_refundsig_xmrlocked();
+
+                        let required_funding_amount = self
+                            .state
+                            .a_required_funding_amount()
+                            .expect("set when monero funding address is displayed");
+                        if amount.clone() < required_funding_amount {
+                            // Alice still views underfunding as valid in the hope that Bob still passes her BuyProcSig
+                            let msg = format!(
+                                "Too small amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
+                                monero::Amount::from_pico(required_funding_amount),
+                                monero::Amount::from_pico(amount.clone())
+                            );
+                            error!("{}", msg);
+                            self.report_progress_message_to(endpoints, self.enquirer.clone(), msg)?;
+                        } else if amount.clone() > required_funding_amount {
+                            // Alice set overfunded to ensure that she does not publish the buy transaction if Bob gives her the BuySig.
+                            self.state.a_sup_overfunded();
+                            let msg = format!(
+                                "Too big amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
+                                monero::Amount::from_pico(required_funding_amount),
+                                monero::Amount::from_pico(amount.clone())
+                            );
+                            error!("{}", msg);
+                            self.report_progress_message_to(endpoints, self.enquirer.clone(), msg)?;
+                        }
+
                         let txlabel = TxLabel::AccLock;
                         if !self.syncer_state.is_watched_tx(&txlabel) {
                             if self.syncer_state.awaiting_funding {
@@ -1135,7 +1163,9 @@ impl Runtime {
                         tx: _,
                     }) if self.state.swap_role() == SwapRole::Bob
                         && self.syncer_state.tasks.watched_addrs.contains_key(id)
-                        && self.syncer_state.is_watched_addr(&TxLabel::AccLock) =>
+                        && self.syncer_state.is_watched_addr(&TxLabel::AccLock)
+                        && self.syncer_state.tasks.watched_addrs.get(id).unwrap()
+                            == &TxLabel::AccLock =>
                     {
                         let amount = monero::Amount::from_pico(*amount);
                         if amount < self.syncer_state.monero_amount {
@@ -1519,6 +1549,7 @@ impl Runtime {
                                         amount.bright_green_bold(),
                                         address.addr(),
                                     );
+                                    self.state.a_sup_required_funding_amount(amount);
                                     let funding_request = Request::FundingInfo(
                                         FundingInfo::Monero(MoneroFundingInfo {
                                             swap_id,
@@ -1569,12 +1600,16 @@ impl Runtime {
                                     && self.state.a_refundsig()
                                     && !self.state.a_buy_published()
                                     && !self.state.cancel_seen()
+                                    && !self.state.a_overfunded() // don't publish buy in case we overfunded
                                     && self.txs.contains_key(&TxLabel::Buy)
                                     && self.state.remote_params().is_some()
                                     && self.state.local_params().is_some() =>
                             {
                                 let xmr_locked = self.state.a_xmr_locked();
                                 let btc_locked = self.state.a_btc_locked();
+                                let overfunded = self.state.a_overfunded();
+                                let required_funding_amount =
+                                    self.state.a_required_funding_amount();
                                 if let Some((txlabel, buy_tx)) =
                                     self.txs.remove_entry(&TxLabel::Buy)
                                 {
@@ -1591,6 +1626,8 @@ impl Runtime {
                                             .state
                                             .last_checkpoint_type()
                                             .unwrap(),
+                                        required_funding_amount,
+                                        overfunded,
                                     });
                                 } else {
                                     warn!(
@@ -2094,6 +2131,8 @@ impl Runtime {
                     cancel_seen: false,
                     refund_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
+                    required_funding_amount: None,
+                    overfunded: false,
                 });
                 self.state_update(endpoints, next_state)?;
             }
