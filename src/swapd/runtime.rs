@@ -764,7 +764,7 @@ impl Runtime {
                         ]) {
                             let tx = tx.clone().extract_tx();
                             let txid = tx.txid();
-                            info!(
+                            debug!(
                                 "tx_label: {}, vsize: {}, outs: {}",
                                 tx_label,
                                 tx.vsize(),
