@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::rpc::request::AddressSecretKey;
+use crate::rpc::request::{Address, AddressSecretKey};
 use crate::syncerd::SweepBitcoinAddress;
 use farcaster_core::negotiation::Offer;
 use farcaster_core::swap::btcxmr::BtcXmr;
@@ -261,9 +261,9 @@ impl Exec for Command {
             } => {
                 runtime.request(
                     ServiceId::Database,
-                    Request::GetAddressSecretKey(source_address.clone()),
+                    Request::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
-                if let Request::AddressSecretKey(AddressSecretKey { secret_key, .. }) =
+                if let Request::AddressSecretKey(AddressSecretKey::Bitcoin { secret_key, .. }) =
                     runtime.report_failure()?
                 {
                     runtime.request(
