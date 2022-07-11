@@ -878,12 +878,11 @@ fn estimate_fee_polling(
                 loop {
                     match client
                         .estimate_fee(high_priority_confs) // docs say sat/kB, but its BTC/kvB
-                        .and_then(
-                            |high_priority| match client.estimate_fee(low_priority_confs) {
-                                Ok(low_priority) => Ok((high_priority, low_priority)),
-                                Err(err) => Err(err),
-                            },
-                        ) {
+                        .and_then(|high_priority| {
+                            client
+                                .estimate_fee(low_priority_confs)
+                                .map(|low_priority| (high_priority, low_priority))
+                        }) {
                         Ok((high_priority, low_priority)) => {
                             let mut state_guard = state.lock().await;
                             state_guard
