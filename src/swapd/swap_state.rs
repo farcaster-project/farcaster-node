@@ -40,6 +40,8 @@ pub enum AliceState {
         remote_params: Params,
         /* #[display("local_view_share({0})")] */
         local_params: Params,
+        required_funding_amount: Option<u64>, // TODO: Should be monero::Amount
+        overfunded: bool,
     },
     #[display("Finish({0})")]
     FinishA(Outcome),
@@ -59,6 +61,7 @@ pub enum BobState {
         local_commit: Commit,
         remote_commit: Option<Commit>,
         b_address: bitcoin::Address,
+        required_funding_amount: Option<bitcoin::Amount>,
     },
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
@@ -69,6 +72,7 @@ pub enum BobState {
         b_address: bitcoin::Address,
         local_trade_role: TradeRole,
         remote_params: Option<Params>,
+        required_funding_amount: Option<bitcoin::Amount>,
     }, // local, remote, local, ..missing, remote
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
@@ -218,6 +222,19 @@ impl State {
             false
         }
     }
+    pub fn b_required_funding_amount(&self) -> Option<bitcoin::Amount> {
+        match self {
+            State::Bob(BobState::CommitB {
+                required_funding_amount,
+                ..
+            })
+            | State::Bob(BobState::RevealB {
+                required_funding_amount,
+                ..
+            }) => required_funding_amount.clone(),
+            _ => None,
+        }
+    }
     pub fn a_start(&self) -> bool {
         matches!(self, State::Alice(AliceState::StartA { .. }))
     }
@@ -320,6 +337,24 @@ impl State {
     pub fn a_refundsig(&self) -> bool {
         matches!(self, State::Alice(AliceState::RefundSigA { .. }))
     }
+    pub fn a_required_funding_amount(&self) -> Option<u64> {
+        match self {
+            State::Alice(AliceState::RefundSigA {
+                required_funding_amount,
+                ..
+            }) => required_funding_amount.clone(),
+            _ => None,
+        }
+    }
+    pub fn a_overfunded(&self) -> bool {
+        matches!(
+            self,
+            State::Alice(AliceState::RefundSigA {
+                overfunded: true,
+                ..
+            })
+        )
+    }
     pub fn b_buy_tx_seen(&self) -> bool {
         if !self.b_buy_sig() {
             return false;
@@ -396,6 +431,7 @@ impl State {
                         remote_commit,
                         remote_params,
                         b_address,
+                        required_funding_amount: None,
                     },
                 )
             }
@@ -442,6 +478,7 @@ impl State {
                 local_trade_role,
                 remote_params,
                 b_address,
+                required_funding_amount,
                 ..
             }) => State::Bob(BobState::RevealB {
                 local_params,
@@ -450,6 +487,7 @@ impl State {
                 local_trade_role,
                 remote_params,
                 last_checkpoint_type: None,
+                required_funding_amount,
             }),
 
             _ => unreachable!("checked state on pattern to be Commit"),
@@ -476,22 +514,48 @@ impl State {
     }
 
     /// Update Bob BuySig state from XMR unlocked to locked state
-    pub fn b_sup_buysig_buy_tx_seen(&mut self) {
+    pub fn b_sup_buysig_buy_tx_seen(&mut self) -> bool {
         if !self.b_buy_sig() {
             error!(
                 "Wrong state, not updating. Expected BuySig, found {}",
                 &*self
             );
-            return;
+            return false;
         } else if self.b_buy_tx_seen() {
             error!("Buy tx was previously seen, not updating state");
-            return;
+            return false;
         }
         match self {
             State::Bob(BobState::BuySigB { buy_tx_seen, .. }) if !(*buy_tx_seen) => {
-                *buy_tx_seen = true
+                *buy_tx_seen = true;
+                true
             }
             _ => unreachable!("checked state"),
+        }
+    }
+    /// Update Bob with the required Monero funding amount
+    pub fn b_sup_required_funding_amount(&mut self, amount: bitcoin::Amount) -> bool {
+        match self {
+            State::Bob(BobState::CommitB {
+                required_funding_amount,
+                ..
+            })
+            | State::Bob(BobState::RevealB {
+                required_funding_amount,
+                ..
+            }) => {
+                if required_funding_amount.is_none() {
+                    *required_funding_amount = Some(amount);
+                    true
+                } else {
+                    trace!("required funding amount was already set");
+                    false
+                }
+            }
+            _ => {
+                error!("Not on CommitB or RevealB state");
+                false
+            }
         }
     }
     /// Update Alice RefundSig state from BTC unlocked to locked state
@@ -503,6 +567,22 @@ impl State {
                 true
             } else {
                 trace!("btc_locked was already set to true");
+                false
+            }
+        } else {
+            error!("Not on RefundSig state");
+            false
+        }
+    }
+    /// Update Alice RefundSig state from overfunded=false to overfunded=true
+    pub fn a_sup_overfunded(&mut self) -> bool {
+        if let State::Alice(AliceState::RefundSigA { overfunded, .. }) = self {
+            if !*overfunded {
+                trace!("setting overfunded");
+                *overfunded = true;
+                true
+            } else {
+                warn!("overfunded was already set to true");
                 false
             }
         } else {
@@ -526,6 +606,26 @@ impl State {
             false
         }
     }
+    /// Update Alice RefundSig state with the required Monero funding amount
+    pub fn a_sup_required_funding_amount(&mut self, amount: monero::Amount) -> bool {
+        if let State::Alice(AliceState::RefundSigA {
+            required_funding_amount,
+            ..
+        }) = self
+        {
+            if required_funding_amount.is_none() {
+                *required_funding_amount = Some(amount.as_pico());
+                true
+            } else {
+                warn!("required funding amount was already set");
+                false
+            }
+        } else {
+            error!("Not on RefundSig state");
+            false
+        }
+    }
+
     pub fn a_sup_refundsig_refund_seen(&mut self) -> bool {
         if let State::Alice(AliceState::RefundSigA { refund_seen, .. }) = self {
             if !*refund_seen {

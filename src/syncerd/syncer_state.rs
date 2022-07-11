@@ -43,6 +43,7 @@ pub struct SyncerState {
     block_hash: Vec<u8>,
     tasks_sources: HashMap<InternalId, ServiceId>,
     watch_height: HashMap<InternalId, WatchHeight>,
+    watch_fee_estimation: HashMap<InternalId, EstimateFee>,
     lifetimes: HashMap<u64, HashSet<InternalId>>,
     pub addresses: HashMap<InternalId, AddressTransactions>,
     pub transactions: HashMap<InternalId, WatchedTransaction>,
@@ -51,6 +52,7 @@ pub struct SyncerState {
     tx_event: TokioSender<SyncerdBridgeEvent>,
     task_count: TaskCounter,
     pub subscribed_addresses: HashSet<AddressAddendum>,
+    pub fee_estimation: Option<FeeEstimations>,
 }
 
 #[derive(Clone, Debug)]
@@ -83,6 +85,7 @@ impl SyncerState {
             block_hash: vec![0],
             tasks_sources: HashMap::new(),
             watch_height: HashMap::new(),
+            watch_fee_estimation: HashMap::new(),
             lifetimes: HashMap::new(),
             addresses: HashMap::new(),
             transactions: HashMap::new(),
@@ -92,6 +95,7 @@ impl SyncerState {
             task_count: TaskCounter(0),
             coin: id,
             subscribed_addresses: HashSet::new(),
+            fee_estimation: None,
         }
     }
 
@@ -330,6 +334,30 @@ impl SyncerState {
         self.unseen_transactions.insert(self.task_count.into());
     }
 
+    pub async fn estimate_fee(&mut self, task: EstimateFee, source: ServiceId) {
+        // increment the count to use it as a unique internal id
+        self.task_count.increment();
+        self.watch_fee_estimation
+            .insert(self.task_count.into(), task.clone());
+        self.tasks_sources
+            .insert(self.task_count.into(), source.clone());
+
+        // try to emit an event immediately from the cached values
+        if let Some(fee_estimations) = self.fee_estimation.clone() {
+            send_event(
+                &self.tx_event,
+                &mut vec![(
+                    Event::FeeEstimation(FeeEstimation {
+                        id: task.id,
+                        fee_estimations,
+                    }),
+                    source,
+                )],
+            )
+            .await;
+        }
+    }
+
     pub fn sweep_address(&mut self, task: SweepAddress, source: ServiceId) {
         self.task_count.increment();
         // This is technically valid behavior; immediately prune the task for being past
@@ -341,7 +369,6 @@ impl SyncerState {
         self.sweep_addresses.insert(self.task_count.into(), task);
         self.tasks_sources.insert(self.task_count.into(), source);
     }
-
     pub async fn change_height(&mut self, new_height: u64, block: Vec<u8>) -> bool {
         if self.block_height != new_height || self.block_hash != block {
             self.handle_change_height(new_height, block.clone());
@@ -593,6 +620,28 @@ impl SyncerState {
         }
     }
 
+    pub async fn fee_estimated(&mut self, fee_estimations: FeeEstimations) {
+        // Emit fee estimation events
+        if self.fee_estimation != Some(fee_estimations.clone()) {
+            for (id, task) in self.watch_fee_estimation.iter() {
+                send_event(
+                    &self.tx_event,
+                    &mut vec![(
+                        Event::FeeEstimation(FeeEstimation {
+                            id: task.id,
+                            fee_estimations: fee_estimations.clone(),
+                        }),
+                        self.tasks_sources.get(id).unwrap().clone(),
+                    )],
+                )
+                .await;
+            }
+
+            self.fee_estimation = Some(fee_estimations);
+        }
+        self.drop_lifetimes();
+    }
+
     fn drop_lifetimes(&mut self) {
         let lifetimes: Vec<u64> = Iterator::collect(self.lifetimes.keys().map(|&x| x.to_owned()));
         for lifetime in lifetimes {
@@ -625,6 +674,7 @@ impl SyncerState {
                 self.transactions.remove(task);
                 self.unseen_transactions.remove(task);
                 self.watch_height.remove(task);
+                self.watch_fee_estimation.remove(task);
                 self.sweep_addresses.remove(task);
                 self.tasks_sources.remove(task);
             }
