@@ -278,7 +278,7 @@ impl Runtime {
                 })?;
             }
 
-            Request::AddressSecretKey(request::AddressSecretKey::Bitcoin {
+            Request::SetAddressSecretKey(request::AddressSecretKey::Bitcoin {
                 address,
                 secret_key,
             }) => {
@@ -324,7 +324,7 @@ impl Runtime {
                 )?;
             }
 
-            Request::AddressSecretKey(request::AddressSecretKey::Monero {
+            Request::SetAddressSecretKey(request::AddressSecretKey::Monero {
                 address,
                 view,
                 spend,

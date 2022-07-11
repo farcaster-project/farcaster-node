@@ -438,7 +438,7 @@ impl Runtime {
                             self.send_ctl(
                                 endpoints,
                                 ServiceId::Database,
-                                Request::AddressSecretKey(AddressSecretKey::Bitcoin {
+                                Request::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                                     address: funding_addr.clone(),
                                     secret_key: key_manager
                                         .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?
@@ -1337,7 +1337,7 @@ impl Runtime {
                         self.send_ctl(
                             endpoints,
                             ServiceId::Database,
-                            Request::AddressSecretKey(AddressSecretKey {
+                            Request::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                                 address: funding_addr.clone(),
                                 secret_key: key_manager
                                     .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?

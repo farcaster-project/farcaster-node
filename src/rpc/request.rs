@@ -720,8 +720,8 @@ pub enum Request {
     MoneroAddressList(List<String>),
 
     #[api(type = 1314)]
-    #[display("address_secret_key")]
-    AddressSecretKey(AddressSecretKey),
+    #[display("set_address_secret_key")]
+    SetAddressSecretKey(AddressSecretKey),
 
     #[api(type = 1315)]
     #[display("set_offer_history({0})")]
@@ -734,6 +734,10 @@ pub enum Request {
     #[api(type = 1317)]
     #[display("offer_status_list({0})")]
     OfferStatusList(List<OfferStatusPair>),
+
+    #[api(type = 1319)]
+    #[display("address_secret_key")]
+    AddressSecretKey(AddressSecretKey),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
