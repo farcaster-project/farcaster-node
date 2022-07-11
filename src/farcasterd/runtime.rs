@@ -629,7 +629,7 @@ impl Runtime {
                     }
                 };
 
-                if let Some((swap_params, network)) = self.making_swaps.get(&source) {
+                if let Some((swap_params, _network)) = self.making_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
@@ -644,29 +644,6 @@ impl Runtime {
                             source
                         ))),
                     ));
-                    let swapid = get_swap_id(&source)?;
-                    // when online, Syncers say Hello, then they get registered to self.syncers
-                    syncers_up(
-                        ServiceId::Farcasterd,
-                        &mut self.spawning_services,
-                        &self.syncer_services,
-                        &mut self.syncer_clients,
-                        Coin::Bitcoin,
-                        *network,
-                        swapid,
-                        &self.config,
-                    )?;
-                    syncers_up(
-                        ServiceId::Farcasterd,
-                        &mut self.spawning_services,
-                        &self.syncer_services,
-                        &mut self.syncer_clients,
-                        Coin::Monero,
-                        *network,
-                        swapid,
-                        &self.config,
-                    )?;
-                    // FIXME msgs should go to walletd?
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -675,7 +652,7 @@ impl Runtime {
                     )?;
                     self.running_swaps.insert(swap_params.swap_id);
                     self.making_swaps.remove(&source);
-                } else if let Some((swap_params, network)) = self.taking_swaps.get(&source) {
+                } else if let Some((swap_params, _network)) = self.taking_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
@@ -690,33 +667,6 @@ impl Runtime {
                             source
                         ))),
                     ));
-                    match swap_params.local_params {
-                        Params::Alice(_) => {}
-                        Params::Bob(_) => {}
-                    }
-
-                    let swapid = get_swap_id(&source)?;
-                    syncers_up(
-                        ServiceId::Farcasterd,
-                        &mut self.spawning_services,
-                        &self.syncer_services,
-                        &mut self.syncer_clients,
-                        Coin::Bitcoin,
-                        *network,
-                        swapid,
-                        &self.config,
-                    )?;
-                    syncers_up(
-                        ServiceId::Farcasterd,
-                        &mut self.spawning_services,
-                        &self.syncer_services,
-                        &mut self.syncer_clients,
-                        Coin::Monero,
-                        *network,
-                        swapid,
-                        &self.config,
-                    )?;
-                    // FIXME msgs should go to walletd?
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -790,6 +740,7 @@ impl Runtime {
                 funding_address,
             }) => {
                 let offerid = public_offer.offer.id();
+                let network = public_offer.offer.network.clone();
                 let peerd_id = self.peerd_ids.get(&offerid); // Some for Maker after TakerCommit, None for Taker
                 let peer: ServiceId = match local_trade_role {
                     TradeRole::Maker if peerd_id.is_some() => peerd_id.unwrap().clone(),
@@ -815,6 +766,28 @@ impl Runtime {
                             status: OfferStatus::InProgress,
                         }),
                     )?;
+                    syncers_up(
+                        ServiceId::Farcasterd,
+                        &mut self.spawning_services,
+                        &self.syncer_services,
+                        &mut self.syncer_clients,
+                        Coin::Bitcoin,
+                        network,
+                        swap_id,
+                        &self.config,
+                    )?;
+                    syncers_up(
+                        ServiceId::Farcasterd,
+                        &mut self.spawning_services,
+                        &self.syncer_services,
+                        &mut self.syncer_clients,
+                        Coin::Monero,
+                        network,
+                        swap_id,
+                        &self.config,
+                    )?;
+                    trace!("give time for syncers to come online");
+                    std::thread::sleep(Duration::from_secs_f32(5.0));
 
                     trace!(
                         "launching swapd with swap_id: {}",
