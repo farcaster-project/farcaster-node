@@ -603,6 +603,10 @@ impl Runtime {
                     }
                 }
             }
+            Msg::Reveal(reveal)
+                if self.state.swap_role() == SwapRole::Bob
+                    && (self.state.b_address().is_none()
+                        || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()) => {}
             // bob and alice
             // store parameters from counterparty if we have not received them yet.
             // if we're maker, also reveal to taker if their commitment is valid.
@@ -638,19 +642,25 @@ impl Runtime {
                         );
                         self.send_wallet(msg_bus, endpoints, request)?
                     }
-                    SwapRole::Bob => {
+                    SwapRole::Bob
+                        if self.syncer_state.btc_fee_estimate_sat_per_kvb.is_some()
+                            && self.state.b_address().is_some() =>
+                    {
+                        let address = self.state.b_address().cloned().unwrap();
+                        let sat_per_kvb = self.syncer_state.btc_fee_estimate_sat_per_kvb.unwrap();
+                        self.ask_bob_to_fund(sat_per_kvb, address, endpoints)?;
+
                         // sending this request will initialize the
                         // arbitrating setup, that can be only performed
                         // after the funding tx was seen
-                        let pending_request = PendingRequest {
+                        let pending_req = PendingRequest {
                             request,
                             dest: ServiceId::Wallet,
                             bus_id: ServiceBus::Msg,
                         };
-
                         trace!(
                             "This pending request will be called later: {:?}",
-                            &pending_request
+                            &pending_req
                         );
                         let pending_requests = self
                             .pending_requests
@@ -661,53 +671,28 @@ impl Runtime {
                         if pending_requests.len() != 1 {
                             error!("should have a single pending Reveal::Proof only FIXME")
                         }
-                        pending_requests.push(pending_request);
-
-                        if let (Some(address), Some(sat_per_kvb)) = (
-                            self.state.b_address().cloned(),
-                            self.syncer_state.btc_fee_estimate_sat_per_kvb,
-                        ) {
-                            let swap_id = self.swap_id();
-                            let vsize = 94;
-                            let nr_inputs = 1;
-                            let total_fees = bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(
-                                sat_per_kvb,
-                                vsize,
-                                nr_inputs,
-                            ));
-                            let amount = self.syncer_state.bitcoin_amount + total_fees;
-                            info!(
-                                "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
-                                  swap_id.bright_blue_italic(),
-                                  amount.bright_green_bold(),
-                                  address.addr(),
-                                  total_fees
-                            );
-                            self.state.b_sup_required_funding_amount(amount);
-                            let req =
-                                Request::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {
-                                    swap_id,
-                                    address,
-                                    amount,
-                                }));
-                            self.syncer_state.awaiting_funding = true;
-
-                            if let Some(enquirer) = self.enquirer.clone() {
-                                endpoints.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    enquirer,
-                                    req,
-                                )?
-                            }
-                        } else {
-                            error!(
-                                "swap_role: {}, trade_role: {:?}",
-                                self.state.swap_role(),
-                                self.state.trade_role()
-                            );
-                            error!("Not Some(address) or not Some(sat_per_kvb)");
-                        }
+                        pending_requests.push(pending_req);
+                    }
+                    SwapRole::Bob => {
+                        error!(
+                            "swap_role: {}, trade_role: {:?}",
+                            self.state.swap_role(),
+                            self.state.trade_role()
+                        );
+                        error!("Not Some(address) or not Some(sat_per_kvb)");
+                        let pending_req = PendingRequest {
+                            request,
+                            dest: source,
+                            bus_id: ServiceBus::Ctl,
+                        };
+                        if self
+                            .pending_requests
+                            .insert(self.syncer_state.bitcoin_syncer(), vec![pending_req])
+                            .is_some()
+                        {
+                            error!("pending request dropped a value, FIXME")
+                        };
+                        return Ok(());
                     }
                 }
 
@@ -2015,6 +2000,37 @@ impl Runtime {
                         info!("fee: {} sat/kvB", high_priority_sats_per_kvbyte);
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
+                        if let Some(vec) = self.pending_requests.remove(&source) {
+                            let pending_reqs = vec
+                                .into_iter()
+                                .filter_map(|i| {
+                                    let predicate = matches!(
+                                        &i,
+                                        &PendingRequest {
+                                            bus_id: ServiceBus::Ctl,
+                                            request: Request::Protocol(Msg::Reveal(
+                                                Reveal::AliceParameters(..)
+                                            )),
+                                            ..
+                                        }
+                                    );
+                                    if predicate {
+                                        if let Ok(_) = self.handle_rpc_ctl(
+                                            endpoints,
+                                            i.dest.clone(),
+                                            i.request.clone(),
+                                        ) {
+                                            None
+                                        } else {
+                                            Some(i)
+                                        }
+                                    } else {
+                                        Some(i)
+                                    }
+                                })
+                                .collect();
+                            self.pending_requests.insert(source, pending_reqs);
+                        }
                     }
                 }
             }
@@ -2471,6 +2487,38 @@ impl Runtime {
 }
 
 impl Runtime {
+    fn ask_bob_to_fund(
+        &mut self,
+        sat_per_kvb: u64,
+        address: bitcoin::Address,
+        endpoints: &mut Endpoints,
+    ) -> Result<(), Error> {
+        let swap_id = self.swap_id();
+        let vsize = 94;
+        let nr_inputs = 1;
+        let total_fees =
+            bitcoin::Amount::from_sat(p2wpkh_signed_tx_fee(sat_per_kvb, vsize, nr_inputs));
+        let amount = self.syncer_state.bitcoin_amount + total_fees;
+        info!(
+            "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
+            swap_id.bright_blue_italic(),
+            amount.bright_green_bold(),
+            address.addr(),
+            total_fees
+        );
+        self.state.b_sup_required_funding_amount(amount);
+        let req = Request::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {
+            swap_id,
+            address,
+            amount,
+        }));
+        self.syncer_state.awaiting_funding = true;
+
+        if let Some(enquirer) = self.enquirer.clone() {
+            endpoints.send_to(ServiceBus::Ctl, self.identity(), enquirer, req)?;
+        }
+        Ok(())
+    }
     pub fn taker_commit(
         &mut self,
         endpoints: &mut Endpoints,
