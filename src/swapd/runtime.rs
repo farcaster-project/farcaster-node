@@ -494,10 +494,10 @@ impl Runtime {
                     if predicate(&r) {
                         if let Ok(_) = match r.bus_id {
                             ServiceBus::Ctl if r.dest == self.identity => {
-                                self.handle_rpc_ctl(endpoints, r.dest.clone(), r.request.clone())
+                                self.handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone())
                             }
                             ServiceBus::Msg if r.dest == self.identity => {
-                                self.handle_rpc_msg(endpoints, r.dest.clone(), r.request.clone())
+                                self.handle_rpc_msg(endpoints, r.source.clone(), r.request.clone())
                             }
                             _ => endpoints
                                 .send_to(
