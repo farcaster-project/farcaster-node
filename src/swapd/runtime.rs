@@ -474,9 +474,9 @@ impl Runtime {
         key: ServiceId,
         predicate: fn(&PendingRequest) -> bool,
     ) -> bool {
-        let mut success = true;
-        if let Some(pending_reqs) = self.pending_requests.remove(&key) {
-            let remaining_pending_reqs = pending_reqs
+        let success = if let Some(pending_reqs) = self.pending_requests.remove(&key) {
+            let len0 = pending_reqs.len();
+            let remaining_pending_reqs: Vec<_> = pending_reqs
                 .into_iter()
                 .filter_map(|r| {
                     if predicate(&r) {
@@ -496,10 +496,8 @@ impl Runtime {
                                 )
                                 .map_err(Into::into),
                         } {
-                            success = success && true;
                             None
                         } else {
-                            success = false;
                             Some(r)
                         }
                     } else {
@@ -507,10 +505,12 @@ impl Runtime {
                     }
                 })
                 .collect();
+            let len1 = remaining_pending_reqs.len();
             self.pending_requests.insert(key, remaining_pending_reqs);
+            len0 > len1
         } else {
-            success = false;
-        }
+            false
+        };
         success
     }
 
