@@ -15,6 +15,7 @@
 #![allow(clippy::clone_on_copy)]
 
 use crate::cli::OfferSelector;
+use crate::rpc::messages::Ping;
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::SweepBitcoinAddress;
 use crate::walletd::{
@@ -78,7 +79,6 @@ use farcaster_core::{
 };
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
-use lnp::p2p::legacy::{Messages, Ping, TempChannelId as TempSwapId};
 use microservices::rpc::Failure;
 use microservices::rpc_connection;
 use strict_encoding::{
@@ -378,10 +378,6 @@ pub enum Request {
     #[api(type = 0)]
     #[display("hello()")]
     Hello,
-
-    #[api(type = 2)]
-    #[display("send_message({0})")]
-    PeerMessage(Messages),
 
     #[api(type = 3)]
     #[display("terminate")]

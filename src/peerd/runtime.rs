@@ -27,7 +27,8 @@ use bitcoin::secp256k1::rand::{self, Rng, RngCore};
 use bitcoin::secp256k1::PublicKey;
 use internet2::{addr::InetSocketAddr, CreateUnmarshaller, Unmarshall, Unmarshaller};
 use internet2::{presentation, transport, zmqsocket, NodeAddr, TypedEnum, ZmqType, ZMQ_CONTEXT};
-use lnp::p2p::legacy::{Messages, Ping};
+
+use crate::rpc::messages::Ping;
 use microservices::esb::{self, Handler};
 use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
