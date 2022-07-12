@@ -646,20 +646,14 @@ impl Runtime {
                 // parameter reveal forward is triggered. If Alice, send immediately.
                 match self.state.swap_role() {
                     SwapRole::Bob => {
-                        let pending_request = PendingRequest {
-                            request,
+                        let pending_request = PendingRequest::new(
                             source,
-                            dest: ServiceId::Wallet,
-                            bus_id: ServiceBus::Msg,
-                        };
-                        trace!("Added pending request to be forwarded later",);
-                        if self
-                            .pending_requests
-                            .insert(ServiceId::Wallet, vec![pending_request])
-                            .is_some()
-                        {
-                            error!("Pending requests already existed prior to Reveal::Proof!")
-                        }
+                            ServiceId::Wallet,
+                            ServiceBus::Msg,
+                            request,
+                        );
+                        pending_request
+                            .defer_request(&mut self.pending_requests, ServiceId::Wallet);
                     }
                     SwapRole::Alice => {
                         debug!("Alice: forwarding reveal");
@@ -690,7 +684,6 @@ impl Runtime {
                     &mut self.pending_requests,
                     self.syncer_state.bitcoin_syncer(),
                 );
-                return Ok(());
             }
             // bob and alice
             // store parameters from counterparty if we have not received them yet.
@@ -743,7 +736,7 @@ impl Runtime {
                         pending_req.defer_request(&mut self.pending_requests, ServiceId::Wallet);
                     }
                     _ => unreachable!(
-                        "Bob btc_fee_estimate_sat_per_kvb.is_none() is handled previously"
+                        "Bob btc_fee_estimate_sat_per_kvb.is_none() was handled previously"
                     ),
                 }
 
