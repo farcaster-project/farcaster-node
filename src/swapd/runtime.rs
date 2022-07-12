@@ -657,7 +657,27 @@ impl Runtime {
             Msg::Reveal(reveal)
                 if self.state.swap_role() == SwapRole::Bob
                     && (self.state.b_address().is_none()
-                        || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()) => {}
+                        || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()) =>
+            {
+                if self.state.b_address().is_none() {
+                    unreachable!("FIXME: b_address is None, request {}", request);
+                }
+                debug!("Deferring request {} for when btc_estimate available");
+                let pending_req = PendingRequest {
+                    source,
+                    request,
+                    dest: self.identity(),
+                    bus_id: ServiceBus::Msg,
+                };
+                if self
+                    .pending_requests
+                    .insert(self.syncer_state.bitcoin_syncer(), vec![pending_req])
+                    .is_some()
+                {
+                    error!("pending request dropped a value, FIXME")
+                };
+                return Ok(());
+            }
             // bob and alice
             // store parameters from counterparty if we have not received them yet.
             // if we're maker, also reveal to taker if their commitment is valid.
@@ -725,28 +745,9 @@ impl Runtime {
                         }
                         pending_requests.push(pending_req);
                     }
-                    SwapRole::Bob => {
-                        error!(
-                            "swap_role: {}, trade_role: {:?}",
-                            self.state.swap_role(),
-                            self.state.trade_role()
-                        );
-                        error!("Not Some(address) or not Some(sat_per_kvb)");
-                        let pending_req = PendingRequest {
-                            source,
-                            request,
-                            dest: self.identity(),
-                            bus_id: ServiceBus::Msg,
-                        };
-                        if self
-                            .pending_requests
-                            .insert(self.syncer_state.bitcoin_syncer(), vec![pending_req])
-                            .is_some()
-                        {
-                            error!("pending request dropped a value, FIXME")
-                        };
-                        return Ok(());
-                    }
+                    _ => unreachable!(
+                        "Bob btc_fee_estimate_sat_per_kvb.is_none() is handled previously"
+                    ),
                 }
 
                 // up to here for both maker and taker, following only Maker
