@@ -228,6 +228,14 @@ pub struct PendingRequest {
 }
 
 impl PendingRequest {
+    fn new(source: ServiceId, dest: ServiceId, bus_id: ServiceBus, request: Request) -> Self {
+        PendingRequest {
+            source,
+            dest,
+            bus_id,
+            request,
+        }
+    }
     fn defer_request(
         self,
         pending_requests: &mut HashMap<ServiceId, Vec<PendingRequest>>,
