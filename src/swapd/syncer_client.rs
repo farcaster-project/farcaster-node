@@ -69,6 +69,18 @@ impl SyncerState {
             u64::MAX
         }
     }
+    pub fn syncer(&self, coin: Coin) -> &ServiceId {
+        match coin {
+            Coin::Bitcoin => &self.bitcoin_syncer,
+            Coin::Monero => &self.monero_syncer,
+        }
+    }
+    pub fn is_syncer(&self, coin: Coin, source: &ServiceId) -> bool {
+        self.syncer(coin) == source
+    }
+    pub fn any_syncer(&self, source: &ServiceId) -> bool {
+        self.is_syncer(Coin::Bitcoin, source) || self.is_syncer(Coin::Monero, source)
+    }
     pub fn bitcoin_syncer(&self) -> ServiceId {
         self.bitcoin_syncer.clone()
     }

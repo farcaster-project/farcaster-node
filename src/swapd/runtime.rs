@@ -896,7 +896,29 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-
+            (Request::Hello, ServiceId::Syncer(..)) if self.syncer_state.is_syncer(Coin::Bitcoin, &source) => {
+                let success =
+                    self.continue_deferred_requests(endpoints, source.clone(), |r| {
+                        matches!(
+                            r,
+                            &PendingRequest {
+                                dest: ServiceId::Syncer(..),
+                                bus_id: ServiceBus::Ctl,
+                                request: Request::SyncerTask(Task::EstimateFee(..)),
+                                ..
+                            }
+                        )
+                    });
+                if !success {
+                    error!("Did not dispatch estimate fee pending request");
+                }
+                info!(
+                    "{} | Service {} daemon is now {}",
+                    self.swap_id.bright_blue_italic(),
+                    source.bright_green_bold(),
+                    "connected"
+                );
+            }
             (Request::Hello, _) => {
                 info!(
                     "{} | Service {} daemon is now {}",
@@ -905,7 +927,7 @@ impl Runtime {
                     "connected"
                 );
             }
-            (_, ServiceId::Syncer(..)) if source == self.syncer_state.bitcoin_syncer || source == self.syncer_state.monero_syncer => {
+            (_, ServiceId::Syncer(..)) if self.syncer_state.any_syncer(&source) => {
             }
             (
                 _,
@@ -1014,12 +1036,16 @@ impl Runtime {
                     None,
                 );
                 let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
+                let pending_req = PendingRequest::new(
                     self.identity(),
                     self.syncer_state.bitcoin_syncer(),
+                    ServiceBus::Ctl,
                     Request::SyncerTask(btc_fee_task),
-                )?;
+                );
+                pending_req.defer_request(
+                    &mut self.pending_requests,
+                    self.syncer_state.bitcoin_syncer(),
+                );
                 let take_swap = TakeCommit {
                     commit: local_commit,
                     public_offer: self.public_offer.to_string(),
@@ -1079,12 +1105,16 @@ impl Runtime {
                 );
 
                 let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
+                let pending_req = PendingRequest::new(
                     self.identity(),
                     self.syncer_state.bitcoin_syncer(),
+                    ServiceBus::Ctl,
                     Request::SyncerTask(btc_fee_task),
-                )?;
+                );
+                pending_req.defer_request(
+                    &mut self.pending_requests,
+                    self.syncer_state.bitcoin_syncer(),
+                );
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
