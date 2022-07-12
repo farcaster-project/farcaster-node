@@ -210,7 +210,7 @@ pub struct Runtime {
     enquirer: Option<ServiceId>,
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
-    pending_requests: HashMap<ServiceId, Vec<PendingRequest>>, // FIXME Something more meaningful than ServiceId to index
+    pending_requests: PendingRequests,
     pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
     pending_checkpoint_chunks: HashMap<[u8; 20], HashSet<CheckpointChunk>>,
     txs: HashMap<TxLabel, bitcoin::Transaction>,
@@ -218,6 +218,18 @@ pub struct Runtime {
     storage: Box<dyn storage::Driver>,
     public_offer: PublicOffer<BtcXmr>,
 }
+
+// FIXME Something more meaningful than ServiceId to index
+#[derive(Default)]
+pub struct PendingRequests(HashMap<ServiceId, Vec<PendingRequest>>);
+
+impl From<HashMap<ServiceId, Vec<PendingRequest>>> for PendingRequests {
+    fn from(m: HashMap<ServiceId, Vec<PendingRequest>>) -> Self {
+        PendingRequests(m)
+    }
+}
+
+impl PendingRequests {}
 
 #[derive(Debug, Clone)]
 pub struct PendingRequest {
@@ -236,12 +248,8 @@ impl PendingRequest {
             request,
         }
     }
-    fn defer_request(
-        self,
-        pending_requests: &mut HashMap<ServiceId, Vec<PendingRequest>>,
-        key: ServiceId,
-    ) {
-        let pending_reqs = pending_requests.entry(key).or_insert(vec![]);
+    fn defer_request(self, pending_requests: &mut PendingRequests, key: ServiceId) {
+        let pending_reqs = pending_requests.0.entry(key).or_insert(vec![]);
         pending_reqs.push(self);
     }
 }
@@ -468,13 +476,17 @@ impl Runtime {
         }
     }
 
+    fn pending_requests(&mut self) -> &mut HashMap<ServiceId, Vec<PendingRequest>> {
+        &mut self.pending_requests.0
+    }
+
     fn continue_deferred_requests(
         &mut self,
         endpoints: &mut Endpoints,
         key: ServiceId,
         predicate: fn(&PendingRequest) -> bool,
     ) -> bool {
-        let success = if let Some(pending_reqs) = self.pending_requests.remove(&key) {
+        let success = if let Some(pending_reqs) = self.pending_requests().remove(&key) {
             let len0 = pending_reqs.len();
             let remaining_pending_reqs: Vec<_> = pending_reqs
                 .into_iter()
@@ -506,7 +518,7 @@ impl Runtime {
                 })
                 .collect();
             let len1 = remaining_pending_reqs.len();
-            self.pending_requests.insert(key, remaining_pending_reqs);
+            self.pending_requests().insert(key, remaining_pending_reqs);
             len0 > len1
         } else {
             false
@@ -863,7 +875,7 @@ impl Runtime {
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
                             txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests.clone(),
+                            pending_requests: self.pending_requests().clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         }),
@@ -1109,9 +1121,9 @@ impl Runtime {
                         && self.state.reveal())
                         || (self.state.trade_role() == Some(TradeRole::Maker)
                             && self.state.commit()))
-                    && self.pending_requests.contains_key(&source)
+                    && self.pending_requests().contains_key(&source)
                     && self
-                        .pending_requests
+                        .pending_requests()
                         .get(&source)
                         .map(|reqs| reqs.len() == 2)
                         .unwrap() =>
@@ -1274,7 +1286,7 @@ impl Runtime {
                     }) if self.state.b_buy_sig()
                         | (self.state.a_refundsig() && self.state.a_xmr_locked())
                         && *confirmations >= self.temporal_safety.sweep_monero_thr
-                        && self.pending_requests.contains_key(&source) =>
+                        && self.pending_requests().contains_key(&source) =>
                     {
                         let PendingRequest {
                             source,
@@ -1282,7 +1294,7 @@ impl Runtime {
                             dest,
                             bus_id,
                         } = self
-                            .pending_requests
+                            .pending_requests()
                             .remove(&source)
                             .expect("Checked above")
                             .pop()
@@ -1316,9 +1328,9 @@ impl Runtime {
                     }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
                         && self.state.b_core_arb()
                         && !self.state.cancel_seen()
-                        && self.pending_requests.contains_key(&source)
+                        && self.pending_requests().contains_key(&source)
                         && self
-                            .pending_requests
+                            .pending_requests()
                             .get(&source)
                             .map(|reqs| reqs.len() == 1)
                             .unwrap() =>
@@ -2075,7 +2087,7 @@ impl Runtime {
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
                             txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests.clone(),
+                            pending_requests: self.pending_requests().clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         }),
@@ -2222,7 +2234,7 @@ impl Runtime {
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
                             txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests.clone(),
+                            pending_requests: self.pending_requests().clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         }),
@@ -2268,7 +2280,7 @@ impl Runtime {
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
                             txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests.clone(),
+                            pending_requests: self.pending_requests().clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         }),
@@ -2414,7 +2426,7 @@ impl Runtime {
                     self.state = state;
                     self.enquirer = enquirer;
                     self.temporal_safety = temporal_safety;
-                    self.pending_requests = pending_requests;
+                    self.pending_requests = PendingRequests(pending_requests);
                     self.txs = txs.clone();
                     trace!("Watch height bitcoin");
                     let watch_height_bitcoin = self.syncer_state.watch_height(Coin::Bitcoin);
