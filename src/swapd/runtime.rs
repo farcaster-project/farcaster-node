@@ -476,7 +476,7 @@ impl Runtime {
     ) -> bool {
         let mut success = true;
         if let Some(pending_reqs) = self.pending_requests.remove(&key) {
-            let pending_reqs = pending_reqs
+            let remaining_pending_reqs = pending_reqs
                 .into_iter()
                 .filter_map(|r| {
                     if predicate(&r) {
@@ -507,7 +507,7 @@ impl Runtime {
                     }
                 })
                 .collect();
-            self.pending_requests.insert(key, pending_reqs);
+            self.pending_requests.insert(key, remaining_pending_reqs);
         } else {
             success = false;
         }
