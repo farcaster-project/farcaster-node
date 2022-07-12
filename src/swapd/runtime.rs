@@ -445,6 +445,45 @@ impl Runtime {
         }
     }
 
+    fn continue_deferred_requests(
+        &mut self,
+        endpoints: &mut Endpoints,
+        trigger: ServiceId,
+        predicate: fn(&PendingRequest) -> bool,
+    ) -> bool {
+        let mut success = true;
+        if let Some(pending_reqs) = self.pending_requests.remove(&trigger) {
+            let pending_reqs = pending_reqs
+                .into_iter()
+                .filter_map(|r| {
+                    if predicate(&r) {
+                        if let Ok(_) = match r.bus_id {
+                            ServiceBus::Ctl => {
+                                self.handle_rpc_ctl(endpoints, r.dest.clone(), r.request.clone())
+                            }
+                            ServiceBus::Msg => {
+                                self.handle_rpc_msg(endpoints, r.dest.clone(), r.request.clone())
+                            }
+                            _ => Err(Error::Farcaster(s!("Invalid bus for pending requests"))),
+                        } {
+                            success = success && true;
+                            None
+                        } else {
+                            success = false;
+                            Some(r)
+                        }
+                    } else {
+                        Some(r)
+                    }
+                })
+                .collect();
+            self.pending_requests.insert(trigger, pending_reqs);
+        } else {
+            success = false;
+        }
+        success
+    }
+
     fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
         info!(
             "{} | State transition: {} -> {}",
@@ -2000,37 +2039,19 @@ impl Runtime {
                         info!("fee: {} sat/kvB", high_priority_sats_per_kvbyte);
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
-                        if let Some(vec) = self.pending_requests.remove(&source) {
-                            let pending_reqs = vec
-                                .into_iter()
-                                .filter_map(|i| {
-                                    let predicate = matches!(
-                                        &i,
-                                        &PendingRequest {
-                                            bus_id: ServiceBus::Msg,
-                                            request: Request::Protocol(Msg::Reveal(
-                                                Reveal::AliceParameters(..)
-                                            )),
-                                            ..
-                                        }
-                                    );
-                                    if predicate {
-                                        if let Ok(_) = self.handle_rpc_msg(
-                                            endpoints,
-                                            i.dest.clone(),
-                                            i.request.clone(),
-                                        ) {
-                                            None
-                                        } else {
-                                            Some(i)
-                                        }
-                                    } else {
-                                        Some(i)
-                                    }
-                                })
-                                .collect();
-                            self.pending_requests.insert(source, pending_reqs);
-                        }
+
+                        self.continue_deferred_requests(endpoints, source, |i| {
+                            matches!(
+                                &i,
+                                &PendingRequest {
+                                    bus_id: ServiceBus::Msg,
+                                    request: Request::Protocol(Msg::Reveal(
+                                        Reveal::AliceParameters(..)
+                                    )),
+                                    ..
+                                }
+                            )
+                        });
                     }
                 }
             }
