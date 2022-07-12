@@ -227,6 +227,17 @@ pub struct PendingRequest {
     request: Request,
 }
 
+impl PendingRequest {
+    fn defer_request(
+        self,
+        pending_requests: &mut HashMap<ServiceId, Vec<PendingRequest>>,
+        key: ServiceId,
+    ) {
+        let pending_reqs = pending_requests.entry(key).or_insert(vec![]);
+        pending_reqs.push(self);
+    }
+}
+
 impl StrictEncode for PendingRequest {
     fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
         let mut len = self.source.strict_encode(&mut e)?;
@@ -662,7 +673,10 @@ impl Runtime {
                 if self.state.b_address().is_none() {
                     unreachable!("FIXME: b_address is None, request {}", request);
                 }
-                debug!("Deferring request {} for when btc_estimate available");
+                debug!(
+                    "Deferring request {} for when btc_estimate available",
+                    &request
+                );
                 let pending_req = PendingRequest {
                     source,
                     request,
@@ -2314,7 +2328,7 @@ impl Runtime {
                 }
                 // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
-
+                // self.defer_request()
                 let pending_request = PendingRequest {
                     source,
                     request,
