@@ -452,11 +452,11 @@ impl Runtime {
     fn continue_deferred_requests(
         &mut self,
         endpoints: &mut Endpoints,
-        trigger: ServiceId,
+        key: ServiceId,
         predicate: fn(&PendingRequest) -> bool,
     ) -> bool {
         let mut success = true;
-        if let Some(pending_reqs) = self.pending_requests.remove(&trigger) {
+        if let Some(pending_reqs) = self.pending_requests.remove(&key) {
             let pending_reqs = pending_reqs
                 .into_iter()
                 .filter_map(|r| {
@@ -488,7 +488,7 @@ impl Runtime {
                     }
                 })
                 .collect();
-            self.pending_requests.insert(trigger, pending_reqs);
+            self.pending_requests.insert(key, pending_reqs);
         } else {
             success = false;
         }
