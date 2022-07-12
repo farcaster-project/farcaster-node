@@ -221,6 +221,7 @@ pub struct Runtime {
 
 #[derive(Debug, Clone)]
 pub struct PendingRequest {
+    source: ServiceId,
     dest: ServiceId,
     bus_id: ServiceBus,
     request: Request,
@@ -228,7 +229,8 @@ pub struct PendingRequest {
 
 impl StrictEncode for PendingRequest {
     fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
-        let mut len = self.dest.strict_encode(&mut e)?;
+        let mut len = self.source.strict_encode(&mut e)?;
+        len += self.dest.strict_encode(&mut e)?;
         len += self.bus_id.strict_encode(&mut e)?;
         len += self.request.serialize().strict_encode(&mut e)?;
         Ok(len)
@@ -238,6 +240,7 @@ impl StrictEncode for PendingRequest {
 impl StrictDecode for PendingRequest {
     fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
         let unmarshaller: Unmarshaller<Request> = Request::create_unmarshaller();
+        let source = ServiceId::strict_decode(&mut d)?;
         let dest = ServiceId::strict_decode(&mut d)?;
         let bus_id = ServiceBus::strict_decode(&mut d)?;
         let request: Request = (&*unmarshaller
@@ -245,6 +248,7 @@ impl StrictDecode for PendingRequest {
             .unwrap())
             .clone();
         Ok(PendingRequest {
+            source,
             dest,
             bus_id,
             request,
@@ -618,6 +622,7 @@ impl Runtime {
                     SwapRole::Bob => {
                         let pending_request = PendingRequest {
                             request,
+                            source,
                             dest: ServiceId::Wallet,
                             bus_id: ServiceBus::Msg,
                         };
@@ -693,6 +698,7 @@ impl Runtime {
                         // arbitrating setup, that can be only performed
                         // after the funding tx was seen
                         let pending_req = PendingRequest {
+                            source,
                             request,
                             dest: ServiceId::Wallet,
                             bus_id: ServiceBus::Msg,
@@ -720,8 +726,9 @@ impl Runtime {
                         );
                         error!("Not Some(address) or not Some(sat_per_kvb)");
                         let pending_req = PendingRequest {
+                            source,
                             request,
-                            dest: source,
+                            dest: self.identity(),
                             bus_id: ServiceBus::Msg,
                         };
                         if self
@@ -949,6 +956,7 @@ impl Runtime {
                 let request = Request::SyncerTask(task);
                 let dest = self.syncer_state.monero_syncer();
                 let pending_request = PendingRequest {
+                    source,
                     request,
                     dest: dest.clone(),
                     bus_id: ServiceBus::Ctl,
@@ -1093,11 +1101,13 @@ impl Runtime {
                     .remove(&source)
                     .expect("checked above, should have pending Reveal{Proof} requests");
                 let PendingRequest {
+                    source,
                     request: request_parameters,
                     dest: dest_parameters,
                     bus_id: bus_id_parameters,
                 } = pending_requests.pop().expect("checked .len() == 2");
                 let PendingRequest {
+                    source,
                     request: request_proof,
                     dest: dest_proof,
                     bus_id: bus_id_proof,
@@ -1275,6 +1285,7 @@ impl Runtime {
                         && self.pending_requests.contains_key(&source) =>
                     {
                         let PendingRequest {
+                            source,
                             request,
                             dest,
                             bus_id,
@@ -1322,6 +1333,7 @@ impl Runtime {
                     {
                         // error!("not checking tx rcvd is accordant lock");
                         let PendingRequest {
+                            source,
                             request,
                             dest,
                             bus_id,
@@ -2297,6 +2309,7 @@ impl Runtime {
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
 
                 let pending_request = PendingRequest {
+                    source,
                     request,
                     dest: self.peer_service.clone(),
                     bus_id: ServiceBus::Msg,
