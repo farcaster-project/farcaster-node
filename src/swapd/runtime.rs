@@ -683,7 +683,7 @@ impl Runtime {
                         let pending_req = PendingRequest {
                             request,
                             dest: source,
-                            bus_id: ServiceBus::Ctl,
+                            bus_id: ServiceBus::Msg,
                         };
                         if self
                             .pending_requests
@@ -2007,7 +2007,7 @@ impl Runtime {
                                     let predicate = matches!(
                                         &i,
                                         &PendingRequest {
-                                            bus_id: ServiceBus::Ctl,
+                                            bus_id: ServiceBus::Msg,
                                             request: Request::Protocol(Msg::Reveal(
                                                 Reveal::AliceParameters(..)
                                             )),
@@ -2015,7 +2015,7 @@ impl Runtime {
                                         }
                                     );
                                     if predicate {
-                                        if let Ok(_) = self.handle_rpc_ctl(
+                                        if let Ok(_) = self.handle_rpc_msg(
                                             endpoints,
                                             i.dest.clone(),
                                             i.request.clone(),
