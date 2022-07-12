@@ -678,11 +678,13 @@ fn sweep_polling(
                         warn!("error polling sweep address {:?}, retrying", err);
                         vec![]
                     });
+                    let mut state_guard = state.lock().await;
                     if !sweep_address_txs.is_empty() {
-                        let mut state_guard = state.lock().await;
                         state_guard.success_sweep(id, sweep_address_txs).await;
-                        drop(state_guard);
+                    } else if !sweep_address_task.retry {
+                        state_guard.fail_sweep(id).await;
                     }
+                    drop(state_guard);
                 }
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
