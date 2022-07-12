@@ -690,7 +690,18 @@ impl Runtime {
             // if we're maker, also reveal to taker if their commitment is valid.
             Msg::Reveal(reveal)
                 if self.state.remote_commit().is_some()
-                    && (self.state.commit() || self.state.reveal()) =>
+                    && (self.state.commit() || self.state.reveal())
+                    && {
+                        match (
+                            self.state.swap_role(),
+                            self.state.b_address().is_some(),
+                            self.syncer_state.btc_fee_estimate_sat_per_kvb.is_some(),
+                        ) {
+                            (SwapRole::Bob, true, true) => true,
+                            (SwapRole::Bob, ..) => false,
+                            (SwapRole::Alice, ..) => true,
+                        }
+                    } =>
             {
                 // TODO: since we're not actually revealing, find other name for
                 // intermediary state
