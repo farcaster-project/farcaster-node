@@ -786,9 +786,11 @@ impl Runtime {
                         swap_id,
                         &self.config,
                     )?;
-                    trace!("give time for syncers to come online");
-                    std::thread::sleep(Duration::from_secs_f32(5.0));
 
+                    if !self.syncer_services.contains_key(&(Coin::Bitcoin, network)) {
+                        trace!("give time for syncer to come online");
+                        std::thread::sleep(Duration::from_secs_f32(10.0));
+                    }
                     trace!(
                         "launching swapd with swap_id: {}",
                         swap_id.bright_yellow_bold()
