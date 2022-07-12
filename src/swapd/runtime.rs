@@ -488,37 +488,39 @@ impl Runtime {
     ) -> bool {
         let success = if let Some(pending_reqs) = self.pending_requests().remove(&key) {
             let len0 = pending_reqs.len();
-            let remaining_pending_reqs: Vec<_> = pending_reqs
-                .into_iter()
-                .filter_map(|r| {
-                    if predicate(&r) {
-                        if let Ok(_) = match r.bus_id {
-                            ServiceBus::Ctl if r.dest == self.identity => {
-                                self.handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone())
+            let remaining_pending_reqs: Vec<_> =
+                pending_reqs
+                    .into_iter()
+                    .filter_map(|r| {
+                        if predicate(&r) {
+                            if let Ok(_) = match &r.bus_id {
+                                ServiceBus::Ctl if &r.dest == &self.identity => self
+                                    .handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone()),
+                                ServiceBus::Msg if &r.dest == &self.identity => self
+                                    .handle_rpc_msg(endpoints, r.source.clone(), r.request.clone()),
+                                _ => endpoints
+                                    .send_to(
+                                        r.bus_id.clone(),
+                                        r.source.clone(),
+                                        r.dest.clone(),
+                                        r.request.clone(),
+                                    )
+                                    .map_err(Into::into),
+                            } {
+                                None
+                            } else {
+                                Some(r)
                             }
-                            ServiceBus::Msg if r.dest == self.identity => {
-                                self.handle_rpc_msg(endpoints, r.source.clone(), r.request.clone())
-                            }
-                            _ => endpoints
-                                .send_to(
-                                    r.bus_id.clone(),
-                                    r.source.clone(),
-                                    r.dest.clone(),
-                                    r.request.clone(),
-                                )
-                                .map_err(Into::into),
-                        } {
-                            None
                         } else {
                             Some(r)
                         }
-                    } else {
-                        Some(r)
-                    }
-                })
-                .collect();
+                    })
+                    .collect();
             let len1 = remaining_pending_reqs.len();
             self.pending_requests().insert(key, remaining_pending_reqs);
+            if len0 - len1 > 1 {
+                error!("consumed more than one request with this predicate")
+            }
             len0 > len1
         } else {
             false
