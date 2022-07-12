@@ -462,13 +462,20 @@ impl Runtime {
                 .filter_map(|r| {
                     if predicate(&r) {
                         if let Ok(_) = match r.bus_id {
-                            ServiceBus::Ctl => {
+                            ServiceBus::Ctl if r.dest == self.identity => {
                                 self.handle_rpc_ctl(endpoints, r.dest.clone(), r.request.clone())
                             }
-                            ServiceBus::Msg => {
+                            ServiceBus::Msg if r.dest == self.identity => {
                                 self.handle_rpc_msg(endpoints, r.dest.clone(), r.request.clone())
                             }
-                            _ => Err(Error::Farcaster(s!("Invalid bus for pending requests"))),
+                            _ => endpoints
+                                .send_to(
+                                    r.bus_id.clone(),
+                                    r.source.clone(),
+                                    r.dest.clone(),
+                                    r.request.clone(),
+                                )
+                                .map_err(Into::into),
                         } {
                             success = success && true;
                             None
