@@ -99,6 +99,15 @@ impl SyncerState {
             respond: Boolean::False,
         })
     }
+    pub fn task_aborted(&mut self, id: &TaskId) {
+        self.tasks.watched_addrs.remove(id);
+        self.tasks.watched_txs.remove(id);
+        self.tasks.retrieving_txs.remove(id);
+        self.tasks.sweeping_addr = None;
+        if let Some(task) = self.tasks.tasks.remove(id) {
+            debug!("Aborted task: {}", task);
+        }
+    }
 
     pub fn estimate_fee_btc(&mut self) -> Task {
         let id = self.tasks.new_taskid();

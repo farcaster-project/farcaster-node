@@ -17,7 +17,7 @@ use crate::databased::checkpoint_handle_multipart_receive;
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
-use crate::syncerd::{FeeEstimation, FeeEstimations};
+use crate::syncerd::{FeeEstimation, FeeEstimations, TaskAborted};
 use crate::{
     rpc::request::Outcome,
     rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
@@ -748,7 +748,6 @@ impl Runtime {
             }
             // alice receives, bob sends
             Msg::CoreArbitratingSetup(CoreArbitratingSetup {
-                swap_id,
                 lock,
                 cancel,
                 refund,
@@ -1353,7 +1352,11 @@ impl Runtime {
                         );
                     }
 
-                    Event::TaskAborted(_) => {}
+                    Event::TaskAborted(TaskAborted { ids, .. }) => {
+                        for id in ids {
+                            self.syncer_state.task_aborted(id);
+                        }
+                    }
                     Event::SweepSuccess(SweepSuccess { id, .. })
                         if (self.state.b_buy_sig() || self.state.a_xmr_locked())
                             && self.syncer_state.tasks.sweeping_addr.is_some()
