@@ -685,19 +685,11 @@ impl Runtime {
                     "Deferring request {} for when btc_estimate available",
                     &request
                 );
-                let pending_req = PendingRequest {
-                    source,
-                    request,
-                    dest: self.identity(),
-                    bus_id: ServiceBus::Msg,
-                };
-                if self
-                    .pending_requests
-                    .insert(self.syncer_state.bitcoin_syncer(), vec![pending_req])
-                    .is_some()
-                {
-                    error!("pending request dropped a value, FIXME")
-                };
+                let pending_req = PendingRequest::new(source, self.identity(), msg_bus, request);
+                pending_req.defer_request(
+                    &mut self.pending_requests,
+                    self.syncer_state.bitcoin_syncer(),
+                );
                 return Ok(());
             }
             // bob and alice
@@ -746,26 +738,9 @@ impl Runtime {
                         // sending this request will initialize the
                         // arbitrating setup, that can be only performed
                         // after the funding tx was seen
-                        let pending_req = PendingRequest {
-                            source,
-                            request,
-                            dest: ServiceId::Wallet,
-                            bus_id: ServiceBus::Msg,
-                        };
-                        trace!(
-                            "This pending request will be called later: {:?}",
-                            &pending_req
-                        );
-                        let pending_requests = self
-                            .pending_requests
-                            .get_mut(&ServiceId::Wallet)
-                            .expect(
-                            "should already have received Reveal::Proof, so this key should exist.",
-                        );
-                        if pending_requests.len() != 1 {
-                            error!("should have a single pending Reveal::Proof only FIXME")
-                        }
-                        pending_requests.push(pending_req);
+                        let pending_req =
+                            PendingRequest::new(source, ServiceId::Wallet, msg_bus, request);
+                        pending_req.defer_request(&mut self.pending_requests, ServiceId::Wallet);
                     }
                     _ => unreachable!(
                         "Bob btc_fee_estimate_sat_per_kvb.is_none() is handled previously"
@@ -985,19 +960,9 @@ impl Runtime {
                 );
                 let request = Request::SyncerTask(task);
                 let dest = self.syncer_state.monero_syncer();
-                let pending_request = PendingRequest {
-                    source,
-                    request,
-                    dest: dest.clone(),
-                    bus_id: ServiceBus::Ctl,
-                };
-                if self
-                    .pending_requests
-                    .insert(dest, vec![pending_request])
-                    .is_some()
-                {
-                    error!("pending request for syncer already there")
-                }
+                let pending_request =
+                    PendingRequest::new(source, dest.clone(), ServiceBus::Ctl, request);
+                pending_request.defer_request(&mut self.pending_requests, dest);
             }
             Request::TakeSwap(InitSwap {
                 peerd,
@@ -1124,64 +1089,35 @@ impl Runtime {
                         .map(|reqs| reqs.len() == 2)
                         .unwrap() =>
             {
-                trace!("funding updated received from wallet");
-                let mut pending_requests = self
-                    .pending_requests
-                    .remove(&source)
-                    .expect("checked above, should have pending Reveal{Proof} requests");
-                let PendingRequest {
-                    source,
-                    request: request_parameters,
-                    dest: dest_parameters,
-                    bus_id: bus_id_parameters,
-                } = pending_requests.pop().expect("checked .len() == 2");
-                let PendingRequest {
-                    source,
-                    request: request_proof,
-                    dest: dest_proof,
-                    bus_id: bus_id_proof,
-                } = pending_requests.pop().expect("checked .len() == 2");
-                // continue RevealProof
-                // continuing request by sending it to wallet
-                if let (
-                    Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
-                    ServiceId::Wallet,
-                    ServiceBus::Msg,
-                ) = (&request_proof, &dest_proof, &bus_id_proof)
-                {
-                    trace!(
-                        "sending request {} to {} on bus {}",
-                        &request_proof,
-                        &dest_proof,
-                        &bus_id_proof
-                    );
-                    endpoints.send_to(bus_id_proof, self.identity(), dest_proof, request_proof)?
-                } else {
-                    error!("Not the expected request: found {:?}", request);
+                let success_proof =
+                    self.continue_deferred_requests(endpoints, source.clone(), |r| {
+                        matches!(
+                            r,
+                            &PendingRequest {
+                                dest: ServiceId::Wallet,
+                                bus_id: ServiceBus::Msg,
+                                request: Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
+                                ..
+                            }
+                        )
+                    });
+                if !success_proof {
+                    error!("Did not dispatch proof pending request");
                 }
 
-                // continue Reveal
-                // continuing request by sending it to wallet
-                if let (
-                    Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
-                    ServiceId::Wallet,
-                    ServiceBus::Msg,
-                ) = (&request_parameters, &dest_parameters, &bus_id_parameters)
-                {
-                    trace!(
-                        "sending request {} to {} on bus {}",
-                        &request_parameters,
-                        &dest_parameters,
-                        &bus_id_parameters
-                    );
-                    endpoints.send_to(
-                        bus_id_parameters,
-                        self.identity(),
-                        dest_parameters,
-                        request_parameters,
-                    )?
-                } else {
-                    error!("Not the expected request: found {:?}", request);
+                let success_params = self.continue_deferred_requests(endpoints, source, |r| {
+                    matches!(
+                        r,
+                        &PendingRequest {
+                            dest: ServiceId::Wallet,
+                            bus_id: ServiceBus::Msg,
+                            request: Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
+                            ..
+                        }
+                    )
+                });
+                if !success_params {
+                    error!("Did not dispatch params pending requests");
                 }
             }
             // Request::SyncerEvent(ref event) => match (&event, source) {
@@ -1361,32 +1297,22 @@ impl Runtime {
                             .unwrap() =>
                     {
                         // error!("not checking tx rcvd is accordant lock");
-                        let PendingRequest {
-                            source,
-                            request,
-                            dest,
-                            bus_id,
-                        } = self
-                            .pending_requests
-                            .remove(&source)
-                            .expect("Checked above")
-                            .pop()
-                            .unwrap();
-                        if let (Request::Protocol(Msg::BuyProcedureSignature(_)), ServiceBus::Msg) =
-                            (&request, &bus_id)
-                        {
-                            endpoints.send_to(bus_id, self.identity(), dest, request)?;
-                            debug!("sent buyproceduresignature at state {}", &self.state);
+                        let success = self.continue_deferred_requests(endpoints, source, |r| {
+                            matches!(
+                                r,
+                                &PendingRequest {
+                                    bus_id: ServiceBus::Msg,
+                                    request: Request::Protocol(Msg::BuyProcedureSignature(_)),
+                                    ..
+                                }
+                            )
+                        });
+                        if success {
                             let next_state = State::Bob(BobState::BuySigB {
                                 buy_tx_seen: false,
                                 last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
                             });
                             self.state_update(endpoints, next_state)?;
-                        } else {
-                            error!(
-                                "Not buyproceduresignatures {} or not Msg bus found {}",
-                                request, bus_id
-                            );
                         }
                     }
                     Event::TransactionConfirmations(TransactionConfirmations {
@@ -2081,7 +2007,7 @@ impl Runtime {
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
 
-                        self.continue_deferred_requests(endpoints, source, |i| {
+                        let success = self.continue_deferred_requests(endpoints, source, |i| {
                             matches!(
                                 &i,
                                 &PendingRequest {
@@ -2093,6 +2019,9 @@ impl Runtime {
                                 }
                             )
                         });
+                        if !success {
+                            error!("failed dispatching reveal:aliceparams")
+                        }
                     }
                 }
             }
@@ -2337,21 +2266,16 @@ impl Runtime {
                 // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
                 // self.defer_request()
-                let pending_request = PendingRequest {
+                let pending_request = PendingRequest::new(
                     source,
+                    self.peer_service.clone(),
+                    ServiceBus::Msg,
                     request,
-                    dest: self.peer_service.clone(),
-                    bus_id: ServiceBus::Msg,
-                };
-                if self
-                    .pending_requests
-                    .insert(self.syncer_state.monero_syncer(), vec![pending_request])
-                    .is_none()
-                {
-                    debug!("deferring BuyProcedureSignature msg");
-                } else {
-                    error!("removed a pending request by mistake")
-                };
+                );
+                pending_request.defer_request(
+                    &mut self.pending_requests,
+                    self.syncer_state.monero_syncer(),
+                );
             }
 
             Request::AbortSwap
