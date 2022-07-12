@@ -677,12 +677,12 @@ impl Runtime {
                             ));
                             let amount = self.syncer_state.bitcoin_amount + total_fees;
                             info!(
-                                        "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
-                                        swap_id.bright_blue_italic(),
-                                        amount.bright_green_bold(),
-                                        address.addr(),
-                                        total_fees,
-                                    );
+                                "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
+                                  swap_id.bright_blue_italic(),
+                                  amount.bright_green_bold(),
+                                  address.addr(),
+                                  total_fees
+                            );
                             self.state.b_sup_required_funding_amount(amount);
                             let req =
                                 Request::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {
