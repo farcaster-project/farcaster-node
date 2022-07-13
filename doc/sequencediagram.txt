@@ -40,7 +40,9 @@ t_swap -> t_farcasterd : Ctl Hello
 t_swap -> t_wallet : Ctl Hello
 t_farcasterd -> t_farcasterd:launch syncer
 t_swap <- t_farcasterd : Ctl TakeSwap
-t_syncer<-t_swap:If Bob, Ctl EstimateFee (btc)
+t_syncer->t_swap:Ctl Hello
+t_syncer<-t_swap:Ctl EstimateFee (btc)
+t_syncer <- t_swap : Ctl WatchHeight
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
 m_farcasterd -> m_wallet : Ctl BitcoinAddress
@@ -52,11 +54,12 @@ m_swap -> m_wallet : Ctl Hello
 m_farcasterd -> m_farcasterd:launch syncer
 m_farcasterd -> m_swap : Ctl MakeSwap
 
-m_swap->m_syncer:If Bob, Ctl EstimateFee (btc)
 m_swap -> peerd : Msg MakerCommit
+m_swap<-m_syncer:Ctl Hello
+m_swap->m_syncer:Ctl EstimateFee (btc)
+m_swap->m_syncer:Ctl WatchHeight
 t_swap <- peerd : Msg MakerCommit
 // TODO: verify that swapd launches no matter what
-t_syncer <- t_swap : Ctl WatchHeight
 t_syncer <- t_swap : if Bob, Watch Arbitrating Funding Address
 t_swap -> t_wallet : Msg MakerCommit
 t_wallet -> t_swap : Ctl RevealProof (taker is sender)
@@ -70,7 +73,6 @@ m_swap -> m_farcasterd : if Bob, ask for funding
 m_swap -> m_swap : if Bob, ADD PENDING Msg Reveal
 m_swap -> m_wallet : if Alice, Msg Reveal (taker is sender)
 
-m_swap->m_syncer:Ctl WatchHeight
 m_swap -> m_syncer:if Bob, Watch Arbitrating Funding Address
 m_swap <- m_syncer:If Bob, Arbitrating Funding event
 m_swap->m_wallet:if Bob, Ctl Tx::Funding
