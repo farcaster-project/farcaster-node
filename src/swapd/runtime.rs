@@ -895,7 +895,7 @@ impl Runtime {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
-                    source.clone(),
+                    self.syncer_state.bitcoin_syncer(),
                     Request::SyncerTask(task),
                 )?;
                 let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
@@ -911,7 +911,7 @@ impl Runtime {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
-                    source.clone(),
+                    self.syncer_state.monero_syncer(),
                     Request::SyncerTask(watch_height_xmr_task),
                 )?;
             }
