@@ -865,7 +865,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, ServiceId::Syncer(..)) if self.syncer_state.is_syncer(Coin::Bitcoin, &source) => {
+            (Request::SyncerRunning(Coin::Bitcoin), ServiceId::Farcasterd) => {
                 let task = self.syncer_state.estimate_fee_btc();
                 endpoints.send_to(ServiceBus::Ctl, self.identity(), source.clone(), Request::SyncerTask(task))?;
                 let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
@@ -876,8 +876,7 @@ impl Runtime {
                     Request::SyncerTask(watch_height_btc_task),
                 )?;
             }
-
-            (Request::Hello, ServiceId::Syncer(..)) if self.syncer_state.is_syncer(Coin::Monero, &source) => {
+            (Request::SyncerRunning(Coin::Monero), ServiceId::Farcasterd) => {
                 let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
                 endpoints.send_to(
                     ServiceBus::Ctl,
