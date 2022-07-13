@@ -657,7 +657,7 @@ impl Runtime {
                     }
                 }
             }
-            Msg::Reveal(reveal)
+            Msg::Reveal(Reveal::AliceParameters(..))
                 if self.state.swap_role() == SwapRole::Bob
                     && (self.state.b_address().is_none()
                         || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()) =>
@@ -2002,8 +2002,12 @@ impl Runtime {
                         info!("fee: {} sat/kvB", high_priority_sats_per_kvbyte);
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
-                        // FIXME state guard here
-                        if self.state.swap_role() == SwapRole::Bob {
+
+                        if self.state.remote_commit().is_some()
+                            && (self.state.commit() || self.state.reveal())
+                            && self.state.b_address().is_some()
+                            && self.syncer_state.btc_fee_estimate_sat_per_kvb.is_some()
+                        {
                             let success = self.continue_deferred_requests(endpoints, source, |i| {
                                 matches!(
                                     &i,
