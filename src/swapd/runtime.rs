@@ -865,26 +865,6 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::SyncerRunning(Coin::Bitcoin), ServiceId::Farcasterd) => {
-                let task = self.syncer_state.estimate_fee_btc();
-                endpoints.send_to(ServiceBus::Ctl, self.identity(), source.clone(), Request::SyncerTask(task))?;
-                let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    Request::SyncerTask(watch_height_btc_task),
-                )?;
-            }
-            (Request::SyncerRunning(Coin::Monero), ServiceId::Farcasterd) => {
-                let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source.clone(),
-                    Request::SyncerTask(watch_height_xmr_task),
-                )?;
-            }
             (Request::Hello, _) => {
                 info!(
                     "{} | Service {} daemon is now {}",
@@ -910,6 +890,31 @@ impl Runtime {
         };
 
         match request {
+            Request::SyncerRunning(Coin::Bitcoin) if source == ServiceId::Farcasterd => {
+                let task = self.syncer_state.estimate_fee_btc();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source.clone(),
+                    Request::SyncerTask(task),
+                )?;
+                let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(watch_height_btc_task),
+                )?;
+            }
+            Request::SyncerRunning(Coin::Monero) if source == ServiceId::Farcasterd => {
+                let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source.clone(),
+                    Request::SyncerTask(watch_height_xmr_task),
+                )?;
+            }
             Request::Terminate if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
