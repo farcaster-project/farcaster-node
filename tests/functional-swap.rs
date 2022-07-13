@@ -2367,14 +2367,14 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
     let (farcasterd_maker, _, farcasterd_taker, _) = setup_farcaster_clients().await;
 
-    // Sleep here to allow the services to warm up
-    tokio::time::sleep(time::Duration::from_secs(2)).await;
-
     // generate some blocks on monero's side
     monero_regtest
         .generate_blocks(10, reusable_xmr_address())
         .await
         .unwrap();
+
+    // Sleep here to allow the services to warm up
+    tokio::time::sleep(time::Duration::from_secs(2)).await;
 
     // attempt sweeping the monero wallet
     sweep_monero(data_dir_bob.clone(), monero_address, dest_monero_address);

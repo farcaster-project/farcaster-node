@@ -1698,6 +1698,7 @@ impl Runtime {
                 let id = TaskId(self.syncer_task_counter);
                 let request = Request::SyncerTask(Task::SweepAddress(SweepAddress {
                     id,
+                    retry: false,
                     lifetime: u64::MAX,
                     addendum: SweepAddressAddendum::Monero(sweep_xmr_address),
                     from_height: None,
