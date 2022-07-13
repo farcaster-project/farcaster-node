@@ -14,8 +14,7 @@
 
 use crate::rpc::request::{Address, AddressSecretKey};
 use crate::syncerd::SweepBitcoinAddress;
-use farcaster_core::negotiation::Offer;
-use farcaster_core::swap::btcxmr::BtcXmr;
+use farcaster_core::swap::btcxmr::Offer;
 use std::{
     convert::TryFrom,
     io::{self, Read, Write},
@@ -146,7 +145,7 @@ impl Exec for Command {
                     );
                     return Ok(());
                 }
-                let offer = farcaster_core::negotiation::Offer {
+                let offer = Offer {
                     network,
                     arbitrating_blockchain,
                     accordant_blockchain,
@@ -299,7 +298,7 @@ fn take_offer() -> bool {
     }
 }
 
-fn offer_buy_information(offer: &Offer<BtcXmr>) -> String {
+fn offer_buy_information(offer: &Offer) -> String {
     match offer.maker_role.other() {
         SwapRole::Alice => format!(
             "{} for {} at {} BTC/XMR",

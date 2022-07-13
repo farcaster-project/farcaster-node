@@ -30,8 +30,6 @@ use crate::{
     },
 };
 use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::syncer::BroadcastTransaction;
-use farcaster_core::{bundle::SignedArbitratingLock, syncer::Abort};
 use farcaster_core::{
     consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable},
     negotiation::PublicOfferId,
@@ -63,19 +61,16 @@ use bitcoin::{
 use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
     blockchain::FeePriority,
-    bundle::{
-        AliceParameters, BobParameters, CoreArbitratingTransactions, CosignedArbitratingCancel,
-        Proof,
-    },
+    crypto::dleq::DLEQProof,
     monero::Monero,
-    negotiation::{Offer, PublicOffer},
-    protocol_message::{
-        self, CommitAliceParameters, CommitBobParameters, RevealAliceParameters,
-        RevealBobParameters, RevealProof,
-    },
+    protocol::message::Abort,
     role::TradeRole,
-    swap::btcxmr::BtcXmr,
-    swap::{Swap, SwapId},
+    swap::btcxmr::message::{
+        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
+        RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters, RevealProof,
+    },
+    swap::btcxmr::{Offer, Parameters, PublicOffer},
+    swap::SwapId,
 };
 use internet2::Api;
 use internet2::{NodeAddr, RemoteSocketAddr};
@@ -100,16 +95,16 @@ pub enum Msg {
     Reveal(Reveal),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
-    RefundProcedureSignatures(protocol_message::RefundProcedureSignatures<BtcXmr>),
+    RefundProcedureSignatures(RefundProcedureSignatures),
     #[api(type = 27)]
     #[display("abort(...)")]
-    Abort(protocol_message::Abort),
+    Abort(Abort),
     #[api(type = 24)]
     #[display("corearb_b(...)")]
-    CoreArbitratingSetup(protocol_message::CoreArbitratingSetup<BtcXmr>),
+    CoreArbitratingSetup(CoreArbitratingSetup),
     #[api(type = 26)]
     #[display("buyprocsig_b(...)")]
-    BuyProcedureSignature(protocol_message::BuyProcedureSignature<BtcXmr>),
+    BuyProcedureSignature(BuyProcedureSignature),
     #[api(type = 29)]
     #[display(inner)]
     Ping(Ping),
@@ -140,17 +135,10 @@ impl Msg {
                 Reveal::BobParameters(n) => n.swap_id,
                 Reveal::Proof(n) => n.swap_id,
             },
-            Msg::RefundProcedureSignatures(protocol_message::RefundProcedureSignatures {
-                swap_id,
-                ..
-            }) => *swap_id,
-            Msg::Abort(protocol_message::Abort { swap_id, .. }) => *swap_id,
-            Msg::CoreArbitratingSetup(protocol_message::CoreArbitratingSetup {
-                swap_id, ..
-            }) => *swap_id,
-            Msg::BuyProcedureSignature(protocol_message::BuyProcedureSignature {
-                swap_id, ..
-            }) => *swap_id,
+            Msg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => *swap_id,
+            Msg::Abort(Abort { swap_id, .. }) => *swap_id,
+            Msg::CoreArbitratingSetup(CoreArbitratingSetup { swap_id, .. }) => *swap_id,
+            Msg::BuyProcedureSignature(BuyProcedureSignature { swap_id, .. }) => *swap_id,
             Msg::Ping(_)
             | Msg::Pong(_)
             | Msg::PingPeer
@@ -224,8 +212,8 @@ impl RequestId {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("commit")]
 pub enum Commit {
-    AliceParameters(CommitAliceParameters<BtcXmr>),
-    BobParameters(CommitBobParameters<BtcXmr>),
+    AliceParameters(CommitAliceParameters),
+    BobParameters(CommitBobParameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -235,14 +223,14 @@ pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("{public_offer}")]
 pub struct PubOffer {
-    pub public_offer: PublicOffer<BtcXmr>,
+    pub public_offer: PublicOffer,
     pub peer_secret_key: Option<SecretKey>,
     pub external_address: bitcoin::Address,
     pub internal_address: String,
 }
 
-impl From<(PublicOffer<BtcXmr>, bitcoin::Address, String)> for PubOffer {
-    fn from(x: (PublicOffer<BtcXmr>, bitcoin::Address, String)) -> Self {
+impl From<(PublicOffer, bitcoin::Address, String)> for PubOffer {
+    fn from(x: (PublicOffer, bitcoin::Address, String)) -> Self {
         let (public_offer, external_address, internal_address) = x;
         PubOffer {
             public_offer,
@@ -269,7 +257,7 @@ pub struct ReconnectPeer(pub NodeAddr, pub Option<SecretKey>);
 #[display("launch_swap")]
 pub struct LaunchSwap {
     pub local_trade_role: TradeRole,
-    pub public_offer: PublicOffer<BtcXmr>,
+    pub public_offer: PublicOffer,
     pub local_params: Params,
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
@@ -303,9 +291,9 @@ fn format_keys(keys: &Keys) -> String {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("reveal")]
 pub enum Reveal {
-    AliceParameters(RevealAliceParameters<BtcXmr>),
-    BobParameters(RevealBobParameters<BtcXmr>),
-    Proof(RevealProof<BtcXmr>),
+    AliceParameters(RevealAliceParameters),
+    BobParameters(RevealBobParameters),
+    Proof(RevealProof),
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -317,8 +305,8 @@ pub enum Reveal {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("params")]
 pub enum Params {
-    Alice(AliceParameters<BtcXmr>),
-    Bob(BobParameters<BtcXmr>),
+    Alice(Parameters),
+    Bob(Parameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -520,7 +508,7 @@ pub enum Request {
 
     #[api(type = 193)]
     #[display("revoke_offer({0})")]
-    RevokeOffer(PublicOffer<BtcXmr>),
+    RevokeOffer(PublicOffer),
 
     #[api(type = 192)]
     #[display("abort_swap")]
@@ -608,7 +596,7 @@ pub enum Request {
     #[api(type = 1106)]
     #[display("offer_list({0})", alt = "{0:#}")]
     #[from]
-    OfferList(List<PublicOffer<BtcXmr>>),
+    OfferList(List<PublicOffer>),
 
     // #[api(type = 1107)]
     // #[display("offer_list({0})", alt = "{0:#}")]
@@ -745,7 +733,7 @@ pub enum Request {
 )]
 #[display(OfferStatusPair::to_yaml_string)]
 pub struct OfferStatusPair {
-    pub offer: PublicOffer<BtcXmr>,
+    pub offer: PublicOffer,
     pub status: OfferStatus,
 }
 
@@ -840,7 +828,7 @@ pub enum FundingInfo {
 #[display(CheckpointEntry::to_yaml_string)]
 pub struct CheckpointEntry {
     pub swap_id: SwapId,
-    pub public_offer: PublicOffer<BtcXmr>,
+    pub public_offer: PublicOffer,
     pub trade_role: TradeRole,
 }
 
@@ -1035,7 +1023,7 @@ pub struct NodeInfo {
     pub peers: Vec<NodeAddr>,
     pub swaps: Vec<SwapId>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub offers: Vec<PublicOffer<BtcXmr>>,
+    pub offers: Vec<PublicOffer>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
@@ -1078,7 +1066,7 @@ pub struct MoneroAddress(pub SwapId, pub monero::Address);
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("proto_puboffer")]
 pub struct ProtoPublicOffer {
-    pub offer: Offer<BtcXmr>,
+    pub offer: Offer,
     pub public_addr: RemoteSocketAddr,
     pub bind_addr: RemoteSocketAddr,
     pub arbitrating_addr: bitcoin::Address,
@@ -1200,7 +1188,7 @@ pub struct SwapInfo {
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    pub public_offer: PublicOffer<BtcXmr>,
+    pub public_offer: PublicOffer,
 }
 
 #[cfg(feature = "serde")]
@@ -1335,14 +1323,16 @@ impl IntoSuccessOrFailure for Result<(), crate::Error> {
 impl From<(SwapId, Params)> for Reveal {
     fn from(tuple: (SwapId, Params)) -> Self {
         match tuple {
-            (swap_id, Params::Alice(params)) => Reveal::AliceParameters((swap_id, params).into()),
-            (swap_id, Params::Bob(params)) => Reveal::BobParameters((swap_id, params).into()),
+            (swap_id, Params::Alice(params)) => {
+                Reveal::AliceParameters(params.reveal_alice(swap_id))
+            }
+            (swap_id, Params::Bob(params)) => Reveal::BobParameters(params.reveal_bob(swap_id)),
         }
     }
 }
 
-impl From<(SwapId, Proof<BtcXmr>)> for Reveal {
-    fn from(tuple: (SwapId, Proof<BtcXmr>)) -> Self {
-        Reveal::Proof((tuple.0, tuple.1).into())
+impl From<RevealProof> for Reveal {
+    fn from(proof: RevealProof) -> Self {
+        Reveal::Proof(proof)
     }
 }

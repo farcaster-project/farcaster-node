@@ -69,17 +69,14 @@ use farcaster_core::{
         BitcoinSegwitV0,
     },
     blockchain::{self, FeeStrategy},
-    bundle::{AliceParameters, BobParameters, Proof},
     consensus::{self, Encodable as FarEncodable},
     crypto::{CommitmentEngine, SharedKeyId, TaggedElement},
     monero::{Monero, SHARED_VIEW_KEY_ID},
-    negotiation::{Offer, PublicOffer},
-    protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures,
+    role::{SwapRole, TradeRole},
+    swap::btcxmr::{
+        message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
+        Offer, Parameters, PublicOffer,
     },
-    role::{Arbitrating, SwapRole, TradeRole},
-    swap::btcxmr::BtcXmr,
     swap::SwapId,
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
@@ -99,7 +96,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 pub fn run(
     config: ServiceConfig,
     swap_id: SwapId,
-    public_offer: PublicOffer<BtcXmr>,
+    public_offer: PublicOffer,
     local_trade_role: TradeRole,
 ) -> Result<(), Error> {
     let Offer {
@@ -216,7 +213,7 @@ pub struct Runtime {
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    public_offer: PublicOffer<BtcXmr>,
+    public_offer: PublicOffer,
 }
 
 #[derive(Debug, Clone)]
@@ -2492,12 +2489,12 @@ impl Runtime {
 
         let engine = CommitmentEngine;
         let commitment = match params {
-            Params::Bob(params) => request::Commit::BobParameters(
-                CommitBobParameters::commit_to_bundle(self.swap_id(), &engine, params),
-            ),
-            Params::Alice(params) => request::Commit::AliceParameters(
-                CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
-            ),
+            Params::Bob(params) => {
+                request::Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
+            }
+            Params::Alice(params) => {
+                request::Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
+            }
         };
 
         Ok(commitment)
@@ -2528,12 +2525,12 @@ impl Runtime {
 
         let engine = CommitmentEngine;
         let commitment = match params.clone() {
-            Params::Bob(params) => request::Commit::BobParameters(
-                CommitBobParameters::commit_to_bundle(self.swap_id(), &engine, params),
-            ),
-            Params::Alice(params) => request::Commit::AliceParameters(
-                CommitAliceParameters::commit_to_bundle(self.swap_id(), &engine, params),
-            ),
+            Params::Bob(params) => {
+                request::Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
+            }
+            Params::Alice(params) => {
+                request::Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
+            }
         };
 
         Ok(commitment)
@@ -2557,8 +2554,8 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
 }
 
 fn aggregate_xmr_spend_view(
-    alice_params: &AliceParameters<BtcXmr>,
-    bob_params: &BobParameters<BtcXmr>,
+    alice_params: &Parameters,
+    bob_params: &Parameters,
 ) -> (monero::PublicKey, monero::PrivateKey) {
     let alice_view = *alice_params
         .accordant_shared_keys
@@ -2584,7 +2581,7 @@ fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Par
         Reveal::AliceParameters(reveal) => match &remote_commit {
             Commit::AliceParameters(commit) => {
                 commit.verify_with_reveal(&core_wallet, reveal.clone())?;
-                Ok(Params::Alice(reveal.clone().into()))
+                Ok(Params::Alice(reveal.clone().into_parameters()))
             }
             _ => {
                 let err_msg = "expected Some(Commit::Alice(commit))";
@@ -2595,7 +2592,7 @@ fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Par
         Reveal::BobParameters(reveal) => match &remote_commit {
             Commit::BobParameters(commit) => {
                 commit.verify_with_reveal(&core_wallet, reveal.clone())?;
-                Ok(Params::Bob(reveal.clone().into()))
+                Ok(Params::Bob(reveal.clone().into_parameters()))
             }
             _ => {
                 let err_msg = "expected Some(Commit::Bob(commit))";

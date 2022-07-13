@@ -45,7 +45,8 @@ required-features = ["server"]
 [dependencies]
 # Farcaster crates
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
+#farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+farcaster_core = { path = "../core" }
 
 anyhow = "1"
 hex = "^0.4.3"
@@ -78,10 +79,10 @@ lmdb = "0.8.0"
 # internet2 = { path = "../ext/rust-internet2" }
 # Congig & logging
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
-monero = "0.16"
-monero-rpc = { git = "https://github.com/monero-ecosystem/monero-rpc-rs", branch = "master" }
+monero = "0.17"
+monero-rpc = "0.1"
 # monero-rpc = { path = "../monero-rpc-rs/" }
-monero-lws = { git = "https://github.com/TheCharlatan/monero-lws-rs", branch = "main" }
+monero-lws = { git = "https://github.com/h4sh3d/monero-lws-rs", branch = "udpate/monero-rs" }
 nix = { version = "0.19", optional = true }
 # Misc
 paste = "1.0"
@@ -109,7 +110,7 @@ prost = "0.10.3"
 
 [build-dependencies]
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main", features = ["serde"] }
+farcaster_core = { path = "../core" }
 
 anyhow = "1"
 serde_yaml = { version = "0.8", optional = true }
@@ -122,7 +123,7 @@ lightning_encoding = "0.7.1"
 # Bitcoin
 bitcoin = "0.28"
 # Monero
-monero = "0.16"
+monero = "0.17"
 # lnp-core =  { path = "../ext/lnp-core" }
 # internet2 = { path = "../ext/rust-internet2" }
 lnp-core = { version = "0.6.0", git = "https://github.com/LNP-BP/lnp-core" }

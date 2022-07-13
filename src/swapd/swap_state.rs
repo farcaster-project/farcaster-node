@@ -1,7 +1,6 @@
 use farcaster_core::{
     negotiation::PublicOffer,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::BtcXmr,
 };
 use strict_encoding::{StrictDecode, StrictEncode};
 

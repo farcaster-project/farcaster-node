@@ -20,12 +20,10 @@ use std::str::FromStr;
 use internet2::FramingProtocol;
 
 use farcaster_core::{
-    bitcoin::{fee::SatPerVByte, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin},
-    blockchain::{FeeStrategy, Network},
-    monero::Monero,
-    negotiation::PublicOffer,
+    bitcoin::{fee::SatPerVByte, timelock::CSVTimelock},
+    blockchain::{Blockchain, FeeStrategy, Network},
     role::SwapRole,
-    swap::{btcxmr::BtcXmr, SwapId},
+    swap::{btcxmr::PublicOffer, SwapId},
 };
 
 use crate::syncerd::Coin;
@@ -85,7 +83,7 @@ pub enum Command {
     #[display("offer-info<{public_offer}>")]
     OfferInfo {
         /// The offer to be canceled.
-        public_offer: PublicOffer<BtcXmr>,
+        public_offer: PublicOffer,
     },
 
     // /// Lists IDs of public offers created by daemon
@@ -138,7 +136,7 @@ pub enum Command {
             default_value = "bitcoin",
             possible_values = &["Bitcoin", "bitcoin", "ECDSA"])
         ]
-        arbitrating_blockchain: Bitcoin<SegwitV0>,
+        arbitrating_blockchain: Blockchain,
 
         /// The chosen accordant blockchain.
         #[clap(
@@ -146,7 +144,7 @@ pub enum Command {
             default_value = "monero",
             possible_values = &["Monero", "monero"])
         ]
-        accordant_blockchain: Monero,
+        accordant_blockchain: Blockchain,
 
         /// Amount of arbitrating assets to exchanged.
         #[clap(long = "btc-amount")]
@@ -203,7 +201,7 @@ pub enum Command {
 
         /// An encoded public offer.
         #[clap(short = 'o', long = "offer")]
-        public_offer: PublicOffer<BtcXmr>,
+        public_offer: PublicOffer,
 
         /// Accept the public offer without validation.
         #[clap(short, long)]
@@ -214,7 +212,7 @@ pub enum Command {
     #[display("revoke-offer<{public_offer}>")]
     RevokeOffer {
         /// The offer to be canceled.
-        public_offer: PublicOffer<BtcXmr>,
+        public_offer: PublicOffer,
     },
 
     /// Abort a swap if it has not locked yet.
