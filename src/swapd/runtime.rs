@@ -2025,20 +2025,22 @@ impl Runtime {
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
 
-                        let success = self.continue_deferred_requests(endpoints, source, |i| {
-                            matches!(
-                                &i,
-                                &PendingRequest {
-                                    bus_id: ServiceBus::Msg,
-                                    request: Request::Protocol(Msg::Reveal(
-                                        Reveal::AliceParameters(..)
-                                    )),
-                                    ..
-                                }
-                            )
-                        });
-                        if !success {
-                            error!("failed dispatching reveal:aliceparams")
+                        if self.state.swap_role() == SwapRole::Bob {
+                            let success = self.continue_deferred_requests(endpoints, source, |i| {
+                                matches!(
+                                    &i,
+                                    &PendingRequest {
+                                        bus_id: ServiceBus::Msg,
+                                        request: Request::Protocol(Msg::Reveal(
+                                            Reveal::AliceParameters(..)
+                                        )),
+                                        ..
+                                    }
+                                )
+                            });
+                            if !success {
+                                error!("failed dispatching reveal:aliceparams")
+                            }
                         }
                     }
                 }
