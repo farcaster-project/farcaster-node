@@ -897,27 +897,8 @@ impl Runtime {
     ) -> Result<(), Error> {
         match (&request, &source) {
             (Request::Hello, ServiceId::Syncer(..)) if self.syncer_state.is_syncer(Coin::Bitcoin, &source) => {
-                let success =
-                    self.continue_deferred_requests(endpoints, source.clone(), |r| {
-                        matches!(
-                            r,
-                            &PendingRequest {
-                                dest: ServiceId::Syncer(..),
-                                bus_id: ServiceBus::Ctl,
-                                request: Request::SyncerTask(Task::EstimateFee(..)),
-                                ..
-                            }
-                        )
-                    });
-                if !success {
-                    error!("Did not dispatch estimate fee pending request");
-                }
-                info!(
-                    "{} | Service {} daemon is now {}",
-                    self.swap_id.bright_blue_italic(),
-                    source.bright_green_bold(),
-                    "connected"
-                );
+                let task = self.syncer_state.estimate_fee_btc();
+                endpoints.send_to(ServiceBus::Ctl, self.identity(), source, Request::SyncerTask(task))?;
             }
             (Request::Hello, _) => {
                 info!(
