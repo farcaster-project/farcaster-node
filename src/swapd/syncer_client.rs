@@ -416,12 +416,3 @@ pub fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
         txid.bright_yellow_italic(),
     );
 }
-
-pub fn log_tx_received(swap_id: SwapId, txlabel: TxLabel) {
-    info!(
-        "{} | {} transaction received from {}",
-        swap_id.bright_blue_italic(),
-        txlabel.bright_white_bold(),
-        ServiceId::Wallet
-    );
-}

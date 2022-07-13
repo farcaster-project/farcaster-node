@@ -41,8 +41,9 @@ use std::{
 use super::{
     storage::{self, Driver},
     swap_state::{AliceState, BobState, State, SwapCheckpointType},
-    syncer_client::{log_tx_received, log_tx_seen, SyncerState, SyncerTasks},
+    syncer_client::{log_tx_seen, SyncerState, SyncerTasks},
     temporal_safety::TemporalSafety,
+    wallet_client::log_tx_received,
 };
 use crate::rpc::{
     request::{self, Msg},

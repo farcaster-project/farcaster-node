@@ -20,6 +20,7 @@ pub(self) mod storage;
 mod swap_state;
 mod syncer_client;
 mod temporal_safety;
+mod wallet_client;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;
