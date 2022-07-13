@@ -604,22 +604,6 @@ impl Runtime {
                 trace!("received remote commitment");
                 self.state.t_sup_remote_commit(remote_commit.clone());
 
-                let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    Request::SyncerTask(watch_height_btc_task),
-                )?;
-
-                let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.monero_syncer(),
-                    Request::SyncerTask(watch_height_xmr_task),
-                )?;
-
                 if self.state.swap_role() == SwapRole::Bob {
                     let addr = self
                         .state
@@ -775,21 +759,6 @@ impl Runtime {
                             )?;
                         }
                     }
-                    let watch_height_btc = self.syncer_state.watch_height(Coin::Bitcoin);
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        Request::SyncerTask(watch_height_btc),
-                    )?;
-
-                    let watch_height_xmr = self.syncer_state.watch_height(Coin::Monero);
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.monero_syncer(),
-                        Request::SyncerTask(watch_height_xmr),
-                    )?;
                 }
             }
             // alice receives, bob sends
@@ -898,7 +867,24 @@ impl Runtime {
         match (&request, &source) {
             (Request::Hello, ServiceId::Syncer(..)) if self.syncer_state.is_syncer(Coin::Bitcoin, &source) => {
                 let task = self.syncer_state.estimate_fee_btc();
-                endpoints.send_to(ServiceBus::Ctl, self.identity(), source, Request::SyncerTask(task))?;
+                endpoints.send_to(ServiceBus::Ctl, self.identity(), source.clone(), Request::SyncerTask(task))?;
+                let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(watch_height_btc_task),
+                )?;
+            }
+
+            (Request::Hello, ServiceId::Syncer(..)) if self.syncer_state.is_syncer(Coin::Monero, &source) => {
+                let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    source.clone(),
+                    Request::SyncerTask(watch_height_xmr_task),
+                )?;
             }
             (Request::Hello, _) => {
                 info!(
@@ -1016,17 +1002,6 @@ impl Runtime {
                     funding_address,
                     None,
                 );
-                let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                let pending_req = PendingRequest::new(
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    ServiceBus::Ctl,
-                    Request::SyncerTask(btc_fee_task),
-                );
-                pending_req.defer_request(
-                    &mut self.pending_requests,
-                    self.syncer_state.bitcoin_syncer(),
-                );
                 let take_swap = TakeCommit {
                     commit: local_commit,
                     public_offer: self.public_offer.to_string(),
@@ -1083,18 +1058,6 @@ impl Runtime {
                     local_params,
                     funding_address,
                     Some(remote_commit),
-                );
-
-                let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                let pending_req = PendingRequest::new(
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    ServiceBus::Ctl,
-                    Request::SyncerTask(btc_fee_task),
-                );
-                pending_req.defer_request(
-                    &mut self.pending_requests,
-                    self.syncer_state.bitcoin_syncer(),
                 );
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
