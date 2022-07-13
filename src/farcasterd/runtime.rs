@@ -318,6 +318,42 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    fn syncer_running_syncer_sender(
+        &self,
+        endpoints: &mut Endpoints,
+        service: &ServiceId,
+    ) -> Result<(), Error> {
+        if let Some((syncer_id, _)) = self.syncer_services.iter().find(|(k, x)| x == &service) {
+            for c in self.syncer_clients.get(&syncer_id).unwrap() {
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    ServiceId::Farcasterd,
+                    c.clone(),
+                    Request::SyncerRunning(syncer_id.0.clone()),
+                )?;
+            }
+        }
+        Ok(())
+    }
+    fn syncer_running_swapd_sender(
+        &self,
+        endpoints: &mut Endpoints,
+        client: &ServiceId,
+    ) -> Result<(), Error> {
+        for (syncer_id, _) in self
+            .syncer_clients
+            .iter()
+            .filter(|(k, xs)| xs.contains(&client))
+        {
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                ServiceId::Farcasterd,
+                client.clone(),
+                Request::SyncerRunning(syncer_id.0.clone()),
+            )?;
+        }
+        Ok(())
+    }
     fn clean_up_after_swap(
         &mut self,
         swapid: &SwapId,
@@ -596,6 +632,11 @@ impl Runtime {
                                 swap_id
                             );
                         }
+                        // notify this swapd about its syncers that are up and
+                        // running, if syncer not ready, then swapd will be
+                        // notified on the ServiceId::Syncer(coin, network)
+                        // pattern
+                        self.syncer_running_swapd_sender(endpoints, &source)?;
                     }
                     ServiceId::Syncer(coin, network)
                         if !self.syncer_services.contains_key(&(*coin, *network))
@@ -616,6 +657,8 @@ impl Runtime {
                                 request,
                             )?;
                         }
+                        // notify syncer's clients that syncer is up and running
+                        self.syncer_running_syncer_sender(endpoints, &source)?;
                     }
                     ServiceId::Syncer(..) => {
                         error!(
