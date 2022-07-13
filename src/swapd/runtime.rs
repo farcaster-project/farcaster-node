@@ -637,13 +637,6 @@ impl Runtime {
                             Request::SyncerTask(task),
                         )?;
                     }
-                    let btc_fee_task = self.syncer_state.estimate_fee_btc();
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        Request::SyncerTask(btc_fee_task),
-                    )?;
                 }
 
                 self.send_wallet(msg_bus, endpoints, request)?;
@@ -1020,6 +1013,13 @@ impl Runtime {
                     funding_address,
                     None,
                 );
+                let btc_fee_task = self.syncer_state.estimate_fee_btc();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(btc_fee_task),
+                )?;
                 let take_swap = TakeCommit {
                     commit: local_commit,
                     public_offer: self.public_offer.to_string(),
