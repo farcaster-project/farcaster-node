@@ -40,11 +40,12 @@ t_swap -> t_farcasterd : Ctl Hello
 t_swap -> t_wallet : Ctl Hello
 t_farcasterd -> t_farcasterd:launch syncer
 t_swap <- t_farcasterd : Ctl TakeSwap
-t_syncer->t_swap:Ctl Hello
-t_syncer<-t_swap:Ctl EstimateFee (btc)
-t_syncer <- t_swap : Ctl WatchHeight
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
+t_syncer->t_farcasterd:Ctl Hello
+t_swap<-t_farcasterd:Ctl SyncerRunning
+t_syncer<-t_swap:Ctl EstimateFee (btc)
+t_syncer <- t_swap : Ctl WatchHeight
 m_farcasterd -> m_wallet : Ctl BitcoinAddress
 m_farcasterd -> m_wallet : Msg TakerCommit
 m_wallet -> m_wallet : create maker wallet
@@ -55,11 +56,12 @@ m_farcasterd -> m_farcasterd:launch syncer
 m_farcasterd -> m_swap : Ctl MakeSwap
 
 m_swap -> peerd : Msg MakerCommit
-m_swap<-m_syncer:Ctl Hello
-m_swap->m_syncer:Ctl EstimateFee (btc)
-m_swap->m_syncer:Ctl WatchHeight
 t_swap <- peerd : Msg MakerCommit
 // TODO: verify that swapd launches no matter what
+m_farcasterd<-m_syncer:Ctl Hello
+m_farcasterd->m_swap:Ctl SyncerRunnint
+m_swap->m_syncer:Ctl EstimateFee (btc)
+m_swap->m_syncer:Ctl WatchHeight
 t_syncer <- t_swap : if Bob, Watch Arbitrating Funding Address
 t_swap -> t_wallet : Msg MakerCommit
 t_wallet -> t_swap : Ctl RevealProof (taker is sender)
