@@ -968,7 +968,7 @@ impl Runtime {
                 let request = Request::SyncerTask(task);
                 let dest = self.syncer_state.monero_syncer();
                 let pending_request =
-                    PendingRequest::new(source, dest.clone(), ServiceBus::Ctl, request);
+                    PendingRequest::new(self.identity(), dest.clone(), ServiceBus::Ctl, request);
                 pending_request.defer_request(&mut self.pending_requests, dest);
             }
             Request::TakeSwap(InitSwap {
@@ -2267,7 +2267,7 @@ impl Runtime {
                 // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
                 let pending_request = PendingRequest::new(
-                    source,
+                    self.identity(),
                     self.peer_service.clone(),
                     ServiceBus::Msg,
                     request,
