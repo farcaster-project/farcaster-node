@@ -644,7 +644,6 @@ impl Runtime {
                         self.syncer_state.bitcoin_syncer(),
                         Request::SyncerTask(btc_fee_task),
                     )?;
-                    std::thread::sleep(Duration::from_secs_f32(2.0));
                 }
 
                 self.send_wallet(msg_bus, endpoints, request)?;
@@ -1079,7 +1078,6 @@ impl Runtime {
                     Some(remote_commit),
                 );
 
-                std::thread::sleep(Duration::from_secs_f32(5.0));
                 let btc_fee_task = self.syncer_state.estimate_fee_btc();
                 endpoints.send_to(
                     ServiceBus::Ctl,
@@ -1087,9 +1085,6 @@ impl Runtime {
                     self.syncer_state.bitcoin_syncer(),
                     Request::SyncerTask(btc_fee_task),
                 )?;
-
-                // syncer takes too long to give a fee
-                std::thread::sleep(Duration::from_secs_f32(2.0));
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
@@ -1691,7 +1686,7 @@ impl Runtime {
                                     self.broadcast(buy_tx, txlabel, endpoints)?;
                                     self.state = State::Alice(AliceState::RefundSigA {
                                         local_params: self.state.local_params().cloned().unwrap(),
-                                        buy_published: true,
+                                        buy_published: true, // FIXME
                                         btc_locked,
                                         xmr_locked,
                                         cancel_seen: false,
@@ -2025,7 +2020,7 @@ impl Runtime {
                         info!("fee: {} sat/kvB", high_priority_sats_per_kvbyte);
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
-
+                        // FIXME state guard here
                         if self.state.swap_role() == SwapRole::Bob {
                             let success = self.continue_deferred_requests(endpoints, source, |i| {
                                 matches!(
