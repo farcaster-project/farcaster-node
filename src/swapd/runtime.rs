@@ -857,7 +857,10 @@ impl Runtime {
             Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
                 unreachable!("ping/pong must remain in peerd, and unreachable in swapd")
             }
-            request => error!("request not supported {}", request),
+            request => error!(
+                "request {} not supported at msg bus at state {}",
+                request, self.state
+            ),
         }
         Ok(())
     }
