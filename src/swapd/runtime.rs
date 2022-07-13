@@ -2034,12 +2034,15 @@ impl Runtime {
                                         request: Request::Protocol(Msg::Reveal(
                                             Reveal::AliceParameters(..)
                                         )),
+                                        dest: ServiceId::Swap(..),
                                         ..
                                     }
                                 )
                             });
-                            if !success {
-                                error!("failed dispatching reveal:aliceparams")
+                            if success {
+                                debug!("successfully dispatched reveal:aliceparams")
+                            } else {
+                                debug!("failed dispatching reveal:aliceparams, maybe sent before")
                             }
                         }
                     }
