@@ -637,7 +637,7 @@ impl Runtime {
                 match self.state.swap_role() {
                     SwapRole::Bob => {
                         let pending_request = PendingRequest::new(
-                            source,
+                            self.identity(),
                             ServiceId::Wallet,
                             ServiceBus::Msg,
                             request,
@@ -732,8 +732,12 @@ impl Runtime {
                         // sending this request will initialize the
                         // arbitrating setup, that can be only performed
                         // after the funding tx was seen
-                        let pending_req =
-                            PendingRequest::new(source, ServiceId::Wallet, msg_bus, request);
+                        let pending_req = PendingRequest::new(
+                            self.identity(),
+                            ServiceId::Wallet,
+                            msg_bus,
+                            request,
+                        );
                         pending_req.defer_request(&mut self.pending_requests, ServiceId::Wallet);
                     }
                     _ => unreachable!(
