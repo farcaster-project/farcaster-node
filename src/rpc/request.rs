@@ -1336,7 +1336,6 @@ impl IntoSuccessOrFailure for Result<(), crate::Error> {
     }
 }
 
-
 // FIXME
 impl From<(SwapId, Params)> for Reveal {
     fn from(tuple: (SwapId, Params)) -> Self {

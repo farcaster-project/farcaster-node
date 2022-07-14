@@ -899,31 +899,6 @@ impl Runtime {
         };
 
         match request {
-            Request::SyncerRunning(Coin::Bitcoin) if source == ServiceId::Farcasterd => {
-                let task = self.syncer_state.estimate_fee_btc();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    Request::SyncerTask(task),
-                )?;
-                let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.bitcoin_syncer(),
-                    Request::SyncerTask(watch_height_btc_task),
-                )?;
-            }
-            Request::SyncerRunning(Coin::Monero) if source == ServiceId::Farcasterd => {
-                let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    self.syncer_state.monero_syncer(),
-                    Request::SyncerTask(watch_height_xmr_task),
-                )?;
-            }
             Request::Terminate if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
@@ -991,6 +966,28 @@ impl Runtime {
                     );
                     return Ok(());
                 };
+                let task = self.syncer_state.estimate_fee_btc();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(task),
+                )?;
+                let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(watch_height_btc_task),
+                )?;
+                let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.monero_syncer(),
+                    Request::SyncerTask(watch_height_xmr_task),
+                )?;
+
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
 
@@ -1049,6 +1046,27 @@ impl Runtime {
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
             }) if self.state.start() => {
+                let task = self.syncer_state.estimate_fee_btc();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(task),
+                )?;
+                let watch_height_btc_task = self.syncer_state.watch_height(Coin::Bitcoin);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.bitcoin_syncer(),
+                    Request::SyncerTask(watch_height_btc_task),
+                )?;
+                let watch_height_xmr_task = self.syncer_state.watch_height(Coin::Monero);
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.monero_syncer(),
+                    Request::SyncerTask(watch_height_xmr_task),
+                )?;
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
