@@ -663,10 +663,12 @@ impl Runtime {
                         || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()) =>
             {
                 if self.state.b_address().is_none() {
-                    unreachable!("FIXME: b_address is None, request {}", request);
+                    let msg = format!("FIXME: b_address is None, request {}", request);
+                    error!("{}", msg);
+                    return Err(Error::Farcaster(msg));
                 }
                 debug!(
-                    "Deferring request {} for when btc_estimate available",
+                    "Deferring request {} for when btc_fee_estimate available, then recurse in the runtime",
                     &request
                 );
                 let pending_req = PendingRequest::new(source, self.identity(), msg_bus, request);
@@ -1469,6 +1471,7 @@ impl Runtime {
                                         ServiceId::Farcasterd,
                                         msg,
                                     )?;
+                                    // FIXME: syncer shall not have permission to AbortSwap, replace source by identity?
                                     self.handle_rpc_ctl(endpoints, source, Request::AbortSwap)?;
                                     return Ok(());
                                 }
