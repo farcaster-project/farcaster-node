@@ -1021,10 +1021,10 @@ impl Runtime {
                 self.send_peer(endpoints, Msg::TakerCommit(take_swap))?;
                 self.state_update(endpoints, next_state)?;
             }
-            Request::Protocol(Msg::Reveal(reveal))
+            Request::Protocol(Msg::Reveal(Reveal::Proof(proof)))
                 if self.state.commit() && self.state.remote_commit().is_some() =>
             {
-                let reveal_proof = Msg::Reveal(reveal);
+                let reveal_proof = Msg::Reveal(Reveal::Proof(proof));
                 let swap_id = reveal_proof.swap_id();
                 self.send_peer(endpoints, reveal_proof)?;
                 trace!("sent reveal_proof to peerd");
