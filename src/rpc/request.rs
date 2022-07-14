@@ -648,10 +648,6 @@ pub enum Request {
     // #[display("task({0})", alt = "{0:#}")]
     // #[from]
     // CreateTask(u64), // FIXME
-    #[api(type = 1299)]
-    #[display("syncer_running")]
-    SyncerRunning(Coin),
-
     #[api(type = 1300)]
     #[display("syncer_task({0})", alt = "{0:#}")]
     #[from]
