@@ -601,7 +601,6 @@ impl Runtime {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     ServiceId::Wallet,
-                    // TODO: (maybe) what if the message responded to is not sent by swapd?
                     source,
                     Request::Protocol(Msg::Reveal((req_swap_id, proof.clone()).into())),
                 )?;
@@ -673,8 +672,6 @@ impl Runtime {
                                     endpoints.send_to(
                                         ServiceBus::Ctl,
                                         ServiceId::Wallet,
-                                        // TODO: (maybe) what if the message responded to is not
-                                        // sent by swapd?
                                         source,
                                         Request::Protocol(Msg::Reveal(
                                             (swap_id, local_proof.clone()).into(),
