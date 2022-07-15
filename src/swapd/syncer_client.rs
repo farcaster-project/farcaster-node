@@ -1,20 +1,16 @@
-use crate::syncerd::BroadcastTransaction;
-use crate::syncerd::EstimateFee;
-use crate::syncerd::SweepBitcoinAddress;
-use crate::syncerd::TransactionBroadcasted;
 use crate::{
-    service::LogStyle,
+    service::{Endpoints, LogStyle},
     syncerd::{
-        Abort, AddressAddendum, Boolean, BtcAddressAddendum, Coin, GetTx, SweepAddress,
-        SweepAddressAddendum, SweepXmrAddress, TaskTarget, WatchAddress, WatchHeight,
+        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Coin,
+        EstimateFee, GetTx, SweepAddress, SweepAddressAddendum, SweepBitcoinAddress,
+        SweepXmrAddress, TaskTarget, TransactionBroadcasted, WatchAddress, WatchHeight,
         WatchTransaction, XmrAddressAddendum,
     },
+    Error, rpc::ServiceBus,
 };
-use bitcoin::consensus::Decodable;
-use bitcoin::{Script, Txid};
+use bitcoin::{consensus::Decodable, Script, Txid};
 use farcaster_core::{swap::SwapId, transaction::TxLabel};
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     rpc::Request,
@@ -417,6 +413,32 @@ impl SyncerState {
                 &id
             )
         }
+    }
+    pub fn on_btc_syncer_launch(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        let identity = ServiceId::Swap(self.swap_id.clone());
+        let task = self.estimate_fee_btc();
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            identity.clone(),
+            self.bitcoin_syncer(),
+            Request::SyncerTask(task),
+        )?;
+        let watch_height_btc_task = self.watch_height(Coin::Bitcoin);
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            identity.clone(),
+            self.bitcoin_syncer(),
+            Request::SyncerTask(watch_height_btc_task),
+        )?;
+        // assumes xmr syncer will be up as well at this point
+        let watch_height_xmr_task = self.watch_height(Coin::Monero);
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            identity,
+            self.monero_syncer(),
+            Request::SyncerTask(watch_height_xmr_task),
+        )?;
+        Ok(())
     }
 }
 
