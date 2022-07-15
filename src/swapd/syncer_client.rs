@@ -1,4 +1,5 @@
 use crate::{
+    rpc::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Coin,
@@ -6,7 +7,7 @@ use crate::{
         SweepXmrAddress, TaskTarget, TransactionBroadcasted, WatchAddress, WatchHeight,
         WatchTransaction, XmrAddressAddendum,
     },
-    Error, rpc::ServiceBus,
+    Error,
 };
 use bitcoin::{consensus::Decodable, Script, Txid};
 use farcaster_core::{swap::SwapId, transaction::TxLabel};

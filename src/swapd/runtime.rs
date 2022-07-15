@@ -1225,8 +1225,8 @@ impl Runtime {
                         ..
                     }) if self.state.b_buy_sig()
                         || (self.state.a_refundsig() && self.state.a_xmr_locked())
-                        && *confirmations >= self.temporal_safety.sweep_monero_thr
-                        && self.pending_requests().contains_key(&source) =>
+                            && *confirmations >= self.temporal_safety.sweep_monero_thr
+                            && self.pending_requests().contains_key(&source) =>
                     {
                         let PendingRequest {
                             source,
