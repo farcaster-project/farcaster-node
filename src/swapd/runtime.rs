@@ -1223,10 +1223,15 @@ impl Runtime {
                     Event::TransactionConfirmations(TransactionConfirmations {
                         confirmations: Some(confirmations),
                         ..
-                    }) if self.state.b_buy_sig()
-                        || (self.state.a_refundsig() && self.state.a_xmr_locked())
-                            && *confirmations >= self.temporal_safety.sweep_monero_thr
-                            && self.pending_requests().contains_key(&source) =>
+                    }) if (self.state.b_buy_sig()
+                        || (self.state.a_refundsig() && self.state.a_xmr_locked()))
+                        && *confirmations >= self.temporal_safety.sweep_monero_thr
+                        && self.pending_requests().contains_key(&source)
+                        && self
+                            .pending_requests()
+                            .get(&source)
+                            .map(|r| r.len() > 0)
+                            .unwrap_or(false) =>
                     {
                         let PendingRequest {
                             source,
