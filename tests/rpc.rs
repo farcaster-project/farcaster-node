@@ -39,7 +39,7 @@ fn spawn_swap() {
 
     // make tb1q4gj53tuew3e6u4a32kdtle2q72su8te39dpceq
     // 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt
-    // Testnet ECDSA Monero "101 BTC" "100 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9376
+    // Testnet Bitcoin Monero "101 BTC" "100 XMR" Alice 10 30 "1 satoshi/vByte" "127.0.0.1" "0.0.0.0" 9376
 
     let mut cmd = process::Command::new(client_bin_path.clone());
     cmd.args(data_dir_maker.clone());
@@ -56,7 +56,7 @@ fn spawn_swap() {
         "--network",
             "Testnet",
             "--arb-blockchain",
-            "ECDSA",
+            "Bitcoin",
             "--acc-blockchain",
             "Monero",
             "--maker-role",

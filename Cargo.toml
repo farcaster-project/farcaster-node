@@ -45,8 +45,8 @@ required-features = ["server"]
 [dependencies]
 # Farcaster crates
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
-#farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
-farcaster_core = { path = "../core" }
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
+#farcaster_core = { path = "../core" }
 
 anyhow = "1"
 hex = "^0.4.3"
@@ -110,7 +110,8 @@ prost = "0.10.3"
 
 [build-dependencies]
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
-farcaster_core = { path = "../core" }
+#farcaster_core = { path = "../core" }
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 
 anyhow = "1"
 serde_yaml = { version = "0.8", optional = true }
