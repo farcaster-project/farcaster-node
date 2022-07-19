@@ -623,8 +623,8 @@ impl Runtime {
                             for (init_swap_req, swap_id) in xs {
                                 if let Ok(()) = endpoints.send_to(
                                     ServiceBus::Ctl,
+                                    self.identity(),
                                     ServiceId::Swap(swap_id.clone()),
-                                    source.clone(),
                                     init_swap_req,
                                 ) {
                                     self.pending_swap_init.remove(&source);
