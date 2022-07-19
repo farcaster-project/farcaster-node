@@ -2337,7 +2337,6 @@ impl Runtime {
                 }
                 // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
-                // self.defer_request()
                 let pending_request = PendingRequest {
                     source,
                     request,
