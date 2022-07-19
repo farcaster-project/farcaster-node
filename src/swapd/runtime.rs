@@ -523,6 +523,7 @@ impl Runtime {
             }
             len0 > len1
         } else {
+            error!("no request consumed with this predicate");
             false
         };
         success
