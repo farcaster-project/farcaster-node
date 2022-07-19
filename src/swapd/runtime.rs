@@ -770,7 +770,6 @@ impl Runtime {
             }
             // alice receives, bob sends
             Msg::CoreArbitratingSetup(CoreArbitratingSetup {
-                swap_id,
                 lock,
                 cancel,
                 refund,
@@ -1235,7 +1234,7 @@ impl Runtime {
                             .unwrap_or(false) =>
                     {
                         let PendingRequest {
-                            source,
+                            source: _,
                             request,
                             dest,
                             bus_id,
