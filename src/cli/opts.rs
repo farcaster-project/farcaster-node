@@ -251,7 +251,7 @@ pub enum Command {
         destination_address: BtcAddress,
     },
 
-    /// Attempts to sweep any funds on a given bitcoin funding address
+    /// Attempts to sweep any funds on a given monero funding address
     #[display("sweep-monero-address<{source_address} {destination_address}>")]
     SweepMoneroAddress {
         /// The source address to be swept.

@@ -373,7 +373,7 @@ _swap-cli_commands() {
 'progress:Request swap progress report' \
 'needs-funding:Returns addresses and amounts that require funding for coin' \
 'sweep-bitcoin-address:Attempts to sweep any funds on a given bitcoin funding address' \
-'sweep-monero-address:Attempts to sweep any funds on a given bitcoin funding address' \
+'sweep-monero-address:Attempts to sweep any funds on a given monero funding address' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'swap-cli commands' commands "$@"
