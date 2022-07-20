@@ -966,7 +966,7 @@ impl Runtime {
                     );
                     return Ok(());
                 };
-                self.syncer_state.on_btc_syncer_launch(endpoints)?;
+                self.syncer_state.watch_fee_and_height(endpoints)?;
 
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
@@ -1026,7 +1026,7 @@ impl Runtime {
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
             }) if self.state.start() => {
-                self.syncer_state.on_btc_syncer_launch(endpoints)?;
+                self.syncer_state.watch_fee_and_height(endpoints)?;
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());

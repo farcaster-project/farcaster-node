@@ -415,7 +415,7 @@ impl SyncerState {
             )
         }
     }
-    pub fn on_btc_syncer_launch(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+    pub fn watch_fee_and_height(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         let identity = ServiceId::Swap(self.swap_id.clone());
         let task = self.estimate_fee_btc();
         endpoints.send_to(
