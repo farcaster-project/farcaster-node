@@ -1,20 +1,17 @@
-use crate::syncerd::BroadcastTransaction;
-use crate::syncerd::EstimateFee;
-use crate::syncerd::SweepBitcoinAddress;
-use crate::syncerd::TransactionBroadcasted;
 use crate::{
-    service::LogStyle,
+    rpc::ServiceBus,
+    service::{Endpoints, LogStyle},
     syncerd::{
-        Abort, AddressAddendum, Boolean, BtcAddressAddendum, Coin, GetTx, SweepAddress,
-        SweepAddressAddendum, SweepXmrAddress, TaskTarget, WatchAddress, WatchHeight,
+        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Coin,
+        EstimateFee, GetTx, SweepAddress, SweepAddressAddendum, SweepBitcoinAddress,
+        SweepXmrAddress, TaskTarget, TransactionBroadcasted, WatchAddress, WatchHeight,
         WatchTransaction, XmrAddressAddendum,
     },
+    Error,
 };
-use bitcoin::consensus::Decodable;
-use bitcoin::{Script, Txid};
+use bitcoin::{consensus::Decodable, Script, Txid};
 use farcaster_core::{swap::SwapId, transaction::TxLabel};
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     rpc::Request,
@@ -68,6 +65,18 @@ impl SyncerState {
         } else {
             u64::MAX
         }
+    }
+    pub fn syncer(&self, coin: Coin) -> &ServiceId {
+        match coin {
+            Coin::Bitcoin => &self.bitcoin_syncer,
+            Coin::Monero => &self.monero_syncer,
+        }
+    }
+    pub fn is_syncer(&self, coin: Coin, source: &ServiceId) -> bool {
+        self.syncer(coin) == source
+    }
+    pub fn any_syncer(&self, source: &ServiceId) -> bool {
+        self.is_syncer(Coin::Bitcoin, source) || self.is_syncer(Coin::Monero, source)
     }
     pub fn bitcoin_syncer(&self) -> ServiceId {
         self.bitcoin_syncer.clone()
@@ -405,6 +414,32 @@ impl SyncerState {
                 &id
             )
         }
+    }
+    pub fn watch_fee_and_height(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        let identity = ServiceId::Swap(self.swap_id.clone());
+        let task = self.estimate_fee_btc();
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            identity.clone(),
+            self.bitcoin_syncer(),
+            Request::SyncerTask(task),
+        )?;
+        let watch_height_btc_task = self.watch_height(Coin::Bitcoin);
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            identity.clone(),
+            self.bitcoin_syncer(),
+            Request::SyncerTask(watch_height_btc_task),
+        )?;
+        // assumes xmr syncer will be up as well at this point
+        let watch_height_xmr_task = self.watch_height(Coin::Monero);
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            identity,
+            self.monero_syncer(),
+            Request::SyncerTask(watch_height_xmr_task),
+        )?;
+        Ok(())
     }
 }
 

@@ -305,7 +305,7 @@ fn format_keys(keys: &Keys) -> String {
 pub enum Reveal {
     AliceParameters(RevealAliceParameters<BtcXmr>),
     BobParameters(RevealBobParameters<BtcXmr>),
-    Proof(RevealProof<BtcXmr>),
+    Proof(RevealProof<BtcXmr>), // FIXME should be Msg::RevealProof(RevealProof<BtcXmr>)
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -1332,17 +1332,12 @@ impl IntoSuccessOrFailure for Result<(), crate::Error> {
     }
 }
 
+// FIXME
 impl From<(SwapId, Params)> for Reveal {
     fn from(tuple: (SwapId, Params)) -> Self {
         match tuple {
             (swap_id, Params::Alice(params)) => Reveal::AliceParameters((swap_id, params).into()),
             (swap_id, Params::Bob(params)) => Reveal::BobParameters((swap_id, params).into()),
         }
-    }
-}
-
-impl From<(SwapId, Proof<BtcXmr>)> for Reveal {
-    fn from(tuple: (SwapId, Proof<BtcXmr>)) -> Self {
-        Reveal::Proof((tuple.0, tuple.1).into())
     }
 }
