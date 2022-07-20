@@ -134,7 +134,7 @@ pub enum Command {
         #[clap(
             long = "arb-blockchain",
             default_value = "bitcoin",
-            possible_values = &["Bitcoin", "bitcoin", "ECDSA"])
+            possible_values = &["Bitcoin", "bitcoin"])
         ]
         arbitrating_blockchain: Blockchain,
 

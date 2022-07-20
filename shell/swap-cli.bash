@@ -466,7 +466,7 @@ _swap-cli() {
                     return 0
                     ;;
                 --arb-blockchain)
-                    COMPREPLY=($(compgen -W "Bitcoin bitcoin ECDSA" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "Bitcoin bitcoin" -- "${cur}"))
                     return 0
                     ;;
                 --acc-blockchain)

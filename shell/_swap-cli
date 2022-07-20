@@ -177,7 +177,7 @@ _arguments "${_arguments_options[@]}" \
 '--xmr-addr=[Monero address used as destination or refund address]:ACCORDANT_ADDR: ' \
 '-n+[Network to use to execute the swap between the chosen blockchains]:NETWORK:(Testnet testnet Mainnet mainnet Local local)' \
 '--network=[Network to use to execute the swap between the chosen blockchains]:NETWORK:(Testnet testnet Mainnet mainnet Local local)' \
-'--arb-blockchain=[The chosen arbitrating blockchain]:ARBITRATING_BLOCKCHAIN:(Bitcoin bitcoin ECDSA)' \
+'--arb-blockchain=[The chosen arbitrating blockchain]:ARBITRATING_BLOCKCHAIN:(Bitcoin bitcoin)' \
 '--acc-blockchain=[The chosen accordant blockchain]:ACCORDANT_BLOCKCHAIN:(Monero monero)' \
 '--btc-amount=[Amount of arbitrating assets to exchanged]:ARBITRATING_AMOUNT: ' \
 '--xmr-amount=[Amount of accordant assets to exchanged]:ACCORDANT_AMOUNT: ' \
