@@ -1526,6 +1526,18 @@ impl Runtime {
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
+
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        Request::SetAddressSecretKey(AddressSecretKey::Monero {
+                            address: corresponding_address.to_string(),
+                            spend: keypair.spend.as_bytes().try_into().unwrap(),
+                            view: keypair.view.as_bytes().try_into().unwrap(),
+                        }),
+                    )?;
+
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend,
@@ -1610,6 +1622,18 @@ impl Runtime {
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
+
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        Request::SetAddressSecretKey(AddressSecretKey::Monero {
+                            address: corresponding_address.to_string(),
+                            spend: keypair.spend.as_bytes().try_into().unwrap(),
+                            view: keypair.view.as_bytes().try_into().unwrap(),
+                        }),
+                    )?;
+
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend,
