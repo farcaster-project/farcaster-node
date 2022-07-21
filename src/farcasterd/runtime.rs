@@ -2233,3 +2233,34 @@ pub fn launch(
         err
     })
 }
+struct Syncers(HashMap<(Coin, Network), Syncer>);
+
+#[derive(Eq, Hash, PartialEq)]
+struct Syncer {
+    // when service_id set, syncer is online
+    service_id: Option<ServiceId>,
+    clients: Vec<ServiceId>,
+}
+
+struct SyncerPair<'a> {
+    arbitrating_syncer: &'a Syncer,
+    accordant_syncer: &'a Syncer,
+}
+
+impl<'a> SyncerPair<'a> {
+    fn ready(&self) -> bool {
+        self.arbitrating_syncer.service_id.is_some() && self.accordant_syncer.service_id.is_some()
+    }
+    fn new(
+        ss: &'a Syncers,
+        arbitrating_id: (Coin, Network),
+        accordant_id: (Coin, Network),
+    ) -> Option<Self> {
+        let arbitrating_syncer = ss.0.get(&arbitrating_id)?;
+        let accordant_syncer = ss.0.get(&accordant_id)?;
+        Some(SyncerPair {
+            arbitrating_syncer,
+            accordant_syncer,
+        })
+    }
+}
