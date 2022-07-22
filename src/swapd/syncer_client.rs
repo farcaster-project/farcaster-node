@@ -2,10 +2,10 @@ use crate::{
     rpc::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
-        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Coin,
-        EstimateFee, GetTx, SweepAddress, SweepAddressAddendum, SweepBitcoinAddress,
-        SweepXmrAddress, TaskTarget, TransactionBroadcasted, WatchAddress, WatchHeight,
-        WatchTransaction, XmrAddressAddendum,
+        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Coin, GetTx,
+        SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepXmrAddress, TaskTarget,
+        TransactionBroadcasted, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
+        XmrAddressAddendum,
     },
     Error,
 };
@@ -111,7 +111,7 @@ impl SyncerState {
 
     pub fn estimate_fee_btc(&mut self) -> Task {
         let id = self.tasks.new_taskid();
-        let task = Task::EstimateFee(EstimateFee {
+        let task = Task::WatchEstimateFee(WatchEstimateFee {
             id,
             lifetime: self.task_lifetime(Coin::Bitcoin),
         });
