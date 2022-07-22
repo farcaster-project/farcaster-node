@@ -53,7 +53,42 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [bitcoin, monero, swap, cli, grpc]
+        test: [
+          bitcoin_syncer_abort_test,
+          bitcoin_syncer_address_test_no_polling,
+          bitcoin_syncer_address_test_polling,
+          bitcoin_syncer_block_height_test_no_polling,
+          bitcoin_syncer_block_height_test_polling,
+          bitcoin_syncer_broadcast_tx_test_no_polling,
+          bitcoin_syncer_broadcast_tx_test_polling,
+          bitcoin_syncer_estimate_fee_test,
+          bitcoin_syncer_retrieve_transaction_test,
+          bitcoin_syncer_sweep_address_test,
+          bitcoin_syncer_transaction_test_no_polling,
+          bitcoin_syncer_transaction_test_polling,
+          monero_syncer_abort_test,
+          monero_syncer_address_test,
+          monero_syncer_block_height_test,
+          monero_syncer_broadcast_tx_test,
+          monero_syncer_sweep_test,
+          monero_syncer_transaction_test,
+          swap_alice_maker,
+          swap_bob_funds_incorrect_amount,
+          swap_bob_maker_kill_peerd_before_funding_should_reconnect_success,
+          swap_bob_maker_normal,
+          swap_bob_maker_punish_kill_bob,
+          swap_bob_maker_refund_alice_does_not_fund,
+          swap_bob_maker_refund_alice_overfunds,
+          swap_bob_maker_refund_kill_alice_after_funding,
+          swap_bob_maker_refund_race_cancel,
+          swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_buy,
+          swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_lock,
+          swap_bob_maker_user_abort_sweep_btc,
+          swap_parallel_execution,
+          swap_revoke_offer_bob_maker_normal,
+          grpc_server_functional_test,
+          cli_make_offer
+        ]
         include:
           - test: swap
             logs: true
