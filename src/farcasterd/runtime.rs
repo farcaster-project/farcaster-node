@@ -145,7 +145,6 @@ pub fn run(
         wallet_token,
         pending_requests: none!(),
         pending_sweep_requests: none!(),
-        syncer_services: none!(),
         syncers: none!(),
         consumed_offers: none!(),
         progress: none!(),
@@ -184,7 +183,6 @@ pub struct Runtime {
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     pending_sweep_requests: HashMap<ServiceId, Request>, // TODO: merge this with pending requests eventually
-    syncer_services: HashMap<(Coin, Network), ServiceId>,
     syncers: Syncers,
     progress: HashMap<ServiceId, VecDeque<Request>>,
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>,
@@ -434,13 +432,6 @@ impl Runtime {
             )
             .collect::<HashMap<(Coin, Network), Syncer>>()
             .into();
-        let syncers = &self.syncers;
-        self.syncer_services = self
-            .syncer_services
-            .drain()
-            .filter(|(k, _)| syncers.contains_key(k))
-            .collect();
-
         Ok(())
     }
 
@@ -622,16 +613,23 @@ impl Runtime {
                         }
                     }
                     ServiceId::Syncer(coin, network)
-                        if !self.syncer_services.contains_key(&(*coin, *network))
+                        if self
+                            .syncers
+                            .get(&(*coin, *network))
+                            .map(|Syncer { service_id, .. }| service_id.is_none())
+                            .unwrap_or(false)
                             && self.spawning_services.contains_key(&source) =>
                     {
-                        self.syncer_services
-                            .insert((*coin, *network), source.clone());
-                        info!(
-                            "Syncer {} is registered; total {} syncers are known",
-                            &source,
-                            self.syncer_services.len().bright_blue_bold()
-                        );
+                        if let Some(Syncer { service_id, .. }) =
+                            self.syncers.get_mut(&(*coin, *network))
+                        {
+                            *service_id = Some(source.clone());
+                            info!(
+                                "Syncer {} is registered; total {} syncers are known",
+                                &source,
+                                self.syncers.syncer_services_len().bright_blue_bold()
+                            );
+                        }
                         for (source, request) in self.pending_sweep_requests.drain() {
                             endpoints.send_to(
                                 ServiceBus::Ctl,
@@ -689,10 +687,7 @@ impl Runtime {
                     // sum, if syncer is up, send msg immediately else wait for
                     // syncer to say hello, and then dispatch msg
                     let init_swap_req = Request::MakeSwap(swap_params.clone());
-                    if self
-                        .syncer_services
-                        .contains_key(&(Coin::Bitcoin, *network))
-                    {
+                    if self.syncers.contains_key(&(Coin::Bitcoin, *network)) {
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -724,10 +719,7 @@ impl Runtime {
                         ))),
                     ));
                     let init_swap_req = Request::TakeSwap(swap_params.clone());
-                    if self
-                        .syncer_services
-                        .contains_key(&(Coin::Bitcoin, *network))
-                    {
+                    if self.syncers.service_online(&(Coin::Bitcoin, *network)) {
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -837,7 +829,6 @@ impl Runtime {
                     syncers_up(
                         ServiceId::Farcasterd,
                         &mut self.spawning_services,
-                        &self.syncer_services,
                         &mut self.syncers,
                         Coin::Bitcoin,
                         network,
@@ -847,7 +838,6 @@ impl Runtime {
                     syncers_up(
                         ServiceId::Farcasterd,
                         &mut self.spawning_services,
-                        &self.syncer_services,
                         &mut self.syncers,
                         Coin::Monero,
                         network,
@@ -1108,7 +1098,6 @@ impl Runtime {
                 syncers_up(
                     ServiceId::Farcasterd,
                     &mut self.spawning_services,
-                    &self.syncer_services,
                     &mut self.syncers,
                     Coin::Bitcoin,
                     public_offer.offer.network,
@@ -1118,7 +1107,6 @@ impl Runtime {
                 syncers_up(
                     ServiceId::Farcasterd,
                     &mut self.spawning_services,
-                    &self.syncer_services,
                     &mut self.syncers,
                     Coin::Monero,
                     public_offer.offer.network,
@@ -1730,9 +1718,7 @@ impl Runtime {
 
                 let k = (coin, network);
                 let s = ServiceId::Syncer(coin, network);
-                if !self.syncer_services.contains_key(&k)
-                    && !self.spawning_services.contains_key(&s)
-                {
+                if !self.syncers.service_online(&k) && !self.spawning_services.contains_key(&s) {
                     let mut args = vec![
                         "--coin".to_string(),
                         coin.to_string(),
@@ -1791,9 +1777,7 @@ impl Runtime {
 
                 let k = (coin, network);
                 let s = ServiceId::Syncer(coin, network);
-                if !self.syncer_services.contains_key(&k)
-                    && !self.spawning_services.contains_key(&s)
-                {
+                if !self.syncers.service_online(&k) && !self.spawning_services.contains_key(&s) {
                     let mut args = vec![
                         "--coin".to_string(),
                         coin.to_string(),
@@ -1884,12 +1868,6 @@ impl Runtime {
                     })
                     .collect::<HashMap<(Coin, Network), Syncer>>()
                     .into();
-                let clients = &self.syncers;
-                self.syncer_services = self
-                    .syncer_services
-                    .drain()
-                    .filter(|(k, _)| clients.contains_key(k))
-                    .collect();
             }
 
             Request::PeerdTerminated => {
@@ -2090,8 +2068,7 @@ impl Runtime {
 fn syncers_up(
     source: ServiceId,
     spawning_services: &mut HashMap<ServiceId, ServiceId>,
-    services: &HashMap<(Coin, Network), ServiceId>,
-    clients: &mut Syncers,
+    syncers: &mut Syncers,
     coin: Coin,
     network: Network,
     swap_id: SwapId,
@@ -2099,7 +2076,7 @@ fn syncers_up(
 ) -> Result<(), Error> {
     let k = (coin, network);
     let s = ServiceId::Syncer(coin, network);
-    if !services.contains_key(&k) && !spawning_services.contains_key(&s) {
+    if !syncers.service_online(&k) && !spawning_services.contains_key(&s) {
         let mut args = vec![
             "--coin".to_string(),
             coin.to_string(),
@@ -2109,7 +2086,7 @@ fn syncers_up(
         args.append(&mut syncer_servers_args(config, coin, network)?);
         info!("launching syncer with: {:?}", args);
         launch("syncerd", args)?;
-        clients.insert(
+        syncers.insert(
             k,
             Syncer {
                 clients: none!(),
@@ -2118,7 +2095,7 @@ fn syncers_up(
         );
         spawning_services.insert(s, source);
     }
-    if let Some(xs) = clients.get_mut(&k) {
+    if let Some(xs) = syncers.get_mut(&k) {
         xs.clients.insert(ServiceId::Swap(swap_id));
     }
     Ok(())
@@ -2301,6 +2278,28 @@ impl Syncers {
 
     pub fn contains_key(&self, k: &(Coin, Network)) -> bool {
         self.0.contains_key(k)
+    }
+
+    pub fn get(&self, k: &(Coin, Network)) -> Option<&Syncer> {
+        self.0.get(k)
+    }
+    pub fn syncer_services_len(&self) -> usize {
+        self.0
+            .values()
+            .filter(|Syncer { service_id, .. }| service_id.is_some())
+            .collect::<Vec<_>>()
+            .len()
+    }
+    // pub fn service_online(&self, key: (Coin, Network)) -> bool {
+    //     self.0
+    //         .iter()
+    //         .find(|(&k, Syncer { service_id, .. })| key == k && service_id.is_some())
+    //         .is_some()
+    // }
+    pub fn service_online(&self, key: &(Coin, Network)) -> bool {
+        self.get(key)
+            .map(|Syncer { service_id, .. }| service_id.is_none())
+            .unwrap_or(false)
     }
 }
 
