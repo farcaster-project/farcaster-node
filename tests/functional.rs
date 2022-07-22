@@ -33,8 +33,8 @@ use std::str::FromStr;
 
 use farcaster_core::blockchain::Network;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, EstimateFee, Event,
-    GetTx, Task, WatchAddress, WatchHeight, WatchTransaction,
+    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Event, GetTx, Task,
+    WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
 };
 
 use utils::config;
@@ -144,7 +144,7 @@ fn bitcoin_syncer_estimate_fee_test() {
     bitcoin_setup();
     let (tx, rx_event) = create_bitcoin_syncer(true, "estimatefee");
     let task = SyncerdTask {
-        task: Task::EstimateFee(EstimateFee {
+        task: Task::WatchEstimateFee(WatchEstimateFee {
             id: TaskId(1),
             lifetime: 0,
         }),

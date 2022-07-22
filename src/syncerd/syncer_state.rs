@@ -43,7 +43,7 @@ pub struct SyncerState {
     block_hash: Vec<u8>,
     tasks_sources: HashMap<InternalId, ServiceId>,
     watch_height: HashMap<InternalId, WatchHeight>,
-    watch_fee_estimation: HashMap<InternalId, EstimateFee>,
+    watch_fee_estimation: HashMap<InternalId, WatchEstimateFee>,
     lifetimes: HashMap<u64, HashSet<InternalId>>,
     pub addresses: HashMap<InternalId, AddressTransactions>,
     pub transactions: HashMap<InternalId, WatchedTransaction>,
@@ -334,7 +334,7 @@ impl SyncerState {
         self.unseen_transactions.insert(self.task_count.into());
     }
 
-    pub async fn estimate_fee(&mut self, task: EstimateFee, source: ServiceId) {
+    pub async fn estimate_fee(&mut self, task: WatchEstimateFee, source: ServiceId) {
         // increment the count to use it as a unique internal id
         self.task_count.increment();
         self.watch_fee_estimation
