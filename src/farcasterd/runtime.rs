@@ -35,6 +35,7 @@ use bitcoin::hashes::Hash as BitcoinHash;
 use clap::IntoApp;
 use internet2::LIGHTNING_P2P_DEFAULT_PORT;
 use request::{Commit, List, Params};
+use std::collections::hash_map::Drain;
 use std::io;
 use std::iter::FromIterator;
 use std::net::SocketAddr;
@@ -184,7 +185,7 @@ pub struct Runtime {
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     pending_sweep_requests: HashMap<ServiceId, Request>, // TODO: merge this with pending requests eventually
     syncer_services: HashMap<(Coin, Network), ServiceId>,
-    syncers: HashMap<(Coin, Network), HashSet<ServiceId>>,
+    syncers: Syncers,
     progress: HashMap<ServiceId, VecDeque<Request>>,
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>,
     funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount, bool)>,
@@ -389,34 +390,55 @@ impl Runtime {
         self.syncers = self
             .syncers
             .drain()
-            .filter_map(|((coin, network), mut xs)| {
-                xs.remove(&client_service_id);
-                if !xs.is_empty() {
-                    Some(((coin, network), xs))
-                } else {
-                    let service_id = ServiceId::Syncer(coin, network);
-                    info!("Terminating {}", service_id);
-                    if endpoints
-                        .send_to(
-                            ServiceBus::Ctl,
-                            identity.clone(),
-                            service_id,
-                            Request::Terminate,
-                        )
-                        .is_ok()
-                    {
-                        None
+            .filter_map(
+                |(
+                    (coin, network),
+                    Syncer {
+                        mut clients,
+                        service_id,
+                    },
+                )| {
+                    clients.remove(&client_service_id);
+                    if !clients.is_empty() {
+                        Some((
+                            (coin, network),
+                            Syncer {
+                                clients,
+                                service_id,
+                            },
+                        ))
                     } else {
-                        Some(((coin, network), xs))
+                        let service_id = ServiceId::Syncer(coin, network);
+                        info!("Terminating {}", &service_id);
+                        if endpoints
+                            .send_to(
+                                ServiceBus::Ctl,
+                                identity.clone(),
+                                service_id.clone(),
+                                Request::Terminate,
+                            )
+                            .is_ok()
+                        {
+                            None
+                        } else {
+                            Some((
+                                (coin, network),
+                                Syncer {
+                                    clients,
+                                    service_id: Some(service_id),
+                                },
+                            ))
+                        }
                     }
-                }
-            })
-            .collect();
-        let clients = &self.syncers;
+                },
+            )
+            .collect::<HashMap<(Coin, Network), Syncer>>()
+            .into();
+        let syncers = &self.syncers;
         self.syncer_services = self
             .syncer_services
             .drain()
-            .filter(|(k, _)| clients.contains_key(k))
+            .filter(|(k, _)| syncers.contains_key(k))
             .collect();
 
         Ok(())
@@ -1724,10 +1746,16 @@ impl Runtime {
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
-                    if let Some(xs) = self.syncers.get_mut(&k) {
-                        xs.insert(source.clone());
+                    if let Some(syncer) = self.syncers.get_mut(&k) {
+                        syncer.clients.insert(source.clone());
                     } else {
-                        self.syncers.insert(k, set![source.clone()]);
+                        self.syncers.insert(
+                            k,
+                            Syncer {
+                                service_id: None,
+                                clients: set![source.clone()],
+                            },
+                        );
                     }
                     self.pending_sweep_requests.insert(source, request);
                 } else {
@@ -1776,10 +1804,16 @@ impl Runtime {
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
-                    if let Some(xs) = self.syncers.get_mut(&k) {
-                        xs.insert(source.clone());
+                    if let Some(syncer) = self.syncers.get_mut(&k) {
+                        syncer.clients.insert(source.clone());
                     } else {
-                        self.syncers.insert(k, set![source.clone()]);
+                        self.syncers.insert(
+                            k,
+                            Syncer {
+                                clients: set![source.clone()],
+                                service_id: None,
+                            },
+                        );
                     }
                     self.pending_sweep_requests.insert(source, request);
                 } else {
@@ -1827,8 +1861,8 @@ impl Runtime {
                     .syncers
                     .drain()
                     .filter_map(|((coin, network), mut xs)| {
-                        xs.remove(&client_service_id);
-                        if !xs.is_empty() {
+                        xs.clients.remove(&client_service_id);
+                        if !xs.clients.is_empty() {
                             Some(((coin, network), xs))
                         } else {
                             let service_id = ServiceId::Syncer(coin, network);
@@ -1848,7 +1882,8 @@ impl Runtime {
                             }
                         }
                     })
-                    .collect();
+                    .collect::<HashMap<(Coin, Network), Syncer>>()
+                    .into();
                 let clients = &self.syncers;
                 self.syncer_services = self
                     .syncer_services
@@ -2056,7 +2091,7 @@ fn syncers_up(
     source: ServiceId,
     spawning_services: &mut HashMap<ServiceId, ServiceId>,
     services: &HashMap<(Coin, Network), ServiceId>,
-    clients: &mut HashMap<(Coin, Network), HashSet<ServiceId>>,
+    clients: &mut Syncers,
     coin: Coin,
     network: Network,
     swap_id: SwapId,
@@ -2074,11 +2109,17 @@ fn syncers_up(
         args.append(&mut syncer_servers_args(config, coin, network)?);
         info!("launching syncer with: {:?}", args);
         launch("syncerd", args)?;
-        clients.insert(k, none!());
+        clients.insert(
+            k,
+            Syncer {
+                clients: none!(),
+                service_id: None,
+            },
+        );
         spawning_services.insert(s, source);
     }
     if let Some(xs) = clients.get_mut(&k) {
-        xs.insert(ServiceId::Swap(swap_id));
+        xs.clients.insert(ServiceId::Swap(swap_id));
     }
     Ok(())
 }
@@ -2233,13 +2274,40 @@ pub fn launch(
         err
     })
 }
+#[derive(Default)]
 struct Syncers(HashMap<(Coin, Network), Syncer>);
 
-#[derive(Eq, Hash, PartialEq)]
+impl From<HashMap<(Coin, Network), Syncer>> for Syncers {
+    fn from(m: HashMap<(Coin, Network), Syncer>) -> Self {
+        Syncers(m)
+    }
+}
+
+impl Syncers {
+    // pub fn inner(&mut self) -> &mut HashMap<(Coin, Network), Syncer> {
+    //     &mut self.0
+    // }
+    pub fn drain(&mut self) -> Drain<'_, (Coin, Network), Syncer> {
+        self.0.drain()
+    }
+
+    pub fn get_mut(&mut self, k: &(Coin, Network)) -> Option<&mut Syncer> {
+        self.0.get_mut(k)
+    }
+
+    pub fn insert(&mut self, k: (Coin, Network), v: Syncer) -> Option<Syncer> {
+        self.0.insert(k, v)
+    }
+
+    pub fn contains_key(&self, k: &(Coin, Network)) -> bool {
+        self.0.contains_key(k)
+    }
+}
+
 struct Syncer {
     // when service_id set, syncer is online
     service_id: Option<ServiceId>,
-    clients: Vec<ServiceId>,
+    clients: HashSet<ServiceId>,
 }
 
 struct SyncerPair<'a> {
