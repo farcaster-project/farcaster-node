@@ -75,6 +75,7 @@ jobs:
           swap_alice_maker,
           swap_bob_funds_incorrect_amount,
           swap_bob_maker_kill_peerd_before_funding_should_reconnect_success,
+          swap_bob_maker_manual_monero_sweep,
           swap_bob_maker_normal,
           swap_bob_maker_punish_kill_bob,
           swap_bob_maker_refund_alice_does_not_fund,
@@ -86,8 +87,8 @@ jobs:
           swap_bob_maker_user_abort_sweep_btc,
           swap_parallel_execution,
           swap_revoke_offer_bob_maker_normal,
+          cli_make_offer,
           grpc_server_functional_test,
-          cli_make_offer
         ]
         include:
           - test: swap
