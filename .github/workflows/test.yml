@@ -31,7 +31,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --all-targets --all-features --no-fail-fast --verbose
+          args: --workspace --all-targets --all-features --no-fail-fast
         env:
           CARGO_INCREMENTAL: '0'
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Coverflow-checks=off'
@@ -49,13 +49,29 @@ jobs:
 
   functional-test:
     name: Functional tests
-    timeout-minutes: 90
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        test: [bitcoin, monero, swap]
+        test: [
+          bitcoin_syncer,
+          monero_syncer,
+          swap_alice_maker,
+          swap_bob_funds_incorrect_amount,
+          swap_bob_maker_kill_peerd,
+          swap_bob_maker_manual_monero_sweep,
+          swap_bob_maker_normal,
+          swap_bob_maker_punish_kill_bob,
+          swap_bob_maker_refund,
+          swap_bob_maker_restore_checkpoint,
+          swap_bob_maker_user_abort_sweep_btc,
+          swap_parallel_execution,
+          swap_revoke_offer_bob_maker_normal,
+          cli,
+          # grpc, TODO: re-enable once ipv6 address support has landed
+        ]
         include:
-          - test: swap
+          - test: swap_parallel_execution
             logs: true
     runs-on: ubuntu-latest
     container:
@@ -121,7 +137,7 @@ jobs:
           key: test-${{ matrix.test }}
 
       - name: Cargo functional test
-        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast --verbose -- --ignored --nocapture --test-threads=1
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast -- --ignored --nocapture --test-threads=1
 
       - name: Archive farcasterd logs
         uses: actions/upload-artifact@v3
