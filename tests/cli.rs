@@ -1,5 +1,5 @@
-use utils::fc::*;
 use std::time;
+use utils::fc::*;
 
 #[macro_use]
 extern crate log;
