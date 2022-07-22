@@ -90,7 +90,7 @@ docker pull ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
 docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest\
     /usr/bin/monero-wallet-rpc --stagenet\
     --disable-rpc-login --wallet-dir wallets\
-    --daemon-host stagenet.melo.tools:38081\
+    --daemon-host stagenet.community.rino.io:38081\
     --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083\
     --confirm-external-bind
 ```
