@@ -145,7 +145,7 @@ pub fn run(
         pending_requests: none!(),
         pending_sweep_requests: none!(),
         syncer_services: none!(),
-        syncer_clients: none!(),
+        syncers: none!(),
         consumed_offers: none!(),
         progress: none!(),
         progress_subscriptions: none!(),
@@ -184,7 +184,7 @@ pub struct Runtime {
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     pending_sweep_requests: HashMap<ServiceId, Request>, // TODO: merge this with pending requests eventually
     syncer_services: HashMap<(Coin, Network), ServiceId>,
-    syncer_clients: HashMap<(Coin, Network), HashSet<ServiceId>>,
+    syncers: HashMap<(Coin, Network), HashSet<ServiceId>>,
     progress: HashMap<ServiceId, VecDeque<Request>>,
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>,
     funding_btc: HashMap<SwapId, (bitcoin::Address, bitcoin::Amount, bool)>,
@@ -386,8 +386,8 @@ impl Runtime {
 
         let client_service_id = ServiceId::Swap(*swapid);
 
-        self.syncer_clients = self
-            .syncer_clients
+        self.syncers = self
+            .syncers
             .drain()
             .filter_map(|((coin, network), mut xs)| {
                 xs.remove(&client_service_id);
@@ -412,7 +412,7 @@ impl Runtime {
                 }
             })
             .collect();
-        let clients = &self.syncer_clients;
+        let clients = &self.syncers;
         self.syncer_services = self
             .syncer_services
             .drain()
@@ -816,7 +816,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &self.syncer_services,
-                        &mut self.syncer_clients,
+                        &mut self.syncers,
                         Coin::Bitcoin,
                         network,
                         swap_id,
@@ -826,7 +826,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &self.syncer_services,
-                        &mut self.syncer_clients,
+                        &mut self.syncers,
                         Coin::Monero,
                         network,
                         swap_id,
@@ -1087,7 +1087,7 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     &mut self.spawning_services,
                     &self.syncer_services,
-                    &mut self.syncer_clients,
+                    &mut self.syncers,
                     Coin::Bitcoin,
                     public_offer.offer.network,
                     swap_id,
@@ -1097,7 +1097,7 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     &mut self.spawning_services,
                     &self.syncer_services,
-                    &mut self.syncer_clients,
+                    &mut self.syncers,
                     Coin::Monero,
                     public_offer.offer.network,
                     swap_id,
@@ -1724,10 +1724,10 @@ impl Runtime {
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
-                    if let Some(xs) = self.syncer_clients.get_mut(&k) {
+                    if let Some(xs) = self.syncers.get_mut(&k) {
                         xs.insert(source.clone());
                     } else {
-                        self.syncer_clients.insert(k, set![source.clone()]);
+                        self.syncers.insert(k, set![source.clone()]);
                     }
                     self.pending_sweep_requests.insert(source, request);
                 } else {
@@ -1776,10 +1776,10 @@ impl Runtime {
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
-                    if let Some(xs) = self.syncer_clients.get_mut(&k) {
+                    if let Some(xs) = self.syncers.get_mut(&k) {
                         xs.insert(source.clone());
                     } else {
-                        self.syncer_clients.insert(k, set![source.clone()]);
+                        self.syncers.insert(k, set![source.clone()]);
                     }
                     self.pending_sweep_requests.insert(source, request);
                 } else {
@@ -1823,8 +1823,8 @@ impl Runtime {
                     )?;
                 }
 
-                self.syncer_clients = self
-                    .syncer_clients
+                self.syncers = self
+                    .syncers
                     .drain()
                     .filter_map(|((coin, network), mut xs)| {
                         xs.remove(&client_service_id);
@@ -1849,7 +1849,7 @@ impl Runtime {
                         }
                     })
                     .collect();
-                let clients = &self.syncer_clients;
+                let clients = &self.syncers;
                 self.syncer_services = self
                     .syncer_services
                     .drain()
