@@ -7,9 +7,11 @@ pub mod config;
 pub mod fc;
 pub mod misc;
 
-pub fn setup_logging(level: Option<log::LevelFilter>) {
-    let _ = env_logger::builder()
+pub fn setup_logging() {
+    // !!! Configure RUST_LOG in CI to change this value !!!
+    let env = env_logger::Env::new()
+        .default_filter_or("farcaster_node=info");
+    let _ = env_logger::from_env(env)
         .is_test(true)
-        .filter_level(level.unwrap_or(log::LevelFilter::Info))
         .try_init();
 }

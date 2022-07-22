@@ -70,7 +70,7 @@ make_polling_test!(bitcoin_syncer_broadcast_tx_test);
 #[timeout(600000)]
 #[ignore]
 fn bitcoin_syncer_retrieve_transaction_test() {
-    setup_logging(None);
+    setup_logging();
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
@@ -137,7 +137,7 @@ We test for the following scenarios in the block height tests:
 - Mine another block and receive two HeightChanged events
 */
 fn bitcoin_syncer_block_height_test(polling: bool) {
-    setup_logging(None);
+    setup_logging();
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
@@ -224,7 +224,7 @@ the minimum height
 
 */
 fn bitcoin_syncer_address_test(polling: bool) {
-    setup_logging(None);
+    setup_logging();
     let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
@@ -438,7 +438,7 @@ the threshold confs are reached
 - Submit two WatchTransaction tasks in parallel with the same recipient address, receive confirmation events for both
 */
 fn bitcoin_syncer_transaction_test(polling: bool) {
-    setup_logging(None);
+    setup_logging();
     let bitcoin_rpc = bitcoin_setup();
 
     // generate some blocks to an address
@@ -668,7 +668,7 @@ We test for the following scenarios in the abort tests:
 #[timeout(300000)]
 #[ignore]
 fn bitcoin_syncer_abort_test() {
-    setup_logging(None);
+    setup_logging();
     let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
     let bitcoin_rpc = bitcoin_setup();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -792,7 +792,7 @@ We test the following scenarios in the broadcast tx tests:
 - Submit a BroadcastTransaction task, receive a success event
 */
 fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
-    setup_logging(None);
+    setup_logging();
     let bitcoin_rpc = bitcoin_setup();
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
@@ -887,7 +887,7 @@ receive a success event and check that the address balance is sweeped
 #[timeout(600000)]
 #[ignore]
 fn bitcoin_syncer_sweep_address_test() {
-    setup_logging(None);
+    setup_logging();
     let bitcoin_rpc = bitcoin_setup();
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_source_address = bitcoin_rpc.get_new_address(None, None).unwrap();

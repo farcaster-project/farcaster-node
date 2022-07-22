@@ -48,7 +48,7 @@ We test for the following scenarios in the block height tests:
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_block_height_test() {
-    setup_logging(None);
+    setup_logging();
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
@@ -118,7 +118,7 @@ async fn monero_syncer_block_height_test() {
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_sweep_test() {
-    setup_logging(None);
+    setup_logging();
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
@@ -205,9 +205,10 @@ height
 async fn monero_syncer_address_test() {
     for (socket_name, lws_bool) in [("address", false), ("lws_address", true)] {
         if lws_bool {
-            setup_logging(Some(log::LevelFilter::Trace))
+            std::env::set_var("RUST_LOG", "farcaster_node=trace,monero-lws=trace");
+            setup_logging()
         } else {
-            setup_logging(None)
+            setup_logging()
         };
         info!(
             "testing {}",
@@ -425,7 +426,7 @@ found confirmation event. Then relay and receive further events.
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_transaction_test() {
-    setup_logging(None);
+    setup_logging();
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap().address;
     let blocks = regtest.generate_blocks(200, address).await.unwrap();
@@ -602,7 +603,7 @@ We test for the following scenarios in the abort tests:
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_abort_test() {
-    setup_logging(None);
+    setup_logging();
     let (tx, rx_event) = create_monero_syncer("abort", false);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
@@ -720,7 +721,7 @@ Check that a monero BroadcastTransaction task generates an error
 #[timeout(300000)]
 #[ignore]
 async fn monero_syncer_broadcast_tx_test() {
-    setup_logging(None);
+    setup_logging();
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
     regtest.generate_blocks(1, address.address).await.unwrap();
