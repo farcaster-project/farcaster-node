@@ -15,7 +15,7 @@ docker pull ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
 docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest\
     /usr/bin/monero-wallet-rpc --stagenet\
     --disable-rpc-login --wallet-dir wallets\
-    --daemon-host stagenet.melo.tools:38081\
+    --daemon-host stagenet.community.rino.io:38081\
     --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083\
     --confirm-external-bind
 ```
@@ -26,7 +26,7 @@ and
 docker run --rm -p 38084:38084 ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest\
     /usr/bin/monero-wallet-rpc --stagenet\
     --disable-rpc-login --wallet-dir wallets\
-    --daemon-host stagenet.melo.tools:38081\
+    --daemon-host stagenet.community.rino.io:38081\
     --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38084\
     --confirm-external-bind
 ```
@@ -40,7 +40,7 @@ We will start two daemons with different data directories (`.node01` and `.node0
 ```toml
 [syncers.testnet]
 electrum_server = "ssl://blockstream.info:993"
-monero_daemon = "http://stagenet.melo.tools:38081"
+monero_daemon = "http://stagenet.community.rino.io:38081"
 monero_rpc_wallet = "http://localhost:{38083|38084}"
 ```
 

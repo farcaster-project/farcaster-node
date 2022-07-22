@@ -43,7 +43,7 @@ First you need to run a `monero rpc wallet` to manage the moneros, if you have i
 ```
 monero-wallet-rpc --stagenet --rpc-bind-port 38083\
     --disable-rpc-login\
-    --daemon-host stagenet.melo.tools:38081\
+    --daemon-host stagenet.community.rino.io:38081\
     --trusted-daemon\
     --password "soMeDummYPasSwOrd"\
     --wallet-dir ~/.fc_monero_wallets
@@ -55,7 +55,7 @@ or you can use the Docker image
 docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest\
     /usr/bin/monero-wallet-rpc --stagenet\
     --disable-rpc-login --wallet-dir wallets\
-    --daemon-host stagenet.melo.tools:38081\
+    --daemon-host stagenet.community.rino.io:38081\
     --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083\
     --confirm-external-bind
 ```
@@ -190,7 +190,7 @@ Only blockchain daemons and electrum servers are listed, you should always run y
 | daemon            | value                                                |
 | ----------------- | ---------------------------------------------------- |
 | `electrum server` | `ssl://blockstream.info:700` **(default)**           |
-| `monero daemon`   | `http://node.melo.tools:18081`                       |
+| `monero daemon`   | `http://node.community.rino.io:18081`                       |
 | `monero daemon`   | `http://node.monerooutreach.org:18081` **(default)** |
 
 **Testnet/Stagenet**
@@ -198,7 +198,7 @@ Only blockchain daemons and electrum servers are listed, you should always run y
 | daemon            | value                                            |
 | ----------------- | ------------------------------------------------ |
 | `electrum server` | `ssl://blockstream.info:993` **(default)**       |
-| `monero daemon`   | `http://stagenet.melo.tools:38081` **(default)** |
+| `monero daemon`   | `http://stagenet.community.rino.io:38081` **(default)** |
 
 ### Run a swap locally
 
