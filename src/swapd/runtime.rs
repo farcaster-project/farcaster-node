@@ -2280,21 +2280,25 @@ impl Runtime {
                 // just cancel the swap, no additional logic required
                 self.state_update(endpoints, State::Alice(AliceState::FinishA(Outcome::Abort)))?;
                 self.abort_swap(endpoints)?;
-                self.send_ctl(
-                    endpoints,
-                    source,
-                    Request::String("Aborted swap".to_string()),
-                )?;
+                if let ServiceId::Client(_) = source {
+                    self.send_ctl(
+                        endpoints,
+                        source,
+                        Request::String("Aborted swap".to_string()),
+                    )?;
+                }
             }
             Request::AbortSwap if self.state.b_start() => {
                 // just cancel the swap, no additional logic required, since funding was not yet retrieved
                 self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Abort)))?;
                 self.abort_swap(endpoints)?;
-                self.send_ctl(
-                    endpoints,
-                    source,
-                    Request::String("Aborted swap".to_string()),
-                )?;
+                if let ServiceId::Client(_) = source {
+                    self.send_ctl(
+                        endpoints,
+                        source,
+                        Request::String("Aborted swap".to_string()),
+                    )?;
+                }
             }
             Request::AbortSwap
                 if self.state.b_commit()
@@ -2309,21 +2313,27 @@ impl Runtime {
                 )?;
                 // cancel the swap to invalidate its state
                 self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Abort)))?;
-                self.send_ctl(
-                    endpoints,
-                    source,
-                    Request::String("Aborting swap, checking if funds can be sweeped.".to_string()),
-                )?;
+                if let ServiceId::Client(_) = source {
+                    self.send_ctl(
+                        endpoints,
+                        source,
+                        Request::String(
+                            "Aborting swap, checking if funds can be sweeped.".to_string(),
+                        ),
+                    )?;
+                }
             }
             Request::AbortSwap => {
                 let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
                 warn!("{} | {}", self.swap_id, msg);
 
-                self.send_ctl(
-                    endpoints,
-                    source,
-                    Request::Failure(Failure { code: 1, info: msg }),
-                )?;
+                if let ServiceId::Client(_) = source {
+                    self.send_ctl(
+                        endpoints,
+                        source,
+                        Request::Failure(Failure { code: 1, info: msg }),
+                    )?;
+                }
             }
             Request::GetInfo(_) => {
                 let swap_id = if self.swap_id() == zero!() {
