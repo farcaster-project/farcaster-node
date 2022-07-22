@@ -38,4 +38,8 @@ impl Opts {
     pub fn process(&mut self) {
         self.shared.process();
     }
+
+    pub fn absolute_data_dir_path(&self) -> PathBuf {
+        PathBuf::from(shellexpand::tilde(&self.shared.data_dir.to_string_lossy()).to_string())
+    }
 }
