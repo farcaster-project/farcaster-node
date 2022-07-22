@@ -91,7 +91,7 @@ jobs:
           grpc_server_functional_test,
         ]
         include:
-          - test: swap
+          - test: swap_parallel_execution
             logs: true
     runs-on: ubuntu-latest
     container:
