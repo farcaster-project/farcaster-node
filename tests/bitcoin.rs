@@ -7,18 +7,18 @@ use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::opts::{Coin, Opts};
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::types::{
-    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, EstimateFee, GetTx,
-    Task, WatchAddress, WatchHeight, WatchTransaction, SweepAddress, SweepAddressAddendum
+    Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
+    SweepAddressAddendum, Task, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
 };
-use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
 use farcaster_node::syncerd::SweepBitcoinAddress;
+use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
 use farcaster_node::ServiceId;
 use internet2::ZMQ_CONTEXT;
 use ntest::timeout;
 use paste::paste;
+use std::convert::TryInto;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
-use std::convert::TryInto;
 
 use utils::assert;
 use utils::config;
@@ -113,7 +113,7 @@ fn bitcoin_syncer_estimate_fee_test() {
     bitcoin_setup();
     let (tx, rx_event) = create_bitcoin_syncer(true, "estimatefee");
     let task = SyncerdTask {
-        task: Task::EstimateFee(EstimateFee {
+        task: Task::WatchEstimateFee(WatchEstimateFee {
             id: TaskId(1),
             lifetime: 0,
         }),

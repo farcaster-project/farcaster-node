@@ -92,7 +92,7 @@ services:
   walletrpc:
     image: "ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3"
     container_name: walletrpc
-    command: "/usr/bin/monero-wallet-rpc --stagenet --disable-rpc-login --wallet-dir wallets --daemon-host stagenet.melo.tools:38081 --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083 --confirm-external-bind"
+    command: "/usr/bin/monero-wallet-rpc --stagenet --disable-rpc-login --wallet-dir wallets --daemon-host stagenet.community.rino.io:38081 --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083 --confirm-external-bind"
 ```
 
 :mag_right: If you plan to make offer with the Docker stack make sure you understand what ports need to be open and forwarded. You might need to additionally configure your firewall to enable takers to connect.

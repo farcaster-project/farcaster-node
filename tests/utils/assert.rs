@@ -128,7 +128,7 @@ pub fn transaction_received(request: Request, expected_txid: bitcoin::Txid) {
 pub fn fee_estimation_received(request: Request) {
     match request {
         Request::SyncerdBridgeEvent(farcaster_node::rpc::request::SyncerdBridgeEvent {
-                         event:
+            event:
                 Event::FeeEstimation(FeeEstimation {
                     fee_estimations:
                         FeeEstimations::BitcoinFeeEstimation {
@@ -139,7 +139,7 @@ pub fn fee_estimation_received(request: Request) {
                 }),
             ..
         }) => {
-             assert!(high_priority_sats_per_kvbyte >= 1000);
+            assert!(high_priority_sats_per_kvbyte >= 1000);
             assert!(low_priority_sats_per_kvbyte >= 1000);
         }
         _ => {

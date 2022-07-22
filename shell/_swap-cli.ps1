@@ -49,7 +49,8 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('abort-swap', 'abort-swap', [CompletionResultType]::ParameterValue, 'Abort a swap if it has not locked yet')
             [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request swap progress report')
             [CompletionResult]::new('needs-funding', 'needs-funding', [CompletionResultType]::ParameterValue, 'Returns addresses and amounts that require funding for coin')
-            [CompletionResult]::new('sweep-address', 'sweep-address', [CompletionResultType]::ParameterValue, 'Attempts to sweep any funds on a given funding address')
+            [CompletionResult]::new('sweep-bitcoin-address', 'sweep-bitcoin-address', [CompletionResultType]::ParameterValue, 'Attempts to sweep any funds on a given bitcoin funding address')
+            [CompletionResult]::new('sweep-monero-address', 'sweep-monero-address', [CompletionResultType]::ParameterValue, 'Attempts to sweep any funds on a given monero funding address')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -293,7 +294,22 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
             break
         }
-        'swap-cli;sweep-address' {
+        'swap-cli;sweep-bitcoin-address' {
+            [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
+            [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
+            [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')
+            [CompletionResult]::new('--tor-proxy', 'tor-proxy', [CompletionResultType]::ParameterName, 'Use Tor')
+            [CompletionResult]::new('-m', 'm', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
+            [CompletionResult]::new('--msg-socket', 'msg-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address to forward all incoming protocol messages')
+            [CompletionResult]::new('-x', 'x', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
+            [CompletionResult]::new('--ctl-socket', 'ctl-socket', [CompletionResultType]::ParameterName, 'ZMQ socket name/address for daemon control interface')
+            [CompletionResult]::new('-h', 'h', [CompletionResultType]::ParameterName, 'Print help information')
+            [CompletionResult]::new('--help', 'help', [CompletionResultType]::ParameterName, 'Print help information')
+            [CompletionResult]::new('-v', 'v', [CompletionResultType]::ParameterName, 'Set verbosity level')
+            [CompletionResult]::new('--verbose', 'verbose', [CompletionResultType]::ParameterName, 'Set verbosity level')
+            break
+        }
+        'swap-cli;sweep-monero-address' {
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')

@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::rpc::request::{Address, AddressSecretKey};
-use crate::syncerd::SweepBitcoinAddress;
+use crate::syncerd::{SweepBitcoinAddress, SweepXmrAddress};
 use farcaster_core::negotiation::Offer;
 use farcaster_core::swap::btcxmr::BtcXmr;
 use std::{
@@ -255,7 +255,7 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::SweepAddress {
+            Command::SweepBitcoinAddress {
                 source_address,
                 destination_address,
             } => {
@@ -272,6 +272,34 @@ impl Exec for Command {
                             source_address,
                             source_private_key: secret_key,
                             destination_address,
+                        }),
+                    )?;
+                    runtime.report_response_or_fail()?;
+                } else {
+                    return Err(Error::Farcaster("Received unexpected response".to_string()));
+                }
+            }
+
+            Command::SweepMoneroAddress {
+                source_address,
+                destination_address,
+            } => {
+                runtime.request(
+                    ServiceId::Database,
+                    Request::GetAddressSecretKey(Address::Monero(
+                        source_address.clone().to_string(),
+                    )),
+                )?;
+                if let Request::AddressSecretKey(AddressSecretKey::Monero { view, spend, .. }) =
+                    runtime.report_failure()?
+                {
+                    runtime.request(
+                        ServiceId::Farcasterd,
+                        Request::SweepXmrAddress(SweepXmrAddress {
+                            spend_key: monero::PrivateKey::from_slice(&spend).unwrap(),
+                            view_key: monero::PrivateKey::from_slice(&view).unwrap(),
+                            dest_address: destination_address,
+                            minimum_balance: monero::Amount::from_pico(0),
                         }),
                     )?;
                     runtime.report_response_or_fail()?;

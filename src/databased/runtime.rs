@@ -359,8 +359,8 @@ impl Runtime {
                             source,
                             Request::AddressSecretKey(request::AddressSecretKey::Monero {
                                 address,
-                                view: secret_key_pair.spend.as_bytes().try_into().unwrap(),
-                                spend: secret_key_pair.view.as_bytes().try_into().unwrap(),
+                                view: secret_key_pair.view.as_bytes().try_into().unwrap(),
+                                spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
                             }),
                         )?;
                     }

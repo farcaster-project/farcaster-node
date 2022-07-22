@@ -600,10 +600,11 @@ impl Runtime {
                 };
                 endpoints.send_to(
                     ServiceBus::Ctl,
-                    ServiceId::Wallet,
-                    // TODO: (maybe) what if the message responded to is not sent by swapd?
+                    self.identity(),
                     source,
-                    Request::Protocol(Msg::Reveal((req_swap_id, proof.clone()).into())),
+                    Request::Protocol(Msg::Reveal(Reveal::Proof(
+                        (req_swap_id, proof.clone()).into(),
+                    ))),
                 )?;
             }
             Request::Protocol(Msg::Reveal(Reveal::Proof(proof))) => {
@@ -673,12 +674,10 @@ impl Runtime {
                                     endpoints.send_to(
                                         ServiceBus::Ctl,
                                         ServiceId::Wallet,
-                                        // TODO: (maybe) what if the message responded to is not
-                                        // sent by swapd?
                                         source,
-                                        Request::Protocol(Msg::Reveal(
+                                        Request::Protocol(Msg::Reveal(Reveal::Proof(
                                             (swap_id, local_proof.clone()).into(),
-                                        )),
+                                        ))),
                                     )?;
                                 }
                                 // nothing to do yet, waiting for Msg
@@ -741,9 +740,9 @@ impl Runtime {
                                     // TODO: (maybe) what if the message responded to is not sent
                                     // by swapd?
                                     source.clone(),
-                                    Request::Protocol(Msg::Reveal(
+                                    Request::Protocol(Msg::Reveal(Reveal::Proof(
                                         (swap_id, local_proof.clone()).into(),
-                                    )),
+                                    ))),
                                 )?;
                             }
 
@@ -1527,6 +1526,18 @@ impl Runtime {
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
+
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        Request::SetAddressSecretKey(AddressSecretKey::Monero {
+                            address: corresponding_address.to_string(),
+                            spend: keypair.spend.as_bytes().try_into().unwrap(),
+                            view: keypair.view.as_bytes().try_into().unwrap(),
+                        }),
+                    )?;
+
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend,
@@ -1611,6 +1622,18 @@ impl Runtime {
                         .xmr_addrs
                         .remove(&get_swap_id(&source)?)
                         .expect("checked at the start of a swap");
+
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Wallet,
+                        ServiceId::Database,
+                        Request::SetAddressSecretKey(AddressSecretKey::Monero {
+                            address: corresponding_address.to_string(),
+                            spend: keypair.spend.as_bytes().try_into().unwrap(),
+                            view: keypair.view.as_bytes().try_into().unwrap(),
+                        }),
+                    )?;
+
                     let sweep_keys = SweepXmrAddress {
                         view_key: view,
                         spend_key: spend,

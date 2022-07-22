@@ -135,6 +135,7 @@ pub fn run(
         spawning_services: none!(),
         making_swaps: none!(),
         taking_swaps: none!(),
+        pending_swap_init: none!(),
         arb_addrs: none!(),
         acc_addrs: none!(),
         public_offers: none!(),
@@ -172,6 +173,7 @@ pub struct Runtime {
     spawning_services: HashMap<ServiceId, ServiceId>,
     making_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     taking_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
+    pending_swap_init: HashMap<ServiceId, Vec<(Request, SwapId)>>,
     public_offers: HashSet<PublicOffer<BtcXmr>>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
@@ -616,6 +618,21 @@ impl Runtime {
                                 request,
                             )?;
                         }
+                        let xs = self.pending_swap_init.get(&source).cloned();
+                        if let Some(xs) = xs {
+                            for (init_swap_req, swap_id) in xs {
+                                if let Ok(()) = endpoints.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
+                                    ServiceId::Swap(swap_id.clone()),
+                                    init_swap_req,
+                                ) {
+                                    self.pending_swap_init.remove(&source);
+                                } else {
+                                    error!("Failed to dispatch init swap requests containing swap params");
+                                };
+                            }
+                        }
                     }
                     ServiceId::Syncer(..) => {
                         error!(
@@ -629,12 +646,12 @@ impl Runtime {
                     }
                 };
 
-                if let Some((swap_params, _network)) = self.making_swaps.get(&source) {
+                if let Some((swap_params, network)) = self.making_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
                         "Swapd {} is known: we spawned it to create a swap. \
-                         Requesting swapd to be the maker of this swap",
+                             Requesting swapd to be the maker of this swap",
                         source
                     );
                     report_to.push((
@@ -644,20 +661,37 @@ impl Runtime {
                             source
                         ))),
                     ));
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        source.clone(),
-                        Request::MakeSwap(swap_params.clone()),
-                    )?;
+                    // notify this swapd about its syncers that are up and
+                    // running. if syncer not ready, then swapd will be notified
+                    // on the ServiceId::Syncer(coin, network) Hello pattern. in
+                    // sum, if syncer is up, send msg immediately else wait for
+                    // syncer to say hello, and then dispatch msg
+                    let init_swap_req = Request::MakeSwap(swap_params.clone());
+                    if self
+                        .syncer_services
+                        .contains_key(&(Coin::Bitcoin, *network))
+                    {
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            source.clone(),
+                            init_swap_req,
+                        )?;
+                    } else {
+                        let xs = self
+                            .pending_swap_init
+                            .entry(ServiceId::Syncer(Coin::Bitcoin, *network))
+                            .or_insert(vec![]);
+                        xs.push((init_swap_req, swap_params.swap_id));
+                    }
                     self.running_swaps.insert(swap_params.swap_id);
                     self.making_swaps.remove(&source);
-                } else if let Some((swap_params, _network)) = self.taking_swaps.get(&source) {
+                } else if let Some((swap_params, network)) = self.taking_swaps.get(&source) {
                     // Tell swapd swap options and link it with the
                     // connection daemon
                     debug!(
                         "Daemon {} is known: we spawned it to create a swap. \
-                         Requesting swapd to be the taker of this swap",
+                             Requesting swapd to be the taker of this swap",
                         source
                     );
                     report_to.push((
@@ -667,12 +701,24 @@ impl Runtime {
                             source
                         ))),
                     ));
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        source.clone(),
-                        Request::TakeSwap(swap_params.clone()),
-                    )?;
+                    let init_swap_req = Request::TakeSwap(swap_params.clone());
+                    if self
+                        .syncer_services
+                        .contains_key(&(Coin::Bitcoin, *network))
+                    {
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            source.clone(),
+                            init_swap_req,
+                        )?;
+                    } else {
+                        let xs = self
+                            .pending_swap_init
+                            .entry(ServiceId::Syncer(Coin::Bitcoin, *network))
+                            .or_insert(vec![]);
+                        xs.push((init_swap_req, swap_params.swap_id));
+                    }
                     self.running_swaps.insert(swap_params.swap_id);
                     self.taking_swaps.remove(&source);
                 } else if let Some(enquirer) = self.spawning_services.get(&source) {
@@ -786,11 +832,6 @@ impl Runtime {
                         swap_id,
                         &self.config,
                     )?;
-
-                    if !self.syncer_services.contains_key(&(Coin::Bitcoin, network)) {
-                        trace!("give time for syncer to come online");
-                        std::thread::sleep(Duration::from_secs_f32(10.0));
-                    }
                     trace!(
                         "launching swapd with swap_id: {}",
                         swap_id.bright_yellow_bold()
@@ -1643,6 +1684,60 @@ impl Runtime {
                     source,
                     Request::String(res),
                 )?;
+            }
+
+            Request::SweepXmrAddress(sweep_xmr_address) => {
+                // TODO: remove once conversion is implemented in farcaster core Network type
+                let coin = Coin::Monero;
+                let network = match sweep_xmr_address.dest_address.network {
+                    monero::Network::Mainnet => Network::Mainnet,
+                    monero::Network::Stagenet => Network::Testnet,
+                    monero::Network::Testnet => Network::Testnet,
+                };
+                // check if a monero syncer is up
+                let id = TaskId(self.syncer_task_counter);
+                let request = Request::SyncerTask(Task::SweepAddress(SweepAddress {
+                    id,
+                    retry: false,
+                    lifetime: u64::MAX,
+                    addendum: SweepAddressAddendum::Monero(sweep_xmr_address),
+                    from_height: None,
+                }));
+                self.syncer_task_counter += 1;
+                self.syncer_tasks.insert(id, source.clone());
+
+                let k = (coin, network);
+                let s = ServiceId::Syncer(coin, network);
+                if !self.syncer_services.contains_key(&k)
+                    && !self.spawning_services.contains_key(&s)
+                {
+                    let mut args = vec![
+                        "--coin".to_string(),
+                        coin.to_string(),
+                        "--network".to_string(),
+                        network.to_string(),
+                    ];
+                    args.append(
+                        &mut syncer_servers_args(&self.config, coin, network)
+                            .or(syncer_servers_args(&self.config, coin, Network::Local))?,
+                    );
+                    info!("launching syncer with: {:?}", args);
+                    launch("syncerd", args)?;
+                    self.spawning_services.insert(s, ServiceId::Farcasterd);
+                    if let Some(xs) = self.syncer_clients.get_mut(&k) {
+                        xs.insert(source.clone());
+                    } else {
+                        self.syncer_clients.insert(k, set![source.clone()]);
+                    }
+                    self.pending_sweep_requests.insert(source, request);
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Syncer(coin, network),
+                        request,
+                    )?;
+                }
             }
 
             Request::SweepBitcoinAddress(sweep_bitcoin_address) => {

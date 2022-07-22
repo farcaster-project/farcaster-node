@@ -217,8 +217,13 @@ impl Runtime {
                 std::process::exit(0);
             }
 
-            _ => {
-                error!("{}", "Request is not supported by the CTL interface".err());
+            (req, source) => {
+                error!(
+                    "{} req: {}, source: {}",
+                    "Request is not supported by the CTL interface".err(),
+                    req,
+                    source
+                );
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
