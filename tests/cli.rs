@@ -1,4 +1,5 @@
 use utils::fc::*;
+use std::time;
 
 #[macro_use]
 extern crate log;
@@ -42,7 +43,7 @@ async fn cli_make_offer() {
     ];
     args.append(&mut data_dir_maker.iter().map(std::ops::Deref::deref).collect());
 
-    run_cli(args);
+    run_cli(args).expect("cli failed to run");
 
     // clean up processes
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
