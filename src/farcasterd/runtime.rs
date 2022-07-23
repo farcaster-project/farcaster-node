@@ -2298,7 +2298,7 @@ impl Syncers {
     // }
     pub fn service_online(&self, key: &(Coin, Network)) -> bool {
         self.get(key)
-            .map(|Syncer { service_id, .. }| service_id.is_none())
+            .map(|Syncer { service_id, .. }| service_id.is_some())
             .unwrap_or(false)
     }
 }
