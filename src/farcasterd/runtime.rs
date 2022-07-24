@@ -2258,14 +2258,8 @@ pub fn launch(
         err
     })
 }
-#[derive(Default)]
+#[derive(Default, From)]
 struct Syncers(HashMap<(Coin, Network), Syncer>);
-
-impl From<HashMap<(Coin, Network), Syncer>> for Syncers {
-    fn from(m: HashMap<(Coin, Network), Syncer>) -> Self {
-        Syncers(m)
-    }
-}
 
 impl Syncers {
     pub fn inner(&mut self) -> &mut HashMap<(Coin, Network), Syncer> {
