@@ -614,12 +614,7 @@ impl Runtime {
                         }
                     }
                     ServiceId::Syncer(coin, network)
-                        if self
-                            .syncers
-                            .inner()
-                            .get(&(*coin, *network))
-                            .map(|Syncer { service_id, .. }| service_id.is_none())
-                            .unwrap_or(false)
+                        if !self.syncers.service_online(&(*coin, *network))
                             && self.spawning_services.contains_key(&source) =>
                     {
                         if let Some(Syncer { service_id, .. }) =
@@ -691,8 +686,7 @@ impl Runtime {
                     let init_swap_req = Request::MakeSwap(swap_params.clone());
                     if self
                         .syncers
-                        .inner()
-                        .contains_key(&(Coin::Bitcoin, *network))
+                        .pair_ready((Coin::Bitcoin, *network), (Coin::Monero, *network))
                     {
                         endpoints.send_to(
                             ServiceBus::Ctl,
@@ -725,7 +719,10 @@ impl Runtime {
                         ))),
                     ));
                     let init_swap_req = Request::TakeSwap(swap_params.clone());
-                    if self.syncers.service_online(&(Coin::Bitcoin, *network)) {
+                    if self
+                        .syncers
+                        .pair_ready((Coin::Bitcoin, *network), (Coin::Monero, *network))
+                    {
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -2278,12 +2275,17 @@ impl Syncers {
             .map(|Syncer { service_id, .. }| service_id.is_some())
             .unwrap_or(false)
     }
+    pub fn pair_ready(&self, coin0: (Coin, Network), coin1: (Coin, Network)) -> bool {
+        SyncerPair::new(&self, coin0, coin1)
+            .map(|syncer_pair| syncer_pair.ready())
+            .unwrap_or(false)
+    }
 }
 
 struct Syncer {
     // when service_id set, syncer is online
     service_id: Option<ServiceId>,
-    clients: HashSet<ServiceId>,
+    clients: HashSet<ServiceId>, // swapds
 }
 
 struct SyncerPair<'a> {
