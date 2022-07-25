@@ -75,7 +75,7 @@ jobs:
             logs: true
     runs-on: ubuntu-latest
     env:
-      RUST_LOG: 'farcaster_node=debug,microservices=debug'
+      RUST_LOG: 'info,farcaster_node=debug,microservices=debug'
     container:
       image: rust:slim-bullseye
       volumes:

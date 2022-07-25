@@ -9,9 +9,10 @@ pub mod misc;
 
 pub fn setup_logging() {
     // !!! Configure RUST_LOG in CI to change this value !!!
-    let env = env_logger::Env::new().default_filter_or("farcaster_node=debug");
-    env_logger::from_env(env)
-        .is_test(true)
-        .try_init()
-        .expect("Failed to initialize loggger!");
+    // set default level to info, debug for node
+    // info level is for bitcoin and monero that correspond to `tests/{bitcoin.rs,monero.rs}`
+    let env = env_logger::Env::new().default_filter_or("info,farcaster_node=debug");
+    // try init the logger, this fails if logger has been already initialized
+    // and it happens when multiple tests are called as the (test)binary is not restarted
+    let _ = env_logger::from_env(env).is_test(true).try_init();
 }
