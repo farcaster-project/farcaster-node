@@ -47,7 +47,7 @@ monero_rpc_wallet = "http://localhost:{38083|38084}"
 Then launch two `farcasterd` services:
 
 ```
-farcasterd -vv --data-dir {.node01|.node02}
+farcasterd --data-dir {.node01|.node02}
 ```
 
 You can use other public daemons for syncers, see [:bulb: Use public infrastructure](../README.md#bulb-use-public-infrastructure) for more details.
@@ -122,7 +122,7 @@ monero-wallet-rpc --stagenet --rpc-bind-port 38083\
 Then start the node with:
 
 ```
-farcasterd -vv -c farcasterd.toml
+farcasterd -c farcasterd.toml
 ```
 
 with `farcasterd.toml` configuration file:

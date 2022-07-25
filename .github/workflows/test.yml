@@ -74,6 +74,8 @@ jobs:
           - test: swap_parallel_execution
             logs: true
     runs-on: ubuntu-latest
+    env:
+      RUST_LOG: 'farcaster_node=debug,microservices=debug'
     container:
       image: rust:slim-bullseye
       volumes:
@@ -137,7 +139,7 @@ jobs:
           key: test-${{ matrix.test }}
 
       - name: Cargo functional test
-        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast -- --ignored --nocapture --test-threads=1
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
 
       - name: Archive farcasterd logs
         uses: actions/upload-artifact@v3

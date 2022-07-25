@@ -86,7 +86,7 @@ services:
     ports:
       - "9735:9735"
       - "9981:9981"
-    command: "-vv -c /var/lib/farcaster/farcasterd.toml"
+    command: "-c /var/lib/farcaster/farcasterd.toml"
     depends_on:
       - "walletrpc"
   walletrpc:

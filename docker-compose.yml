@@ -5,7 +5,9 @@ services:
     ports:
       - "9735:9735"
       - "9981:9981"
-    command: "-vvv -c /var/lib/farcaster/farcasterd.toml"
+    environment:
+      - RUST_LOG: "info"
+    command: "-c /var/lib/farcaster/farcasterd.toml"
     depends_on:
       - "walletrpc"
   walletrpc:

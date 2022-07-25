@@ -27,8 +27,6 @@ _swap-cli() {
 '--help[Print help information]' \
 '-V[Print version information]' \
 '--version[Print version information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ":: :_swap-cli_commands" \
 "*::: :->swap-cli" \
 && ret=0
@@ -50,8 +48,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 '::subject -- Remote peer address or temporary/permanent/short channel id. If absent, returns information about the node itself:' \
 && ret=0
 ;;
@@ -67,8 +63,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
 (list-swaps)
@@ -83,8 +77,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
 (list-offers)
@@ -101,8 +93,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
 (offer-info)
@@ -117,8 +107,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':public-offer -- The offer to be canceled:' \
 && ret=0
 ;;
@@ -134,8 +122,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
 (list-checkpoints)
@@ -150,8 +136,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
 (restore-checkpoint)
@@ -166,8 +150,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':swap-id:' \
 && ret=0
 ;;
@@ -203,8 +185,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
 (take)
@@ -225,8 +205,6 @@ _arguments "${_arguments_options[@]}" \
 '--without-validation[Accept the public offer without validation]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 ;;
 (revoke-offer)
@@ -241,8 +219,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':public-offer -- The offer to be canceled:' \
 && ret=0
 ;;
@@ -258,8 +234,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':swap-id -- The swap to be aborted:' \
 && ret=0
 ;;
@@ -277,8 +251,6 @@ _arguments "${_arguments_options[@]}" \
 '--follow[Subscribe to progress and only return when progress is finished]' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':swapid -- The swap id requested:' \
 && ret=0
 ;;
@@ -294,8 +266,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':coin -- The coin funding required needs to be checked against:' \
 && ret=0
 ;;
@@ -311,8 +281,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':source-address -- The source address to be swept:' \
 ':destination-address -- The destination address receiving the coins:' \
 && ret=0
@@ -329,8 +297,6 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':source-address -- The source address to be swept:' \
 ':destination-address -- The destination address receiving the coins:' \
 && ret=0
@@ -345,8 +311,6 @@ _arguments "${_arguments_options[@]}" \
 '--msg-socket=[ZMQ socket name/address to forward all incoming protocol messages]:MSG_SOCKET:_files' \
 '-x+[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 '*::subcommand -- The subcommand whose help message to display:' \
 && ret=0
 ;;

@@ -27,8 +27,6 @@ _swapd() {
 '--help[Print help information]' \
 '-V[Print version information]' \
 '--version[Print version information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 ':swap-id -- Swap id:' \
 ':public-offer -- Public offer to initiate swapd runtime:' \
 ':trade-role -- Trade role of participant (Maker or Taker):' \

@@ -37,8 +37,6 @@ _peerd() {
 '--help[Print help information]' \
 '-V[Print version information]' \
 '--version[Print version information]' \
-'*-v[Set verbosity level]' \
-'*--verbose[Set verbosity level]' \
 && ret=0
 }
 

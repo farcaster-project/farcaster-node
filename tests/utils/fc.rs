@@ -20,12 +20,12 @@ pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Ve
 
     let farcasterd_maker_args = farcasterd_args(
         data_dir_maker.clone(),
-        vec!["-vvv", "--config", &format!("tests/cfg/fc1{}", ext)],
+        vec!["--config", &format!("tests/cfg/fc1{}", ext)],
         vec!["2>&1", "|", "tee", "-a", "tests/fc1.log"],
     );
     let farcasterd_taker_args = farcasterd_args(
         data_dir_taker.clone(),
-        vec!["-vvv", "--config", &format!("tests/cfg/fc2{}", ext)],
+        vec!["--config", &format!("tests/cfg/fc2{}", ext)],
         vec!["2>&1", "|", "tee", "-a", "tests/fc2.log"],
     );
 
