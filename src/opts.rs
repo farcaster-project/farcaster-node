@@ -127,7 +127,10 @@ impl Opts {
             Ok(v) if v == "true" => true,
             _ => false,
         };
-        env_logger::from_env(env).is_test(is_test).try_init().expect("Failed to initialize loggger!");
+        env_logger::from_env(env)
+            .is_test(is_test)
+            .try_init()
+            .expect("Failed to initialize loggger!");
 
         let mut me = self.clone();
 
