@@ -27,8 +27,9 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 Follow the instruction for [`installing the node`](./doc/install-guide.md) on your machine by compiling sources or using containers. Containers might be your best bet, for a quick try.
 
 Depending on the chosen installation method:
-* you now have to continue to [build from sources](#build-from-sources)
-* or continue to [run with docker](#run-with-docker)
+
+- you now have to continue to [build from sources](#build-from-sources)
+- or continue to [run with docker](#run-with-docker)
 
 They provide instructions on how to launch the swap node, codenamed `farcasterd`.
 
@@ -112,7 +113,7 @@ If you just want to take a public offer, you may jump to [Take the offer](#:mone
 
 ### :hammer: Make an offer
 
-After making an offer, the maker starts listening for other peers to connect and take that offer -- and hopefully execute a swap successfully. 
+After making an offer, the maker starts listening for other peers to connect and take that offer -- and hopefully execute a swap successfully.
 
 A `peerd` instance is spawned by the maker and binds to the specified `address:port`. The taker's `farcasterd` then launches its own `peerd` that connects to the makers `peerd`. The communication is then established between two nodes, and they can pass lightning encoded peer messages and swap.
 
@@ -129,7 +130,7 @@ swap-cli make --btc-addr tb1q935eq5fl2a3ajpqp0e3d7z36g7vctcgv05f5lf\
     --public-ip-addr 1.2.3.4 --bind-ip-addr 0.0.0.0 --port 9735 --overlay tcp
 ```
 
-The `btc-addr` and `xmr-addr` are your external wallet addresses, where the coins will end up upon successful or failure cases. They are followed by the amounts exchanged. Assets and networks defaults to Bitcoin and Monero on testnet (Bitcoin testnet3, Monero stagenet). 
+The `btc-addr` and `xmr-addr` are your external wallet addresses, where the coins will end up upon successful or failure cases. They are followed by the amounts exchanged. Assets and networks defaults to Bitcoin and Monero on testnet (Bitcoin testnet3, Monero stagenet).
 
 The role for the maker is specified in the offer with `--maker-role`. `Alice` sells moneroj for bitcoins, `Bob` sells bitcoins for moneroj. Timelock parameters are set to **4** and **5** for cancel and punish and the transaction fee that must be applied is **1 satoshi per vByte**.
 
@@ -137,14 +138,13 @@ Here the maker will send bitcoins and will receive moneroj in her `54EYTy2HYFcAX
 
 `--public-ip-addr` (default to `127.0.0.1`) and `--port` (default to `9735`) are used in the public offer for the taker to connect. `--bind-ip-addr` allows to bind the listening peerd to `0.0.0.0`, `tcp` is used as overlay between peers.
 
-:mag_right: To enable a taker to connect and take the offer the `public-ip-addr:port` must be accessible and answered by the `peerd` bound to `bind-id-address:port`. 
+:mag_right: To enable a taker to connect and take the offer the `public-ip-addr:port` must be accessible and answered by the `peerd` bound to `bind-id-address:port`.
 
 So maker must make sure her router allows external connections to that port to her node.
 
 **The public offer result**
 
-The make command will output an encoded **public offer** that can be shared with potential takers. As a maker, your `farcasterd` registers this public offer, and waits for someone to connect through `peerd` and take the offer. A taker in her turn takes the offer and initiates a swap with the maker. 
-
+The make command will output an encoded **public offer** that can be shared with potential takers. As a maker, your `farcasterd` registers this public offer, and waits for someone to connect through `peerd` and take the offer. A taker in her turn takes the offer and initiates a swap with the maker.
 
 Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when the log asks for this. At the end coins are swapped successfully, or - less ideally - refunded. We currently offer no manual cancel functionality. We offer progress through `swap-cli progress {swapid}`. To list the the swapids of the running swaps, use `swap-cli ls`.
 
@@ -190,20 +190,19 @@ Only blockchain daemons and electrum servers are listed, you should always run y
 | daemon            | value                                                |
 | ----------------- | ---------------------------------------------------- |
 | `electrum server` | `ssl://blockstream.info:700` **(default)**           |
-| `monero daemon`   | `http://node.community.rino.io:18081`                       |
+| `monero daemon`   | `http://node.community.rino.io:18081`                |
 | `monero daemon`   | `http://node.monerooutreach.org:18081` **(default)** |
 
 **Testnet/Stagenet**
 
-| daemon            | value                                            |
-| ----------------- | ------------------------------------------------ |
-| `electrum server` | `ssl://blockstream.info:993` **(default)**       |
+| daemon            | value                                                   |
+| ----------------- | ------------------------------------------------------- |
+| `electrum server` | `ssl://blockstream.info:993` **(default)**              |
 | `monero daemon`   | `http://stagenet.community.rino.io:38081` **(default)** |
 
 ### Run a swap locally
 
 If you want to test a swap with yourself locally, you can follow the instructions [here](./doc/local-swap.md).
-
 
 ## Releases and Changelog
 
