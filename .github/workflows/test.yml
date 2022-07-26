@@ -73,6 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUST_LOG: 'info,farcaster_node=debug,microservices=debug'
+      RUST_BACKTRACE: 1
     container:
       image: rust:slim-bullseye
       volumes:
@@ -136,4 +137,4 @@ jobs:
           key: test-${{ matrix.test }}
 
       - name: Cargo functional test
-        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features -- --ignored --test-threads=1

@@ -10,7 +10,7 @@ docker-compose up -d
 Place your specific test name after `cargo test`, the following command runs all tests:
 
 ```
-RUST_LOG="farcaster_node=debug,microservices=debug" cargo test --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+RUST_BACKTRACE=1 RUST_LOG="farcaster_node=debug,microservices=debug" cargo test --workspace --all-targets --all-features -- --ignored --test-threads=1
 ```
 
 Stop the tests and remove the volume:
