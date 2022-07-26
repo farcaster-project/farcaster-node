@@ -14,5 +14,5 @@ pub fn setup_logging() {
     let env = env_logger::Env::new().default_filter_or("info,farcaster_node=debug");
     // try init the logger, this fails if logger has been already initialized
     // and it happens when multiple tests are called as the (test)binary is not restarted
-    let _ = env_logger::from_env(env).is_test(true).try_init();
+    let _ = env_logger::from_env(env).try_init();
 }
