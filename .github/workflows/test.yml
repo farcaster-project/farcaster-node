@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_LOG_STYLE: always
 
 jobs:
   test:
@@ -135,4 +136,4 @@ jobs:
         uses: Swatinem/rust-cache@v2.0.0
 
       - name: Cargo functional test
-        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features -- --ignored --test-threads=1
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --color always -- --ignored --test-threads=1
