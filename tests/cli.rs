@@ -1,6 +1,8 @@
 use std::time;
 use utils::fc::*;
 
+use farcaster_node::rpc::request::MadeOffer;
+
 #[macro_use]
 extern crate log;
 
@@ -43,7 +45,8 @@ async fn cli_make_offer() {
     ];
     args.append(&mut data_dir_maker.iter().map(std::ops::Deref::deref).collect());
 
-    run_cli(args).expect("cli failed to run");
+    let res: MadeOffer = cli(args).unwrap();
+    println!("{:?}", res);
 
     // clean up processes
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
