@@ -578,12 +578,12 @@ pub enum Request {
     SwapInfo(SwapInfo),
 
     #[api(type = 1103)]
-    #[display("peer_list({0})", alt = "{0:#}")]
+    #[display(inner)]
     #[from]
     PeerList(List<NodeAddr>),
 
     #[api(type = 1104)]
-    #[display("swap_list({0})", alt = "{0:#}")]
+    #[display(inner)]
     #[from]
     SwapList(List<SwapId>),
 
@@ -594,7 +594,7 @@ pub enum Request {
 
     // TODO: only list offers matching list of OfferIds
     #[api(type = 1106)]
-    #[display("offer_list({0})", alt = "{0:#}")]
+    #[display(inner)]
     #[from]
     OfferList(List<PublicOffer>),
 
@@ -603,7 +603,7 @@ pub enum Request {
     // #[from]
     // OfferIdList(List<PublicOfferId>),
     #[api(type = 1107)]
-    #[display("offer_list({0})", alt = "{0:#}")]
+    #[display(inner)]
     #[from]
     ListenList(List<String>),
 
@@ -675,7 +675,7 @@ pub enum Request {
     RemoveCheckpoint(SwapId),
 
     #[api(type = 1308)]
-    #[display("checkpoint_list({0})", alt = "{0:#}")]
+    #[display(inner)]
     CheckpointList(List<CheckpointEntry>),
 
     #[api(type = 1309)]

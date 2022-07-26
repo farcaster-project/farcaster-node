@@ -173,10 +173,10 @@ impl Exec for Command {
             }
 
             Command::OfferInfo {
-                public_offer: PublicOffer { offer, .. },
+                public_offer
             } => {
-                println!("\n Trading {}\n", offer_buy_information(&offer));
-                println!("{}\n", offer);
+                println!("\n Trading {}\n", offer_buy_information(&public_offer.offer));
+                println!("{}", serde_yaml::to_string(&public_offer).expect("already parsed"));
             }
 
             Command::Take {
@@ -205,7 +205,7 @@ impl Exec for Command {
                         offer_buy_information(&offer)
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
-                    println!("{}\n", offer);
+                    println!("{}", serde_yaml::to_string(&public_offer).expect("already parsed"));
                 }
                 if without_validation || take_offer() {
                     // pass offer to farcasterd to initiate the swap
