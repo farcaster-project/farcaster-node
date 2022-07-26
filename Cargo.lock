@@ -993,6 +993,7 @@ dependencies = [
 [[package]]
 name = "farcaster_core"
 version = "0.4.4"
+source = "git+https://github.com/farcaster-project/farcaster-core?branch=inet0.8#58d1ba7a7b2f7f59e83ff7c8b72c51a5b760dd35"
 dependencies = [
  "amplify",
  "base58-monero",
