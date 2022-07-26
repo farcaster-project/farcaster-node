@@ -635,7 +635,7 @@ impl Runtime {
                                 request,
                             )?;
                         }
-                        let k = &syncer_services_pair(&source);
+                        let k = &normalize_syncer_services_pair(&source);
                         if let (ServiceId::Syncer(c0, n0), ServiceId::Syncer(c1, n1)) = k {
                             if self.syncers.pair_ready((*c0, *n0), (*c1, *n1)) {
                                 let xs = self.pending_swap_init.get(k).cloned();
@@ -653,6 +653,8 @@ impl Runtime {
                                         };
                                     }
                                 }
+                            } else {
+                                warn!("syncer pair not ready")
                             }
                         }
                     }
@@ -2321,7 +2323,7 @@ impl<'a> SyncerPair<'a> {
     }
 }
 
-fn syncer_services_pair(source: &ServiceId) -> (ServiceId, ServiceId) {
+fn normalize_syncer_services_pair(source: &ServiceId) -> (ServiceId, ServiceId) {
     match source {
         ServiceId::Syncer(Coin::Monero, network) | ServiceId::Syncer(Coin::Bitcoin, network) => (
             ServiceId::Syncer(Coin::Bitcoin, *network),
