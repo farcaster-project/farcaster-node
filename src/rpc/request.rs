@@ -483,7 +483,7 @@ pub enum Request {
     MakeOffer(ProtoPublicOffer),
 
     #[api(type = 206)]
-    #[display("made_offer({0})", alt = "{0:#}")]
+    #[display(inner)]
     MadeOffer(MadeOffer),
 
     #[api(type = 207)]
@@ -1084,8 +1084,9 @@ pub struct ProtoPublicOffer {
 )]
 #[display(MadeOffer::to_yaml_string)]
 pub struct MadeOffer {
-    pub offer: String,
     pub message: String,
+    pub offer: String,
+    pub details: PublicOffer,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

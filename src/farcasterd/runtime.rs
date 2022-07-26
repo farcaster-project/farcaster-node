@@ -1208,7 +1208,7 @@ impl Runtime {
                     self.acc_addrs
                         .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
                     endpoints.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, ServiceId::Database, Request::SetOfferStatus(OfferStatusPair {
-                        offer: public_offer,
+                        offer: public_offer.clone(),
                         status: OfferStatus::Open,
                     }))?;
                     endpoints.send_to(
@@ -1216,8 +1216,9 @@ impl Runtime {
                         ServiceId::Farcasterd, // source
                         source.clone(),        // destination
                         Request::MadeOffer(MadeOffer {
-                            offer: serialized_offer,
                             message: msg,
+                            offer: serialized_offer,
+                            details: public_offer,
                         }),
                     )?;
                     Ok(())
