@@ -93,7 +93,6 @@ settings = { version = "0.10", package = "config", optional = true }
 shellexpand = { version = "2", optional = true }
 slip132 = "0.7.0"
 strict_encoding = "0.8.0"
-strict_encoding_derive = "1.7.6"
 sysinfo = { version = "0.18.2" }
 rustc-hex = "2.1.0"
 # Async
@@ -123,7 +122,6 @@ bitcoin = "0.28"
 monero = "0.16"
 # internet2 = { path = "../ext/rust-internet2" }
 strict_encoding = "0.8.0"
-strict_encoding_derive = "=1.7.6"
 internet2 = "0.8.0"
 lazy_static = "1.4"
 clap = { version = "3.0.0", features = ["env"] }

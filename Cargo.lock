@@ -1068,7 +1068,6 @@ dependencies = [
  "shellexpand",
  "slip132",
  "strict_encoding 0.8.0",
- "strict_encoding_derive 1.7.6",
  "strip-ansi-escapes",
  "sysinfo",
  "tokio",
