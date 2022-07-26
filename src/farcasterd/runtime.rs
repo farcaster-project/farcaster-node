@@ -2277,8 +2277,7 @@ impl Syncers {
         self.0
             .values()
             .filter(|Syncer { service_id, .. }| service_id.is_some())
-            .collect::<Vec<_>>()
-            .len()
+            .count()
     }
     pub fn service_online(&self, key: &(Coin, Network)) -> bool {
         self.0
