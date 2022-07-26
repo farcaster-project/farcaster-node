@@ -1,4 +1,4 @@
 [syncers.testnet]
 electrum_server = "ssl://blockstream.info:993"
-monero_daemon = "http://stagenet.melo.tools:38081"
+monero_daemon = "http://stagenet.community.rino.io:38081"
 monero_rpc_wallet = "http://walletrpc:38083"

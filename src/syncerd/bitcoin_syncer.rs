@@ -11,13 +11,13 @@ use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
 use crate::syncerd::BroadcastTransaction;
 use crate::syncerd::BtcAddressAddendum;
-use crate::syncerd::EstimateFee;
 use crate::syncerd::Event;
 use crate::syncerd::FeeEstimations;
 use crate::syncerd::GetTx;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::TransactionRetrieved;
+use crate::syncerd::WatchEstimateFee;
 use crate::ServiceId;
 use crate::{error::Error, syncerd::syncer_state::create_set};
 use crate::{error::SyncerError, internet2::Duplex};
@@ -573,7 +573,7 @@ async fn run_syncerd_task_receiver(
                                 .await
                                 .expect("failed on transaction_get sender");
                         }
-                        Task::EstimateFee(task) => {
+                        Task::WatchEstimateFee(task) => {
                             let mut state_guard = state.lock().await;
                             state_guard.estimate_fee(task, syncerd_task.source).await;
                             drop(state_guard);

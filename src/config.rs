@@ -26,7 +26,7 @@ pub const FARCASTER_MAINNET_MONERO_DAEMON: &str = "http://node.monerooutreach.or
 pub const FARCASTER_MAINNET_MONERO_RPC_WALLET: &str = "http://localhost:18083";
 
 pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993";
-pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.melo.tools:38081";
+pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.community.rino.io:38081";
 pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
 
 #[cfg(feature = "shell")]

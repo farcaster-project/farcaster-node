@@ -49,19 +49,17 @@ monero_rpc_wallet = "http://localhost:18083"
 # Optional: the monero light wallet server to use instead of the monero rpc wallet
 # monero_lws = "http://localhost:38884"
 
-
 # Testnet/stagenet daemons
 [syncers.testnet]
 # Electrum Server used by the Bitcoin syncer on testnet
 electrum_server = "ssl://blockstream.info:993"
 # Monero daemon used by the Monero syncer on stagenet
-monero_daemon = "http://stagenet.melo.tools:38081"
+monero_daemon = "http://stagenet.community.rino.io:38081"
 # Monero Wallet RPC used by the Monero syncer on stagenet
 # Point to local running wallet
 monero_rpc_wallet = "http://localhost:38083"
 # Optional: the monero light wallet server to use instead of the monero rpc wallet
 # monero_lws = "http://localhost:38884"
-
 
 # Local development daemons, null by default
 [syncers.local]

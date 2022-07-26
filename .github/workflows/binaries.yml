@@ -18,14 +18,6 @@ jobs:
           1.58.1,
           stable
         ]
-        bin: [
-          farcasterd,
-          peerd,
-          swapd,
-          walletd,
-          syncerd,
-          swap-cli
-        ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -41,12 +33,10 @@ jobs:
           profile: minimal
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v1.4.0
-        with:
-          key: bin-${{ matrix.bin }}
+        uses: Swatinem/rust-cache@v2.0.0
 
-      - name: Build ${{ matrix.bin }} daemon
+      - name: Build farcaster daemon
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --bin ${{ matrix.bin }} --all-features
+          args: --all-features

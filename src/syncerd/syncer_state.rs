@@ -43,7 +43,7 @@ pub struct SyncerState {
     block_hash: Vec<u8>,
     tasks_sources: HashMap<InternalId, ServiceId>,
     watch_height: HashMap<InternalId, WatchHeight>,
-    watch_fee_estimation: HashMap<InternalId, EstimateFee>,
+    watch_fee_estimation: HashMap<InternalId, WatchEstimateFee>,
     lifetimes: HashMap<u64, HashSet<InternalId>>,
     pub addresses: HashMap<InternalId, AddressTransactions>,
     pub transactions: HashMap<InternalId, WatchedTransaction>,
@@ -334,7 +334,7 @@ impl SyncerState {
         self.unseen_transactions.insert(self.task_count.into());
     }
 
-    pub async fn estimate_fee(&mut self, task: EstimateFee, source: ServiceId) {
+    pub async fn estimate_fee(&mut self, task: WatchEstimateFee, source: ServiceId) {
         // increment the count to use it as a unique internal id
         self.task_count.increment();
         self.watch_fee_estimation
@@ -360,11 +360,12 @@ impl SyncerState {
 
     pub fn sweep_address(&mut self, task: SweepAddress, source: ServiceId) {
         self.task_count.increment();
-        // This is technically valid behavior; immediately prune the task for being past
-        // its lifetime by never inserting it
-        if let Err(e) = self.add_lifetime(task.lifetime, self.task_count.into()) {
-            error!("{}", e);
-            return;
+        if let Some(lifetimes) = self.lifetimes.get_mut(&task.lifetime) {
+            lifetimes.insert(self.task_count.into());
+        } else {
+            let mut lifetimes = HashSet::new();
+            lifetimes.insert(self.task_count.into());
+            self.lifetimes.insert(task.lifetime, lifetimes);
         }
         self.sweep_addresses.insert(self.task_count.into(), task);
         self.tasks_sources.insert(self.task_count.into(), source);

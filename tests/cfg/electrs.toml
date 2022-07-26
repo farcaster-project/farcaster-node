@@ -9,10 +9,10 @@
 # See docs or electrs man page for advanced settings.
 
 # Set if you have low-memory device (such as RPi) or you run electrs under a different user than bitcoind and do NOT have sysperms in bitcoind.
-#jsonrpc_import = true
+# jsonrpc_import = true
 
 # File where bitcoind stores the cookie, usually file .cookie in its datadir
-#cookie_file = "/var/run/bitcoin-mainnet/cookie"
+# cookie_file = "/var/run/bitcoin-mainnet/cookie"
 
 # Prefer cookie file unless you have btc-rpc-proxy or a good reason to use username:password
 # cookie and cookie_file can NOT be specified at the same tie.
@@ -22,7 +22,7 @@ cookie = "test:cEl2o3tHHgzYeuu3CiiZ2FjdgSiw9wNeMFzoNbFmx9k="
 daemon_rpc_addr = "bitcoind:18443"
 
 # Directory where the index should be stored. It should have at least 70GB of free space.
-#db_dir = "/some/fast/storage/with/big/size"
+# db_dir = "/some/fast/storage/with/big/size"
 
 # bitcoin means mainnet. Don't set to anything else unless you're a developer.
 network = "regtest"

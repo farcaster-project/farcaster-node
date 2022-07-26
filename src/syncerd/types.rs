@@ -218,7 +218,7 @@ pub struct GetTx {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
-pub struct EstimateFee {
+pub struct WatchEstimateFee {
     pub id: TaskId,
     pub lifetime: u64,
 }
@@ -235,7 +235,7 @@ pub enum Task {
     BroadcastTransaction(BroadcastTransaction),
     SweepAddress(SweepAddress),
     GetTx(GetTx),
-    EstimateFee(EstimateFee),
+    WatchEstimateFee(WatchEstimateFee),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

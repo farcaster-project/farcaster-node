@@ -28,7 +28,7 @@ pub enum AliceState {
         remote_params: Option<Params>,
         last_checkpoint_type: Option<SwapCheckpointType>,
     }, // local, remote, remote
-    #[display("RefundSigs(xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen}))")]
+    #[display("RefundSigs(xmr_locked({xmr_locked}), buy_pub({buy_published}), cancel_seen({cancel_seen}), refund_seen({refund_seen}), overfunded({overfunded}))")]
     RefundSigA {
         last_checkpoint_type: SwapCheckpointType,
         btc_locked: bool,

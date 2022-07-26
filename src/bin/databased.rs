@@ -46,7 +46,8 @@ fn main() {
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
     debug!("Starting runtime ...");
-    databased::run(service_config, opts.shared.data_dir).expect("Error running databased runtime");
+    databased::run(service_config, opts.absolute_data_dir_path())
+        .expect("Error running databased runtime");
 
     unreachable!()
 }

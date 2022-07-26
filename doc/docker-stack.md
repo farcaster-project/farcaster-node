@@ -57,7 +57,7 @@ docker run --rm --init -t -p 9735:9735 -p 9981:9981\
     --mount type=bind,source=<config folder>,destination=/etc/farcaster\
     --name farcaster_node\
     ghcr.io/farcaster-project/farcaster-node/farcasterd:latest\
-    -vvv -c /etc/farcaster/farcasterd.toml
+    -c /etc/farcaster/farcasterd.toml
 ```
 
 If you don't use the default values for syncers daemons don't forget to mount your config inside the container (here at `/etc/farcaster`) and pass the config file with `-c /etc/farcaster/farcasterd.toml`.
@@ -90,7 +90,7 @@ docker pull ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest
 docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-wallet-rpc:latest\
     /usr/bin/monero-wallet-rpc --stagenet\
     --disable-rpc-login --wallet-dir wallets\
-    --daemon-host stagenet.melo.tools:38081\
+    --daemon-host stagenet.community.rino.io:38081\
     --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083\
     --confirm-external-bind
 ```
@@ -125,7 +125,7 @@ The daemon is controlled though ZMQ _ctl_ socket, an internal interface for cont
 To launch `farcasterd` with network binded _control_ (`-x`) bus and _message_ bus (`-m`) instead of `ctl.rpc` and `msg.rpc` files:
 
 ```
-farcasterd -vv -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb"
+farcasterd -x "lnpz://127.0.0.1:9981/?api=esb" -m "lnpz://127.0.0.1:9982/?api=esb"
 ```
 
 **Client**
