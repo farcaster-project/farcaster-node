@@ -174,7 +174,6 @@ _arguments "${_arguments_options[@]}" \
 '--bind-ip-addr=[IPv4 or IPv6 address to bind to, listening for takers]:BIND_IP_ADDR: ' \
 '-p+[Port to use; defaults to the native LN port]:PORT: ' \
 '--port=[Port to use; defaults to the native LN port]:PORT: ' \
-'--overlay=[Use overlay protocol (http, websocket etc)]:OVERLAY: ' \
 '-d+[Data directory path]:DATA_DIR:_files -/' \
 '--data-dir=[Data directory path]:DATA_DIR:_files -/' \
 '-T+[Use Tor]:TOR_PROXY:_hosts' \

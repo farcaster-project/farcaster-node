@@ -23,7 +23,7 @@ use std::{
 };
 use std::{str::FromStr, thread::sleep};
 
-use internet2::{NodeAddr, RemoteSocketAddr, ToNodeAddr};
+use internet2::addr::{InetSocketAddr, NodeAddr};
 use microservices::shell::Exec;
 
 use farcaster_core::{
@@ -129,7 +129,6 @@ impl Exec for Command {
                 public_ip_addr,
                 bind_ip_addr,
                 port,
-                overlay,
             } => {
                 if network != Network::Testnet && network != Network::Local {
                     eprintln!(
@@ -156,8 +155,8 @@ impl Exec for Command {
                     fee_strategy,
                     maker_role,
                 };
-                let public_addr = RemoteSocketAddr::with_ip_addr(overlay, public_ip_addr, port);
-                let bind_addr = RemoteSocketAddr::with_ip_addr(overlay, bind_ip_addr, port);
+                let public_addr = InetSocketAddr::socket(public_ip_addr, port);
+                let bind_addr = InetSocketAddr::socket(bind_ip_addr, port);
                 let proto_offer = request::ProtoPublicOffer {
                     offer,
                     public_addr,

@@ -178,7 +178,6 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('--bind-ip-addr', 'bind-ip-addr', [CompletionResultType]::ParameterName, 'IPv4 or IPv6 address to bind to, listening for takers')
             [CompletionResult]::new('-p', 'p', [CompletionResultType]::ParameterName, 'Port to use; defaults to the native LN port')
             [CompletionResult]::new('--port', 'port', [CompletionResultType]::ParameterName, 'Port to use; defaults to the native LN port')
-            [CompletionResult]::new('--overlay', 'overlay', [CompletionResultType]::ParameterName, 'Use overlay protocol (http, websocket etc)')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('--data-dir', 'data-dir', [CompletionResultType]::ParameterName, 'Data directory path')
             [CompletionResult]::new('-T', 'T', [CompletionResultType]::ParameterName, 'Use Tor')

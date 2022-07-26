@@ -16,8 +16,7 @@ use clap::{ArgGroup, ValueHint};
 use std::net::IpAddr;
 
 use crate::opts::TokenString;
-use internet2::{FramingProtocol, LocalNode, RemoteNodeAddr};
-use strict_encoding::{StrictDecode, StrictEncode};
+use internet2::addr::{LocalNode, NodeAddr};
 
 /// Lightning peer network connection daemon; part of LNP Node
 ///
@@ -59,7 +58,7 @@ pub struct Opts {
     /// either IPv4, IPv6 or Onion address (v2 or v3); in the former case you
     /// will be also required to provide `--tor` argument.
     #[clap(short = 'C', long, group = "action")]
-    pub connect: Option<RemoteNodeAddr>,
+    pub connect: Option<NodeAddr>,
 
     /// Customize port used by lightning peer network
     ///
@@ -67,15 +66,6 @@ pub struct Opts {
     /// address given to `--listen` or `--connect` argument.
     #[clap(short, long, default_value = "9735")]
     pub port: u16,
-
-    /// Overlay peer communications through different transport protocol.
-    #[clap(
-        short,
-        long,
-        default_value = "tcp",
-        possible_values = &["tcp", "zmq", "http", "websocket", "smtp"]
-    )]
-    pub overlay: FramingProtocol,
 
     /// Node key configuration
     #[clap(flatten)]
@@ -109,7 +99,6 @@ use bitcoin::secp256k1::{rand::thread_rng, SecretKey};
 use std::str::FromStr;
 
 /// Hold secret keys and seeds
-#[derive(StrictEncode, StrictDecode)]
 pub struct PeerSecrets {
     /// local node private information
     local_node: LocalNode,
@@ -134,11 +123,7 @@ impl PeerKeyOpts {
             Some(secret_key) => secret_key,
             None => SecretKey::new(&mut rng),
         };
-        let curve = bitcoin::secp256k1::Secp256k1::new();
-        let local_node = LocalNode::with(
-            secret_key,
-            bitcoin::secp256k1::PublicKey::from_secret_key(&curve, &secret_key),
-        );
+        let local_node = LocalNode::with(bitcoin::secp256k1::SECP256K1, secret_key);
         PeerSecrets { local_node }
     }
 }

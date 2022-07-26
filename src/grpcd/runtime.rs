@@ -1,7 +1,6 @@
-use crate::internet2::Duplex;
-use crate::internet2::Encrypt;
 use crate::service::Endpoints;
-use internet2::zmqsocket::Connection;
+use internet2::DuplexConnection;
+use internet2::Encrypt;
 use internet2::PlainTranscoder;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -26,9 +25,13 @@ use crate::LogStyle;
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use colored::Colorize;
 use internet2::{
-    presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
+    addr::NodeAddr,
+    presentation, transport,
+    zeromq::{Connection, ZmqSocketType},
+    TypedEnum,
 };
 use microservices::esb::{self, Handler};
+use microservices::ZMQ_CONTEXT;
 use request::{LaunchSwap, NodeId};
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -141,7 +144,7 @@ fn request_loop(
     tx_request: zmq::Socket,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx_request);
+        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx_request);
         while let Some(request) = tokio_rx_request.recv().await {
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();

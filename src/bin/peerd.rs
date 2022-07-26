@@ -104,7 +104,8 @@ use std::time::Duration;
 use farcaster_node::peerd::{self, Opts};
 use farcaster_node::LogStyle;
 use farcaster_node::ServiceConfig;
-use internet2::{session, FramingProtocol, RemoteNodeAddr, RemoteSocketAddr};
+use internet2::addr::NodeAddr;
+use internet2::session;
 use microservices::peer::PeerConnection;
 
 /*
@@ -122,7 +123,7 @@ pub enum PeerSocket {
     /// TCP socket, which may be IPv4- or IPv6-based. For Tor hidden services
     /// use IPv4 TCP port proxied as a Tor hidden service in `torrc`.
     #[display("--listen={0}")]
-    Listen(RemoteSocketAddr),
+    Listen(InetSocketAddr),
 
     /// The service should connect to the remote peer residing on the provided
     /// address, which may be either IPv4/v6 or Onion V2/v3 address (using
@@ -131,7 +132,7 @@ pub enum PeerSocket {
     /// leaking any information about th elocal node to DNS resolvers, are not
     /// supported.
     #[display("--connect={0}")]
-    Connect(RemoteNodeAddr),
+    Connect(NodeAddr),
 }
 
 impl From<Opts> for PeerSocket {
@@ -139,16 +140,12 @@ impl From<Opts> for PeerSocket {
         if let Some(peer_addr) = opts.connect {
             Self::Connect(peer_addr)
         } else if let Some(bind_addr) = opts.listen {
-            Self::Listen(match opts.overlay {
-                FramingProtocol::FramedRaw => RemoteSocketAddr::Ftcp(InetSocketAddr {
-                    address: bind_addr
-                        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-                        .into(),
-                    port: opts.port,
-                }),
-                // TODO: (v2) implement overlay protocols
-                _ => unimplemented!(),
-            })
+            Self::Listen(InetSocketAddr::socket(
+                bind_addr
+                    .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+                    .into(),
+                opts.port,
+            ))
         } else {
             unreachable!("Either `connect` or `listen` must be present due to Clap configuration")
         }
@@ -177,10 +174,10 @@ fn main() {
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
     let mut local_socket: Option<InetSocketAddr> = None;
-    let mut remote_node_addr: Option<RemoteNodeAddr> = None;
+    let mut remote_node_addr: Option<NodeAddr> = None;
     let forked_from_listener: bool;
     let connection = match peer_socket {
-        PeerSocket::Listen(RemoteSocketAddr::Ftcp(inet_addr)) => {
+        PeerSocket::Listen(inet_addr) => {
             debug!("Running in LISTEN mode");
 
             forked_from_listener = true;
@@ -208,7 +205,7 @@ fn main() {
                             .expect("Unable to set up timeout for TCP connection");
 
                         debug!("Establishing session with the remote");
-                        let session = session::Raw::with_brontide(
+                        let session = session::BrontideSession::with(
                             stream,
                             local_node.private_key(),
                             inet_addr,
@@ -237,10 +234,9 @@ fn main() {
             remote_node_addr = Some(remote_node.clone());
 
             debug!("Connecting to {}", &remote_node.addr());
-            PeerConnection::connect(remote_node, &local_node)
+            PeerConnection::connect_brontide(local_node, remote_node)
                 .expect("Unable to connect to the remote peer")
         }
-        _ => unimplemented!(),
     };
 
     debug!("Starting runtime ...");

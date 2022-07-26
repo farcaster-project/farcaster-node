@@ -65,7 +65,7 @@ use farcaster_core::{
     swap::SwapId,
     transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
 };
-use internet2::{LocalNode, ToNodeAddr, TypedEnum, LIGHTNING_P2P_DEFAULT_PORT};
+use internet2::{addr::LocalNode, TypedEnum};
 use microservices::esb::{self, Handler};
 use request::{CheckpointChunk, CheckpointState, LaunchSwap, NodeId};
 

@@ -17,8 +17,6 @@ use monero::Address as XmrAddress;
 use std::net::IpAddr;
 use std::str::FromStr;
 
-use internet2::FramingProtocol;
-
 use farcaster_core::{
     bitcoin::{fee::SatPerVByte, timelock::CSVTimelock},
     blockchain::{Blockchain, FeeStrategy, Network},
@@ -183,10 +181,6 @@ pub enum Command {
         /// Port to use; defaults to the native LN port.
         #[clap(short, long, default_value = "9735")]
         port: u16,
-
-        /// Use overlay protocol (http, websocket etc).
-        #[clap(long, default_value = "tcp")]
-        overlay: FramingProtocol,
     },
 
     /// Taker accepts offer and connects to maker's daemon to start the trade.

@@ -1,3 +1,5 @@
+use crate::error::SyncerError;
+use crate::internet2::DuplexConnection;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
@@ -20,7 +22,6 @@ use crate::syncerd::TransactionRetrieved;
 use crate::syncerd::WatchEstimateFee;
 use crate::ServiceId;
 use crate::{error::Error, syncerd::syncer_state::create_set};
-use crate::{error::SyncerError, internet2::Duplex};
 use crate::{farcaster_core::consensus::Decodable, LogStyle};
 use bitcoin::hashes::{
     hex::{FromHex, ToHex},
@@ -36,10 +37,9 @@ use farcaster_core::bitcoin::segwitv0::signature_hash;
 use farcaster_core::bitcoin::transaction::TxInRef;
 use farcaster_core::blockchain::Network;
 use farcaster_core::consensus;
-use internet2::zmqsocket::Connection;
-use internet2::zmqsocket::ZmqType;
+use internet2::zeromq::{Connection, ZmqSocketType};
 use internet2::PlainTranscoder;
-use internet2::ZMQ_CONTEXT;
+use microservices::ZMQ_CONTEXT;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io;
@@ -532,7 +532,7 @@ async fn run_syncerd_bridge_event_sender(
     syncer_address: Vec<u8>,
 ) {
     tokio::spawn(async move {
-        let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
+        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();

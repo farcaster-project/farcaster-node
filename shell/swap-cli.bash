@@ -446,7 +446,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__make)
-            opts="-n -r -I -b -p -h -d -T -m -x --btc-addr --xmr-addr --network --arb-blockchain --acc-blockchain --btc-amount --xmr-amount --maker-role --cancel-timelock --punish-timelock --fee-strategy --public-ip-addr --bind-ip-addr --port --overlay --help --data-dir --tor-proxy --msg-socket --ctl-socket"
+            opts="-n -r -I -b -p -h -d -T -m -x --btc-addr --xmr-addr --network --arb-blockchain --acc-blockchain --btc-amount --xmr-amount --maker-role --cancel-timelock --punish-timelock --fee-strategy --public-ip-addr --bind-ip-addr --port --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -525,10 +525,6 @@ _swap-cli() {
                     return 0
                     ;;
                 -p)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --overlay)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

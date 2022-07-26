@@ -1,2 +1,1 @@
-msrv = "1.58.1"
 enum-variant-size-threshold = 4000

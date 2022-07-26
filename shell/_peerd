@@ -21,8 +21,6 @@ _peerd() {
 '--connect=[Connect to a remote peer with the provided address after start]:CONNECT: ' \
 '-p+[Customize port used by lightning peer network]:PORT: ' \
 '--port=[Customize port used by lightning peer network]:PORT: ' \
-'-o+[Overlay peer communications through different transport protocol]:OVERLAY:(tcp zmq http websocket smtp)' \
-'--overlay=[Overlay peer communications through different transport protocol]:OVERLAY:(tcp zmq http websocket smtp)' \
 '--peer-secret-key=[]:PEER_SECRET_KEY: ' \
 '--token=[Token used to authentify calls]:TOKEN: ' \
 '-d+[Data directory path]:DATA_DIR:_files -/' \
