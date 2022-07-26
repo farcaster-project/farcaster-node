@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fs, io};
 
-use internet2::PartialNodeAddr;
+use internet2::addr::ServiceAddr;
 
 #[cfg(any(target_os = "linux"))]
 pub const FARCASTER_DATA_DIR: &str = "~/.farcaster";
@@ -33,8 +33,8 @@ pub const FARCASTER_DATA_DIR: &str = "~/Documents";
 #[cfg(target_os = "android")]
 pub const FARCASTER_DATA_DIR: &str = ".";
 
-pub const FARCASTER_MSG_SOCKET_NAME: &str = "lnpz:{data_dir}/msg.rpc?api=esb";
-pub const FARCASTER_CTL_SOCKET_NAME: &str = "lnpz:{data_dir}/ctl.rpc?api=esb";
+pub const FARCASTER_MSG_SOCKET_NAME: &str = "{data_dir}/msg";
+pub const FARCASTER_CTL_SOCKET_NAME: &str = "{data_dir}/ctl";
 
 pub const FARCASTER_TOR_PROXY: &str = "127.0.0.1:9050";
 pub const FARCASTER_KEY_FILE: &str = "{data_dir}/key.dat";
@@ -84,7 +84,7 @@ pub struct Opts {
         value_hint = ValueHint::FilePath,
         default_value = FARCASTER_MSG_SOCKET_NAME
     )]
-    pub msg_socket: PartialNodeAddr,
+    pub msg_socket: ServiceAddr,
 
     /// ZMQ socket name/address for daemon control interface
     ///
@@ -98,7 +98,7 @@ pub struct Opts {
         value_hint = ValueHint::FilePath,
         default_value = FARCASTER_CTL_SOCKET_NAME
     )]
-    pub ctl_socket: PartialNodeAddr,
+    pub ctl_socket: ServiceAddr,
 }
 
 /// Token used in services
@@ -139,7 +139,7 @@ impl Opts {
 
         for s in vec![&mut self.msg_socket, &mut self.ctl_socket] {
             match s {
-                PartialNodeAddr::ZmqIpc(path, ..) | PartialNodeAddr::Posix(path) => {
+                ServiceAddr::Ipc(path, ..) | ServiceAddr::Inproc(path) => {
                     me.process_dir(path);
                 }
                 _ => {}

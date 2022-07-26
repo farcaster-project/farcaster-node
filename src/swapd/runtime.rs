@@ -26,7 +26,6 @@ use crate::{
         SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
     },
 };
-use microservices::rpc::Failure;
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -45,7 +44,7 @@ use super::{
     temporal_safety::TemporalSafety,
 };
 use crate::rpc::{
-    request::{self, Msg},
+    request::{self, Failure, FailureCode, Msg},
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -83,17 +82,17 @@ use farcaster_core::{
     swap::SwapId,
     transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
 };
-use internet2::zmqsocket::{self, ZmqSocketAddr, ZmqType};
+use internet2::zeromq::{self, ZmqSocketType};
 use internet2::{
-    session, CreateUnmarshaller, NodeAddr, Session, TypedEnum, Unmarshall, Unmarshaller,
+    addr::NodeAddr, session, CreateUnmarshaller, Session, TypedEnum, Unmarshall, Unmarshaller,
 };
-use lnpbp::chain::Chain;
 use microservices::esb::{self, Handler};
 use monero::{cryptonote::hash::keccak_256, PrivateKey, ViewPair};
 use request::{
     Checkpoint, CheckpointChunk, CheckpointMultipartChunk, CheckpointState, Commit, InitSwap,
     Params, Reveal, TakeCommit, Tx,
 };
+use std::net::SocketAddr;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(
@@ -980,8 +979,8 @@ impl Runtime {
                             self.report_failure_to(
                                 endpoints,
                                 &report_to,
-                                microservices::rpc::Failure {
-                                    code: 0, // TODO: Create error type system
+                                Failure {
+                                    code: FailureCode::Unknown,
                                     info: err.to_string(),
                                 },
                             )
@@ -1038,8 +1037,8 @@ impl Runtime {
                         self.report_failure_to(
                             endpoints,
                             &report_to,
-                            microservices::rpc::Failure {
-                                code: 0, // TODO: Create error type system
+                            Failure {
+                                code: FailureCode::Unknown,
                                 info: err.to_string(),
                             },
                         )
@@ -2331,7 +2330,10 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        Request::Failure(Failure { code: 1, info: msg }),
+                        Request::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: msg,
+                        }),
                     )?;
                 }
             }

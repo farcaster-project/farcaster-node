@@ -32,11 +32,10 @@ use std::time::{Duration, SystemTime};
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1;
 use farcaster_core::swap::SwapId;
-use internet2::{
-    presentation, transport, zmqsocket, NodeAddr, RemoteSocketAddr, TypedEnum, ZmqType, ZMQ_CONTEXT,
-};
+use internet2::{addr::NodeAddr, presentation, transport, zeromq::ZmqSocketType, TypedEnum};
 use microservices::esb::{self, Handler};
 use microservices::rpc::Failure;
+use microservices::ZMQ_CONTEXT;
 
 use crate::rpc::request::{IntoProgressOrFailure, OptionDetails, SyncerInfo};
 use crate::rpc::{request, Request, ServiceBus};

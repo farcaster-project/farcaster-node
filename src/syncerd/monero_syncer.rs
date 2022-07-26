@@ -1,4 +1,4 @@
-use crate::internet2::Duplex;
+use crate::internet2::DuplexConnection;
 use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
@@ -20,7 +20,7 @@ use crate::{
     syncerd::opts::Coin,
 };
 use farcaster_core::blockchain::Network;
-use internet2::zmqsocket::{Connection, ZmqType};
+use internet2::zeromq::{Connection, ZmqSocketType};
 use internet2::PlainTranscoder;
 use monero::Hash;
 use monero_rpc::{
@@ -739,7 +739,7 @@ async fn run_syncerd_bridge_event_sender(
     syncer_address: Vec<u8>,
 ) {
     tokio::spawn(async move {
-        let mut connection = Connection::from_zmq_socket(ZmqType::Push, tx);
+        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();

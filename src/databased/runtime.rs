@@ -8,7 +8,6 @@ use farcaster_core::negotiation::PublicOffer;
 use farcaster_core::swap::btcxmr::BtcXmr;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
-use microservices::rpc::Failure;
 use std::path::PathBuf;
 use std::{
     any::Any,
@@ -31,8 +30,8 @@ use crate::{
     rpc::{
         request::{
             self, BitcoinAddress, Checkpoint, CheckpointChunk, CheckpointEntry,
-            CheckpointMultipartChunk, CheckpointState, Commit, Keys, LaunchSwap, List,
-            MoneroAddress, Msg, NodeId, Params, Reveal, Token, Tx,
+            CheckpointMultipartChunk, CheckpointState, Commit, Failure, FailureCode, Keys,
+            LaunchSwap, List, MoneroAddress, Msg, NodeId, Params, Reveal, Token, Tx,
         },
         Request, ServiceBus,
     },
@@ -300,7 +299,7 @@ impl Runtime {
                         ServiceId::Database,
                         source,
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         }),
                     )?,
@@ -352,7 +351,7 @@ impl Runtime {
                         ServiceId::Database,
                         source,
                         Request::Failure(Failure {
-                            code: 1,
+                            code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         }),
                     )?,

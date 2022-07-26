@@ -27,8 +27,6 @@ Register-ArgumentCompleter -Native -CommandName 'peerd' -ScriptBlock {
             [CompletionResult]::new('--connect', 'connect', [CompletionResultType]::ParameterName, 'Connect to a remote peer with the provided address after start')
             [CompletionResult]::new('-p', 'p', [CompletionResultType]::ParameterName, 'Customize port used by lightning peer network')
             [CompletionResult]::new('--port', 'port', [CompletionResultType]::ParameterName, 'Customize port used by lightning peer network')
-            [CompletionResult]::new('-o', 'o', [CompletionResultType]::ParameterName, 'Overlay peer communications through different transport protocol')
-            [CompletionResult]::new('--overlay', 'overlay', [CompletionResultType]::ParameterName, 'Overlay peer communications through different transport protocol')
             [CompletionResult]::new('--peer-secret-key', 'peer-secret-key', [CompletionResultType]::ParameterName, 'peer-secret-key')
             [CompletionResult]::new('--token', 'token', [CompletionResultType]::ParameterName, 'Token used to authentify calls')
             [CompletionResult]::new('-d', 'd', [CompletionResultType]::ParameterName, 'Data directory path')

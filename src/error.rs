@@ -19,7 +19,7 @@ use amplify::IoError;
 use internet2::TypeId;
 use internet2::{presentation, transport};
 #[cfg(feature = "_rpc")]
-use microservices::{esb, rpc};
+use microservices::esb;
 
 #[cfg(feature = "_rpc")]
 use crate::rpc::ServiceBus;
@@ -50,11 +50,6 @@ pub enum Error {
     #[cfg(feature = "_rpc")]
     #[from]
     Esb(esb::Error<ServiceId>),
-
-    /// RPC error: {0}
-    #[cfg(feature = "_rpc")]
-    #[from]
-    Rpc(rpc::Error),
 
     /// Peer interface error: {0}
     #[from]
@@ -149,19 +144,6 @@ impl From<Error> for esb::Error<ServiceId> {
 impl From<anyhow::Error> for Error {
     fn from(err: anyhow::Error) -> Self {
         Error::Syncer(SyncerError::MoneroRpc(err))
-    }
-}
-
-#[cfg(feature = "_rpc")]
-impl From<Error> for rpc::Error {
-    fn from(err: Error) -> Self {
-        match err {
-            Error::Rpc(err) => err,
-            err => rpc::Error::ServerFailure(rpc::Failure {
-                code: 2000,
-                info: err.to_string(),
-            }),
-        }
     }
 }
 

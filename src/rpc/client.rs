@@ -17,7 +17,7 @@ use std::convert::TryInto;
 use std::thread::{self, sleep};
 use std::time::Duration;
 
-use internet2::ZmqType;
+use internet2::ZmqSocketType;
 use microservices::esb;
 
 use crate::rpc::request::OptionDetails;
@@ -37,11 +37,12 @@ impl Client {
     pub fn with(config: ServiceConfig) -> Result<Self, Error> {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
-        let bus_config = esb::BusConfig::with_locator(
+        let bus_config = esb::BusConfig::with_addr(
             config
                 .ctl_endpoint
                 .try_into()
                 .expect("Only ZMQ RPC is currently supported"),
+            ZmqSocketType::RouterConnect,
             Some(ServiceId::router()),
         );
         let esb = esb::Controller::with(
@@ -51,7 +52,6 @@ impl Client {
             Handler {
                 identity: identity.clone(),
             },
-            ZmqType::RouterConnect,
         )?;
 
         // We have to sleep in order for ZMQ to bootstrap
@@ -76,8 +76,8 @@ impl Client {
 
     pub fn response(&mut self) -> Result<Request, Error> {
         if self.response_queue.is_empty() {
-            for (_, _, rep) in self.esb.recv_poll()? {
-                self.response_queue.push_back(rep);
+            for rep in self.esb.recv_poll()? {
+                self.response_queue.push_back(rep.request);
             }
         }
         Ok(self
@@ -88,7 +88,7 @@ impl Client {
 
     pub fn report_failure(&mut self) -> Result<Request, Error> {
         match self.response()? {
-            Request::Failure(fail) => Err(Error::from(fail)),
+            Request::Failure(fail) => Err(Error::Farcaster(fail.info)),
             resp => Ok(resp),
         }
     }

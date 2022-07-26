@@ -12,26 +12,34 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::rpc::request::Progress;
+use crate::rpc::request::{Failure, Progress, Request};
+use crate::rpc::ServiceBus;
 use crate::syncerd::opts::Coin;
 use std::convert::TryInto;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
-use internet2::{zmqsocket, NodeAddr, ZmqType};
-// use lnp::{TempChannelId as TempSwapId};
+use clap::lazy_static::lazy_static;
+use internet2::{
+    addr::{NodeAddr, ServiceAddr},
+    zeromq,
+    zeromq::ZmqSocketType,
+};
+use microservices::esb;
 #[cfg(feature = "node")]
 use microservices::node::TryService;
-use microservices::{esb, rpc};
 use strict_encoding::{strict_deserialize, strict_serialize};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use farcaster_core::{blockchain::Network, swap::SwapId};
 
 use crate::opts::Opts;
-use crate::rpc::{Request, ServiceBus};
 use crate::Error;
+
+lazy_static! {
+    pub static ref ZMQ_CONTEXT: zmq::Context = zmq::Context::new();
+}
 
 #[derive(
     Wrapper,
@@ -83,10 +91,10 @@ impl FromStr for ClientName {
 #[derive(Debug, Clone, Hash)]
 pub struct ServiceConfig {
     /// ZMQ socket for lightning peer network message bus
-    pub msg_endpoint: NodeAddr,
+    pub msg_endpoint: ServiceAddr,
 
     /// ZMQ socket for internal service control bus
-    pub ctl_endpoint: NodeAddr,
+    pub ctl_endpoint: ServiceAddr,
 }
 
 #[cfg(feature = "shell")]
@@ -197,28 +205,25 @@ where
         } else {
             None
         };
+        let api_type = if broker {
+            ZmqSocketType::RouterBind
+        } else {
+            ZmqSocketType::RouterConnect
+        };
         let services = map! {
-            ServiceBus::Msg => esb::BusConfig::with_locator(
-                config.msg_endpoint.try_into()
-                        .expect("Only ZMQ RPC is currently supported"),
+            ServiceBus::Msg => esb::BusConfig::with_addr(
+                config.msg_endpoint,
+                api_type,
                 router.clone()
             ),
-            ServiceBus::Ctl => esb::BusConfig::with_locator(
-                config.ctl_endpoint.try_into()
-                    .expect("Only ZMQ RPC is currently supported"),
+            ServiceBus::Ctl => esb::BusConfig::with_addr(
+                config.ctl_endpoint,
+                api_type,
                 router
             )
         };
 
-        let esb = esb::Controller::with(
-            services,
-            runtime,
-            if broker {
-                ZmqType::RouterBind
-            } else {
-                ZmqType::RouterConnect
-            },
-        )?;
+        let esb = esb::Controller::with(services, runtime)?;
         Ok(Self { esb, broker })
     }
 
@@ -242,7 +247,9 @@ where
         self.esb.add_service_bus(
             ServiceBus::Bridge,
             esb::BusConfig {
-                carrier: zmqsocket::Carrier::Socket(socket),
+                // apparently this type is eventually ignored
+                api_type: ZmqSocketType::Push,
+                carrier: zeromq::Carrier::Socket(socket),
                 router: None,
                 queued: true,
             },
@@ -352,9 +359,8 @@ where
         &mut self,
         senders: &mut Endpoints,
         dest: impl TryToServiceId,
-        failure: impl Into<rpc::Failure>,
+        failure: Failure,
     ) -> Error {
-        let failure = failure.into();
         if let Some(dest) = dest.try_to_service_id() {
             // Even if we fail, we still have to terminate :)
             let _ = senders.send_to(
