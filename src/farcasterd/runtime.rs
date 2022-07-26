@@ -988,7 +988,7 @@ impl Runtime {
                     self.listens
                         .clone()
                         .values()
-                        .map(|listen| format!("{}", listen)),
+                        .map(|listen| listen.to_string()),
                 );
                 endpoints.send_to(
                     ServiceBus::Ctl,
