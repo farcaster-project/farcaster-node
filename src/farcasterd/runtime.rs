@@ -2309,11 +2309,11 @@ impl<'a> SyncerPair<'a> {
     }
     fn new(
         ss: &'a Syncers,
-        arbitrating_id: (Coin, Network),
-        accordant_id: (Coin, Network),
+        arbitrating_ix: (Coin, Network),
+        accordant_ix: (Coin, Network),
     ) -> Option<Self> {
-        let arbitrating_syncer = ss.0.get(&arbitrating_id)?;
-        let accordant_syncer = ss.0.get(&accordant_id)?;
+        let arbitrating_syncer = ss.0.get(&arbitrating_ix)?;
+        let accordant_syncer = ss.0.get(&accordant_ix)?;
         Some(SyncerPair {
             arbitrating_syncer,
             accordant_syncer,
