@@ -268,14 +268,18 @@ impl Runtime {
             }
 
             Request::RemoveCheckpoint(swap_id) => {
-                self.database.delete_checkpoint_state(CheckpointKey {
+                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
-                })?;
-                self.database.delete_checkpoint_state(CheckpointKey {
+                }) {
+                    debug!("{} | Did not delete checkpoint entry: {}", swap_id, err);
+                }
+                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Swap(swap_id),
-                })?;
+                }) {
+                    debug!("{} | Did not delete checkpoint entry: {}", swap_id, err);
+                }
             }
 
             Request::SetAddressSecretKey(request::AddressSecretKey::Bitcoin {
@@ -748,9 +752,7 @@ impl Database {
     fn delete_checkpoint_state(&mut self, key: CheckpointKey) -> Result<(), lmdb::Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let mut tx = self.0.begin_rw_txn()?;
-        if let Err(err) = tx.del(db, &Vec::from(key), None) {
-            error!("{}", err);
-        }
+        tx.del(db, &Vec::from(key), None)?;
         tx.commit()?;
         Ok(())
     }
