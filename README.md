@@ -63,10 +63,10 @@ docker run --rm -p 38083:38083 ghcr.io/farcaster-project/containers/monero-walle
 
 #### Launching `farcasterd`
 
-Now that you have a working Monero RPC wallet to connect you can launch the node in verbose mode (`-vv`), and follow the logs to see what's appening.
+Now that you have a working Monero RPC wallet to connect you can launch the node, and follow the logs to see what's appening.
 
 ```
-farcasterd -vv
+farcasterd
 ```
 
 :mag_right: You can find more details below about the [configuration](#configuration) if you need to customize some values.
@@ -146,7 +146,7 @@ So maker must make sure her router allows external connections to that port to h
 
 The make command will output an encoded **public offer** that can be shared with potential takers. As a maker, your `farcasterd` registers this public offer, and waits for someone to connect through `peerd` and take the offer. A taker in her turn takes the offer and initiates a swap with the maker.
 
-Follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneros when the log asks for this. At the end coins are swapped successfully, or - less ideally - refunded. We currently offer no manual cancel functionality. We offer progress through `swap-cli progress {swapid}`. To list the the swapids of the running swaps, use `swap-cli ls`.
+Follow your `farcasterd` logs (**you can fine tune your log with `RUST_LOG` environment variable, e.g. `RUST_LOG="farcaster_node=debug,microservices=debug"`**) and fund the swap with the bitcoins or moneros when the log asks for this. At the end coins are swapped successfully, or - less ideally - refunded. We currently offer no manual cancel functionality. We offer progress through `swap-cli progress {swapid}`. To list the the swapids of the running swaps, use `swap-cli ls`.
 
 ### :moneybag: Take the offer
 
@@ -160,7 +160,7 @@ swap-cli take --btc-addr tb1qmcku4ht3tq53tvdl5hj03rajpdkdatd4w4mswx\
 
 The cli will ask you to validate the offer's specifics (amounts, assets, etc.). You can use the flag of interest `--without-validation` or `-w` for externally validated automated setups.
 
-Then follow your `farcasterd` log (**with a log level set at `-vv`**) and fund the swap with the bitcoins or moneroj when it asks so. At the end of the swap, you should receive the counterparty's assets.
+Then follow your `farcasterd` logs and fund the swap with the bitcoins or moneroj when it asks so. At the end of the swap, you should receive the counterparty's assets.
 
 ### Configuration
 

@@ -10,7 +10,7 @@ docker-compose up -d
 Place your specific test name after `cargo test`, the following command runs all tests:
 
 ```
-cargo test --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1
+RUST_BACKTRACE=1 RUST_LOG="farcaster_node=debug,microservices=debug" cargo test --workspace --all-targets --all-features -- --ignored --test-threads=1
 ```
 
 Stop the tests and remove the volume:
@@ -21,7 +21,7 @@ docker-compose down -v
 
 ## Steps
 
-By default the functional tests are not run when executing `cargo test`. To run them, run `cargo test --workspace --all-targets --all-features --no-fail-fast -- --ignored --test-threads=1`.
+By default the functional tests are not run when executing `cargo test` because of the `#[ignore]` directive. To run them, see the above cargo test command with `-- --ignored`.
 
 Before running the functional tests, start the docker containers first with `docker-compose up -d`.
 

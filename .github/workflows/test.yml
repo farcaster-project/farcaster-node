@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_LOG_STYLE: always
 
 jobs:
   test:
@@ -70,10 +71,10 @@ jobs:
           cli,
           # grpc, TODO: re-enable once ipv6 address support has landed
         ]
-        include:
-          - test: swap_parallel_execution
-            logs: true
     runs-on: ubuntu-latest
+    env:
+      RUST_LOG: 'info,farcaster_node=debug,microservices=debug'
+      RUST_BACKTRACE: 1
     container:
       image: rust:slim-bullseye
       volumes:
@@ -134,15 +135,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.0.0
         with:
-          key: test-${{ matrix.test }}
+          key: ${{ matrix.test }}
 
       - name: Cargo functional test
-        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --no-fail-fast -- --ignored --nocapture --test-threads=1
-
-      - name: Archive farcasterd logs
-        uses: actions/upload-artifact@v3
-        if: ${{ matrix.logs }}
-        with:
-          name: faracsterd-logs
-          path: |
-            tests/*.log
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --color always -- --ignored --test-threads=1

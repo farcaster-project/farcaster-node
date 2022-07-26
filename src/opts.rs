@@ -19,7 +19,6 @@ use std::str::FromStr;
 use std::{fs, io};
 
 use internet2::PartialNodeAddr;
-use microservices::shell::LogLevel;
 
 #[cfg(any(target_os = "linux"))]
 pub const FARCASTER_DATA_DIR: &str = "~/.farcaster";
@@ -56,12 +55,6 @@ pub struct Opts {
         value_hint = ValueHint::DirPath
     )]
     pub data_dir: PathBuf,
-
-    /// Set verbosity level
-    ///
-    /// Can be used multiple times to increase verbosity.
-    #[clap(short, long, global = true, parse(from_occurrences))]
-    pub verbose: u8,
 
     /// Use Tor
     ///
@@ -128,7 +121,17 @@ impl FromStr for TokenString {
 
 impl Opts {
     pub fn process(&mut self) {
-        LogLevel::from_verbosity_flag_count(self.verbose).apply();
+        let env = env_logger::Env::new().default_filter_or("farcaster_node=info");
+        // standard environment variable set to "true" when running in CI environments
+        let is_test = match std::env::var("CI") {
+            Ok(v) if v == "true" => true,
+            _ => false,
+        };
+        env_logger::from_env(env)
+            .is_test(is_test)
+            .try_init()
+            .expect("Failed to initialize loggger!");
+
         let mut me = self.clone();
 
         me.data_dir = PathBuf::from(shellexpand::tilde(&me.data_dir.to_string_lossy()).to_string());

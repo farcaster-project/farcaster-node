@@ -2191,15 +2191,6 @@ pub fn launch(
     // Cannot use value_of directly because of default values
     let matches = app.get_matches();
 
-    // Set verbosity to same level
-    let verbose = matches.occurrences_of("verbose");
-    if verbose > 0 {
-        cmd.args(&[&format!(
-            "-{}",
-            (0..verbose).map(|_| "v").collect::<String>()
-        )]);
-    }
-
     if let Some(d) = &matches.value_of("data-dir") {
         cmd.args(&["-d", d]);
     }

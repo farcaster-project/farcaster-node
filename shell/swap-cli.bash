@@ -70,7 +70,7 @@ _swap-cli() {
 
     case "${cmd}" in
         swap__cli)
-            opts="-h -V -d -v -T -m -x --help --version --data-dir --verbose --tor-proxy --msg-socket --ctl-socket info peers list-swaps list-offers offer-info list-listens list-checkpoints restore-checkpoint make take revoke-offer abort-swap progress needs-funding sweep-bitcoin-address sweep-monero-address help"
+            opts="-h -V -d -T -m -x --help --version --data-dir --tor-proxy --msg-socket --ctl-socket info peers list-swaps list-offers offer-info list-listens list-checkpoints restore-checkpoint make take revoke-offer abort-swap progress needs-funding sweep-bitcoin-address sweep-monero-address help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -116,7 +116,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__abort__swap)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SWAP_ID>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <SWAP_ID>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -162,7 +162,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__help)
-            opts="-d -v -T -m -x --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SUBCOMMAND>..."
+            opts="-d -T -m -x --data-dir --tor-proxy --msg-socket --ctl-socket <SUBCOMMAND>..."
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -208,7 +208,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__info)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SUBJECT>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <SUBJECT>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -254,7 +254,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__list__checkpoints)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -300,7 +300,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__list__listens)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -346,7 +346,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__list__offers)
-            opts="-s -h -d -v -T -m -x --select --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-s -h -d -T -m -x --select --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -400,7 +400,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__list__swaps)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -446,7 +446,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__make)
-            opts="-n -r -I -b -p -h -d -v -T -m -x --btc-addr --xmr-addr --network --arb-blockchain --acc-blockchain --btc-amount --xmr-amount --maker-role --cancel-timelock --punish-timelock --fee-strategy --public-ip-addr --bind-ip-addr --port --overlay --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-n -r -I -b -p -h -d -T -m -x --btc-addr --xmr-addr --network --arb-blockchain --acc-blockchain --btc-amount --xmr-amount --maker-role --cancel-timelock --punish-timelock --fee-strategy --public-ip-addr --bind-ip-addr --port --overlay --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -572,7 +572,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__needs__funding)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <COIN>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <COIN>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -618,7 +618,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__offer__info)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <PUBLIC_OFFER>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <PUBLIC_OFFER>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -664,7 +664,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__peers)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -710,7 +710,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__progress)
-            opts="-f -h -d -v -T -m -x --follow --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SWAPID>"
+            opts="-f -h -d -T -m -x --follow --help --data-dir --tor-proxy --msg-socket --ctl-socket <SWAPID>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -756,7 +756,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__restore__checkpoint)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SWAP_ID>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <SWAP_ID>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -802,7 +802,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__revoke__offer)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <PUBLIC_OFFER>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <PUBLIC_OFFER>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -848,7 +848,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__sweep__bitcoin__address)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SOURCE_ADDRESS> <DESTINATION_ADDRESS>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <SOURCE_ADDRESS> <DESTINATION_ADDRESS>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -894,7 +894,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__sweep__monero__address)
-            opts="-h -d -v -T -m -x --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket <SOURCE_ADDRESS> <DESTINATION_ADDRESS>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <SOURCE_ADDRESS> <DESTINATION_ADDRESS>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -940,7 +940,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__take)
-            opts="-o -w -h -d -v -T -m -x --btc-addr --xmr-addr --offer --without-validation --help --data-dir --verbose --tor-proxy --msg-socket --ctl-socket"
+            opts="-o -w -h -d -T -m -x --btc-addr --xmr-addr --offer --without-validation --help --data-dir --tor-proxy --msg-socket --ctl-socket"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
