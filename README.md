@@ -1,7 +1,7 @@
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/farcaster-project/farcaster-node/Build%20binaries)](https://github.com/farcaster-project/farcaster-node/actions/workflows/binaries.yml)
 [![Crates.io](https://img.shields.io/crates/v/farcaster_node.svg)](https://crates.io/crates/farcaster_node)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MSRV](https://img.shields.io/badge/MSRV-1.58.1-blue)](https://blog.rust-lang.org/2022/01/20/Rust-1.58.1.html)
+[![MSRV](https://img.shields.io/badge/MSRV-1.59.0-blue)](https://blog.rust-lang.org/2022/02/24/Rust-1.59.0.html)
 
 # Farcaster: cross-chain atomic swaps
 
