@@ -135,7 +135,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.0.0
         with:
-          key: test-${{ matrix.test }}
+          key: ${{ matrix.test }}
 
       - name: Cargo functional test
         run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --color always -- --ignored --test-threads=1
