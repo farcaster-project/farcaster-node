@@ -13,7 +13,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::databased::checkpoint_handle_multipart_receive;
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
@@ -85,10 +84,7 @@ use internet2::{
 };
 use microservices::esb::{self, Handler};
 use monero::{cryptonote::hash::keccak_256, PrivateKey, ViewPair};
-use request::{
-    Checkpoint, CheckpointChunk, CheckpointMultipartChunk, CheckpointState, Commit, InitSwap,
-    Params, Reveal, TakeCommit, Tx,
-};
+use request::{Checkpoint, CheckpointState, Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 use std::net::SocketAddr;
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -186,7 +182,6 @@ pub fn run(
         )?),
         pending_requests: none!(),
         pending_peer_request: none!(),
-        pending_checkpoint_chunks: map![],
         txs: none!(),
         public_offer,
     };
@@ -208,7 +203,6 @@ pub struct Runtime {
     temporal_safety: TemporalSafety,
     pending_requests: PendingRequests,
     pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
-    pending_checkpoint_chunks: HashMap<[u8; 20], HashSet<CheckpointChunk>>,
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
@@ -2362,15 +2356,6 @@ impl Runtime {
                     self.send_peer(endpoints, msg.clone())?;
                 }
                 self.pending_peer_request.clear();
-            }
-
-            Request::CheckpointMultipartChunk(checkpoint_multipart_chunk) => {
-                if let Some(checkpoint_request) = checkpoint_handle_multipart_receive(
-                    checkpoint_multipart_chunk,
-                    &mut self.pending_checkpoint_chunks,
-                )? {
-                    self.handle_rpc_ctl(endpoints, source, checkpoint_request)?;
-                }
             }
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {

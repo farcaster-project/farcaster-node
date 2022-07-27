@@ -1,10 +1,9 @@
-use crate::databased::checkpoint_handle_multipart_receive;
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use crate::syncerd::SweepBitcoinAddress;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
-use request::{Checkpoint, CheckpointMultipartChunk};
+use request::Checkpoint;
 use std::path::PathBuf;
 use std::{
     any::Any,
@@ -67,7 +66,7 @@ use farcaster_core::{
 };
 use internet2::{addr::LocalNode, TypedEnum};
 use microservices::esb::{self, Handler};
-use request::{CheckpointChunk, CheckpointState, LaunchSwap, NodeId};
+use request::{CheckpointState, LaunchSwap, NodeId};
 
 pub fn run(
     config: ServiceConfig,
@@ -82,7 +81,6 @@ pub fn run(
         swaps: none!(),
         btc_addrs: none!(),
         xmr_addrs: none!(),
-        pending_checkpoint_chunks: map![],
     };
 
     Service::run(config, runtime, false)
@@ -96,7 +94,6 @@ pub struct Runtime {
     swaps: HashMap<SwapId, Option<Request>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
     xmr_addrs: HashMap<SwapId, monero::Address>,
-    pending_checkpoint_chunks: HashMap<[u8; 20], HashSet<CheckpointChunk>>,
 }
 
 impl Runtime {
@@ -1700,15 +1697,6 @@ impl Runtime {
                     &swap_id.bright_blue_italic(),
                 );
                 self.clean_up_after_swap(&swap_id);
-            }
-
-            Request::CheckpointMultipartChunk(checkpoint_multipart_chunk) => {
-                if let Some(checkpoint_request) = checkpoint_handle_multipart_receive(
-                    checkpoint_multipart_chunk,
-                    &mut self.pending_checkpoint_chunks,
-                )? {
-                    self.handle_rpc_ctl(endpoints, source, checkpoint_request)?;
-                }
             }
 
             Request::Checkpoint(request::Checkpoint { swap_id, state }) => {
