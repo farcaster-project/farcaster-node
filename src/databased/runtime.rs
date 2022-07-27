@@ -321,20 +321,12 @@ impl Runtime {
                 view,
                 spend,
             }) => {
-                self.database.set_monero_address(
-                    &monero::Address::from_str(&address)?,
-                    &monero::KeyPair {
-                        view: monero::PrivateKey::from_slice(&view).unwrap(),
-                        spend: monero::PrivateKey::from_slice(&spend).unwrap(),
-                    },
-                )?;
+                self.database
+                    .set_monero_address(&address, &monero::KeyPair { view, spend })?;
             }
 
             Request::GetAddressSecretKey(Address::Monero(address)) => {
-                match self
-                    .database
-                    .get_monero_address_secret_key(&monero::Address::from_str(&address).unwrap())
-                {
+                match self.database.get_monero_address_secret_key(&address) {
                     Err(_) => endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Database,
