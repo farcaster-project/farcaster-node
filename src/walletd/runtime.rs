@@ -25,7 +25,7 @@ use crate::{
         },
         Request, ServiceBus,
     },
-    syncerd::SweepXmrAddress,
+    syncerd::SweepMoneroAddress,
 };
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use bitcoin::{
@@ -1526,17 +1526,17 @@ impl Runtime {
                         }),
                     )?;
 
-                    let sweep_keys = SweepXmrAddress {
-                        view_key: view,
-                        spend_key: spend,
-                        dest_address: address,
+                    let sweep_keys = SweepMoneroAddress {
+                        source_view_key: view,
+                        source_spend_key: spend,
+                        destination_address: address,
                         minimum_balance: pub_offer.offer.accordant_amount,
                     };
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::SweepXmrAddress(sweep_keys),
+                        Request::SweepMoneroAddress(sweep_keys),
                     )?;
                 }
             }
@@ -1622,17 +1622,17 @@ impl Runtime {
                         }),
                     )?;
 
-                    let sweep_keys = SweepXmrAddress {
-                        view_key: view,
-                        spend_key: spend,
-                        dest_address: address,
+                    let sweep_keys = SweepMoneroAddress {
+                        source_view_key: view,
+                        source_spend_key: spend,
+                        destination_address: address,
                         minimum_balance: pub_offer.offer.accordant_amount,
                     };
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::SweepXmrAddress(sweep_keys),
+                        Request::SweepMoneroAddress(sweep_keys),
                     )?;
                 } else {
                     error!("Call to refund transaction expects an Alice wallet");

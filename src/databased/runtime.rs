@@ -34,7 +34,7 @@ use crate::{
         },
         Request, ServiceBus,
     },
-    syncerd::SweepXmrAddress,
+    syncerd::SweepMoneroAddress,
 };
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use colored::Colorize;

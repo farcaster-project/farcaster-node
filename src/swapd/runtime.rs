@@ -21,8 +21,9 @@ use crate::{
     rpc::request::Outcome,
     rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
     syncerd::{
-        opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepSuccess,
-        SweepXmrAddress, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
+        opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum,
+        SweepMoneroAddress, SweepSuccess, TaskId, TaskTarget, TransactionRetrieved, WatchHeight,
+        XmrAddressAddendum,
     },
 };
 use std::{
@@ -897,18 +898,18 @@ impl Runtime {
                 );
                 std::process::exit(0);
             }
-            Request::SweepXmrAddress(SweepXmrAddress {
-                view_key,
-                spend_key,
-                dest_address,
+            Request::SweepMoneroAddress(SweepMoneroAddress {
+                source_view_key,
+                source_spend_key,
+                destination_address,
                 minimum_balance,
                 ..
             }) if source == ServiceId::Wallet => {
                 let from_height = None; // will be set when sending out the request
                 let task = self.syncer_state.sweep_xmr(
-                    view_key,
-                    spend_key,
-                    dest_address,
+                    source_view_key,
+                    source_spend_key,
+                    destination_address,
                     from_height,
                     minimum_balance,
                     true,
@@ -928,7 +929,7 @@ impl Runtime {
                     "{} | {} reaches your address {} around block {}",
                     self.swap_id.bright_blue_italic(),
                     Coin::Monero.bright_white_bold(),
-                    dest_address.bright_yellow_bold(),
+                    destination_address.bright_yellow_bold(),
                     sweep_block.bright_blue_bold(),
                 );
                 warn!(

@@ -8,7 +8,7 @@ use farcaster_node::syncerd::types::{
     WatchTransaction,
 };
 use farcaster_node::syncerd::{
-    runtime::Synclet, SweepAddress, SweepAddressAddendum, SweepXmrAddress, TaskId, TaskTarget,
+    runtime::Synclet, SweepAddress, SweepAddressAddendum, SweepMoneroAddress, TaskId, TaskTarget,
     XmrAddressAddendum,
 };
 use farcaster_node::ServiceId;
@@ -128,20 +128,20 @@ async fn monero_syncer_sweep_test() {
 
     let (tx, rx_event) = create_monero_syncer("sweep", false);
 
-    let spend_key = monero::PrivateKey::from_str(
+    let source_spend_key = monero::PrivateKey::from_str(
         "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
     )
     .unwrap();
-    let view_key = monero::PrivateKey::from_str(
+    let source_view_key = monero::PrivateKey::from_str(
         "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09",
     )
     .unwrap();
     let keypair = monero::KeyPair {
-        view: view_key,
-        spend: spend_key,
+        view: source_view_key,
+        spend: source_spend_key,
     };
     let to_be_sweeped_address = monero::Address::from_keypair(monero::Network::Mainnet, &keypair);
-    let dest_address = monero::Address::from_str("43qHP7gSJJf8HZw1G3ZmpWVyYnbxkKdfta34Qj2nuRENjAsXBtj9JcMWcYMeT3n4NyTZqxhUkKgsTS6P2TNgM6ksM32czSp").unwrap();
+    let destination_address = monero::Address::from_str("43qHP7gSJJf8HZw1G3ZmpWVyYnbxkKdfta34Qj2nuRENjAsXBtj9JcMWcYMeT3n4NyTZqxhUkKgsTS6P2TNgM6ksM32czSp").unwrap();
     send_monero(&wallet, to_be_sweeped_address, 500000000000).await;
 
     let task = SyncerdTask {
@@ -150,10 +150,10 @@ async fn monero_syncer_sweep_test() {
             lifetime: blocks + 40,
             from_height: None,
             retry: true,
-            addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
-                spend_key,
-                view_key,
-                dest_address,
+            addendum: SweepAddressAddendum::Monero(SweepMoneroAddress {
+                source_spend_key,
+                source_view_key,
+                destination_address,
                 minimum_balance: monero::Amount::from_pico(1000000000000),
             }),
         }),
