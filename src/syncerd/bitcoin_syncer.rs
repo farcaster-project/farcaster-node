@@ -1017,11 +1017,7 @@ impl Synclet for BitcoinSyncer {
         network: Network,
         polling: bool,
     ) -> Result<(), Error> {
-        let btc_network = match network {
-            Network::Mainnet => bitcoin::Network::Bitcoin,
-            Network::Testnet => bitcoin::Network::Testnet,
-            Network::Local => bitcoin::Network::Regtest,
-        };
+        let btc_network = network.into();
         if let Some(electrum_server) = &opts.electrum_server {
             let electrum_server = electrum_server.clone();
             std::thread::spawn(move || {
