@@ -275,7 +275,7 @@ impl Exec for Command {
                         ServiceId::Farcasterd,
                         Request::SweepBitcoinAddress(SweepBitcoinAddress {
                             source_address,
-                            source_private_key: secret_key,
+                            source_secret_key: secret_key,
                             destination_address,
                         }),
                     )?;

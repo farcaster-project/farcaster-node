@@ -429,8 +429,7 @@ impl Runtime {
                                 Request::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                                     address: funding_addr.clone(),
                                     secret_key: key_manager
-                                        .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?
-                                        .secret_bytes(),
+                                        .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
                                 }),
                             )?;
                             debug!(
@@ -1325,8 +1324,7 @@ impl Runtime {
                             Request::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                                 address: funding_addr.clone(),
                                 secret_key: key_manager
-                                    .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?
-                                    .secret_bytes(),
+                                    .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
                             }),
                         )?;
                         debug!(
@@ -1662,9 +1660,8 @@ impl Runtime {
                 if let Some(Wallet::Bob(BobState { key_manager, .. })) =
                     self.wallets.get_mut(&swap_id)
                 {
-                    let source_private_key = key_manager
-                        .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?
-                        .secret_bytes();
+                    let source_secret_key =
+                        key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?;
                     let destination_address = self
                         .btc_addrs
                         .get(&swap_id)
@@ -1675,7 +1672,7 @@ impl Runtime {
                         self.identity(),
                         source,
                         Request::SweepBitcoinAddress(SweepBitcoinAddress {
-                            source_private_key,
+                            source_secret_key,
                             source_address,
                             destination_address,
                         }),

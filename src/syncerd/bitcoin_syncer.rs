@@ -429,7 +429,7 @@ fn p2wpkh_script_code(script: &bitcoin::Script) -> Script {
 }
 
 fn sweep_address(
-    source_private_key: [u8; 32],
+    source_secret_key: bitcoin::secp256k1::SecretKey,
     source_address: bitcoin::Address,
     dest_address: bitcoin::Address,
     client: &Client,
@@ -446,7 +446,7 @@ fn sweep_address(
         None => return Err(Error::Farcaster(format!("Invalid to be swept address"))),
     }
 
-    let sk = bitcoin::PrivateKey::from_slice(&source_private_key, network)?;
+    let sk = bitcoin::PrivateKey::new(source_secret_key, network);
     let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &sk);
 
     let unspent_txs = client.script_list_unspent(&source_address.script_pubkey())?;
@@ -932,7 +932,7 @@ fn sweep_polling(
                                 sweep_address_task.addendum.clone()
                             {
                                 let sweep_address_txs = sweep_address(
-                                    addendum.source_private_key,
+                                    addendum.source_secret_key,
                                     addendum.source_address,
                                     addendum.destination_address,
                                     &client,
