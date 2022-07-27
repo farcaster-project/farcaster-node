@@ -12,9 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use farcaster_core::blockchain::Network;
+use farcaster_core::blockchain::{Blockchain, Network};
 use std::str::FromStr;
-use strict_encoding::{StrictDecode, StrictEncode};
 
 /// Syncer blockchain management daemon; part of Farcaster Node
 ///
@@ -28,9 +27,9 @@ pub struct Opts {
     #[clap(flatten)]
     pub shared: crate::opts::Opts,
 
-    /// Which coin this syncer should target
-    #[clap(long, parse(try_from_str = Coin::from_str))]
-    pub coin: Coin,
+    /// Which blockchain this syncer should target
+    #[clap(long, parse(try_from_str = Blockchain::from_str))]
+    pub blockchain: Blockchain,
 
     /// Blockchain networks to use (Mainnet, Testnet, Local)
     #[clap(
@@ -62,32 +61,6 @@ pub struct Opts {
     /// Wallet directory use by the monero-wallet-rpc
     #[clap(long)]
     pub monero_wallet_dir_path: Option<String>,
-}
-
-#[derive(Parser, Display, Copy, Clone, Hash, PartialEq, Eq, Debug, StrictEncode, StrictDecode)]
-#[display(Debug)]
-pub enum Coin {
-    /// Launches a bitcoin syncer
-    Bitcoin,
-    /// Launches a monero syncer
-    Monero,
-}
-
-#[derive(Error, Debug, Display)]
-#[display("invalid coin")]
-pub enum SyncerCoinError {
-    InvalidCoin,
-}
-
-impl FromStr for Coin {
-    type Err = SyncerCoinError;
-    fn from_str(input: &str) -> Result<Coin, Self::Err> {
-        match input {
-            "Bitcoin" | "bitcoin" => Ok(Coin::Bitcoin),
-            "Monero" | "monero" => Ok(Coin::Monero),
-            _ => Err(SyncerCoinError::InvalidCoin),
-        }
-    }
 }
 
 impl Opts {

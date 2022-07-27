@@ -15,10 +15,10 @@
 use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
-use crate::syncerd::opts::{Coin, Opts};
+use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::request::Progress;
 use amplify::Wrapper;
-use farcaster_core::blockchain::Network;
+use farcaster_core::blockchain::{Blockchain, Network};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsStr;
@@ -60,10 +60,10 @@ pub struct SyncerdTask {
 }
 
 pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
-    let coin = opts.coin;
+    let blockchain = opts.blockchain;
     let network = opts.network;
 
-    info!("Creating new {} ({}) syncer", &coin, &network);
+    info!("Creating new {} ({}) syncer", &blockchain, &network);
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
 
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR)?;
@@ -71,13 +71,13 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
     rx_event.bind("inproc://syncerdbridge")?;
     tx_event.connect("inproc://syncerdbridge")?;
 
-    let syncer: Box<dyn Synclet> = match coin {
-        Coin::Monero => Box::new(MoneroSyncer::new()),
-        Coin::Bitcoin => Box::new(BitcoinSyncer::new()),
+    let syncer: Box<dyn Synclet> = match blockchain {
+        Blockchain::Monero => Box::new(MoneroSyncer::new()),
+        Blockchain::Bitcoin => Box::new(BitcoinSyncer::new()),
     };
 
     let mut runtime = Runtime {
-        identity: ServiceId::Syncer(coin, network),
+        identity: ServiceId::Syncer(blockchain, network),
         started: SystemTime::now(),
         tasks: none!(),
         syncer,

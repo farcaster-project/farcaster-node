@@ -24,8 +24,6 @@ use farcaster_core::{
     swap::{btcxmr::PublicOffer, SwapId},
 };
 
-use crate::syncerd::Coin;
-
 /// Command-line tool for working with Farcaster node
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(name = "swap-cli", bin_name = "swap-cli", author, version)]
@@ -227,11 +225,11 @@ pub enum Command {
         follow: bool,
     },
 
-    /// Returns addresses and amounts that require funding for coin.
-    #[display("needs-funding<{coin}>")]
+    /// Returns addresses and amounts that require funding for blockchain.
+    #[display("needs-funding<{blockchain}>")]
     NeedsFunding {
-        /// The coin funding required needs to be checked against.
-        coin: Coin,
+        /// The blockchain funding required needs to be checked against.
+        blockchain: Blockchain,
     },
 
     /// Attempts to sweep any funds on a given bitcoin funding address

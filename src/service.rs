@@ -14,7 +14,6 @@
 
 use crate::rpc::request::{Failure, Progress, Request};
 use crate::rpc::ServiceBus;
-use crate::syncerd::opts::Coin;
 use std::convert::TryInto;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -32,7 +31,10 @@ use microservices::node::TryService;
 use strict_encoding::{strict_deserialize, strict_serialize};
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use farcaster_core::{blockchain::Network, swap::SwapId};
+use farcaster_core::{
+    blockchain::{Blockchain, Network},
+    swap::SwapId,
+};
 
 use crate::opts::Opts;
 use crate::Error;
@@ -129,7 +131,7 @@ pub enum ServiceId {
     Client(u64),
 
     #[display("{0} ({1}) syncer")]
-    Syncer(Coin, Network),
+    Syncer(Blockchain, Network),
 
     #[display("walletd")]
     Wallet,

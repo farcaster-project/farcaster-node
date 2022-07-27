@@ -2,8 +2,8 @@ use crate::databased::runtime::request::{
     Address, OfferStatus, OfferStatusPair, OfferStatusSelector,
 };
 use crate::farcaster_core::consensus::Encodable;
-use crate::syncerd::opts::Coin;
 use crate::walletd::runtime::{CheckpointWallet, Wallet};
+use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
@@ -302,7 +302,7 @@ impl Runtime {
                 }
             }
 
-            Request::GetAddresses(Coin::Bitcoin) => {
+            Request::GetAddresses(Blockchain::Bitcoin) => {
                 let addresses = self.database.get_all_bitcoin_addresses()?;
                 endpoints.send_to(
                     ServiceBus::Ctl,
@@ -347,7 +347,7 @@ impl Runtime {
                 }
             }
 
-            Request::GetAddresses(Coin::Monero) => {
+            Request::GetAddresses(Blockchain::Monero) => {
                 let addresses = self.database.get_all_monero_addresses()?;
                 endpoints.send_to(
                     ServiceBus::Ctl,

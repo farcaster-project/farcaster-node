@@ -265,7 +265,7 @@ _arguments "${_arguments_options[@]}" \
 '--ctl-socket=[ZMQ socket name/address for daemon control interface]:CTL_SOCKET:_files' \
 '-h[Print help information]' \
 '--help[Print help information]' \
-':coin -- The coin funding required needs to be checked against:' \
+':blockchain -- The blockchain funding required needs to be checked against:' \
 && ret=0
 ;;
 (sweep-bitcoin-address)
@@ -334,7 +334,7 @@ _swap-cli_commands() {
 'revoke-offer:Revoke offer accepts an offer and revokes it within the runtime' \
 'abort-swap:Abort a swap if it has not locked yet' \
 'progress:Request swap progress report' \
-'needs-funding:Returns addresses and amounts that require funding for coin' \
+'needs-funding:Returns addresses and amounts that require funding for blockchain' \
 'sweep-bitcoin-address:Attempts to sweep any funds on a given bitcoin funding address' \
 'sweep-monero-address:Attempts to sweep any funds on a given monero funding address' \
 'help:Print this message or the help of the given subcommand(s)' \

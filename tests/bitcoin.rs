@@ -2,9 +2,9 @@ use amplify::map;
 use bitcoin::hashes::Hash;
 use bitcoincore_rpc::{Client, RpcApi};
 use clap::Parser;
-use farcaster_core::blockchain::Network;
+use farcaster_core::blockchain::{Blockchain, Network};
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
-use farcaster_node::syncerd::opts::{Coin, Opts};
+use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::types::{
     Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
@@ -29,7 +29,7 @@ extern crate log;
 
 mod utils;
 
-const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
+const SOURCE1: ServiceId = ServiceId::Syncer(Blockchain::Bitcoin, Network::Local);
 
 /*
 These tests need to run serially, otherwise we cannot verify events based on the
@@ -1032,7 +1032,7 @@ fn create_bitcoin_syncer(
 
     let conf = config::TestConfig::parse();
     let opts = Opts::parse_from(vec!["syncerd"].into_iter().chain(vec![
-        "--coin",
+        "--blockchain",
         "Bitcoin",
         "--electrum-server",
         &format!("{}", conf.electrs),

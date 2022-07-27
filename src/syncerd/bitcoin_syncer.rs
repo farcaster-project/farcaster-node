@@ -4,7 +4,7 @@ use crate::internet2::Encrypt;
 use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
-use crate::syncerd::opts::{Coin, Opts};
+use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::AddressTx;
@@ -35,7 +35,7 @@ use electrum_client::{raw_client::RawClient, GetHistoryRes};
 use electrum_client::{Client, ElectrumApi};
 use farcaster_core::bitcoin::segwitv0::signature_hash;
 use farcaster_core::bitcoin::transaction::TxInRef;
-use farcaster_core::blockchain::Network;
+use farcaster_core::blockchain::{Blockchain, Network};
 use farcaster_core::consensus;
 use internet2::zeromq::{Connection, ZmqSocketType};
 use internet2::PlainTranscoder;
@@ -1046,7 +1046,7 @@ impl Synclet for BitcoinSyncer {
                     ) = tokio::sync::mpsc::channel(200);
                     let state = Arc::new(Mutex::new(SyncerState::new(
                         event_tx.clone(),
-                        Coin::Bitcoin,
+                        Blockchain::Bitcoin,
                     )));
 
                     run_syncerd_task_receiver(

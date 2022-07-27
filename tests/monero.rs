@@ -1,7 +1,7 @@
 use clap::Parser;
-use farcaster_core::blockchain::Network;
+use farcaster_core::blockchain::{Blockchain, Network};
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
-use farcaster_node::syncerd::opts::{Coin, Opts};
+use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
 use farcaster_node::syncerd::types::{
     Abort, AddressAddendum, Boolean, BroadcastTransaction, Task, WatchAddress, WatchHeight,
@@ -30,8 +30,8 @@ extern crate log;
 
 mod utils;
 
-const SOURCE1: ServiceId = ServiceId::Syncer(Coin::Bitcoin, Network::Local);
-const SOURCE2: ServiceId = ServiceId::Syncer(Coin::Monero, Network::Local);
+const SOURCE1: ServiceId = ServiceId::Syncer(Blockchain::Bitcoin, Network::Local);
+const SOURCE2: ServiceId = ServiceId::Syncer(Blockchain::Monero, Network::Local);
 
 /*
 We test for the following scenarios in the block height tests:
@@ -799,7 +799,7 @@ fn create_monero_syncer(
         vec!["syncerd"]
             .into_iter()
             .chain(vec![
-                "--coin",
+                "--blockchain",
                 "Monero",
                 "--monero-daemon",
                 &format!("{}", conf.monero.daemon),

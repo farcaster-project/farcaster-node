@@ -2,7 +2,7 @@ use crate::{
     rpc::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
-        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Coin, GetTx,
+        Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
         SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
         TransactionBroadcasted, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
         XmrAddressAddendum,
@@ -10,7 +10,7 @@ use crate::{
     Error,
 };
 use bitcoin::{consensus::Decodable, Script, Txid};
-use farcaster_core::{swap::SwapId, transaction::TxLabel};
+use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
@@ -58,25 +58,25 @@ pub struct SyncerState {
     pub btc_fee_estimate_sat_per_kvb: Option<u64>,
 }
 impl SyncerState {
-    pub fn task_lifetime(&self, coin: Coin) -> u64 {
-        let height = self.height(coin);
+    pub fn task_lifetime(&self, blockchain: Blockchain) -> u64 {
+        let height = self.height(blockchain);
         if height > 0 {
             height + 500
         } else {
             u64::MAX
         }
     }
-    pub fn syncer(&self, coin: Coin) -> &ServiceId {
-        match coin {
-            Coin::Bitcoin => &self.bitcoin_syncer,
-            Coin::Monero => &self.monero_syncer,
+    pub fn syncer(&self, blockchain: Blockchain) -> &ServiceId {
+        match blockchain {
+            Blockchain::Bitcoin => &self.bitcoin_syncer,
+            Blockchain::Monero => &self.monero_syncer,
         }
     }
-    pub fn is_syncer(&self, coin: Coin, source: &ServiceId) -> bool {
-        self.syncer(coin) == source
+    pub fn is_syncer(&self, blockchain: Blockchain, source: &ServiceId) -> bool {
+        self.syncer(blockchain) == source
     }
     pub fn any_syncer(&self, source: &ServiceId) -> bool {
-        self.is_syncer(Coin::Bitcoin, source) || self.is_syncer(Coin::Monero, source)
+        self.is_syncer(Blockchain::Bitcoin, source) || self.is_syncer(Blockchain::Monero, source)
     }
     pub fn bitcoin_syncer(&self) -> ServiceId {
         self.bitcoin_syncer.clone()
@@ -84,19 +84,19 @@ impl SyncerState {
     pub fn monero_syncer(&self) -> ServiceId {
         self.monero_syncer.clone()
     }
-    pub fn height(&self, coin: Coin) -> u64 {
-        match coin {
-            Coin::Bitcoin => self.bitcoin_height,
-            Coin::Monero => self.monero_height,
+    pub fn height(&self, blockchain: Blockchain) -> u64 {
+        match blockchain {
+            Blockchain::Bitcoin => self.bitcoin_height,
+            Blockchain::Monero => self.monero_height,
         }
     }
-    pub fn handle_height_change(&mut self, new_height: u64, coin: Coin) {
-        let height = match coin {
-            Coin::Bitcoin => &mut self.bitcoin_height,
-            Coin::Monero => &mut self.monero_height,
+    pub fn handle_height_change(&mut self, new_height: u64, blockchain: Blockchain) {
+        let height = match blockchain {
+            Blockchain::Bitcoin => &mut self.bitcoin_height,
+            Blockchain::Monero => &mut self.monero_height,
         };
         if &new_height > height {
-            debug!("{} new height {}", coin, &new_height);
+            debug!("{} new height {}", blockchain, &new_height);
             *height = new_height;
         } else {
             warn!("block height did not increment, maybe syncer sends multiple events");
@@ -113,7 +113,7 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         let task = Task::WatchEstimateFee(WatchEstimateFee {
             id,
-            lifetime: self.task_lifetime(Coin::Bitcoin),
+            lifetime: self.task_lifetime(Blockchain::Bitcoin),
         });
         self.tasks.tasks.insert(id, task.clone());
         task
@@ -131,7 +131,7 @@ impl SyncerState {
         );
         let task = Task::WatchTransaction(WatchTransaction {
             id,
-            lifetime: self.task_lifetime(Coin::Bitcoin),
+            lifetime: self.task_lifetime(Blockchain::Bitcoin),
             hash: txid.to_vec(),
             confirmation_bound: self.confirmation_bound,
         });
@@ -153,7 +153,7 @@ impl SyncerState {
         debug!("Watching transaction {} with {}", hex::encode(&hash), id);
         let task = Task::WatchTransaction(WatchTransaction {
             id,
-            lifetime: self.task_lifetime(Coin::Monero),
+            lifetime: self.task_lifetime(Blockchain::Monero),
             hash,
             confirmation_bound: self.confirmation_bound,
         });
@@ -174,7 +174,7 @@ impl SyncerState {
     }
     pub fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
-        let from_height = self.from_height(Coin::Bitcoin, 6);
+        let from_height = self.from_height(Blockchain::Bitcoin, 6);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
             "{} | Watching {} transaction with scriptPubkey: {}",
@@ -189,7 +189,7 @@ impl SyncerState {
         };
         let task = Task::WatchAddress(WatchAddress {
             id,
-            lifetime: self.task_lifetime(Coin::Bitcoin),
+            lifetime: self.task_lifetime(Blockchain::Bitcoin),
             addendum: AddressAddendum::Bitcoin(addendum),
             include_tx: Boolean::True,
         });
@@ -200,8 +200,8 @@ impl SyncerState {
     pub fn is_watched_addr(&self, tx_label: &TxLabel) -> bool {
         self.tasks.watched_addrs.values().any(|tx| tx == tx_label)
     }
-    pub fn from_height(&self, coin: Coin, delta: u64) -> u64 {
-        let height = self.height(coin);
+    pub fn from_height(&self, blockchain: Blockchain, delta: u64) -> u64 {
+        let height = self.height(blockchain);
         let delta = if height > delta { delta } else { height };
         height - delta
     }
@@ -227,7 +227,7 @@ impl SyncerState {
         );
         let viewpair = monero::ViewPair { spend, view };
         let address = monero::Address::from_viewpair(self.network.into(), &viewpair);
-        let from_height = from_height.unwrap_or(self.from_height(Coin::Monero, 20));
+        let from_height = from_height.unwrap_or(self.from_height(Blockchain::Monero, 20));
         let addendum = XmrAddressAddendum {
             spend_key: spend,
             view_key: view,
@@ -248,7 +248,7 @@ impl SyncerState {
 
         let watch_addr = WatchAddress {
             id,
-            lifetime: self.task_lifetime(Coin::Monero),
+            lifetime: self.task_lifetime(Blockchain::Monero),
             addendum: AddressAddendum::Monero(addendum),
             include_tx: Boolean::False,
         };
@@ -267,7 +267,7 @@ impl SyncerState {
     ) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
-        let lifetime = self.task_lifetime(Coin::Monero);
+        let lifetime = self.task_lifetime(Blockchain::Monero);
         let addendum = SweepAddressAddendum::Monero(SweepMoneroAddress {
             source_view_key,
             source_spend_key,
@@ -286,12 +286,12 @@ impl SyncerState {
         task
     }
 
-    pub fn watch_height(&mut self, coin: Coin) -> Task {
+    pub fn watch_height(&mut self, blockchain: Blockchain) -> Task {
         let id = self.tasks.new_taskid();
-        trace!("Watch height {}", coin);
+        trace!("Watch height {}", blockchain);
         let task = Task::WatchHeight(WatchHeight {
             id,
-            lifetime: self.task_lifetime(coin),
+            lifetime: self.task_lifetime(blockchain),
         });
         self.tasks.tasks.insert(id, task.clone());
         task
@@ -299,7 +299,7 @@ impl SyncerState {
     pub fn sweep_btc(&mut self, sweep_bitcoin_address: SweepBitcoinAddress, retry: bool) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
-        let lifetime = self.task_lifetime(Coin::Bitcoin);
+        let lifetime = self.task_lifetime(Blockchain::Bitcoin);
         let addendum = SweepAddressAddendum::Bitcoin(sweep_bitcoin_address);
         let sweep_task = SweepAddress {
             id,
@@ -424,7 +424,7 @@ impl SyncerState {
             self.bitcoin_syncer(),
             Request::SyncerTask(task),
         )?;
-        let watch_height_btc_task = self.watch_height(Coin::Bitcoin);
+        let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
         endpoints.send_to(
             ServiceBus::Ctl,
             identity.clone(),
@@ -432,7 +432,7 @@ impl SyncerState {
             Request::SyncerTask(watch_height_btc_task),
         )?;
         // assumes xmr syncer will be up as well at this point
-        let watch_height_xmr_task = self.watch_height(Coin::Monero);
+        let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
         endpoints.send_to(
             ServiceBus::Ctl,
             identity,
