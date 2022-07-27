@@ -45,7 +45,7 @@ required-features = ["server"]
 [dependencies]
 # Farcaster crates
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "integration/inet0.8" }
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 #farcaster_core = { path = "../core" }
 
 anyhow = "1"
@@ -91,7 +91,7 @@ serde_yaml = { version = "0.8", optional = true }
 settings = { version = "0.10", package = "config", optional = true }
 shellexpand = { version = "2", optional = true }
 slip132 = "0.7.0"
-strict_encoding = "0.8.0"
+strict_encoding = { version = "0.8.1", features = ["monero"] }
 sysinfo = { version = "0.18.2" }
 rustc-hex = "2.1.0"
 # Async
@@ -106,7 +106,7 @@ prost = "0.10.3"
 [build-dependencies]
 # farcaster_core = { version = "0.4.4", features = ["serde"] }
 #farcaster_core = { path = "../core" }
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "integration/inet0.8" }
+farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
 
 anyhow = "1"
 serde_yaml = { version = "0.8", optional = true }
@@ -120,7 +120,7 @@ bitcoin = "0.28"
 # Monero
 monero = "0.17"
 # internet2 = { path = "../ext/rust-internet2" }
-strict_encoding = "0.8.0"
+strict_encoding = { version = "0.8.1", features = ["monero"] }
 internet2 = "0.8.0"
 lazy_static = "1.4"
 clap = { version = "3.0.0", features = ["env"] }
