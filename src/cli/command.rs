@@ -14,8 +14,7 @@
 
 use crate::rpc::request::{Address, AddressSecretKey};
 use crate::syncerd::{SweepBitcoinAddress, SweepXmrAddress};
-use farcaster_core::negotiation::Offer;
-use farcaster_core::swap::btcxmr::BtcXmr;
+use farcaster_core::swap::btcxmr::Offer;
 use std::{
     convert::TryFrom,
     io::{self, Read, Write},
@@ -145,7 +144,7 @@ impl Exec for Command {
                     );
                     return Ok(());
                 }
-                let offer = farcaster_core::negotiation::Offer {
+                let offer = Offer {
                     network,
                     arbitrating_blockchain,
                     accordant_blockchain,
@@ -172,11 +171,15 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::OfferInfo {
-                public_offer: PublicOffer { offer, .. },
-            } => {
-                println!("\n Trading {}\n", offer_buy_information(&offer));
-                println!("{}\n", offer);
+            Command::OfferInfo { public_offer } => {
+                println!(
+                    "\n Trading {}\n",
+                    offer_buy_information(&public_offer.offer)
+                );
+                println!(
+                    "{}",
+                    serde_yaml::to_string(&public_offer).expect("already parsed")
+                );
             }
 
             Command::Take {
@@ -205,7 +208,10 @@ impl Exec for Command {
                         offer_buy_information(&offer)
                     );
                     println!("Trade counterparty: {}@{}\n", &node_id, peer_address);
-                    println!("{}\n", offer);
+                    println!(
+                        "{}",
+                        serde_yaml::to_string(&public_offer).expect("already parsed")
+                    );
                 }
                 if without_validation || take_offer() {
                     // pass offer to farcasterd to initiate the swap
@@ -326,7 +332,7 @@ fn take_offer() -> bool {
     }
 }
 
-fn offer_buy_information(offer: &Offer<BtcXmr>) -> String {
+fn offer_buy_information(offer: &Offer) -> String {
     match offer.maker_role.other() {
         SwapRole::Alice => format!(
             "{} for {} at {} BTC/XMR",

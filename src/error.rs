@@ -153,12 +153,6 @@ impl From<farcaster_core::Error> for Error {
     }
 }
 
-impl From<farcaster_core::syncer::Error> for Error {
-    fn from(err: farcaster_core::syncer::Error) -> Self {
-        Error::Farcaster(err.to_string())
-    }
-}
-
 impl From<bitcoin::consensus::encode::Error> for Error {
     fn from(err: bitcoin::consensus::encode::Error) -> Self {
         Error::Farcaster(err.to_string())

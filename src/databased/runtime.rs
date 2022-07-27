@@ -4,8 +4,7 @@ use crate::databased::runtime::request::{
 use crate::farcaster_core::consensus::Encodable;
 use crate::syncerd::opts::Coin;
 use crate::walletd::runtime::{CheckpointWallet, Wallet};
-use farcaster_core::negotiation::PublicOffer;
-use farcaster_core::swap::btcxmr::BtcXmr;
+use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
 use std::path::PathBuf;
@@ -571,7 +570,7 @@ impl Database {
 
     fn set_offer_status(
         &mut self,
-        offer: &PublicOffer<BtcXmr>,
+        offer: &PublicOffer,
         status: &OfferStatus,
     ) -> Result<(), lmdb::Error> {
         let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
@@ -608,9 +607,7 @@ impl Database {
                     _ if selector == OfferStatusSelector::All => Some(status),
                     _ => None,
                 }?;
-                let offer =
-                    PublicOffer::<BtcXmr>::strict_decode(std::io::Cursor::new(key.to_vec()))
-                        .ok()?;
+                let offer = PublicOffer::strict_decode(std::io::Cursor::new(key.to_vec())).ok()?;
                 Some(OfferStatusPair {
                     offer,
                     status: filtered_status,
@@ -828,8 +825,8 @@ fn test_lmdb_state() {
     let addrs = database.get_all_monero_addresses().unwrap();
     assert!(addrs.contains(&addr.to_string()));
 
-    let offer_1 = PublicOffer::<BtcXmr>::from_str("Offer:Cke4ftrP5A71LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TUGURtskxM3BUGLBGAdFDhJQVMQmiPUsL5vSTKhyBKw3Lh11111111111111111111111111111111111111111AfZ113XRBuStRU5H").unwrap();
-    let offer_2 = PublicOffer::<BtcXmr>::from_str("Offer:Cke4ftrP5A71LQM2fvVdFMNR4grq1wi1D11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TUGURtskxM3BUGLBGAdFDhJQVMQmiPUsL5vSTKhyBKw3Lh11111111111111111111111111111111111111111AfZ113W5EEpvY61v").unwrap();
+    let offer_1 = PublicOffer::from_str("Offer:Cke4ftrP5A71LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TUGURtskxM3BUGLBGAdFDhJQVMQmiPUsL5vSTKhyBKw3Lh11111111111111111111111111111111111111111AfZ113XRBuStRU5H").unwrap();
+    let offer_2 = PublicOffer::from_str("Offer:Cke4ftrP5A71LQM2fvVdFMNR4grq1wi1D11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TUGURtskxM3BUGLBGAdFDhJQVMQmiPUsL5vSTKhyBKw3Lh11111111111111111111111111111111111111111AfZ113W5EEpvY61v").unwrap();
 
     database
         .set_offer_status(&offer_1, &OfferStatus::Open)

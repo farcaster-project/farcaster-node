@@ -81,17 +81,8 @@ use crate::{Config, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 use farcaster_core::{
     blockchain::FeePriority,
-    bundle::{
-        AliceParameters, BobParameters, CoreArbitratingTransactions, FundingTransaction,
-        SignedArbitratingLock,
-    },
-    negotiation::PublicOffer,
-    protocol_message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures,
-    },
-    role::{Alice, Bob, SwapRole, TradeRole},
-    swap::btcxmr::{BtcXmr, KeyManager},
+    role::TradeRole,
+    swap::btcxmr::{KeyManager, PublicOffer},
 };
 
 use std::str::FromStr;
@@ -174,10 +165,10 @@ pub struct Runtime {
     making_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     taking_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     pending_swap_init: HashMap<(ServiceId, ServiceId), Vec<(Request, SwapId)>>,
-    public_offers: HashSet<PublicOffer<BtcXmr>>,
+    public_offers: HashSet<PublicOffer>,
     arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
     acc_addrs: HashMap<PublicOfferId, monero::Address>,
-    consumed_offers: HashMap<PublicOffer<BtcXmr>, (SwapId, ServiceId)>,
+    consumed_offers: HashMap<PublicOffer, (SwapId, ServiceId)>,
     node_ids: HashMap<OfferId, NodeId>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
     peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
     wallet_token: Token,
@@ -433,7 +424,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offer: &PublicOffer<BtcXmr>) -> bool {
+    fn consumed_offers_contains(&self, offer: &PublicOffer) -> bool {
         self.consumed_offers.contains_key(offer)
     }
 
@@ -486,7 +477,7 @@ impl Runtime {
                 })),
                 ServiceId::Peer(_),
             ) => {
-                let public_offer: PublicOffer<BtcXmr> = FromStr::from_str(public_offer)?;
+                let public_offer = PublicOffer::from_str(public_offer)?;
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(
@@ -1213,7 +1204,7 @@ impl Runtime {
                     self.acc_addrs
                         .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
                     endpoints.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, ServiceId::Database, Request::SetOfferStatus(OfferStatusPair {
-                        offer: public_offer,
+                        offer: public_offer.clone(),
                         status: OfferStatus::Open,
                     }))?;
                     endpoints.send_to(
@@ -1221,8 +1212,9 @@ impl Runtime {
                         ServiceId::Farcasterd, // source
                         source.clone(),        // destination
                         Request::MadeOffer(MadeOffer {
-                            offer: serialized_offer,
                             message: msg,
+                            offer: serialized_offer,
+                            details: public_offer,
                         }),
                     )?;
                     Ok(())
@@ -2118,7 +2110,7 @@ fn launch_swapd(
     peerd: ServiceId,
     report_to: Option<ServiceId>,
     local_trade_role: TradeRole,
-    public_offer: PublicOffer<BtcXmr>,
+    public_offer: PublicOffer,
     local_params: Params,
     swap_id: SwapId,
     remote_commit: Option<Commit>,

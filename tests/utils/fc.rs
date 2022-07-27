@@ -6,6 +6,7 @@ use std::io;
 use std::process;
 use std::str;
 
+use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
 
 // TODO: rename this function, this launches fcd, not 'clients'
@@ -158,7 +159,22 @@ pub fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
 }
 
-// TODO: use this fn
+pub fn cli<'de, T: DeserializeOwned>(
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Result<T, String> {
+    match run_cli(args) {
+        Ok((stdout, stderr)) => {
+            let s = stdout.join("\n");
+            if let Ok(res) = serde_yaml::from_str(&s) {
+                Ok(res)
+            } else {
+                Err(stderr.join(" "))
+            }
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 pub fn run_cli(
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> io::Result<(Vec<String>, Vec<String>)> {

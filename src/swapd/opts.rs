@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use farcaster_core::swap::SwapId;
-use farcaster_core::{negotiation::PublicOffer, role::TradeRole, swap::btcxmr::BtcXmr};
+use farcaster_core::{role::TradeRole, swap::btcxmr::PublicOffer};
 use std::str::FromStr;
 
 /// Swap executor daemon; part of Farcaster Node
@@ -29,7 +29,7 @@ pub struct Opts {
 
     /// Public offer to initiate swapd runtime
     #[clap(parse(try_from_str = FromStr::from_str))]
-    pub public_offer: PublicOffer<BtcXmr>,
+    pub public_offer: PublicOffer,
 
     /// Trade role of participant (Maker or Taker)
     #[clap(parse(try_from_str = FromStr::from_str))]

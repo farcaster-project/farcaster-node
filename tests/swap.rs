@@ -2554,7 +2554,7 @@ fn make_offer_args(
             "--network".to_string(),
             "Local".to_string(),
             "--arb-blockchain".to_string(),
-            "ECDSA".to_string(),
+            "Bitcoin".to_string(),
             "--acc-blockchain".to_string(),
             "Monero".to_string(),
             "--btc-amount".to_string(),
