@@ -877,7 +877,7 @@ pub enum CheckpointState {
 pub enum AddressSecretKey {
     Bitcoin {
         address: bitcoin::Address,
-        secret_key: [u8; 32],
+        secret_key: bitcoin::secp256k1::SecretKey,
     },
     Monero {
         address: monero::Address,

@@ -274,11 +274,7 @@ impl Runtime {
                 address,
                 secret_key,
             }) => {
-                self.database.set_bitcoin_address(
-                    &address,
-                    &SecretKey::from_slice(&secret_key)
-                        .expect("secret key is not valid secp256k1 secret key"),
-                )?;
+                self.database.set_bitcoin_address(&address, &secret_key)?;
             }
 
             Request::GetAddressSecretKey(Address::Bitcoin(address)) => {
@@ -299,7 +295,7 @@ impl Runtime {
                             source,
                             Request::AddressSecretKey(request::AddressSecretKey::Bitcoin {
                                 address,
-                                secret_key: secret_key.secret_bytes(),
+                                secret_key,
                             }),
                         )?;
                     }

@@ -16,7 +16,6 @@ use farcaster_node::ServiceId;
 use microservices::ZMQ_CONTEXT;
 use ntest::timeout;
 use paste::paste;
-use std::convert::TryInto;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
@@ -893,7 +892,10 @@ fn bitcoin_syncer_sweep_address_test() {
     let sweep_source_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_destination_address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_destination_address_2 = bitcoin_rpc.get_new_address(None, None).unwrap();
-    let wif_private_key = bitcoin_rpc.dump_private_key(&sweep_source_address).unwrap();
+    let source_secret_key = bitcoin_rpc
+        .dump_private_key(&sweep_source_address)
+        .unwrap()
+        .inner;
 
     let (tx, rx_event) = create_bitcoin_syncer(false, "broadcast");
 
@@ -925,7 +927,7 @@ fn bitcoin_syncer_sweep_address_test() {
             from_height: None,
             retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
-                source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
+                source_secret_key,
                 source_address: sweep_source_address.clone(),
                 destination_address: sweep_destination_address_1.clone(),
             }),
@@ -987,7 +989,7 @@ fn bitcoin_syncer_sweep_address_test() {
             from_height: None,
             retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
-                source_private_key: (&wif_private_key.to_bytes()[..]).try_into().unwrap(),
+                source_secret_key,
                 source_address: sweep_source_address,
                 destination_address: sweep_destination_address_2.clone(),
             }),

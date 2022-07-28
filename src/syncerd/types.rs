@@ -66,7 +66,7 @@ pub struct SweepXmrAddress {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct SweepBitcoinAddress {
-    pub source_private_key: [u8; 32],
+    pub source_secret_key: bitcoin::secp256k1::SecretKey,
     pub source_address: bitcoin::Address,
     pub destination_address: bitcoin::Address,
 }
