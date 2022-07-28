@@ -28,47 +28,13 @@ pub struct BtcAddressAddendum {
     pub script_pubkey: bitcoin::Script,
 }
 
-#[derive(Clone, Debug, Display, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, Hash, StrictEncode, StrictDecode)]
 #[display(Debug)]
 pub struct XmrAddressAddendum {
     pub spend_key: monero::PublicKey,
     pub view_key: monero::PrivateKey,
     /// The blockchain height where to start the query (not inclusive).
     pub from_height: u64,
-}
-
-impl StrictEncode for XmrAddressAddendum {
-    fn strict_encode<E: ::std::io::Write>(
-        &self,
-        mut e: E,
-    ) -> Result<usize, strict_encoding::Error> {
-        let mut len = self
-            .spend_key
-            .consensus_encode(&mut e)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
-        len += self
-            .view_key
-            .consensus_encode(&mut e)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
-        Ok(len
-            + self
-                .from_height
-                .consensus_encode(&mut e)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
-    }
-}
-
-impl StrictDecode for XmrAddressAddendum {
-    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        Ok(Self {
-            spend_key: monero::PublicKey::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            view_key: monero::PrivateKey::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            from_height: u64::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-        })
-    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -88,56 +54,13 @@ pub enum SweepAddressAddendum {
     Bitcoin(SweepBitcoinAddress),
 }
 
-#[derive(Clone, Debug, Display, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, Hash, StrictEncode, StrictDecode)]
 #[display(Debug)]
 pub struct SweepXmrAddress {
     pub spend_key: monero::PrivateKey,
     pub view_key: monero::PrivateKey,
     pub dest_address: monero::Address,
     pub minimum_balance: monero::Amount,
-}
-
-impl StrictEncode for SweepXmrAddress {
-    fn strict_encode<E: ::std::io::Write>(
-        &self,
-        mut e: E,
-    ) -> Result<usize, strict_encoding::Error> {
-        let mut len = self
-            .spend_key
-            .consensus_encode(&mut e)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
-        len += self
-            .view_key
-            .consensus_encode(&mut e)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
-        len += self
-            .dest_address
-            .consensus_encode(&mut e)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
-        Ok(len
-            + self
-                .minimum_balance
-                .as_pico()
-                .consensus_encode(&mut e)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
-    }
-}
-
-impl StrictDecode for SweepXmrAddress {
-    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        Ok(Self {
-            spend_key: monero::PrivateKey::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            view_key: monero::PrivateKey::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            dest_address: monero::Address::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            minimum_balance: monero::Amount::from_pico(
-                u64::consensus_decode(&mut d)
-                    .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            ),
-        })
-    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

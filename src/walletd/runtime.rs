@@ -1298,8 +1298,7 @@ impl Runtime {
 
                 let swap_id: SwapId = SwapId::random();
                 self.swaps.insert(swap_id, None);
-                self.xmr_addrs
-                    .insert(swap_id, monero::Address::from_str(&internal_address)?);
+                self.xmr_addrs.insert(swap_id, internal_address);
 
                 // since we're takers, we are on the other side of the trade
                 let taker_role = offer.maker_role.other();
@@ -1521,7 +1520,7 @@ impl Runtime {
                         ServiceId::Wallet,
                         ServiceId::Database,
                         Request::SetAddressSecretKey(AddressSecretKey::Monero {
-                            address: corresponding_address.to_string(),
+                            address: corresponding_address,
                             spend: keypair.spend.as_bytes().try_into().unwrap(),
                             view: keypair.view.as_bytes().try_into().unwrap(),
                         }),
@@ -1617,7 +1616,7 @@ impl Runtime {
                         ServiceId::Wallet,
                         ServiceId::Database,
                         Request::SetAddressSecretKey(AddressSecretKey::Monero {
-                            address: corresponding_address.to_string(),
+                            address: corresponding_address,
                             spend: keypair.spend.as_bytes().try_into().unwrap(),
                             view: keypair.view.as_bytes().try_into().unwrap(),
                         }),

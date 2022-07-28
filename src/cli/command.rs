@@ -164,7 +164,7 @@ impl Exec for Command {
                     peer_secret_key: None,
                     peer_public_key: None,
                     arbitrating_addr,
-                    accordant_addr: accordant_addr.to_string(),
+                    accordant_addr,
                 };
                 runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
                 // report success or failure of the request to cli
@@ -217,9 +217,7 @@ impl Exec for Command {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request(
                         ServiceId::Farcasterd,
-                        Request::TakeOffer(
-                            (public_offer, bitcoin_address, monero_address.to_string()).into(),
-                        ),
+                        Request::TakeOffer((public_offer, bitcoin_address, monero_address).into()),
                     )?;
                     // report success of failure of the request to cli
                     runtime.report_response_or_fail()?;
@@ -291,9 +289,7 @@ impl Exec for Command {
             } => {
                 runtime.request(
                     ServiceId::Database,
-                    Request::GetAddressSecretKey(Address::Monero(
-                        source_address.clone().to_string(),
-                    )),
+                    Request::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
                 if let Request::AddressSecretKey(AddressSecretKey::Monero { view, spend, .. }) =
                     runtime.report_failure()?
@@ -301,8 +297,8 @@ impl Exec for Command {
                     runtime.request(
                         ServiceId::Farcasterd,
                         Request::SweepXmrAddress(SweepXmrAddress {
-                            spend_key: monero::PrivateKey::from_slice(&spend).unwrap(),
-                            view_key: monero::PrivateKey::from_slice(&view).unwrap(),
+                            spend_key: spend,
+                            view_key: view,
                             dest_address: destination_address,
                             minimum_balance: monero::Amount::from_pico(0),
                         }),

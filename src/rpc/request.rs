@@ -195,11 +195,11 @@ pub struct PubOffer {
     pub public_offer: PublicOffer,
     pub peer_secret_key: Option<SecretKey>,
     pub external_address: bitcoin::Address,
-    pub internal_address: String,
+    pub internal_address: monero::Address,
 }
 
-impl From<(PublicOffer, bitcoin::Address, String)> for PubOffer {
-    fn from(x: (PublicOffer, bitcoin::Address, String)) -> Self {
+impl From<(PublicOffer, bitcoin::Address, monero::Address)> for PubOffer {
+    fn from(x: (PublicOffer, bitcoin::Address, monero::Address)) -> Self {
         let (public_offer, external_address, internal_address) = x;
         PubOffer {
             public_offer,
@@ -817,7 +817,7 @@ pub enum Outcome {
 #[display("address")]
 pub enum Address {
     Bitcoin(bitcoin::Address),
-    Monero(String),
+    Monero(monero::Address),
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
@@ -880,9 +880,9 @@ pub enum AddressSecretKey {
         secret_key: [u8; 32],
     },
     Monero {
-        address: String,
-        view: [u8; 32],
-        spend: [u8; 32],
+        address: monero::Address,
+        view: monero::PrivateKey,
+        spend: monero::PrivateKey,
     },
 }
 
@@ -916,42 +916,6 @@ pub struct BitcoinFundingInfo {
     pub amount: bitcoin::Amount,
 }
 
-impl StrictEncode for MoneroFundingInfo {
-    fn strict_encode<E: ::std::io::Write>(
-        &self,
-        mut e: E,
-    ) -> Result<usize, strict_encoding::Error> {
-        let mut len = self.swap_id.strict_encode(&mut e)?;
-        len += self
-            .amount
-            .as_pico()
-            .strict_encode(&mut e)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
-
-        use monero::consensus::Encodable;
-
-        Ok(len
-            + self
-                .address
-                .consensus_encode(&mut e)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
-    }
-}
-
-impl StrictDecode for MoneroFundingInfo {
-    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        Ok(Self {
-            swap_id: SwapId::strict_decode(&mut d)?,
-            amount: monero::Amount::from_pico(
-                u64::strict_decode(&mut d)
-                    .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            ),
-            address: monero::Address::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-        })
-    }
-}
-
 impl FromStr for MoneroFundingInfo {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Error> {
@@ -978,7 +942,7 @@ impl fmt::Display for MoneroFundingInfo {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct MoneroFundingInfo {
     pub swap_id: SwapId,
     pub amount: monero::Amount,
@@ -1039,36 +1003,7 @@ pub struct NodeInfo {
 #[display("bitcoin_address")]
 pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
 
-impl StrictEncode for MoneroAddress {
-    fn strict_encode<E: ::std::io::Write>(
-        &self,
-        mut e: E,
-    ) -> Result<usize, strict_encoding::Error> {
-        let len = self
-            .0
-            .consensus_encode(&mut e)
-            .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?;
-        use monero::consensus::Encodable;
-        Ok(len
-            + self
-                .1
-                .consensus_encode(&mut e)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?)
-    }
-}
-
-impl StrictDecode for MoneroAddress {
-    fn strict_decode<D: ::std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        Ok(Self(
-            SwapId::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-            monero::Address::consensus_decode(&mut d)
-                .map_err(|e| strict_encoding::Error::DataIntegrityError(e.to_string()))?,
-        ))
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("monero_address")]
 pub struct MoneroAddress(pub SwapId, pub monero::Address);
 
@@ -1079,7 +1014,7 @@ pub struct ProtoPublicOffer {
     pub public_addr: InetSocketAddr,
     pub bind_addr: InetSocketAddr,
     pub arbitrating_addr: bitcoin::Address,
-    pub accordant_addr: String,
+    pub accordant_addr: monero::Address,
     pub peer_secret_key: Option<SecretKey>,
     pub peer_public_key: Option<secp256k1::PublicKey>,
 }

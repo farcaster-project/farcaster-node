@@ -1202,7 +1202,7 @@ impl Runtime {
                     );
                     self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
                     self.acc_addrs
-                        .insert(pub_offer_id, monero::Address::from_str(&accordant_addr)?);
+                        .insert(pub_offer_id, accordant_addr);
                     endpoints.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, ServiceId::Database, Request::SetOfferStatus(OfferStatusPair {
                         offer: public_offer.clone(),
                         status: OfferStatus::Open,
