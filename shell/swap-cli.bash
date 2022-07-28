@@ -568,7 +568,7 @@ _swap-cli() {
             return 0
             ;;
         swap__cli__needs__funding)
-            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <COIN>"
+            opts="-h -d -T -m -x --help --data-dir --tor-proxy --msg-socket --ctl-socket <BLOCKCHAIN>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
