@@ -1066,16 +1066,16 @@ async fn syncer_state_sweep_addresses() {
         lifetime: 11,
         retry: true,
         from_height: None,
-        addendum: SweepAddressAddendum::Monero(SweepXmrAddress {
-            view_key: monero::PrivateKey::from_str(
+        addendum: SweepAddressAddendum::Monero(SweepMoneroAddress {
+            source_view_key: monero::PrivateKey::from_str(
                 "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
             )
             .unwrap(),
-            spend_key: monero::PrivateKey::from_str(
+            source_spend_key: monero::PrivateKey::from_str(
                 "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
             )
             .unwrap(),
-            dest_address: monero::Address::from_str(
+            destination_address: monero::Address::from_str(
                 "51qzspbPiQ9Z9Wq3hR8HRhPmVcE3URCK8b8A9ypHHzyvhigWTefCapoG1MXVZQQi7B5t4DpJYrHZyaFjHSb5QqLe8YEaBpo"
             )
             .unwrap(),

@@ -25,7 +25,7 @@ use crate::{
     farcasterd,
     syncerd::{
         types::{Event, Task},
-        Coin, SweepXmrAddress,
+        Coin, SweepMoneroAddress,
     },
 };
 use amplify::{Holder, ToYamlString, Wrapper};
@@ -609,7 +609,7 @@ pub enum Request {
     #[api(type = 1303)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
-    SweepXmrAddress(SweepXmrAddress),
+    SweepMoneroAddress(SweepMoneroAddress),
 
     #[api(type = 1304)]
     #[display("checkpoint({0})", alt = "{0:#}")]

@@ -1703,10 +1703,10 @@ impl Runtime {
                 )?;
             }
 
-            Request::SweepXmrAddress(sweep_xmr_address) => {
+            Request::SweepMoneroAddress(sweep_xmr_address) => {
                 // TODO: remove once conversion is implemented in farcaster core Network type
                 let coin = Coin::Monero;
-                let network = match sweep_xmr_address.dest_address.network {
+                let network = match sweep_xmr_address.destination_address.network {
                     monero::Network::Mainnet => Network::Mainnet,
                     monero::Network::Stagenet => Network::Testnet,
                     monero::Network::Testnet => Network::Testnet,

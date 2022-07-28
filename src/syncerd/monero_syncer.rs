@@ -252,7 +252,7 @@ impl MoneroRpc {
 }
 
 async fn sweep_address(
-    dest_address: monero::Address,
+    destination_address: monero::Address,
     view: monero::PrivateKey,
     spend: monero::PrivateKey,
     minimum_balance: monero::Amount,
@@ -301,10 +301,10 @@ async fn sweep_address(
             "Sweeping address {} with unlocked balance {} into {}",
             source_address.addr(),
             monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold(),
-            dest_address.addr(),
+            destination_address.addr(),
         );
         let sweep_args = monero_rpc::SweepAllArgs {
-            address: dest_address,
+            address: destination_address,
             account_index: 0,
             subaddr_indices: None,
             priority: monero_rpc::TransferPriority::Default,
@@ -410,7 +410,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::SweepAddress(task) => match task.addendum.clone() {
                             SweepAddressAddendum::Monero(sweep) => {
-                                let addr = sweep.dest_address;
+                                let addr = sweep.destination_address;
                                 debug!("Sweeping address: {}", addr.addr());
                                 let mut state_guard = state.lock().await;
                                 state_guard.sweep_address(task, syncerd_task.source);
@@ -664,9 +664,9 @@ fn sweep_polling(
                 if let SweepAddressAddendum::Monero(addendum) = sweep_address_task.addendum.clone()
                 {
                     let sweep_address_txs = sweep_address(
-                        addendum.dest_address,
-                        addendum.view_key,
-                        addendum.spend_key,
+                        addendum.destination_address,
+                        addendum.source_view_key,
+                        addendum.source_spend_key,
                         addendum.minimum_balance,
                         &network,
                         Arc::clone(&wallet),

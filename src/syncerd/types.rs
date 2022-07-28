@@ -50,16 +50,16 @@ pub struct SweepAddress {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub enum SweepAddressAddendum {
-    Monero(SweepXmrAddress),
+    Monero(SweepMoneroAddress),
     Bitcoin(SweepBitcoinAddress),
 }
 
 #[derive(Clone, Debug, Display, Eq, PartialEq, Hash, StrictEncode, StrictDecode)]
 #[display(Debug)]
-pub struct SweepXmrAddress {
-    pub spend_key: monero::PrivateKey,
-    pub view_key: monero::PrivateKey,
-    pub dest_address: monero::Address,
+pub struct SweepMoneroAddress {
+    pub source_spend_key: monero::PrivateKey,
+    pub source_view_key: monero::PrivateKey,
+    pub destination_address: monero::Address,
     pub minimum_balance: monero::Amount,
 }
 

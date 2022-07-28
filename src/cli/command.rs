@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::rpc::request::{Address, AddressSecretKey};
-use crate::syncerd::{SweepBitcoinAddress, SweepXmrAddress};
+use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
 use farcaster_core::swap::btcxmr::Offer;
 use std::{
     convert::TryFrom,
@@ -296,10 +296,10 @@ impl Exec for Command {
                 {
                     runtime.request(
                         ServiceId::Farcasterd,
-                        Request::SweepXmrAddress(SweepXmrAddress {
-                            spend_key: spend,
-                            view_key: view,
-                            dest_address: destination_address,
+                        Request::SweepMoneroAddress(SweepMoneroAddress {
+                            source_spend_key: spend,
+                            source_view_key: view,
+                            destination_address: destination_address,
                             minimum_balance: monero::Amount::from_pico(0),
                         }),
                     )?;

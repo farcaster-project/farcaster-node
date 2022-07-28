@@ -3,7 +3,7 @@ use crate::{
     service::{Endpoints, LogStyle},
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, Coin, GetTx,
-        SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepXmrAddress, TaskTarget,
+        SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
         TransactionBroadcasted, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
         XmrAddressAddendum,
     },
@@ -258,9 +258,9 @@ impl SyncerState {
     }
     pub fn sweep_xmr(
         &mut self,
-        view_key: monero::PrivateKey,
-        spend_key: monero::PrivateKey,
-        dest_address: monero::Address,
+        source_view_key: monero::PrivateKey,
+        source_spend_key: monero::PrivateKey,
+        destination_address: monero::Address,
         from_height: Option<u64>,
         minimum_balance: monero::Amount,
         retry: bool,
@@ -268,10 +268,10 @@ impl SyncerState {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
         let lifetime = self.task_lifetime(Coin::Monero);
-        let addendum = SweepAddressAddendum::Monero(SweepXmrAddress {
-            view_key,
-            spend_key,
-            dest_address,
+        let addendum = SweepAddressAddendum::Monero(SweepMoneroAddress {
+            source_view_key,
+            source_spend_key,
+            destination_address,
             minimum_balance,
         });
         let sweep_task = SweepAddress {
