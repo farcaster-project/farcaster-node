@@ -205,7 +205,7 @@ fn main() {
                             .expect("Unable to set up timeout for TCP connection");
 
                         debug!("Establishing session with the remote");
-                        let session = session::BrontideSession::with(
+                        let session = session::BrontozaurSession::with(
                             stream,
                             local_node.private_key(),
                             inet_addr,
@@ -234,7 +234,7 @@ fn main() {
             remote_node_addr = Some(remote_node.clone());
 
             debug!("Connecting to {}", &remote_node.addr());
-            PeerConnection::connect_brontide(local_node, remote_node)
+            PeerConnection::connect_brontozaur(local_node, remote_node)
                 .expect("Unable to connect to the remote peer")
         }
     };

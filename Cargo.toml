@@ -52,7 +52,7 @@ anyhow = "1"
 hex = "^0.4.3"
 
 # LNP/BP crates
-amplify = "3"
+amplify = "3.13.0"
 amplify_derive = "2"
 base64 = { version = "0.12", optional = true }
 bech32 = { version = "0.7", optional = true }
@@ -68,11 +68,10 @@ dotenv = { version = "0.15", optional = true }
 # Coin clients
 electrum-client = "0.10.0"
 env_logger = "0.7"
-internet2 = "0.8.0"
+internet2 = "0.8.3"
 # Rust language
 lazy_static = "1.4"
 lmdb = "0.8.0"
-# internet2 = { path = "../ext/rust-internet2" }
 # Congig & logging
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 monero = "0.17"
@@ -113,15 +112,14 @@ serde_yaml = { version = "0.8", optional = true }
 toml = { version = "0.5", optional = true }
 env_logger = "0.7"
 
-amplify = "3"
+amplify = "3.13.0"
 amplify_derive = "2"
 # Bitcoin
 bitcoin = "0.28"
 # Monero
 monero = "0.17"
-# internet2 = { path = "../ext/rust-internet2" }
 strict_encoding = { version = "0.8.1", features = ["monero"] }
-internet2 = "0.8.0"
+internet2 = "0.8.3"
 lazy_static = "1.4"
 clap = { version = "3.0.0", features = ["env"] }
 # clap = { version = "3.0.0-beta.4", optional = true }
@@ -134,7 +132,6 @@ electrum-client = "0.10.0"
 tonic-build = "0.7"
 
 [dependencies.microservices]
-# path = '../ext/rust-internet2'
 version = "0.8.0"
 # git = "https://github.com/internet2-org/rust-microservices"
 default-features = false
