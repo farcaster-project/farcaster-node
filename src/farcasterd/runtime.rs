@@ -1468,12 +1468,7 @@ impl Runtime {
                     amount,
                 }) => {
                     self.stats.incr_awaiting_funding(&Blockchain::Bitcoin);
-                    let network = match address.network {
-                        bitcoin::Network::Bitcoin => Network::Mainnet,
-                        bitcoin::Network::Testnet => Network::Testnet,
-                        bitcoin::Network::Signet => Network::Testnet,
-                        bitcoin::Network::Regtest => Network::Local,
-                    };
+                    let network = address.network.into();
                     if let Some(auto_fund_config) = self.config.get_auto_funding_config(network) {
                         info!(
                             "{} | Attempting to auto-fund Bitcoin",
@@ -1546,11 +1541,7 @@ impl Runtime {
                     amount,
                 }) => {
                     self.stats.incr_awaiting_funding(&Blockchain::Monero);
-                    let network = match address.network {
-                        monero::Network::Mainnet => Network::Mainnet,
-                        monero::Network::Stagenet => Network::Testnet,
-                        monero::Network::Testnet => Network::Local,
-                    };
+                    let network = address.network.into();
                     if let Some(auto_fund_config) = self.config.get_auto_funding_config(network) {
                         info!(
                             "{} | Attempting to auto-fund Monero",
@@ -1705,13 +1696,8 @@ impl Runtime {
             }
 
             Request::SweepMoneroAddress(sweep_xmr_address) => {
-                // TODO: remove once conversion is implemented in farcaster core Network type
                 let blockchain = Blockchain::Monero;
-                let network = match sweep_xmr_address.destination_address.network {
-                    monero::Network::Mainnet => Network::Mainnet,
-                    monero::Network::Stagenet => Network::Testnet,
-                    monero::Network::Testnet => Network::Testnet,
-                };
+                let network = sweep_xmr_address.destination_address.network.into();
                 // check if a monero syncer is up
                 let id = TaskId(self.syncer_task_counter);
                 let request = Request::SyncerTask(Task::SweepAddress(SweepAddress {
@@ -1764,14 +1750,8 @@ impl Runtime {
             }
 
             Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
-                // remove once conversion is implemented in farcaster core Network type
                 let blockchain = Blockchain::Bitcoin;
-                let network = match sweep_bitcoin_address.source_address.network {
-                    bitcoin::Network::Bitcoin => Network::Mainnet,
-                    bitcoin::Network::Testnet => Network::Testnet,
-                    bitcoin::Network::Signet => Network::Testnet,
-                    bitcoin::Network::Regtest => Network::Local,
-                };
+                let network = sweep_bitcoin_address.source_address.network.into();
                 // check if a bitcoin syncer is up
                 let id = TaskId(self.syncer_task_counter);
                 let request = Request::SyncerTask(Task::SweepAddress(SweepAddress {
