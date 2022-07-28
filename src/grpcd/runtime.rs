@@ -215,6 +215,7 @@ impl GrpcServer {
         let addr = format!("[::1]:{}", self.grpc_port)
             .parse()
             .expect("invalid grpc server bind address");
+        info!("Binding grpc to address: {}", addr);
 
         std::thread::spawn(move || {
             let rt = Builder::new_multi_thread()
