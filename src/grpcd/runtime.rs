@@ -212,9 +212,10 @@ impl GrpcServer {
         rx_response: Receiver<Request>,
         tx_request: zmq::Socket,
     ) -> Result<(), Error> {
-        let addr = format!("[::1]:{}", self.grpc_port)
+        let addr = format!("0.0.0.0:{}", self.grpc_port)
             .parse()
             .expect("invalid grpc server bind address");
+        info!("Binding grpc to address: {}", addr);
 
         std::thread::spawn(move || {
             let rt = Builder::new_multi_thread()

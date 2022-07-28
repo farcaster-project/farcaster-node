@@ -1,6 +1,6 @@
 [farcasterd.grpc]
 use_grpc = true
-port = 50051
+port = 23432
 
 [syncers.local]
 electrum_server = "tcp://localhost:60401"
