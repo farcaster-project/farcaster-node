@@ -46,7 +46,7 @@ Register-ArgumentCompleter -Native -CommandName 'swap-cli' -ScriptBlock {
             [CompletionResult]::new('revoke-offer', 'revoke-offer', [CompletionResultType]::ParameterValue, 'Revoke offer accepts an offer and revokes it within the runtime')
             [CompletionResult]::new('abort-swap', 'abort-swap', [CompletionResultType]::ParameterValue, 'Abort a swap if it has not locked yet')
             [CompletionResult]::new('progress', 'progress', [CompletionResultType]::ParameterValue, 'Request swap progress report')
-            [CompletionResult]::new('needs-funding', 'needs-funding', [CompletionResultType]::ParameterValue, 'Returns addresses and amounts that require funding for coin')
+            [CompletionResult]::new('needs-funding', 'needs-funding', [CompletionResultType]::ParameterValue, 'Returns addresses and amounts that require funding for blockchain')
             [CompletionResult]::new('sweep-bitcoin-address', 'sweep-bitcoin-address', [CompletionResultType]::ParameterValue, 'Attempts to sweep any funds on a given bitcoin funding address')
             [CompletionResult]::new('sweep-monero-address', 'sweep-monero-address', [CompletionResultType]::ParameterValue, 'Attempts to sweep any funds on a given monero funding address')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')

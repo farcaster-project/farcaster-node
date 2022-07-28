@@ -21,9 +21,8 @@ use crate::{
     rpc::request::Outcome,
     rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
     syncerd::{
-        opts::Coin, Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum,
-        SweepMoneroAddress, SweepSuccess, TaskId, TaskTarget, TransactionRetrieved, WatchHeight,
-        XmrAddressAddendum,
+        Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepMoneroAddress,
+        SweepSuccess, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
     },
 };
 use std::{
@@ -67,7 +66,7 @@ use farcaster_core::{
         fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin,
         BitcoinSegwitV0,
     },
-    blockchain::{self, FeeStrategy},
+    blockchain::{self, Blockchain, FeeStrategy},
     consensus::{self, Encodable as FarEncodable},
     crypto::{CommitmentEngine, SharedKeyId, TaggedElement},
     monero::{Monero, SHARED_VIEW_KEY_ID},
@@ -156,8 +155,8 @@ pub fn run(
         lock_tx_confs: None,
         cancel_tx_confs: None,
         network,
-        bitcoin_syncer: ServiceId::Syncer(Coin::Bitcoin, network),
-        monero_syncer: ServiceId::Syncer(Coin::Monero, network),
+        bitcoin_syncer: ServiceId::Syncer(Blockchain::Bitcoin, network),
+        monero_syncer: ServiceId::Syncer(Blockchain::Monero, network),
         monero_amount,
         bitcoin_amount,
         awaiting_funding: false,
@@ -916,7 +915,8 @@ impl Runtime {
                 );
                 let acc_confs_needs =
                     self.temporal_safety.sweep_monero_thr - self.temporal_safety.xmr_finality_thr;
-                let sweep_block = self.syncer_state.height(Coin::Monero) + acc_confs_needs as u64;
+                let sweep_block =
+                    self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
                 info!(
                     "{} | Tx {} needs {}, and has {} {}",
                     self.swap_id.bright_blue_italic(),
@@ -928,7 +928,7 @@ impl Runtime {
                 info!(
                     "{} | {} reaches your address {} around block {}",
                     self.swap_id.bright_blue_italic(),
-                    Coin::Monero.bright_white_bold(),
+                    Blockchain::Monero.bright_white_bold(),
                     destination_address.bright_yellow_bold(),
                     sweep_block.bright_blue_bold(),
                 );
@@ -1097,7 +1097,7 @@ impl Runtime {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
-                            .handle_height_change(*height, Coin::Monero);
+                            .handle_height_change(*height, Blockchain::Monero);
                     }
                     Event::AddressTransaction(AddressTransaction {
                         id,
@@ -1149,7 +1149,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    Request::FundingCompleted(Coin::Monero),
+                                    Request::FundingCompleted(Blockchain::Monero),
                                 )?;
                                 self.syncer_state.awaiting_funding = false;
                             }
@@ -1261,7 +1261,9 @@ impl Runtime {
                     Event::TransactionConfirmations(TransactionConfirmations {
                         confirmations: Some(confirmations),
                         ..
-                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Monero)
+                    }) if self
+                        .temporal_safety
+                        .final_tx(*confirmations, Blockchain::Monero)
                         && self.state.b_core_arb()
                         && !self.state.cancel_seen()
                         && self.pending_requests().contains_key(&source)
@@ -1297,7 +1299,7 @@ impl Runtime {
                     }) if self.syncer_state.tasks.watched_txs.contains_key(id)
                         && !self
                             .temporal_safety
-                            .final_tx(confirmations.unwrap_or(0), Coin::Monero) =>
+                            .final_tx(confirmations.unwrap_or(0), Blockchain::Monero) =>
                     {
                         self.syncer_state.handle_tx_confs(
                             id,
@@ -1338,7 +1340,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        Request::FundingCompleted(Coin::Monero),
+                                        Request::FundingCompleted(Blockchain::Monero),
                                     )?;
                                 }
                                 SwapRole::Bob => {
@@ -1346,7 +1348,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        Request::FundingCompleted(Coin::Bitcoin),
+                                        Request::FundingCompleted(Blockchain::Bitcoin),
                                     )?;
                                 }
                             }
@@ -1403,7 +1405,7 @@ impl Runtime {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
-                            .handle_height_change(*height, Coin::Bitcoin);
+                            .handle_height_change(*height, Blockchain::Bitcoin);
                     }
                     Event::AddressTransaction(AddressTransaction { id, amount, tx, .. })
                         if self.syncer_state.tasks.watched_addrs.get(id).is_some() =>
@@ -1425,7 +1427,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    Request::FundingCompleted(Coin::Bitcoin),
+                                    Request::FundingCompleted(Blockchain::Bitcoin),
                                 )?;
                                 // If the bitcoin amount does not match the expected funding amount, abort the swap
                                 let amount = bitcoin::Amount::from_sat(*amount);
@@ -1526,7 +1528,9 @@ impl Runtime {
                         id,
                         confirmations: Some(confirmations),
                         ..
-                    }) if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
+                    }) if self
+                        .temporal_safety
+                        .final_tx(*confirmations, Blockchain::Bitcoin)
                         && self.syncer_state.tasks.watched_txs.get(id).is_some() =>
                     {
                         self.syncer_state.handle_tx_confs(
@@ -1686,7 +1690,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    Request::FundingCanceled(Coin::Monero),
+                                    Request::FundingCanceled(Blockchain::Monero),
                                 )?
                             }
 
@@ -1739,7 +1743,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        Request::FundingCanceled(Coin::Monero),
+                                        Request::FundingCanceled(Blockchain::Monero),
                                     )?;
                                     self.syncer_state.awaiting_funding = false;
                                 }
@@ -1775,7 +1779,9 @@ impl Runtime {
                                 self.txs.remove(&TxLabel::Punish);
                             }
                             TxLabel::Buy
-                                if self.temporal_safety.final_tx(*confirmations, Coin::Bitcoin)
+                                if self
+                                    .temporal_safety
+                                    .final_tx(*confirmations, Blockchain::Bitcoin)
                                     && self.state.a_refundsig() =>
                             {
                                 // FIXME: swap ends here for alice
@@ -1960,7 +1966,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             ServiceId::Farcasterd,
-                            Request::FundingCanceled(Coin::Bitcoin),
+                            Request::FundingCanceled(Blockchain::Bitcoin),
                         )?;
                         self.abort_swap(endpoints)?;
                     }
@@ -2378,7 +2384,7 @@ impl Runtime {
                     self.pending_requests = PendingRequests(pending_requests);
                     self.txs = txs.clone();
                     trace!("Watch height bitcoin");
-                    let watch_height_bitcoin = self.syncer_state.watch_height(Coin::Bitcoin);
+                    let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -2387,7 +2393,7 @@ impl Runtime {
                     )?;
 
                     trace!("Watch height monero");
-                    let watch_height_monero = self.syncer_state.watch_height(Coin::Monero);
+                    let watch_height_monero = self.syncer_state.watch_height(Blockchain::Monero);
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),

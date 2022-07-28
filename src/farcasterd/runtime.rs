@@ -27,7 +27,6 @@ use crate::{
     },
     service::Endpoints,
     swapd::get_swap_id,
-    syncerd::opts::Coin,
     walletd::NodeSecrets,
 };
 use amplify::Wrapper;
@@ -67,7 +66,7 @@ use internet2::{
 use microservices::esb::{self, Handler};
 
 use farcaster_core::{
-    blockchain::Network,
+    blockchain::{Blockchain, Network},
     negotiation::{OfferId, PublicOfferId},
     swap::SwapId,
 };
@@ -214,19 +213,19 @@ impl Stats {
     fn incr_initiated(&mut self) {
         self.initialized += 1;
     }
-    fn incr_awaiting_funding(&mut self, coin: &Coin) {
-        match coin {
-            Coin::Monero => self.awaiting_funding_xmr += 1,
-            Coin::Bitcoin => self.awaiting_funding_btc += 1,
+    fn incr_awaiting_funding(&mut self, blockchain: &Blockchain) {
+        match blockchain {
+            Blockchain::Monero => self.awaiting_funding_xmr += 1,
+            Blockchain::Bitcoin => self.awaiting_funding_btc += 1,
         }
     }
-    fn incr_funded(&mut self, coin: &Coin) {
-        match coin {
-            Coin::Monero => {
+    fn incr_funded(&mut self, blockchain: &Blockchain) {
+        match blockchain {
+            Blockchain::Monero => {
                 self.funded_xmr += 1;
                 self.awaiting_funding_xmr -= 1;
             }
-            Coin::Bitcoin => {
+            Blockchain::Bitcoin => {
                 self.funded_btc += 1;
                 self.awaiting_funding_btc -= 1;
             }
@@ -379,7 +378,7 @@ impl Runtime {
             .drain()
             .filter_map(
                 |(
-                    (coin, network),
+                    (blockchain, network),
                     Syncer {
                         mut clients,
                         service_id,
@@ -388,14 +387,14 @@ impl Runtime {
                     clients.remove(&client_service_id);
                     if !clients.is_empty() {
                         Some((
-                            (coin, network),
+                            (blockchain, network),
                             Syncer {
                                 clients,
                                 service_id,
                             },
                         ))
                     } else {
-                        let service_id = ServiceId::Syncer(coin, network);
+                        let service_id = ServiceId::Syncer(blockchain, network);
                         info!("Terminating {}", &service_id);
                         if endpoints
                             .send_to(
@@ -409,7 +408,7 @@ impl Runtime {
                             None
                         } else {
                             Some((
-                                (coin, network),
+                                (blockchain, network),
                                 Syncer {
                                     clients,
                                     service_id: Some(service_id),
@@ -419,7 +418,7 @@ impl Runtime {
                     }
                 },
             )
-            .collect::<HashMap<(Coin, Network), Syncer>>()
+            .collect::<HashMap<(Blockchain, Network), Syncer>>()
             .into();
         Ok(())
     }
@@ -601,12 +600,12 @@ impl Runtime {
                             );
                         }
                     }
-                    ServiceId::Syncer(coin, network)
-                        if !self.syncers.service_online(&(*coin, *network))
+                    ServiceId::Syncer(blockchain, network)
+                        if !self.syncers.service_online(&(*blockchain, *network))
                             && self.spawning_services.contains_key(&source) =>
                     {
                         if let Some(Syncer { service_id, .. }) =
-                            self.syncers.inner().get_mut(&(*coin, *network))
+                            self.syncers.inner().get_mut(&(*blockchain, *network))
                         {
                             *service_id = Some(source.clone());
                             info!(
@@ -619,7 +618,7 @@ impl Runtime {
                             endpoints.send_to(
                                 ServiceBus::Ctl,
                                 source,
-                                ServiceId::Syncer(*coin, *network),
+                                ServiceId::Syncer(*blockchain, *network),
                                 request,
                             )?;
                         }
@@ -675,14 +674,14 @@ impl Runtime {
                     ));
                     // notify this swapd about its syncers that are up and
                     // running. if syncer not ready, then swapd will be notified
-                    // on the ServiceId::Syncer(coin, network) Hello pattern. in
+                    // on the ServiceId::Syncer(blockchain, network) Hello pattern. in
                     // sum, if syncer is up, send msg immediately else wait for
                     // syncer to say hello, and then dispatch msg
                     let init_swap_req = Request::MakeSwap(swap_params.clone());
-                    if self
-                        .syncers
-                        .pair_ready((Coin::Bitcoin, *network), (Coin::Monero, *network))
-                    {
+                    if self.syncers.pair_ready(
+                        (Blockchain::Bitcoin, *network),
+                        (Blockchain::Monero, *network),
+                    ) {
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -693,8 +692,8 @@ impl Runtime {
                         let xs = self
                             .pending_swap_init
                             .entry((
-                                ServiceId::Syncer(Coin::Bitcoin, *network),
-                                ServiceId::Syncer(Coin::Monero, *network),
+                                ServiceId::Syncer(Blockchain::Bitcoin, *network),
+                                ServiceId::Syncer(Blockchain::Monero, *network),
                             ))
                             .or_insert(vec![]);
                         xs.push((init_swap_req, swap_params.swap_id));
@@ -717,10 +716,10 @@ impl Runtime {
                         ))),
                     ));
                     let init_swap_req = Request::TakeSwap(swap_params.clone());
-                    if self
-                        .syncers
-                        .pair_ready((Coin::Bitcoin, *network), (Coin::Monero, *network))
-                    {
+                    if self.syncers.pair_ready(
+                        (Blockchain::Bitcoin, *network),
+                        (Blockchain::Monero, *network),
+                    ) {
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -731,8 +730,8 @@ impl Runtime {
                         let xs = self
                             .pending_swap_init
                             .entry((
-                                ServiceId::Syncer(Coin::Bitcoin, *network),
-                                ServiceId::Syncer(Coin::Monero, *network),
+                                ServiceId::Syncer(Blockchain::Bitcoin, *network),
+                                ServiceId::Syncer(Blockchain::Monero, *network),
                             ))
                             .or_insert(vec![]);
                         xs.push((init_swap_req, swap_params.swap_id));
@@ -832,7 +831,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &mut self.syncers,
-                        Coin::Bitcoin,
+                        Blockchain::Bitcoin,
                         network,
                         swap_id,
                         &self.config,
@@ -841,7 +840,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         &mut self.spawning_services,
                         &mut self.syncers,
-                        Coin::Monero,
+                        Blockchain::Monero,
                         network,
                         swap_id,
                         &self.config,
@@ -1101,7 +1100,7 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     &mut self.spawning_services,
                     &mut self.syncers,
-                    Coin::Bitcoin,
+                    Blockchain::Bitcoin,
                     public_offer.offer.network,
                     swap_id,
                     &self.config,
@@ -1110,7 +1109,7 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     &mut self.spawning_services,
                     &mut self.syncers,
-                    Coin::Monero,
+                    Blockchain::Monero,
                     public_offer.offer.network,
                     swap_id,
                     &self.config,
@@ -1468,7 +1467,7 @@ impl Runtime {
                     address,
                     amount,
                 }) => {
-                    self.stats.incr_awaiting_funding(&Coin::Bitcoin);
+                    self.stats.incr_awaiting_funding(&Blockchain::Bitcoin);
                     let network = address.network.into();
                     if let Some(auto_fund_config) = self.config.get_auto_funding_config(network) {
                         info!(
@@ -1541,7 +1540,7 @@ impl Runtime {
                     address,
                     amount,
                 }) => {
-                    self.stats.incr_awaiting_funding(&Coin::Monero);
+                    self.stats.incr_awaiting_funding(&Blockchain::Monero);
                     let network = address.network.into();
                     if let Some(auto_fund_config) = self.config.get_auto_funding_config(network) {
                         info!(
@@ -1594,48 +1593,50 @@ impl Runtime {
                 }
             },
 
-            Request::FundingCompleted(coin) => {
+            Request::FundingCompleted(blockchain) => {
                 let swapid = get_swap_id(&source)?;
-                if match coin {
-                    Coin::Bitcoin => self.funding_btc.remove(&get_swap_id(&source)?).is_some(),
-                    Coin::Monero => self.funding_xmr.remove(&get_swap_id(&source)?).is_some(),
+                if match blockchain {
+                    Blockchain::Bitcoin => {
+                        self.funding_btc.remove(&get_swap_id(&source)?).is_some()
+                    }
+                    Blockchain::Monero => self.funding_xmr.remove(&get_swap_id(&source)?).is_some(),
                 } {
-                    self.stats.incr_funded(&coin);
+                    self.stats.incr_funded(&blockchain);
                     info!(
                         "{} | Your {} funding completed",
                         swapid.bright_blue_italic(),
-                        coin.bright_green_bold()
+                        blockchain.bright_green_bold()
                     );
                 }
             }
 
-            Request::FundingCanceled(coin) => {
+            Request::FundingCanceled(blockchain) => {
                 let swapid = get_swap_id(&source)?;
-                match coin {
-                    Coin::Bitcoin => {
+                match blockchain {
+                    Blockchain::Bitcoin => {
                         if self.funding_btc.remove(&get_swap_id(&source)?).is_some() {
                             self.stats.incr_funding_bitcoin_canceled();
                             info!(
                                 "{} | Your {} funding was canceled",
                                 swapid.bright_blue_italic(),
-                                coin.bright_green_bold()
+                                blockchain.bright_green_bold()
                             );
                         }
                     }
-                    Coin::Monero => {
+                    Blockchain::Monero => {
                         if self.funding_xmr.remove(&get_swap_id(&source)?).is_some() {
                             self.stats.incr_funding_monero_canceled();
                             info!(
                                 "{} | Your {} funding was canceled",
                                 swapid.bright_blue_italic(),
-                                coin.bright_green_bold()
+                                blockchain.bright_green_bold()
                             );
                         }
                     }
                 };
             }
 
-            Request::NeedsFunding(Coin::Monero) => {
+            Request::NeedsFunding(Blockchain::Monero) => {
                 let len = self.funding_xmr.len();
                 let res = self
                     .funding_xmr
@@ -1664,7 +1665,7 @@ impl Runtime {
                     Request::String(res),
                 )?;
             }
-            Request::NeedsFunding(Coin::Bitcoin) => {
+            Request::NeedsFunding(Blockchain::Bitcoin) => {
                 let len = self.funding_btc.len();
                 let res = self
                     .funding_btc
@@ -1695,8 +1696,7 @@ impl Runtime {
             }
 
             Request::SweepMoneroAddress(sweep_xmr_address) => {
-                // TODO: remove once conversion is implemented in farcaster core Network type
-                let coin = Coin::Monero;
+                let blockchain = Blockchain::Monero;
                 let network = sweep_xmr_address.destination_address.network.into();
                 // check if a monero syncer is up
                 let id = TaskId(self.syncer_task_counter);
@@ -1710,18 +1710,19 @@ impl Runtime {
                 self.syncer_task_counter += 1;
                 self.syncer_tasks.insert(id, source.clone());
 
-                let k = (coin, network);
-                let s = ServiceId::Syncer(coin, network);
+                let k = (blockchain, network);
+                let s = ServiceId::Syncer(blockchain, network);
                 if !self.syncers.service_online(&k) && !self.spawning_services.contains_key(&s) {
                     let mut args = vec![
-                        "--coin".to_string(),
-                        coin.to_string(),
+                        "--blockchain".to_string(),
+                        blockchain.to_string(),
                         "--network".to_string(),
                         network.to_string(),
                     ];
                     args.append(
-                        &mut syncer_servers_args(&self.config, coin, network)
-                            .or(syncer_servers_args(&self.config, coin, Network::Local))?,
+                        &mut syncer_servers_args(&self.config, blockchain, network).or(
+                            syncer_servers_args(&self.config, blockchain, Network::Local),
+                        )?,
                     );
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
@@ -1742,15 +1743,14 @@ impl Runtime {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd,
-                        ServiceId::Syncer(coin, network),
+                        ServiceId::Syncer(blockchain, network),
                         request,
                     )?;
                 }
             }
 
             Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
-                // remove once conversion is implemented in farcaster core Network type
-                let coin = Coin::Bitcoin;
+                let blockchain = Blockchain::Bitcoin;
                 let network = sweep_bitcoin_address.source_address.network.into();
                 // check if a bitcoin syncer is up
                 let id = TaskId(self.syncer_task_counter);
@@ -1764,16 +1764,16 @@ impl Runtime {
                 self.syncer_task_counter += 1;
                 self.syncer_tasks.insert(id, source.clone());
 
-                let k = (coin, network);
-                let s = ServiceId::Syncer(coin, network);
+                let k = (blockchain, network);
+                let s = ServiceId::Syncer(blockchain, network);
                 if !self.syncers.service_online(&k) && !self.spawning_services.contains_key(&s) {
                     let mut args = vec![
-                        "--coin".to_string(),
-                        coin.to_string(),
+                        "--blockchain".to_string(),
+                        blockchain.to_string(),
                         "--network".to_string(),
                         network.to_string(),
                     ];
-                    args.append(&mut syncer_servers_args(&self.config, coin, network)?);
+                    args.append(&mut syncer_servers_args(&self.config, blockchain, network)?);
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
@@ -1793,7 +1793,7 @@ impl Runtime {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         source,
-                        ServiceId::Syncer(coin, network),
+                        ServiceId::Syncer(blockchain, network),
                         request,
                     )?;
                 }
@@ -1834,12 +1834,12 @@ impl Runtime {
                     .syncers
                     .inner()
                     .drain()
-                    .filter_map(|((coin, network), mut xs)| {
+                    .filter_map(|((blockchain, network), mut xs)| {
                         xs.clients.remove(&client_service_id);
                         if !xs.clients.is_empty() {
-                            Some(((coin, network), xs))
+                            Some(((blockchain, network), xs))
                         } else {
-                            let service_id = ServiceId::Syncer(coin, network);
+                            let service_id = ServiceId::Syncer(blockchain, network);
                             info!("Terminating {}", service_id);
                             if endpoints
                                 .send_to(
@@ -1852,11 +1852,11 @@ impl Runtime {
                             {
                                 None
                             } else {
-                                Some(((coin, network), xs))
+                                Some(((blockchain, network), xs))
                             }
                         }
                     })
-                    .collect::<HashMap<(Coin, Network), Syncer>>()
+                    .collect::<HashMap<(Blockchain, Network), Syncer>>()
                     .into();
             }
 
@@ -2054,21 +2054,21 @@ fn syncers_up(
     source: ServiceId,
     spawning_services: &mut HashMap<ServiceId, ServiceId>,
     syncers: &mut Syncers,
-    coin: Coin,
+    blockchain: Blockchain,
     network: Network,
     swap_id: SwapId,
     config: &Config,
 ) -> Result<(), Error> {
-    let k = (coin, network);
-    let s = ServiceId::Syncer(coin, network);
+    let k = (blockchain, network);
+    let s = ServiceId::Syncer(blockchain, network);
     if !syncers.service_online(&k) && !spawning_services.contains_key(&s) {
         let mut args = vec![
-            "--coin".to_string(),
-            coin.to_string(),
+            "--blockchain".to_string(),
+            blockchain.to_string(),
             "--network".to_string(),
             network.to_string(),
         ];
-        args.append(&mut syncer_servers_args(config, coin, network)?);
+        args.append(&mut syncer_servers_args(config, blockchain, network)?);
         info!("launching syncer with: {:?}", args);
         launch("syncerd", args)?;
         syncers.inner().insert(
@@ -2136,14 +2136,18 @@ fn launch_swapd(
 
 /// Return the list of needed arguments for a syncer given a config and a network.
 /// This function only register the minimal set of URLs needed for the blockchain to work.
-fn syncer_servers_args(config: &Config, coin: Coin, net: Network) -> Result<Vec<String>, Error> {
+fn syncer_servers_args(
+    config: &Config,
+    blockchain: Blockchain,
+    net: Network,
+) -> Result<Vec<String>, Error> {
     match config.get_syncer_servers(net) {
-        Some(servers) => match coin {
-            Coin::Bitcoin => Ok(vec![
+        Some(servers) => match blockchain {
+            Blockchain::Bitcoin => Ok(vec![
                 "--electrum-server".to_string(),
                 servers.electrum_server,
             ]),
-            Coin::Monero => {
+            Blockchain::Monero => {
                 let mut args: Vec<String> = vec![
                     "--monero-daemon".to_string(),
                     servers.monero_daemon,
@@ -2228,10 +2232,10 @@ pub fn launch(
     })
 }
 #[derive(Default, From)]
-struct Syncers(HashMap<(Coin, Network), Syncer>);
+struct Syncers(HashMap<(Blockchain, Network), Syncer>);
 
 impl Syncers {
-    pub fn inner(&mut self) -> &mut HashMap<(Coin, Network), Syncer> {
+    pub fn inner(&mut self) -> &mut HashMap<(Blockchain, Network), Syncer> {
         &mut self.0
     }
     pub fn syncer_services_len(&self) -> usize {
@@ -2240,13 +2244,13 @@ impl Syncers {
             .filter(|Syncer { service_id, .. }| service_id.is_some())
             .count()
     }
-    pub fn service_online(&self, key: &(Coin, Network)) -> bool {
+    pub fn service_online(&self, key: &(Blockchain, Network)) -> bool {
         self.0
             .get(key)
             .map(|Syncer { service_id, .. }| service_id.is_some())
             .unwrap_or(false)
     }
-    pub fn pair_ready(&self, coin0: (Coin, Network), coin1: (Coin, Network)) -> bool {
+    pub fn pair_ready(&self, coin0: (Blockchain, Network), coin1: (Blockchain, Network)) -> bool {
         SyncerPair::new(&self, coin0, coin1)
             .map(|syncer_pair| syncer_pair.ready())
             .unwrap_or(false)
@@ -2270,8 +2274,8 @@ impl<'a> SyncerPair<'a> {
     }
     fn new(
         ss: &'a Syncers,
-        arbitrating_ix: (Coin, Network),
-        accordant_ix: (Coin, Network),
+        arbitrating_ix: (Blockchain, Network),
+        accordant_ix: (Blockchain, Network),
     ) -> Option<Self> {
         let arbitrating_syncer = ss.0.get(&arbitrating_ix)?;
         let accordant_syncer = ss.0.get(&accordant_ix)?;
@@ -2284,9 +2288,10 @@ impl<'a> SyncerPair<'a> {
 
 fn normalize_syncer_services_pair(source: &ServiceId) -> (ServiceId, ServiceId) {
     match source {
-        ServiceId::Syncer(Coin::Monero, network) | ServiceId::Syncer(Coin::Bitcoin, network) => (
-            ServiceId::Syncer(Coin::Bitcoin, *network),
-            ServiceId::Syncer(Coin::Monero, *network),
+        ServiceId::Syncer(Blockchain::Monero, network)
+        | ServiceId::Syncer(Blockchain::Bitcoin, network) => (
+            ServiceId::Syncer(Blockchain::Bitcoin, *network),
+            ServiceId::Syncer(Blockchain::Monero, *network),
         ),
         _ => unreachable!("Not Bitcoin nor Monero syncers"),
     }

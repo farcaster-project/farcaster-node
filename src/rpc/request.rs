@@ -25,7 +25,7 @@ use crate::{
     farcasterd,
     syncerd::{
         types::{Event, Task},
-        Coin, SweepMoneroAddress,
+        SweepMoneroAddress,
     },
 };
 use amplify::{Holder, ToYamlString, Wrapper};
@@ -57,7 +57,7 @@ use bitcoin::{
 };
 use farcaster_core::{
     bitcoin::BitcoinSegwitV0,
-    blockchain::FeePriority,
+    blockchain::{Blockchain, FeePriority},
     crypto::dleq::DLEQProof,
     monero::Monero,
     protocol::message::Abort,
@@ -569,7 +569,7 @@ pub enum Request {
 
     #[api(type = 1109)]
     #[display("needs_funding({0})")]
-    NeedsFunding(Coin),
+    NeedsFunding(Blockchain),
 
     #[api(type = 1110)]
     #[display("write_text")]
@@ -577,11 +577,11 @@ pub enum Request {
 
     #[api(type = 1111)]
     #[display("funding_completed({0})")]
-    FundingCompleted(Coin),
+    FundingCompleted(Blockchain),
 
     #[api(type = 1112)]
     #[display("funding_canceled")]
-    FundingCanceled(Coin),
+    FundingCanceled(Blockchain),
 
     // #[api(type = 1203)]
     // #[display("channel_funding({0})", alt = "{0:#}")]
@@ -648,7 +648,7 @@ pub enum Request {
 
     #[api(type = 1312)]
     #[display("get_addresses")]
-    GetAddresses(Coin),
+    GetAddresses(Blockchain),
 
     #[api(type = 1313)]
     #[display("bitcoin_address_list({0})")]

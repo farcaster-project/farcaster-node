@@ -1,6 +1,8 @@
-use crate::farcaster_core::{blockchain::Network, consensus::Decodable};
+use crate::farcaster_core::{
+    blockchain::{Blockchain, Network},
+    consensus::Decodable,
+};
 use crate::rpc::request::SyncerdBridgeEvent;
-use crate::syncerd::opts::Coin;
 use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::{TaskId, TaskTarget};
 use crate::Error;
@@ -38,7 +40,7 @@ impl TaskCounter {
 }
 
 pub struct SyncerState {
-    coin: Coin,
+    blockchain: Blockchain,
     block_height: u64,
     block_hash: Vec<u8>,
     tasks_sources: HashMap<InternalId, ServiceId>,
@@ -79,7 +81,7 @@ pub fn create_set<T: std::hash::Hash + Eq>(xs: Vec<T>) -> HashSet<T> {
 }
 
 impl SyncerState {
-    pub fn new(tx_event: TokioSender<SyncerdBridgeEvent>, id: Coin) -> Self {
+    pub fn new(tx_event: TokioSender<SyncerdBridgeEvent>, blockchain: Blockchain) -> Self {
         Self {
             block_height: 0,
             block_hash: vec![0],
@@ -93,7 +95,7 @@ impl SyncerState {
             sweep_addresses: HashMap::new(),
             tx_event,
             task_count: TaskCounter(0),
-            coin: id,
+            blockchain,
             subscribed_addresses: HashSet::new(),
             fee_estimation: None,
         }
@@ -403,20 +405,20 @@ impl SyncerState {
                 self.block_hash = block;
                 info!(
                     "{} incremented height {}",
-                    self.coin.bright_white_bold(),
+                    self.blockchain.bright_white_bold(),
                     &h.bright_blue_bold()
                 );
             }
             (h, b) if h == self.block_height && b != &self.block_hash => {
                 self.block_hash = block;
-                info!("{} new chain tip", self.coin.bright_white_bold());
+                info!("{} new chain tip", self.blockchain.bright_white_bold());
             }
             (h, b) if h < self.block_height && b != &self.block_hash => {
                 self.block_height = h;
                 self.block_hash = block;
                 warn!(
                     "{} height decreased {}, new chain tip",
-                    self.coin.bright_white_bold(),
+                    self.blockchain.bright_white_bold(),
                     &h.bright_blue_bold()
                 );
             }
@@ -787,7 +789,7 @@ async fn syncer_state_transaction() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone(), Coin::Bitcoin);
+    let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
 
     let transaction_task_one = WatchTransaction {
         id: TaskId(0),
@@ -805,7 +807,7 @@ async fn syncer_state_transaction() {
         id: TaskId(0),
         lifetime: 4,
     };
-    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
+    let source1 = ServiceId::Syncer(Blockchain::Bitcoin, Network::Mainnet);
 
     state.watch_transaction(transaction_task_one.clone(), source1.clone());
     state
@@ -876,7 +878,7 @@ async fn syncer_state_transaction() {
     assert_eq!(state.unseen_transactions.len(), 2);
     assert!(event_rx.try_recv().is_ok());
 
-    let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
+    let source2 = ServiceId::Syncer(Blockchain::Monero, Network::Mainnet);
     state.watch_transaction(transaction_task_two.clone(), source2.clone());
     state
         .abort(TaskTarget::TaskId(TaskId(0)), source2.clone(), true)
@@ -903,7 +905,7 @@ async fn syncer_state_addresses() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone(), Coin::Bitcoin);
+    let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let address = bitcoin::Address::from_str("32BkaQeAVcd65Vn7pjEziohf5bCiryNQov").unwrap();
     let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum {
         address: Some(address.clone()),
@@ -922,7 +924,7 @@ async fn syncer_state_addresses() {
         addendum: addendum.clone(),
         include_tx: Boolean::False,
     };
-    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
+    let source1 = ServiceId::Syncer(Blockchain::Bitcoin, Network::Mainnet);
 
     state.watch_address(address_task_two.clone(), source1.clone());
     state
@@ -1019,7 +1021,7 @@ async fn syncer_state_addresses() {
     assert!(event_rx.try_recv().is_ok());
     assert!(event_rx.try_recv().is_ok());
 
-    let source2 = ServiceId::Syncer(Coin::Monero, Network::Testnet);
+    let source2 = ServiceId::Syncer(Blockchain::Monero, Network::Testnet);
     state.watch_address(address_task_two.clone(), source2.clone());
     state
         .abort(TaskTarget::TaskId(TaskId(0)), source2.clone(), true)
@@ -1060,7 +1062,7 @@ async fn syncer_state_sweep_addresses() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone(), Coin::Monero);
+    let mut state = SyncerState::new(event_tx.clone(), Blockchain::Monero);
     let sweep_task = SweepAddress {
         id: TaskId(0),
         lifetime: 11,
@@ -1082,7 +1084,7 @@ async fn syncer_state_sweep_addresses() {
             minimum_balance: monero::Amount::from_pico(1),
         }),
     };
-    let source1 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
+    let source1 = ServiceId::Syncer(Blockchain::Monero, Network::Mainnet);
 
     state.sweep_address(sweep_task.clone(), source1.clone());
     assert_eq!(state.lifetimes.len(), 1);
@@ -1114,7 +1116,7 @@ async fn syncer_state_height() {
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
     ) = tokio::sync::mpsc::channel(120);
-    let mut state = SyncerState::new(event_tx.clone(), Coin::Bitcoin);
+    let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let height_task = WatchHeight {
         id: TaskId(0),
         lifetime: 0,
@@ -1123,7 +1125,7 @@ async fn syncer_state_height() {
         id: TaskId(0),
         lifetime: 3,
     };
-    let source1 = ServiceId::Syncer(Coin::Bitcoin, Network::Mainnet);
+    let source1 = ServiceId::Syncer(Blockchain::Bitcoin, Network::Mainnet);
 
     state
         .watch_height(height_task.clone(), source1.clone())
@@ -1165,7 +1167,7 @@ async fn syncer_state_height() {
     assert_eq!(state.watch_height.len(), 1);
     assert!(event_rx.try_recv().is_err());
 
-    let source2 = ServiceId::Syncer(Coin::Monero, Network::Mainnet);
+    let source2 = ServiceId::Syncer(Blockchain::Monero, Network::Mainnet);
     state
         .watch_height(another_height_task.clone(), source2.clone())
         .await;

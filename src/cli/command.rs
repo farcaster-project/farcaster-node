@@ -27,7 +27,7 @@ use internet2::addr::{InetSocketAddr, NodeAddr};
 use microservices::shell::Exec;
 
 use farcaster_core::{
-    blockchain::Network,
+    blockchain::{Blockchain, Network},
     negotiation::PublicOffer,
     role::{SwapRole, TradeRole},
     swap::SwapId,
@@ -35,10 +35,7 @@ use farcaster_core::{
 use strict_encoding::ReadExt;
 
 use super::Command;
-use crate::{
-    rpc::{request, Client, Request},
-    syncerd::Coin,
-};
+use crate::rpc::{request, Client, Request};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
@@ -253,8 +250,8 @@ impl Exec for Command {
                 }
             }
 
-            Command::NeedsFunding { coin } => {
-                runtime.request(ServiceId::Farcasterd, Request::NeedsFunding(coin))?;
+            Command::NeedsFunding { blockchain } => {
+                runtime.request(ServiceId::Farcasterd, Request::NeedsFunding(blockchain))?;
                 runtime.report_response_or_fail()?;
             }
 
