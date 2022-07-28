@@ -21,7 +21,7 @@ async fn grpc_server_functional_test() {
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
-    let channel = Endpoint::from_static("http://[::1]:50051")
+    let channel = Endpoint::from_static("http://0.0.0.0:23432")
         .connect()
         .await
         .unwrap();

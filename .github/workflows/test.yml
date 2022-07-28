@@ -69,7 +69,7 @@ jobs:
           swap_parallel_execution,
           swap_revoke_offer_bob_maker_normal,
           cli,
-          # grpc, TODO: re-enable once ipv6 address support has landed
+          grpc,
         ]
     runs-on: ubuntu-latest
     env:
