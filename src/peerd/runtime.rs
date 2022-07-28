@@ -434,7 +434,7 @@ impl Runtime {
         info!("Attempting to reconnect to remote peerd");
         // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
         // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
-        let mut connection = PeerConnection::connect_brontide(
+        let mut connection = PeerConnection::connect_brontozaur(
             self.local_node.clone(),
             self.remote_node_addr
                 .clone()
@@ -447,7 +447,7 @@ impl Runtime {
             attempt += 1;
             warn!("reconnect failed attempting again in {} seconds", attempt);
             std::thread::sleep(std::time::Duration::from_secs(attempt));
-            connection = PeerConnection::connect_brontide(
+            connection = PeerConnection::connect_brontozaur(
                 self.local_node.clone(),
                 self.remote_node_addr
                     .clone()
