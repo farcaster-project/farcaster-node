@@ -665,13 +665,6 @@ impl Runtime {
                              Requesting swapd to be the maker of this swap",
                         source
                     );
-                    report_to.push((
-                        swap_params.report_to.clone(), // walletd
-                        Request::Progress(request::Progress::Message(format!(
-                            "Swap daemon {} operational",
-                            source
-                        ))),
-                    ));
                     // notify this swapd about its syncers that are up and
                     // running. if syncer not ready, then swapd will be notified
                     // on the ServiceId::Syncer(blockchain, network) Hello pattern. in
@@ -708,13 +701,6 @@ impl Runtime {
                              Requesting swapd to be the taker of this swap",
                         source
                     );
-                    report_to.push((
-                        swap_params.report_to.clone(), // walletd
-                        Request::Progress(request::Progress::Message(format!(
-                            "Swap daemon {} operational",
-                            source
-                        ))),
-                    ));
                     let init_swap_req = Request::TakeSwap(swap_params.clone());
                     if self.syncers.pair_ready(
                         (Blockchain::Bitcoin, *network),
@@ -744,10 +730,6 @@ impl Runtime {
                          connection by a request from {}",
                         source, enquirer
                     );
-                    report_to.push((
-                        Some(enquirer.clone()),
-                        Request::Success(OptionDetails::with(format!("Connected to {}", source))),
-                    ));
                     self.spawning_services.remove(&source);
                 }
             }
