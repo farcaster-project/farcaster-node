@@ -76,7 +76,7 @@ use crate::rpc::request::{
     Failure, FailureCode, GetKeys, IntoProgressOrFailure, Msg, NodeInfo, OptionDetails,
 };
 use crate::rpc::{request, Request, ServiceBus};
-use crate::{Config, Error, LogStyle, Service, ServiceConfig, ServiceId};
+use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 use farcaster_core::{
     blockchain::FeePriority,
@@ -185,6 +185,8 @@ pub struct Runtime {
     syncer_task_counter: u32,
     syncer_tasks: HashMap<TaskId, ServiceId>,
 }
+
+impl CtlServer for Runtime {}
 
 #[derive(Default)]
 struct Stats {
@@ -896,13 +898,13 @@ impl Runtime {
                 }
             }
 
-            Request::GetInfo(id) => {
-                endpoints.send_to(
+            Request::GetInfo => {
+                debug!("farcasterd received GetInfo request");
+                self.send_client_ctl(
                     ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
+                    endpoints,
+                    source,
                     Request::NodeInfo(NodeInfo {
-                        id,
                         node_ids: self.node_ids(),
                         listens: self.listens.values().into_iter().cloned().collect(),
                         uptime: SystemTime::now()

@@ -55,7 +55,7 @@ impl IdCounter {
 }
 
 pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
-    let (tx_response, rx_response): (Sender<Request>, Receiver<Request>) =
+    let (tx_response, rx_response): (Sender<(u64, Request)>, Receiver<(u64, Request)>) =
         std::sync::mpsc::channel();
 
     let tx_request = ZMQ_CONTEXT.socket(zmq::PAIR)?;
@@ -78,7 +78,7 @@ pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
 }
 
 pub struct FarcasterService {
-    tokio_tx_request: tokio::sync::mpsc::Sender<Request>,
+    tokio_tx_request: tokio::sync::mpsc::Sender<(u64, Request)>,
     pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
     id_counter: Arc<Mutex<IdCounter>>,
 }
@@ -95,7 +95,7 @@ impl Farcaster for FarcasterService {
         let id = id_counter.increment();
         drop(id_counter);
 
-        if let Err(error) = self.tokio_tx_request.send(Request::GetInfo(Some(id))).await {
+        if let Err(error) = self.tokio_tx_request.send((id, Request::GetInfo)).await {
             return Err(Status::internal(format!("{}", error)));
         }
 
@@ -140,20 +140,21 @@ pub struct GrpcServer {
 }
 
 fn request_loop(
-    mut tokio_rx_request: tokio::sync::mpsc::Receiver<Request>,
+    mut tokio_rx_request: tokio::sync::mpsc::Receiver<(u64, Request)>,
     tx_request: zmq::Socket,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         let mut connection = Connection::with_socket(ZmqSocketType::Push, tx_request);
-        while let Some(request) = tokio_rx_request.recv().await {
+        while let Some((id, request)) = tokio_rx_request.recv().await {
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
             debug!("sending request over grpc bridge: {:?}", request);
+            let grpc_client_address: Vec<u8> = ServiceId::GrpcdClient(id).into();
             let grpc_address: Vec<u8> = ServiceId::Grpcd.into();
 
             writer
                 .send_routed(
-                    &grpc_address,
+                    &grpc_client_address,
                     &grpc_address,
                     &grpc_address,
                     &transcoder.encrypt(request.serialize()),
@@ -164,29 +165,23 @@ fn request_loop(
 }
 
 fn response_loop(
-    mpsc_rx_response: Receiver<Request>,
+    mpsc_rx_response: Receiver<(u64, Request)>,
     pending_requests_lock: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
             let response = mpsc_rx_response.try_recv();
             match response {
-                Ok(Request::NodeInfo(request::NodeInfo { id: Some(id), .. })) => {
+                Ok((id, request)) => {
                     let mut pending_requests = pending_requests_lock.lock().await;
                     if pending_requests.contains_key(&id) {
                         let sender = pending_requests.remove(&id).unwrap();
-                        sender.send(response.clone().unwrap()).expect(
-                            "unable to send response from grpc resposne loop to its handler",
+                        sender.send(request).expect(
+                            "unable to send response from grpc response loop to its handler",
                         );
                     } else {
                         error!("id {} not found in pending grpc requests", id);
                     }
-                }
-                Ok(response) => {
-                    error!(
-                        "received unexpected response in grpc response loop: {:?}",
-                        response
-                    );
                 }
                 _ => {}
             }
@@ -209,7 +204,7 @@ fn server_loop(service: FarcasterService, addr: SocketAddr) -> tokio::task::Join
 impl GrpcServer {
     fn run(
         &mut self,
-        rx_response: Receiver<Request>,
+        rx_response: Receiver<(u64, Request)>,
         tx_request: zmq::Socket,
     ) -> Result<(), Error> {
         let addr = format!("0.0.0.0:{}", self.grpc_port)
@@ -252,7 +247,7 @@ impl GrpcServer {
 
 pub struct Runtime {
     identity: ServiceId,
-    tx_response: Sender<Request>,
+    tx_response: Sender<(u64, Request)>,
 }
 
 impl CtlServer for Runtime {}
@@ -316,9 +311,13 @@ impl Runtime {
                 debug!("Received Hello from {}", source);
             }
             _ => {
-                self.tx_response
-                    .send(request)
-                    .expect("could not send response from grpc runtime to server");
+                if let ServiceId::GrpcdClient(id) = source {
+                    self.tx_response
+                        .send((id, request))
+                        .expect("could not send response from grpc runtime to server");
+                } else {
+                    error!("Grpcd server can only handle messages addressed to a grpcd client");
+                }
             }
         }
         Ok(())
@@ -327,16 +326,11 @@ impl Runtime {
     fn handle_bridge(
         &mut self,
         endpoints: &mut Endpoints,
-        _source: ServiceId,
+        source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        debug!("GRPCD BRIDGE RPC request: {}", request);
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            self.identity(),
-            ServiceId::Farcasterd,
-            request,
-        )?;
+        debug!("GRPCD BRIDGE RPC request: {}, {}", request, source);
+        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Farcasterd, request)?;
         Ok(())
     }
 }

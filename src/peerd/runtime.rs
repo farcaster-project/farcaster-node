@@ -392,7 +392,7 @@ impl Runtime {
                 std::process::exit(0);
             }
 
-            Request::GetInfo(_) => {
+            Request::GetInfo => {
                 let info = PeerInfo {
                     local_id: self.local_node.node_id(),
                     remote_id: self

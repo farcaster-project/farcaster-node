@@ -139,6 +139,9 @@ pub enum ServiceId {
     #[display("grpcd")]
     Grpcd,
 
+    #[display("grpcd_client<{0}>")]
+    GrpcdClient(u64),
+
     #[display("databased")]
     Database,
 
@@ -398,6 +401,21 @@ where
         senders
             .send_to(bus, source, ServiceId::Wallet, request)
             .map_err(From::from)
+    }
+
+    fn send_client_ctl(
+        &mut self,
+        bus: ServiceBus,
+        senders: &mut Endpoints,
+        dest: ServiceId,
+        request: Request,
+    ) -> Result<(), Error> {
+        if let ServiceId::GrpcdClient(_) = dest {
+            senders.send_to(bus, dest, ServiceId::Grpcd, request)?;
+        } else {
+            senders.send_to(bus, self.identity(), dest, request)?;
+        }
+        Ok(())
     }
 }
 
