@@ -1889,6 +1889,10 @@ impl Runtime {
 
         for (i, (respond_to, resp)) in report_to.clone().into_iter().enumerate() {
             if let Some(respond_to) = respond_to {
+                // do not respond to self
+                if respond_to == self.identity() {
+                    continue;
+                }
                 trace!(
                     "(#{}) Respond to {}: {}",
                     i,
