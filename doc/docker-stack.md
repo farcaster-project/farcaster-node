@@ -46,7 +46,7 @@ Images used in the docker compose are produced by the `farcaster-project` direct
 | Service      | Image                                                             |
 | ------------ | ----------------------------------------------------------------- |
 | `farcasterd` | `ghcr.io/farcaster-project/farcaster-node/farcasterd:latest`      |
-| `walletrpc`  | `ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3` |
+| `walletrpc`  | `ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0` |
 
 ## Docker image
 

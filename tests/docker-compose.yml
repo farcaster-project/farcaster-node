@@ -19,7 +19,7 @@ services:
             - 60401:60401
         command: "/usr/bin/electrs --daemon-dir /data --conf /cfg/electrs.toml"
     monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monerod:0.18.0.0
         environment:
             NETWORK: regtest
             OFFLINE: --offline
@@ -28,7 +28,7 @@ services:
             - 18081:18081
             - 18082:18082
     monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         environment:
             MONERO_DAEMON_ADDRESS: monerod:18081
             WALLET_RPC_PORT: 18083
@@ -37,7 +37,7 @@ services:
         ports:
             - 18083:18083
     monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         environment:
             MONERO_DAEMON_ADDRESS: monerod:18081
             WALLET_RPC_PORT: 18083
@@ -46,7 +46,7 @@ services:
         ports:
             - 18084:18083
     monero-wallet-rpc-3:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         environment:
             MONERO_DAEMON_ADDRESS: monerod:18081
             WALLET_RPC_PORT: 18083
