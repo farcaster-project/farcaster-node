@@ -1,15 +1,15 @@
 [package]
 name = "farcaster_node"
 version = "0.2.0"
-authors = ["Farcaster Devs", "Dr. Maxim Orlovsky <orlovsky@pandoracore.com>"]
+authors = ["Farcaster Devs"]
 build = "build.rs"
 edition = "2018"
 rust-version = "1.59.0"
-exclude = [".github", "/test", "Dockerfile"]
+include = ["src/*", "build.rs", "README.md", "CHANGELOG.md", "LICENSE"]
 keywords = ["bitcoin", "monero", "node", "atomic swaps"]
 license = "MIT"
 readme = "README.md"
-description = "Farcaster node"
+description = "Farcaster, a cross-chain atomic swap node."
 
 [lib]
 name = "farcaster_node"
@@ -43,15 +43,9 @@ name = "grpcd"
 required-features = ["server"]
 
 [dependencies]
-# Farcaster crates
-# farcaster_core = { version = "0.4.4", features = ["serde"] }
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
-#farcaster_core = { path = "../core" }
-
+farcaster_core = "0.5"
 anyhow = "1"
 hex = "^0.4.3"
-
-# LNP/BP crates
 amplify = "3.13.0"
 amplify_derive = "2"
 base64 = { version = "0.12", optional = true }
@@ -61,28 +55,22 @@ bitcoincore-rpc = "0.15.0"
 chrono = "0.4"
 config = "0.11"
 clap = { version = "3.0.0", optional = true, features = ["env", "derive"] }
-# clap = { version = "3.0.0-beta.4", optional = true }
 colored = { version = "2", optional = true }
 configure_me = { version = "0.4", optional = true }
 dotenv = { version = "0.15", optional = true }
-# Coin clients
 electrum-client = "0.10.0"
 env_logger = "0.7"
 internet2 = "0.8.3"
-# Rust language
 lazy_static = "1.4"
 lmdb = "0.8.0"
-# Congig & logging
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
+microservices = { version = "0.8.0", default-features = false, features = ['peer'] }
 monero = "0.17"
 monero-rpc = "0.1"
-# monero-rpc = { path = "../monero-rpc-rs/" }
-monero-lws = "0.1.0"
+monero-lws = "0.1"
 nix = { version = "0.19", optional = true }
-# Misc
 paste = "1.0"
 regex = { version = "1.5", optional = true }
-# Serialization & parsing
 serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 serde_with = { version = "1.8", optional = true }
@@ -93,63 +81,39 @@ slip132 = "0.7.0"
 strict_encoding = { version = "0.8.1", features = ["monero"] }
 sysinfo = { version = "0.18.2" }
 rustc-hex = "2.1.0"
-# Async
 tokio = { version = "1.18.2", features = ["full"] }
 toml = { version = "0.5", optional = true }
-# IPC
 zmq = { package = "zmq2", version = "0.5.0" }
-# GRPC
 tonic = "0.7.2"
 prost = "0.10.3"
 
 [build-dependencies]
-# farcaster_core = { version = "0.4.4", features = ["serde"] }
-#farcaster_core = { path = "../core" }
-farcaster_core = { git = "https://github.com/farcaster-project/farcaster-core", branch = "main" }
-
+farcaster_core = "0.5"
 anyhow = "1"
 serde_yaml = { version = "0.8", optional = true }
 toml = { version = "0.5", optional = true }
 env_logger = "0.7"
-
 amplify = "3.13.0"
 amplify_derive = "2"
-# Bitcoin
 bitcoin = "0.28"
-# Monero
 monero = "0.17"
+microservices = { version = "0.8.0", default-features = false, features = ['peer'] }
 strict_encoding = { version = "0.8.1", features = ["monero"] }
 internet2 = "0.8.3"
 lazy_static = "1.4"
 clap = { version = "3.0.0", features = ["env"] }
-# clap = { version = "3.0.0-beta.4", optional = true }
 clap_complete = "3.1"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 shellexpand = "2"
 configure_me_codegen = "0.4"
 electrum-client = "0.10.0"
-# GRPC
 tonic-build = "0.7"
-
-[dependencies.microservices]
-version = "0.8.0"
-# git = "https://github.com/internet2-org/rust-microservices"
-default-features = false
-features = ['peer']
 
 [dev-dependencies]
 ntest = "0.7.3"
 rand = "0.8.4"
-
-# Test
 strip-ansi-escapes = "0.1.1"
 futures = "0.3.18"
-
-[build-dependencies.microservices]
-version = "0.8.0"
-# git = "https://github.com/internet2-org/rust-microservices"
-default-features = false
-features = ['peer']
 
 # Recommended set of features:
 # 1. Standalone node: `server` (=`node`+`shell`)
