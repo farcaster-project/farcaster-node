@@ -1,7 +1,7 @@
 version: "3.7"
 services:
     bitcoind:
-        image: ghcr.io/farcaster-project/containers/bitcoin-core:22.0
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:23.0
         volumes:
             - bitcoind-data:/data
         ports:
@@ -9,7 +9,7 @@ services:
             - 18444:18444
         command: "/usr/bin/bitcoind -regtest -server -rest -txindex -rpcport=18443 -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 -rpcuser=test -rpcpassword=cEl2o3tHHgzYeuu3CiiZ2FjdgSiw9wNeMFzoNbFmx9k= -fallbackfee=0.00001 -datadir=/data"
     electrs:
-        image: ghcr.io/farcaster-project/containers/electrs:0.8.11
+        image: ghcr.io/farcaster-project/containers/electrs:0.9.7
         depends_on:
             - "bitcoind"
         volumes:
