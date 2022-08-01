@@ -110,6 +110,7 @@ pub fn run(
                     router: None,
                     queued: true,
                     api_type: ZmqSocketType::Rep,
+                    topic: None,
                 }
             },
             BridgeHandler,
@@ -605,7 +606,8 @@ fn restart_receiver_runtime(
                     carrier: Carrier::Socket(tx),
                     router: None,
                     queued: true,
-                    api_type: ZmqSocketType::Rep
+                    api_type: ZmqSocketType::Rep,
+                    topic: None,
                 }
             },
             BridgeHandler,
