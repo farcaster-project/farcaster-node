@@ -45,7 +45,7 @@ compose:
       protocol: "http"
     auth:
       user: "test"
-      pass: "cEl2o3tHHgzYeuu3CiiZ2FjdgSiw9wNeMFzoNbFmx9k="
+      pass: "KoXlVICn4xf43lPrV3Hq3xfpeioT36Dup5RoKV-lIHs="
 
   electrs:
     host: "localhost"
