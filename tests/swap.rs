@@ -668,7 +668,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     funding_btc_address: bitcoin::Address,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
@@ -832,7 +832,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > 999660000000);
+    assert!(delta_balance > monero::Amount::from_pico(999660000000));
 
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
@@ -844,7 +844,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     funding_btc_address: bitcoin::Address,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
@@ -1012,7 +1012,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
         after_balance.balance, before_balance.balance
     );
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > 999660000000);
+    assert!(delta_balance > monero::Amount::from_pico(999660000000));
     drop(lock);
 
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
@@ -1025,7 +1025,7 @@ async fn run_refund_swap_alice_overfunds(
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     funding_btc_address: bitcoin::Address,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
@@ -1195,7 +1195,7 @@ async fn run_refund_swap_alice_overfunds(
     let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
     drop(monero_wallet_lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > 999660000000);
+    assert!(delta_balance > monero::Amount::from_pico(999660000000));
     drop(lock);
 }
 
@@ -1206,7 +1206,7 @@ async fn run_refund_swap_race_cancel(
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     funding_btc_address: bitcoin::Address,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
@@ -1352,7 +1352,7 @@ async fn run_refund_swap_race_cancel(
     let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
     drop(monero_wallet_lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > 999660000000);
+    assert!(delta_balance > monero::Amount::from_pico(999660000000));
     drop(lock);
 }
 
@@ -1589,7 +1589,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     funding_btc_address: bitcoin::Address,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     execution_mutex: Arc<Mutex<u8>>,
     bob_farcasterd: std::process::Child,
@@ -1866,7 +1866,7 @@ async fn make_and_take_offer(
 async fn run_swaps_parallel(
     swap_info: HashMap<SwapId, SwapParams>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     execution_mutex: Arc<Mutex<u8>>,
 ) {
@@ -1999,7 +1999,7 @@ async fn run_swaps_parallel(
     }
 
     // cache the monero balance before sweeping
-    let mut before_balances: HashMap<SwapId, u64> = HashMap::new();
+    let mut before_balances: HashMap<SwapId, monero::Amount> = HashMap::new();
     for (
         swap_id,
         SwapParams {
@@ -2068,7 +2068,7 @@ async fn run_swaps_parallel(
         let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
         drop(monero_wallet_lock);
         let delta_balance = after_balance.balance - before_balances[swap_id];
-        assert!(delta_balance > 999660000000);
+        assert!(delta_balance > monero::Amount::from_pico(999660000000));
     }
     drop(lock);
 }
@@ -2184,7 +2184,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     funding_btc_address: bitcoin::Address,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
@@ -2338,7 +2338,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > 999660000000);
+    assert!(delta_balance > monero::Amount::from_pico(999660000000));
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
@@ -2349,7 +2349,7 @@ async fn run_swap(
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
     funding_btc_address: bitcoin::Address,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
@@ -2497,7 +2497,7 @@ async fn run_swap(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > 999660000000);
+    assert!(delta_balance > monero::Amount::from_pico(999660000000));
 }
 
 fn kill_connected_peerd() {
@@ -2883,7 +2883,7 @@ async fn retry_until_monero_funding_address(
 async fn retry_until_bob_finish_state_transition(
     args: Vec<String>,
     finish_state: String,
-    monero_regtest: monero_rpc::RegtestDaemonClient,
+    monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
 ) -> Vec<String> {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
@@ -2966,7 +2966,7 @@ fn bitcoin_setup() -> bitcoincore_rpc::Client {
 }
 
 async fn monero_setup() -> (
-    monero_rpc::RegtestDaemonClient,
+    monero_rpc::RegtestDaemonJsonRpcClient,
     Arc<Mutex<monero_rpc::WalletClient>>,
 ) {
     let conf = config::TestConfig::parse();
