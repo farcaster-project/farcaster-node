@@ -10,6 +10,8 @@ on:
 jobs:
   draft-new-release:
     name: Draft a new release
-    uses: farcaster-project/workflows/.github/workflows/draft-new-release.yml@v1.0.2
+    uses: farcaster-project/workflows/.github/workflows/draft-new-release.yml@v1.2.0
     with:
       version: ${{ github.event.inputs.version }}
+      build: true
+      check_publish: true
