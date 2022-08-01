@@ -127,6 +127,21 @@ impl Exec for Command {
                 bind_ip_addr,
                 port,
             } => {
+                // Monero local address types are mainnet address types
+                if network != accordant_addr.network.into() && network != Network::Local {
+                    eprintln!(
+                        "Error: The address {} is not for {}",
+                        accordant_addr, network
+                    );
+                    return Ok(());
+                }
+                if network != arbitrating_addr.network.into() {
+                    eprintln!(
+                        "Error: The address {} is not for {}",
+                        arbitrating_addr, network
+                    );
+                    return Ok(());
+                }
                 if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
                     && network == Network::Mainnet
                 {
@@ -196,7 +211,6 @@ impl Exec for Command {
                 monero_address,
                 without_validation,
             } => {
-                let network = public_offer.offer.network;
                 let PublicOffer {
                     version: _,
                     offer,
@@ -204,8 +218,25 @@ impl Exec for Command {
                     peer_address,
                 } = public_offer.clone();
 
+                let network = offer.network;
                 let arbitrating_amount = offer.arbitrating_amount;
                 let accordant_amount = offer.accordant_amount;
+
+                if network != bitcoin_address.network.into() {
+                    eprintln!(
+                        "Error: The address {} is not for {}",
+                        bitcoin_address, network
+                    );
+                    return Ok(());
+                }
+                // monero local address types are mainnet address types
+                if network != monero_address.network.into() && network != Network::Local {
+                    eprintln!(
+                        "Error: The address {} is not for {}",
+                        monero_address, network
+                    );
+                    return Ok(());
+                }
 
                 if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
                     && network == Network::Mainnet
