@@ -3,8 +3,18 @@ name: Create packages
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'src/**.rs'
+      - 'build.rs'
+      - 'Cargo.*'
+      - 'Dockerfile'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'src/**.rs'
+      - 'build.rs'
+      - 'Cargo.*'
+      - 'Dockerfile'
 
 jobs:
   faracsterd_container:

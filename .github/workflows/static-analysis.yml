@@ -3,8 +3,16 @@ name: Static Analysis
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'src/**.rs'
+      - 'build.rs'
+      - 'Cargo.*'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'src/**.rs'
+      - 'build.rs'
+      - 'Cargo.*'
 
 env:
   CARGO_TERM_COLOR: always
