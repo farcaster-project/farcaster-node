@@ -4,10 +4,12 @@ version = "0.2.0"
 authors = ["Farcaster Devs"]
 build = "build.rs"
 edition = "2018"
+homepage = "https://github.com/farcaster-project/farcaster-node"
 include = ["src/*", "build.rs", "README.md", "CHANGELOG.md", "LICENSE"]
 keywords = ["bitcoin", "monero", "node", "atomic swaps"]
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/farcaster-project/farcaster-node"
 rust-version = "1.59.0"
 description = "Farcaster, a cross-chain atomic swap node."
 
