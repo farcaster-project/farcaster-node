@@ -127,16 +127,27 @@ impl Exec for Command {
                 bind_ip_addr,
                 port,
             } => {
-                if network != Network::Testnet && network != Network::Local {
+                if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
+                    && network == Network::Mainnet
+                {
                     eprintln!(
-                        "Error: {} not yet supported. Only Testnet and Local currently enabled, for your funds safety",
-                        network
+                        "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
+                        arbitrating_amount
+                    );
+                    return Ok(());
+                }
+                if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
+                    && network == Network::Mainnet
+                {
+                    eprintln!(
+                        "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
+                        accordant_amount
                     );
                     return Ok(());
                 }
                 if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
                     eprintln!(
-                        "Error: monero amount {} too low, require at least 0.001 XMR",
+                        "Error: Monero amount {} too low, require at least 0.001 XMR",
                         accordant_amount
                     );
                     return Ok(());
@@ -186,19 +197,42 @@ impl Exec for Command {
                 without_validation,
             } => {
                 let network = public_offer.offer.network;
-                if network != Network::Testnet && network != Network::Local {
-                    eprintln!(
-                        "Error: {} not yet supported. Only Testnet and Local currently enabled, for your funds safety",
-                        network
-                    );
-                    return Ok(());
-                }
                 let PublicOffer {
                     version: _,
                     offer,
                     node_id,
                     peer_address,
                 } = public_offer.clone();
+
+                let arbitrating_amount = offer.arbitrating_amount;
+                let accordant_amount = offer.accordant_amount;
+
+                if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
+                    && network == Network::Mainnet
+                {
+                    eprintln!(
+                        "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
+                        arbitrating_amount
+                    );
+                    return Ok(());
+                }
+                if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
+                    && network == Network::Mainnet
+                {
+                    eprintln!(
+                        "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
+                        accordant_amount
+                    );
+                    return Ok(());
+                }
+                if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
+                    eprintln!(
+                        "Error: Monero amount {} too low, require at least 0.001 XMR",
+                        accordant_amount
+                    );
+                    return Ok(());
+                }
+
                 if !without_validation {
                     println!(
                         "\nWant to buy {}?\n\nCarefully validate offer!\n",
