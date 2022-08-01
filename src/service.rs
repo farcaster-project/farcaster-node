@@ -19,12 +19,12 @@ use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
-use lazy_static::lazy_static;
 use internet2::{
     addr::{NodeAddr, ServiceAddr},
     zeromq,
     zeromq::ZmqSocketType,
 };
+use lazy_static::lazy_static;
 use microservices::esb;
 #[cfg(feature = "node")]
 use microservices::node::TryService;
