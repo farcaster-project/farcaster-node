@@ -98,39 +98,38 @@ jobs:
 
     services:
       bitcoind:
-        image: ghcr.io/farcaster-project/containers/bitcoin-core:22.0
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:23.0
         env:
           NETWORK: regtest
-          RPC_PORT: 18443
-          FALLBACKFEE: "0.00001"
         volumes:
           - bitcoind-data:/data
       electrs:
-        image: ghcr.io/farcaster-project/containers/electrs:0.8.11
+        image: ghcr.io/farcaster-project/containers/electrs:0.9.7
         env:
           NETWORK: regtest
           DAEMON_RPC_ADDR: bitcoind:18443
+          DAEMON_P2P_ADDR: bitcoind:18444
           ELECTRUM_RPC_PORT: 60401
         volumes:
           - bitcoind-data:/data
       monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monerod:0.18.0.0
         env:
           NETWORK: regtest
           OFFLINE: --offline
           DIFFICULTY: 1
       monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-3:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
