@@ -7,7 +7,7 @@ services:
         ports:
             - 18443:18443
             - 18444:18444
-        command: "/usr/bin/bitcoind -regtest -server -rest -txindex -rpcport=18443 -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 -rpcuser=test -rpcpassword=cEl2o3tHHgzYeuu3CiiZ2FjdgSiw9wNeMFzoNbFmx9k= -fallbackfee=0.00001 -datadir=/data"
+        command: "/usr/bin/bitcoind -regtest -server -rest -txindex -rpcport=18443 -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 -rpcauth=test:5a91f953693c29b49d03a1c179d5ac00$$1feaee1b83848fd56b0d048eb11d2ec8f709b082488488c74dbce8d75947dbd4 -fallbackfee=0.00001 -datadir=/data"
     electrs:
         image: ghcr.io/farcaster-project/containers/electrs:0.9.7
         depends_on:
