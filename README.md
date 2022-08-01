@@ -5,7 +5,7 @@
 
 # Farcaster: cross-chain atomic swaps
 
-:warning: **THIS IS UNFINISHED, EXPERIMENTAL TECH AND YOU WILL LOSE YOUR MONEY IF YOU TRY IT ON MAINNET**
+:warning: **THIS IS EVOLVING, EXPERIMENTAL TECH, USE ON MAINNET AT YOUR OWN RISK**
 
 The **Farcaster Node** is _a collection of microservices for running cross-chain atomic swaps_. Currently the node is focused on Bitcoin-Monero atomic swaps, but is designed to be flexible and integrate new crypto-pairs in the future.
 
