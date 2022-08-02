@@ -114,23 +114,23 @@ jobs:
         volumes:
           - bitcoind-data:/data
       monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monerod:0.18.0.0
         env:
           NETWORK: regtest
           OFFLINE: --offline
           DIFFICULTY: 1
       monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-3:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.3.2
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
