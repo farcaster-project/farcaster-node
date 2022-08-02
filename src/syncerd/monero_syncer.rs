@@ -41,7 +41,7 @@ use hex;
 #[derive(Debug, Clone)]
 pub struct MoneroRpc {
     height: u64,
-    daemon: monero_rpc::DaemonClient,
+    daemon_json_rpc: monero_rpc::DaemonJsonRpcClient,
     daemon_rpc: monero_rpc::DaemonRpcClient,
     block_hash: Vec<u8>,
 }
@@ -67,7 +67,7 @@ pub struct Transaction {
 impl MoneroRpc {
     fn new(node_rpc_url: String) -> Self {
         MoneroRpc {
-            daemon: monero_rpc::RpcClient::new(node_rpc_url.clone()).daemon(),
+            daemon_json_rpc: monero_rpc::RpcClient::new(node_rpc_url.clone()).daemon(),
             daemon_rpc: monero_rpc::RpcClient::new(node_rpc_url).daemon_rpc(),
             height: 0,
             block_hash: vec![0],
@@ -75,13 +75,13 @@ impl MoneroRpc {
     }
 
     async fn get_height(&mut self) -> Result<u64, Error> {
-        let count: u64 = self.daemon.get_block_count().await?.into();
+        let count: u64 = self.daemon_json_rpc.get_block_count().await?.into();
         Ok(count - 1)
     }
 
     async fn get_block_hash(&mut self, height: u64) -> Result<Vec<u8>, Error> {
         let selector = GetBlockHeaderSelector::Height(height);
-        let header = self.daemon.get_block_header(selector).await?;
+        let header = self.daemon_json_rpc.get_block_header(selector).await?;
         Ok(header.hash.0.to_vec())
     }
 
@@ -237,7 +237,7 @@ impl MoneroRpc {
             for tx in txs.drain(..) {
                 debug!("FIXME: tx set to vec![0]");
                 address_txs.push(AddressTx {
-                    our_amount: tx.amount,
+                    our_amount: tx.amount.as_pico(),
                     tx_id: tx.txid.0,
                     tx: vec![0],
                 });
@@ -293,11 +293,11 @@ async fn sweep_address(
     wallet.refresh(restore_height).await?;
     let balance = wallet.get_balance(account, addrs).await?;
     // only sweep once all the balance is unlocked
-    if balance.unlocked_balance >= minimum_balance.as_pico() {
+    if balance.unlocked_balance >= minimum_balance {
         info!(
             "Sweeping address {} with unlocked balance {} into {}",
             source_address.addr(),
-            monero::Amount::from_pico(balance.unlocked_balance).bright_white_bold(),
+            balance.unlocked_balance.bright_white_bold(),
             destination_address.addr(),
         );
         let sweep_args = monero_rpc::SweepAllArgs {

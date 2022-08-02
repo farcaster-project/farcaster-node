@@ -51,7 +51,11 @@ async fn monero_syncer_block_height_test() {
     setup_logging();
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
-    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
+    let blocks = regtest
+        .generate_blocks(1, address.address)
+        .await
+        .unwrap()
+        .height;
 
     // allow some time for things to happen, like the wallet server catching up
     let duration = std::time::Duration::from_secs(1);
@@ -77,7 +81,11 @@ async fn monero_syncer_block_height_test() {
     let request = misc::get_request_from_message(message);
     assert::received_height_changed(request, blocks);
     // Generate a single height changed event
-    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
+    let blocks = regtest
+        .generate_blocks(1, address.address)
+        .await
+        .unwrap()
+        .height;
     info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("height changed");
@@ -101,7 +109,11 @@ async fn monero_syncer_block_height_test() {
     assert::received_height_changed(request, blocks);
 
     // generate another block - this should result in two height changed messages
-    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
+    let blocks = regtest
+        .generate_blocks(1, address.address)
+        .await
+        .unwrap()
+        .height;
     info!("waiting for height changed");
     let message = rx_event.recv_multipart(0).unwrap();
     info!("height changed");
@@ -121,7 +133,11 @@ async fn monero_syncer_sweep_test() {
     setup_logging();
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
-    let blocks = regtest.generate_blocks(200, address.address).await.unwrap();
+    let blocks = regtest
+        .generate_blocks(200, address.address)
+        .await
+        .unwrap()
+        .height;
 
     let duration = std::time::Duration::from_secs(20);
     std::thread::sleep(duration);
@@ -232,7 +248,11 @@ async fn monero_syncer_address_test() {
         // Generate two addresses and watch them
         let (address1, view_key1) = new_address(&wallet).await;
         let tx_id = send_monero(&wallet, address1, 1).await;
-        let blocks = regtest.generate_blocks(10, address.address).await.unwrap();
+        let blocks = regtest
+            .generate_blocks(10, address.address)
+            .await
+            .unwrap()
+            .height;
 
         let duration = std::time::Duration::from_secs(20);
         std::thread::sleep(duration);
@@ -270,7 +290,11 @@ async fn monero_syncer_address_test() {
         let tx_id2_1 = send_monero(&wallet, address2, 1).await;
         let tx_id2_2 = send_monero(&wallet, address2, 1).await;
         let blocks = if lws_bool {
-            regtest.generate_blocks(1, address.address).await.unwrap()
+            regtest
+                .generate_blocks(1, address.address)
+                .await
+                .unwrap()
+                .height
         } else {
             blocks
         };
@@ -334,7 +358,11 @@ async fn monero_syncer_address_test() {
 
         let tx_id4 = send_monero(&wallet, address4, 1).await;
         let blocks = if lws_bool {
-            regtest.generate_blocks(1, address.address).await.unwrap()
+            regtest
+                .generate_blocks(1, address.address)
+                .await
+                .unwrap()
+                .height
         } else {
             blocks
         };
@@ -370,7 +398,11 @@ async fn monero_syncer_address_test() {
         send_monero(&wallet, address5, 1).await;
         // this transaction should not generate an event, because the task's lifetime expired
         send_monero(&wallet, address4, 1).await;
-        let blocks = regtest.generate_blocks(10, address.address).await.unwrap();
+        let blocks = regtest
+            .generate_blocks(10, address.address)
+            .await
+            .unwrap()
+            .height;
 
         let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: address5.public_spend,
@@ -429,7 +461,7 @@ async fn monero_syncer_transaction_test() {
     setup_logging();
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap().address;
-    let blocks = regtest.generate_blocks(200, address).await.unwrap();
+    let blocks = regtest.generate_blocks(200, address).await.unwrap().height;
 
     // allow some time for things to happen, like the wallet server catching up
     let duration = std::time::Duration::from_secs(10);
@@ -457,7 +489,7 @@ async fn monero_syncer_transaction_test() {
     let request = misc::get_request_from_message(message);
     assert::transaction_confirmations(request, Some(0), vec![0]);
 
-    let block_height = regtest.generate_blocks(1, address).await.unwrap();
+    let block_height = regtest.generate_blocks(1, address).await.unwrap().height;
     let block_hash = get_block_hash_from_height(&regtest, block_height).await;
     info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
@@ -473,7 +505,7 @@ async fn monero_syncer_transaction_test() {
     assert::transaction_confirmations(request, Some(2), block_hash);
 
     let tx_id2 = send_monero(&wallet, address, 1).await;
-    let block_height = regtest.generate_blocks(1, address).await.unwrap();
+    let block_height = regtest.generate_blocks(1, address).await.unwrap().height;
     let block_hash = get_block_hash_from_height(&regtest, block_height).await;
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
@@ -579,7 +611,7 @@ async fn monero_syncer_transaction_test() {
     info!("received confirmation");
     let request = misc::get_request_from_message(message);
     assert::transaction_confirmations(request, Some(0), vec![0]);
-    let block_height = regtest.generate_blocks(1, address).await.unwrap();
+    let block_height = regtest.generate_blocks(1, address).await.unwrap().height;
     let block_hash = get_block_hash_from_height(&regtest, block_height).await;
     info!("awaiting confirmations");
     let message = rx_event.recv_multipart(0).unwrap();
@@ -607,7 +639,11 @@ async fn monero_syncer_abort_test() {
     let (tx, rx_event) = create_monero_syncer("abort", false);
     let (regtest, wallet) = setup_monero().await;
     let address = wallet.get_address(0, None).await.unwrap();
-    let blocks = regtest.generate_blocks(1, address.address).await.unwrap();
+    let blocks = regtest
+        .generate_blocks(1, address.address)
+        .await
+        .unwrap()
+        .height;
 
     let task = SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
@@ -752,7 +788,10 @@ async fn monero_syncer_broadcast_tx_test() {
 // TODO: move into utils from here
 //
 
-async fn setup_monero() -> (monero_rpc::RegtestDaemonClient, monero_rpc::WalletClient) {
+async fn setup_monero() -> (
+    monero_rpc::RegtestDaemonJsonRpcClient,
+    monero_rpc::WalletClient,
+) {
     let conf = config::TestConfig::parse();
 
     let client = monero_rpc::RpcClient::new(format!("{}", conf.monero.daemon));
@@ -871,7 +910,7 @@ async fn send_monero(
 }
 
 async fn get_block_hash_from_height(
-    regtest: &monero_rpc::RegtestDaemonClient,
+    regtest: &monero_rpc::RegtestDaemonJsonRpcClient,
     height: u64,
 ) -> Vec<u8> {
     let header = regtest

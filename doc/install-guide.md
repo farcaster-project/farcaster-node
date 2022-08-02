@@ -90,7 +90,7 @@ services:
     depends_on:
       - "walletrpc"
   walletrpc:
-    image: "ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.17.2.3"
+    image: "ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0"
     container_name: walletrpc
     command: "/usr/bin/monero-wallet-rpc --stagenet --disable-rpc-login --wallet-dir wallets --daemon-host stagenet.community.rino.io:38081 --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083 --confirm-external-bind"
 ```

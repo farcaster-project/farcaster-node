@@ -5,7 +5,15 @@ authors = ["Farcaster Devs"]
 build = "build.rs"
 edition = "2018"
 homepage = "https://github.com/farcaster-project/farcaster-node"
-include = ["shell/*", "src/*", "build.rs", "README.md", "CHANGELOG.md", "LICENSE", "config_spec.toml"]
+include = [
+  "shell/*",
+  "src/*",
+  "build.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE",
+  "config_spec.toml",
+]
 keywords = ["bitcoin", "monero", "node", "atomic swaps"]
 license = "MIT"
 readme = "README.md"
@@ -69,7 +77,7 @@ log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug
 microservices = { version = "0.8.0", default-features = false, features = ['peer'] }
 monero = "0.17"
 monero-lws = "0.1"
-monero-rpc = "0.1"
+monero-rpc = "0.2"
 nix = { version = "0.19", optional = true }
 paste = "1.0"
 prost = "0.10.3"
