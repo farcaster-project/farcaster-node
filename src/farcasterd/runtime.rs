@@ -901,7 +901,6 @@ impl Runtime {
             Request::GetInfo => {
                 debug!("farcasterd received GetInfo request");
                 self.send_client_ctl(
-                    ServiceBus::Ctl,
                     endpoints,
                     source,
                     Request::NodeInfo(NodeInfo {

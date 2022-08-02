@@ -405,11 +405,11 @@ where
 
     fn send_client_ctl(
         &mut self,
-        bus: ServiceBus,
         senders: &mut Endpoints,
         dest: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
+        let bus = ServiceBus::Ctl;
         if let ServiceId::GrpcdClient(_) = dest {
             senders.send_to(bus, dest, ServiceId::Grpcd, request)?;
         } else {
