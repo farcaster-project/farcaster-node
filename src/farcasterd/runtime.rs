@@ -23,7 +23,7 @@ use crate::{
     error::SyncerError,
     rpc::request::{
         BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
-        MoneroFundingInfo, Outcome, PubOffer, RequestId, Reveal, Token,
+        MoneroFundingInfo, OfferInfo, Outcome, PubOffer, RequestId, Reveal, Token,
     },
     service::Endpoints,
     swapd::get_swap_id,
@@ -928,7 +928,10 @@ impl Runtime {
                             .public_offers
                             .iter()
                             .filter(|k| !self.consumed_offers_contains(k))
-                            .cloned()
+                            .map(|offer| OfferInfo {
+                                offer: offer.to_string(),
+                                details: offer.clone(),
+                            })
                             .collect();
                         endpoints.send_to(
                             ServiceBus::Ctl,
@@ -938,7 +941,15 @@ impl Runtime {
                         )?;
                     }
                     OfferStatusSelector::InProgress => {
-                        let pub_offers = self.consumed_offers.keys().cloned().collect();
+                        let pub_offers = self
+                            .consumed_offers
+                            .keys()
+                            .cloned()
+                            .map(|offer| OfferInfo {
+                                offer: offer.to_string(),
+                                details: offer,
+                            })
+                            .collect();
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             ServiceId::Farcasterd,
@@ -1195,8 +1206,10 @@ impl Runtime {
                         source.clone(),        // destination
                         Request::MadeOffer(MadeOffer {
                             message: msg,
-                            offer: serialized_offer,
-                            details: public_offer,
+                            offer_info: OfferInfo {
+                                offer: serialized_offer,
+                                details: public_offer,
+                            }
                         }),
                     )?;
                     Ok(())

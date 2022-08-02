@@ -551,7 +551,7 @@ pub enum Request {
     #[api(type = 1106)]
     #[display(inner)]
     #[from]
-    OfferList(List<PublicOffer>),
+    OfferList(List<OfferInfo>),
 
     // #[api(type = 1107)]
     // #[display("offer_list({0})", alt = "{0:#}")]
@@ -1027,6 +1027,18 @@ pub struct ProtoPublicOffer {
 #[display(MadeOffer::to_yaml_string)]
 pub struct MadeOffer {
     pub message: String,
+    pub offer_info: OfferInfo,
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(OfferInfo::to_yaml_string)]
+pub struct OfferInfo {
     pub offer: String,
     pub details: PublicOffer,
 }
@@ -1154,6 +1166,8 @@ impl ToYamlString for ProgressEvent {}
 impl ToYamlString for CheckpointEntry {}
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferStatusPair {}
+#[cfg(feature = "serde")]
+impl ToYamlString for OfferInfo {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]
