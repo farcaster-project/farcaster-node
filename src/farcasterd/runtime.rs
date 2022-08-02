@@ -376,7 +376,6 @@ impl Runtime {
 
         self.syncers = self
             .syncers
-            .inner()
             .drain()
             .filter_map(
                 |(
@@ -607,7 +606,7 @@ impl Runtime {
                             && self.spawning_services.contains_key(&source) =>
                     {
                         if let Some(Syncer { service_id, .. }) =
-                            self.syncers.inner().get_mut(&(*blockchain, *network))
+                            self.syncers.get_mut(&(*blockchain, *network))
                         {
                             *service_id = Some(source.clone());
                             info!(
@@ -1710,10 +1709,10 @@ impl Runtime {
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
-                    if let Some(syncer) = self.syncers.inner().get_mut(&k) {
+                    if let Some(syncer) = self.syncers.get_mut(&k) {
                         syncer.clients.insert(source.clone());
                     } else {
-                        self.syncers.inner().insert(
+                        self.syncers.insert(
                             k,
                             Syncer {
                                 service_id: None,
@@ -1760,10 +1759,10 @@ impl Runtime {
                     info!("launching syncer with: {:?}", args);
                     launch("syncerd", args)?;
                     self.spawning_services.insert(s, ServiceId::Farcasterd);
-                    if let Some(syncer) = self.syncers.inner().get_mut(&k) {
+                    if let Some(syncer) = self.syncers.get_mut(&k) {
                         syncer.clients.insert(source.clone());
                     } else {
-                        self.syncers.inner().insert(
+                        self.syncers.insert(
                             k,
                             Syncer {
                                 clients: set![source.clone()],
@@ -1815,7 +1814,6 @@ impl Runtime {
 
                 self.syncers = self
                     .syncers
-                    .inner()
                     .drain()
                     .filter_map(|((blockchain, network), mut xs)| {
                         xs.clients.remove(&client_service_id);
@@ -2058,7 +2056,7 @@ fn syncers_up(
         args.append(&mut syncer_servers_args(config, blockchain, network)?);
         info!("launching syncer with: {:?}", args);
         launch("syncerd", args)?;
-        syncers.inner().insert(
+        syncers.insert(
             k,
             Syncer {
                 clients: none!(),
@@ -2067,7 +2065,7 @@ fn syncers_up(
         );
         spawning_services.insert(s, source);
     }
-    if let Some(xs) = syncers.inner().get_mut(&k) {
+    if let Some(xs) = syncers.get_mut(&k) {
         xs.clients.insert(ServiceId::Swap(swap_id));
     }
     Ok(())
@@ -2218,26 +2216,26 @@ pub fn launch(
         err
     })
 }
-#[derive(Default, From)]
-struct Syncers(HashMap<(Blockchain, Network), Syncer>);
+type Syncers = HashMap<(Blockchain, Network), Syncer>;
 
-impl Syncers {
-    pub fn inner(&mut self) -> &mut HashMap<(Blockchain, Network), Syncer> {
-        &mut self.0
-    }
-    pub fn syncer_services_len(&self) -> usize {
-        self.0
-            .values()
+trait SyncersT {
+    fn syncer_services_len(&self) -> usize;
+    fn service_online(&self, key: &(Blockchain, Network)) -> bool;
+    fn pair_ready(&self, coin0: (Blockchain, Network), coin1: (Blockchain, Network)) -> bool;
+}
+
+impl SyncersT for Syncers {
+    fn syncer_services_len(&self) -> usize {
+        self.values()
             .filter(|Syncer { service_id, .. }| service_id.is_some())
             .count()
     }
-    pub fn service_online(&self, key: &(Blockchain, Network)) -> bool {
-        self.0
-            .get(key)
+    fn service_online(&self, key: &(Blockchain, Network)) -> bool {
+        self.get(key)
             .map(|Syncer { service_id, .. }| service_id.is_some())
             .unwrap_or(false)
     }
-    pub fn pair_ready(&self, coin0: (Blockchain, Network), coin1: (Blockchain, Network)) -> bool {
+    fn pair_ready(&self, coin0: (Blockchain, Network), coin1: (Blockchain, Network)) -> bool {
         SyncerPair::new(&self, coin0, coin1)
             .map(|syncer_pair| syncer_pair.ready())
             .unwrap_or(false)
@@ -2264,8 +2262,8 @@ impl<'a> SyncerPair<'a> {
         arbitrating_ix: (Blockchain, Network),
         accordant_ix: (Blockchain, Network),
     ) -> Option<Self> {
-        let arbitrating_syncer = ss.0.get(&arbitrating_ix)?;
-        let accordant_syncer = ss.0.get(&accordant_ix)?;
+        let arbitrating_syncer = ss.get(&arbitrating_ix)?;
+        let accordant_syncer = ss.get(&accordant_ix)?;
         Some(SyncerPair {
             arbitrating_syncer,
             accordant_syncer,
