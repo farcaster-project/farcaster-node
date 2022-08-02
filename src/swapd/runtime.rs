@@ -881,7 +881,7 @@ impl Runtime {
                 | ServiceId::Database
             ) => {}
             (Request::AbortSwap, ServiceId::Client(_)) => {}
-            (Request::GetInfo(_), ServiceId::Client(_)) => {}
+            (Request::GetInfo, ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
@@ -2335,7 +2335,7 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::GetInfo(_) => {
+            Request::GetInfo => {
                 let swap_id = if self.swap_id() == zero!() {
                     None
                 } else {

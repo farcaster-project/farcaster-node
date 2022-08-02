@@ -377,7 +377,7 @@ pub enum Request {
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
     #[display(Debug)]
-    GetInfo(Option<u64>),
+    GetInfo,
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 101)]
@@ -985,8 +985,6 @@ pub enum Progress {
 )]
 #[display(NodeInfo::to_yaml_string)]
 pub struct NodeInfo {
-    #[serde(skip_serializing)]
-    pub id: Option<u64>,
     pub node_ids: Vec<internet2::addr::NodeId>,
     pub listens: Vec<InetSocketAddr>,
     #[serde_as(as = "DurationSeconds")]
