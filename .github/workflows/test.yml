@@ -87,6 +87,13 @@ jobs:
           cli,
           grpc,
         ]
+      bitcoin: [ '23.0' ]
+      electrs: [ 0.9.7 ]
+      include:
+      - test: bitcoin_syncer
+        bitcoin: '22.0'
+        electrs: 0.8.11
+
     runs-on: ubuntu-latest
     env:
       RUST_LOG: 'info,farcaster_node=debug,microservices=debug'
@@ -98,13 +105,15 @@ jobs:
 
     services:
       bitcoind:
-        image: ghcr.io/farcaster-project/containers/bitcoin-core:23.0
+        image: ghcr.io/farcaster-project/containers/bitcoin-core:${{ matrix.bitcoin }}
         env:
           NETWORK: regtest
+          RPC_PORT: 18443
+          FALLBACKFEE: '0.00001'
         volumes:
           - bitcoind-data:/data
       electrs:
-        image: ghcr.io/farcaster-project/containers/electrs:0.9.7
+        image: ghcr.io/farcaster-project/containers/electrs:${{ matrix.electrs }}
         env:
           NETWORK: regtest
           DAEMON_RPC_ADDR: bitcoind:18443
