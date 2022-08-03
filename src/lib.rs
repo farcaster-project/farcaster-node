@@ -73,6 +73,8 @@ pub mod swapd;
 pub mod syncerd;
 #[cfg(feature = "node")]
 pub mod walletd;
+#[cfg(feature = "node")]
+pub mod automata;
 
 #[cfg(feature = "_rpc")]
 pub use crate::config::Config;
