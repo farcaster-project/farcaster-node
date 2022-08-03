@@ -616,11 +616,6 @@ pub enum Request {
     #[from]
     Checkpoint(Checkpoint),
 
-    #[api(type = 1305)]
-    #[display("checkpoint_multipart({0})")]
-    #[from]
-    CheckpointMultipartChunk(CheckpointMultipartChunk),
-
     #[api(type = 1306)]
     #[display("retrieve_all_checkpoint_info")]
     RetrieveAllCheckpointInfo,
@@ -839,22 +834,6 @@ pub struct CheckpointEntry {
     pub swap_id: SwapId,
     pub public_offer: PublicOffer,
     pub trade_role: TradeRole,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct CheckpointChunk {
-    pub msg_index: usize,
-    pub serialized_state_chunk: Vec<u8>,
-}
-
-#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display("{msg_index}, {msgs_total}, {swap_id}")]
-pub struct CheckpointMultipartChunk {
-    pub checksum: [u8; 20],
-    pub msg_index: usize,
-    pub msgs_total: usize,
-    pub serialized_state_chunk: Vec<u8>,
-    pub swap_id: SwapId,
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
