@@ -56,6 +56,8 @@ pub mod opts;
 pub mod rpc;
 
 #[cfg(feature = "node")]
+pub mod automata;
+#[cfg(feature = "node")]
 pub mod databased;
 #[cfg(feature = "node")]
 pub mod farcasterd;
