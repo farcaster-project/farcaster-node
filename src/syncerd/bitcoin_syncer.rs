@@ -70,15 +70,6 @@ pub struct ElectrumRpc {
     polling: bool,
 }
 
-impl From<&ElectrumRpc> for Vec<Script> {
-    fn from(x: &ElectrumRpc) -> Self {
-        x.addresses
-            .keys()
-            .map(|addr| addr.script_pubkey.clone())
-            .collect()
-    }
-}
-
 #[derive(Debug)]
 pub struct Block {
     height: u64,
@@ -181,8 +172,8 @@ impl ElectrumRpc {
     pub fn address_change_check(&mut self) -> Vec<AddressNotif> {
         let mut notifs: Vec<AddressNotif> = vec![];
         if self.polling {
-            let scripts = Vec::<Script>::from(&*self);
-            for (script, (address, _)) in scripts.into_iter().zip(self.addresses.clone()) {
+            let scripts = self.addresses.keys().map(|addr| addr.script_pubkey.clone());
+            for (script, address) in scripts.zip(self.addresses.keys().clone()) {
                 if let Ok(txs) = query_addr_history(&mut self.client, script, address.from_height) {
                     logging(&txs, &address);
                     let new_notif = AddressNotif {
