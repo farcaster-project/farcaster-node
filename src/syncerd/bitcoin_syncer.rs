@@ -490,7 +490,12 @@ fn sweep_address(
 
     // TODO (maybe): make blocks_until_confirmation or fee_btc_per_kvb configurable by user (see FeeStrategy)
     let blocks_until_confirmation = 2;
-    let fee_sat_per_kvb = (client.estimate_fee(blocks_until_confirmation)? * 1.0e8).ceil() as u64;
+    let fee_sat_per_kvb = (client
+        // because near == far (target) low and high fee are equal
+        .estimate_priority_fee(blocks_until_confirmation, blocks_until_confirmation)?
+        .high_fee
+        * 1.0e8)
+        .ceil() as u64;
     let fee = p2wpkh_signed_tx_fee(fee_sat_per_kvb, unsigned_tx.vsize(), unspent_txs.len());
 
     unsigned_tx.output[0].value = in_amount - fee;
@@ -875,32 +880,64 @@ fn transaction_broadcasting(
     })
 }
 
+/// Result of querying electrum to get a low priority and high priority fee rate.
+struct FeeByPriority {
+    low_fee: f64,
+    high_fee: f64,
+}
+
+/// Extend electrum client capabilities and query fee for low and high priority.
+trait GenericEstimateFee {
+    /// Query electrum for estimate fee for low and high priority or fall back on node's relay fee.
+    fn estimate_priority_fee(
+        &self,
+        near_target: usize,
+        far_target: usize,
+    ) -> Result<FeeByPriority, electrum_client::Error>;
+}
+
+impl GenericEstimateFee for Client {
+    fn estimate_priority_fee(
+        &self,
+        near_target: usize,
+        far_target: usize,
+    ) -> Result<FeeByPriority, electrum_client::Error> {
+        let low_fee;
+        let mut high_fee = self.estimate_fee(near_target)?;
+        if high_fee == -1.0 {
+            // None returned internally between node and electrum, fallback on relay_fee
+            high_fee = self.relay_fee()?;
+            low_fee = high_fee;
+        } else {
+            // Shortcut in case we want only 1 fee and near == far
+            if far_target != near_target {
+                low_fee = self.estimate_fee(far_target)?;
+            } else {
+                low_fee = high_fee
+            }
+        }
+        Ok(FeeByPriority { low_fee, high_fee })
+    }
+}
+
 fn estimate_fee_polling(
     electrum_server: String,
     proxy_address: Option<String>,
     state: Arc<Mutex<SyncerState>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let high_priority_confs = 2;
-        let low_priority_confs = 6;
+        let high_priority_target = 2;
+        let low_priority_target = 6;
         loop {
             if let Ok(client) = create_electrum_client(&electrum_server, proxy_address.clone()) {
                 loop {
-                    match client
-                        .estimate_fee(high_priority_confs) // docs say sat/kB, but its BTC/kvB
-                        .and_then(|high_priority| {
-                            client
-                                .estimate_fee(low_priority_confs)
-                                .map(|low_priority| (high_priority, low_priority))
-                        }) {
-                        Ok((high_priority, low_priority)) => {
+                    match client.estimate_priority_fee(high_priority_target, low_priority_target) {
+                        Ok(FeeByPriority { low_fee, high_fee }) => {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .fee_estimated(FeeEstimations::BitcoinFeeEstimation {
-                                    high_priority_sats_per_kvbyte: (high_priority * 1.0e8).ceil()
-                                        as u64,
-                                    low_priority_sats_per_kvbyte: (low_priority * 1.0e8).ceil()
-                                        as u64,
+                                    high_priority_sats_per_kvbyte: (high_fee * 1.0e8).ceil() as u64,
+                                    low_priority_sats_per_kvbyte: (low_fee * 1.0e8).ceil() as u64,
                                 })
                                 .await;
                             drop(state_guard);
