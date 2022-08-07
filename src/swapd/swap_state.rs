@@ -520,7 +520,8 @@ impl State {
                 &*self
             );
             return false;
-        } else if self.b_buy_tx_seen() {
+        };
+        if self.b_buy_tx_seen() {
             error!("Buy tx was previously seen, not updating state");
             return false;
         }
