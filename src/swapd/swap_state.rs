@@ -46,6 +46,23 @@ pub enum AliceState {
     FinishA(Outcome),
 }
 
+trait RemoteParamT {
+    fn remote_params(&self) -> Option<Params>;
+}
+
+trait AliceStateT: RemoteParamT {}
+
+impl RemoteParamT for AliceState {
+    fn remote_params(&self) -> Option<Params> {
+        match self {
+            AliceState::CommitA { remote_params, .. }
+            | AliceState::RevealA { remote_params, .. } => remote_params.clone(),
+            AliceState::RefundSigA { remote_params, .. } => Some(remote_params.clone()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum BobState {
     // #[display("Start {0:#?} {1:#?}")]
