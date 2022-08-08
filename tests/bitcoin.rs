@@ -72,9 +72,9 @@ make_polling_test!(bitcoin_syncer_broadcast_tx_test);
 fn bitcoin_syncer_retrieve_transaction_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let (tx, rx_event) = create_bitcoin_syncer(true, "gettransaction");
 
-    let (tx, rx_event) = create_bitcoin_syncer(true, "transaction");
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     let txid = bitcoin_rpc
         .send_to_address(
@@ -89,7 +89,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
         )
         .unwrap();
 
-    let duration = std::time::Duration::from_secs(30);
+    let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
     let task = SyncerdTask {
@@ -112,6 +112,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
 fn bitcoin_syncer_estimate_fee_test() {
     bitcoin_setup();
     let (tx, rx_event) = create_bitcoin_syncer(true, "estimatefee");
+
     let task = SyncerdTask {
         task: Task::WatchEstimateFee(WatchEstimateFee {
             id: TaskId(1),
@@ -139,11 +140,9 @@ We test for the following scenarios in the block height tests:
 fn bitcoin_syncer_block_height_test(polling: bool) {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-
-    // start a bitcoin syncer
     let (tx, rx_event) = create_bitcoin_syncer(polling, "block_height");
 
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
     // Send a WatchHeight task
@@ -226,21 +225,12 @@ the minimum height
 fn bitcoin_syncer_address_test(polling: bool) {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "address");
 
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
-    // Generate over 101 blocks to reach block maturity, and some more for extra
-    // leeway
-    bitcoin_rpc.generate_to_address(110, &address).unwrap();
-
-    // allow some time for things to happen, like the electrum server catching up
-    let duration = std::time::Duration::from_secs(10);
-    std::thread::sleep(duration);
-
-    // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "address");
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -436,22 +426,12 @@ the threshold confs are reached
 fn bitcoin_syncer_transaction_test(polling: bool) {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
 
     // generate some blocks to an address
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc
-        .generate_to_address(110, &reusable_address)
-        .unwrap();
-
-    // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
-
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
-
-    // allow some time for things to happen, like the electrum server catching up
-    let duration = std::time::Duration::from_secs(10);
-    std::thread::sleep(duration);
 
     let address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -459,6 +439,7 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         .send_to_address(&address_1, amount, None, None, None, None, None, None)
         .unwrap();
 
+    let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
     tx.send(SyncerdTask {
@@ -665,8 +646,9 @@ We test for the following scenarios in the abort tests:
 #[ignore]
 fn bitcoin_syncer_abort_test() {
     setup_logging();
-    let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
     let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
+
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
     let task = SyncerdTask {
@@ -790,9 +772,9 @@ We test the following scenarios in the broadcast tx tests:
 fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-
     let (tx, rx_event) = create_bitcoin_syncer(polling, "broadcast");
+
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
@@ -885,6 +867,8 @@ receive a success event and check that the address balance is sweeped
 fn bitcoin_syncer_sweep_address_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(false, "sweep");
+
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_source_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_destination_address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -893,8 +877,6 @@ fn bitcoin_syncer_sweep_address_test() {
         .dump_private_key(&sweep_source_address)
         .unwrap()
         .inner;
-
-    let (tx, rx_event) = create_bitcoin_syncer(false, "broadcast");
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 1000;
