@@ -217,10 +217,63 @@ impl PendingRequestsT for PendingRequests {
         let pending_reqs = self.entry(key).or_insert(vec![]);
         pending_reqs.push(pending_req);
     }
+    fn continue_deferred_requests(
+        runtime: &mut Runtime,
+        endpoints: &mut Endpoints,
+        key: ServiceId,
+        predicate: fn(&PendingRequest) -> bool,
+    ) -> bool {
+        let success = if let Some(pending_reqs) = runtime.pending_requests.remove(&key) {
+            let len0 = pending_reqs.len();
+            let remaining_pending_reqs: Vec<_> = pending_reqs
+                .into_iter()
+                .filter_map(|r| {
+                    if predicate(&r) {
+                        if let Ok(_) = match &r.bus_id {
+                            ServiceBus::Ctl if &r.dest == &runtime.identity => runtime
+                                .handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone()),
+                            ServiceBus::Msg if &r.dest == &runtime.identity => runtime
+                                .handle_rpc_msg(endpoints, r.source.clone(), r.request.clone()),
+                            _ => endpoints
+                                .send_to(
+                                    r.bus_id.clone(),
+                                    r.source.clone(),
+                                    r.dest.clone(),
+                                    r.request.clone(),
+                                )
+                                .map_err(Into::into),
+                        } {
+                            None
+                        } else {
+                            Some(r)
+                        }
+                    } else {
+                        Some(r)
+                    }
+                })
+                .collect();
+            let len1 = remaining_pending_reqs.len();
+            runtime.pending_requests.insert(key, remaining_pending_reqs);
+            if len0 - len1 > 1 {
+                error!("consumed more than one request with this predicate")
+            }
+            len0 > len1
+        } else {
+            error!("no request consumed with this predicate");
+            false
+        };
+        success
+    }
 }
 
 trait PendingRequestsT {
     fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest);
+    fn continue_deferred_requests(
+        runtime: &mut Runtime, // needed for recursion
+        endpoints: &mut Endpoints,
+        key: ServiceId,
+        predicate: fn(&PendingRequest) -> bool,
+    ) -> bool;
 }
 
 #[derive(Debug, Clone)]
@@ -466,55 +519,6 @@ impl Runtime {
 
     fn pending_requests(&mut self) -> &mut HashMap<ServiceId, Vec<PendingRequest>> {
         &mut self.pending_requests
-    }
-
-    fn continue_deferred_requests(
-        &mut self,
-        endpoints: &mut Endpoints,
-        key: ServiceId,
-        predicate: fn(&PendingRequest) -> bool,
-    ) -> bool {
-        let success = if let Some(pending_reqs) = self.pending_requests().remove(&key) {
-            let len0 = pending_reqs.len();
-            let remaining_pending_reqs: Vec<_> =
-                pending_reqs
-                    .into_iter()
-                    .filter_map(|r| {
-                        if predicate(&r) {
-                            if let Ok(_) = match &r.bus_id {
-                                ServiceBus::Ctl if &r.dest == &self.identity => self
-                                    .handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone()),
-                                ServiceBus::Msg if &r.dest == &self.identity => self
-                                    .handle_rpc_msg(endpoints, r.source.clone(), r.request.clone()),
-                                _ => endpoints
-                                    .send_to(
-                                        r.bus_id.clone(),
-                                        r.source.clone(),
-                                        r.dest.clone(),
-                                        r.request.clone(),
-                                    )
-                                    .map_err(Into::into),
-                            } {
-                                None
-                            } else {
-                                Some(r)
-                            }
-                        } else {
-                            Some(r)
-                        }
-                    })
-                    .collect();
-            let len1 = remaining_pending_reqs.len();
-            self.pending_requests().insert(key, remaining_pending_reqs);
-            if len0 - len1 > 1 {
-                error!("consumed more than one request with this predicate")
-            }
-            len0 > len1
-        } else {
-            error!("no request consumed with this predicate");
-            false
-        };
-        success
     }
 
     fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
@@ -1053,8 +1057,11 @@ impl Runtime {
                         .map(|reqs| reqs.len() == 2)
                         .unwrap() =>
             {
-                let success_proof =
-                    self.continue_deferred_requests(endpoints, source.clone(), |r| {
+                let success_proof = PendingRequests::continue_deferred_requests(
+                    self,
+                    endpoints,
+                    source.clone(),
+                    |r| {
                         matches!(
                             r,
                             &PendingRequest {
@@ -1064,22 +1071,24 @@ impl Runtime {
                                 ..
                             }
                         )
-                    });
+                    },
+                );
                 if !success_proof {
                     error!("Did not dispatch proof pending request");
                 }
 
-                let success_params = self.continue_deferred_requests(endpoints, source, |r| {
-                    matches!(
-                        r,
-                        &PendingRequest {
-                            dest: ServiceId::Wallet,
-                            bus_id: ServiceBus::Msg,
-                            request: Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
-                            ..
-                        }
-                    )
-                });
+                let success_params =
+                    PendingRequests::continue_deferred_requests(self, endpoints, source, |r| {
+                        matches!(
+                            r,
+                            &PendingRequest {
+                                dest: ServiceId::Wallet,
+                                bus_id: ServiceBus::Msg,
+                                request: Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
+                                ..
+                            }
+                        )
+                    });
                 if !success_params {
                     error!("Did not dispatch params pending requests");
                 }
@@ -1268,16 +1277,21 @@ impl Runtime {
                             .unwrap() =>
                     {
                         // error!("not checking tx rcvd is accordant lock");
-                        let success = self.continue_deferred_requests(endpoints, source, |r| {
-                            matches!(
-                                r,
-                                &PendingRequest {
-                                    bus_id: ServiceBus::Msg,
-                                    request: Request::Protocol(Msg::BuyProcedureSignature(_)),
-                                    ..
-                                }
-                            )
-                        });
+                        let success = PendingRequests::continue_deferred_requests(
+                            self,
+                            endpoints,
+                            source,
+                            |r| {
+                                matches!(
+                                    r,
+                                    &PendingRequest {
+                                        bus_id: ServiceBus::Msg,
+                                        request: Request::Protocol(Msg::BuyProcedureSignature(_)),
+                                        ..
+                                    }
+                                )
+                            },
+                        );
                         if success {
                             let next_state = State::Bob(BobState::BuySigB {
                                 buy_tx_seen: false,
@@ -1988,19 +2002,24 @@ impl Runtime {
                             && self.state.b_address().is_some()
                             && self.syncer_state.btc_fee_estimate_sat_per_kvb.is_some()
                         {
-                            let success = self.continue_deferred_requests(endpoints, source, |i| {
-                                matches!(
-                                    &i,
-                                    &PendingRequest {
-                                        bus_id: ServiceBus::Msg,
-                                        request: Request::Protocol(Msg::Reveal(
-                                            Reveal::AliceParameters(..)
-                                        )),
-                                        dest: ServiceId::Swap(..),
-                                        ..
-                                    }
-                                )
-                            });
+                            let success = PendingRequests::continue_deferred_requests(
+                                self,
+                                endpoints,
+                                source,
+                                |i| {
+                                    matches!(
+                                        &i,
+                                        &PendingRequest {
+                                            bus_id: ServiceBus::Msg,
+                                            request: Request::Protocol(Msg::Reveal(
+                                                Reveal::AliceParameters(..)
+                                            )),
+                                            dest: ServiceId::Swap(..),
+                                            ..
+                                        }
+                                    )
+                                },
+                            );
                             if success {
                                 debug!("successfully dispatched reveal:aliceparams")
                             } else {
