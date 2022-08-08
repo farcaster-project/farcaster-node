@@ -832,7 +832,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
 
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
@@ -2068,7 +2068,7 @@ async fn run_swaps_parallel(
         let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
         drop(monero_wallet_lock);
         let delta_balance = after_balance.balance - before_balances[swap_id];
-        assert!(delta_balance > monero::Amount::from_pico(999660000000));
+        assert!(delta_balance > monero::Amount::from_pico(998000000000));
     }
     drop(lock);
 }
@@ -2338,7 +2338,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
