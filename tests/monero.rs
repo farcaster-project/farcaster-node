@@ -819,7 +819,11 @@ fn create_monero_syncer(
     socket_name: &str,
     lws: bool,
 ) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
-    let addr = format!("inproc://testmonerobridge-{}", socket_name);
+    use rand::prelude::*;
+    let mut rng = rand::thread_rng();
+    let id: u64 = rng.gen();
+    let addr = format!("inproc://testmonerobridge-{}-{}", socket_name, id);
+
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
     let rx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
@@ -858,7 +862,7 @@ fn create_monero_syncer(
             Network::Local,
             true,
         )
-        .expect("Invalid monero syncer");
+        .expect("Invalid Monero syncer!");
     (tx, rx_event)
 }
 
