@@ -5,6 +5,8 @@ use std::ffi::OsStr;
 use std::io;
 use std::process;
 use std::str;
+use std::thread::sleep;
+use std::time::Duration;
 
 use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
@@ -254,5 +256,9 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
 
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     bitcoin_rpc.generate_to_address(200, &address).unwrap();
+
+    // We mined 200 blocks, allow things to happen, like the electrum server catching up
+    sleep(Duration::from_secs(10));
+
     bitcoin_rpc
 }

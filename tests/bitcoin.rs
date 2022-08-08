@@ -1018,7 +1018,10 @@ fn create_bitcoin_syncer(
     polling: bool,
     socket_name: &str,
 ) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
-    let addr = format!("inproc://testmonerobridge-{}", socket_name);
+    use rand::prelude::*;
+    let mut rng = rand::thread_rng();
+    let id: u64 = rng.gen();
+    let addr = format!("inproc://testbitcoinbridge-{}-{}", socket_name, id);
 
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
@@ -1044,7 +1047,7 @@ fn create_bitcoin_syncer(
             Network::Local,
             polling,
         )
-        .expect("Valid bitcoin syncer");
+        .expect("Invalid Bitcoin syncer!");
     (tx, rx_event)
 }
 
