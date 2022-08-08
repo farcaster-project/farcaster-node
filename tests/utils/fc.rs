@@ -9,6 +9,8 @@ use std::str;
 use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
 
+use super::config;
+
 // TODO: rename this function, this launches fcd, not 'clients'
 pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
     // data directories
@@ -223,4 +225,34 @@ pub fn run(
         })
         .collect();
     Ok((stdout, stderr))
+}
+
+pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
+    use bitcoincore_rpc::{Client, RpcApi};
+
+    let conf = config::TestConfig::parse();
+    let bitcoin_rpc =
+        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
+
+    // make sure a wallet is created and loaded
+    if bitcoin_rpc
+        .call::<bitcoincore_rpc::json::LoadWalletResult>(
+            "createwallet",
+            &[
+                serde_json::to_value("wallet").unwrap(),
+                false.into(),
+                false.into(),
+                serde_json::to_value("").unwrap(),
+                false.into(),
+                false.into(), // descriptor false
+            ],
+        )
+        .is_err()
+    {
+        let _ = bitcoin_rpc.load_wallet("wallet");
+    }
+
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    bitcoin_rpc.generate_to_address(200, &address).unwrap();
+    bitcoin_rpc
 }
