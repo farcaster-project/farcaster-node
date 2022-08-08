@@ -103,30 +103,26 @@ impl MoneroRpc {
         let block_height = self.get_height().await?;
 
         let mut transactions: Vec<Transaction> = vec![];
-        if txs.txs.is_some() {
-            for tx in txs.txs.unwrap().iter() {
-                let mut block_hash: Option<Vec<u8>> = None;
-                let mut confirmations: Option<u32> = Some(0);
-                if let Some(tx_height) = tx.block_height {
-                    if tx_height > 0 {
-                        block_hash = Some(self.get_block_hash(tx_height).await?);
-                    }
-                    confirmations = Some((block_height - tx_height + 1) as u32);
+        for tx in txs.txs.iter().flatten() {
+            let mut block_hash: Option<Vec<u8>> = None;
+            let mut confirmations: Option<u32> = Some(0);
+            if let Some(tx_height) = tx.block_height {
+                if tx_height > 0 {
+                    block_hash = Some(self.get_block_hash(tx_height).await?);
                 }
-                transactions.push(Transaction {
-                    tx_id: hex::decode(tx.tx_hash.to_string()).unwrap(),
-                    confirmations,
-                    block_hash,
-                });
+                confirmations = Some((block_height - tx_height + 1) as u32);
             }
+            transactions.push(Transaction {
+                tx_id: hex::decode(tx.tx_hash.to_string()).unwrap(),
+                confirmations,
+                block_hash,
+            });
         }
-        if txs.missed_tx.is_some() {
-            transactions.extend(txs.missed_tx.unwrap().iter().map(|tx| Transaction {
-                tx_id: hex::decode(tx.to_string()).unwrap(),
-                confirmations: None,
-                block_hash: None,
-            }));
-        }
+        transactions.extend(txs.missed_tx.iter().flatten().map(|tx| Transaction {
+            tx_id: hex::decode(tx.to_string()).unwrap(),
+            confirmations: None,
+            block_hash: None,
+        }));
         Ok(transactions)
     }
 
@@ -750,7 +746,7 @@ async fn run_syncerd_bridge_event_sender(
                     &syncer_address,
                     &transcoder.encrypt(request.serialize()),
                 )
-                .unwrap();
+                .expect("failed to send over zmq socket to the bridge");
         }
     });
 }
