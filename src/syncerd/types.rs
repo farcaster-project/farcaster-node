@@ -20,12 +20,10 @@ pub enum AddressAddendum {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
 #[display(Debug)]
 pub struct BtcAddressAddendum {
-    /// The address the syncer will watch and query.
-    pub address: Option<bitcoin::Address>,
     /// The blockchain height where to start the query (not inclusive).
     pub from_height: u64,
-    /// The associated script pubkey used by server like Electrum.
-    pub script_pubkey: bitcoin::Script,
+    /// The address to be watched.
+    pub address: bitcoin::Address,
 }
 
 #[derive(Clone, Debug, Display, Eq, PartialEq, Hash, StrictEncode, StrictDecode)]

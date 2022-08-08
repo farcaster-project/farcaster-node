@@ -248,14 +248,12 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let address2 = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     let addendum_1 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        address: Some(address1.clone()),
         from_height: 0,
-        script_pubkey: address1.script_pubkey(),
+        address: address1.clone(),
     });
     let addendum_2 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        address: Some(address2.clone()),
         from_height: 0,
-        script_pubkey: address2.script_pubkey(),
+        address: address2.clone(),
     });
     let watch_address_task_1 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
@@ -362,9 +360,8 @@ fn bitcoin_syncer_address_test(polling: bool) {
 
     let address4 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let addendum_4 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        address: Some(address4.clone()),
         from_height: 0,
-        script_pubkey: address4.script_pubkey(),
+        address: address4.clone(),
     });
     for i in 0..5 {
         tx.send(SyncerdTask {
@@ -398,9 +395,8 @@ fn bitcoin_syncer_address_test(polling: bool) {
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
     let addendum_5 = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        address: Some(address5.clone()),
         from_height: blocks,
-        script_pubkey: address5.script_pubkey(),
+        address: address5.clone(),
     });
     tx.send(SyncerdTask {
         task: Task::WatchAddress(WatchAddress {

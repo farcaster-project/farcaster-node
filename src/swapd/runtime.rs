@@ -603,9 +603,7 @@ impl Runtime {
                         .expect("address available at CommitB");
                     let txlabel = TxLabel::Funding;
                     if !self.syncer_state.is_watched_addr(&txlabel) {
-                        let task = self
-                            .syncer_state
-                            .watch_addr_btc(addr.script_pubkey(), txlabel);
+                        let task = self.syncer_state.watch_addr_btc(addr, txlabel);
                         self.send_ctl(
                             endpoints,
                             self.syncer_state.bitcoin_syncer(),
@@ -746,9 +744,7 @@ impl Runtime {
                     if let Some(addr) = self.state.b_address().cloned() {
                         let txlabel = TxLabel::Funding;
                         if !self.syncer_state.is_watched_addr(&txlabel) {
-                            let watch_addr_task = self
-                                .syncer_state
-                                .watch_addr_btc(addr.script_pubkey(), txlabel);
+                            let watch_addr_task = self.syncer_state.watch_addr_btc(addr, txlabel);
                             self.send_ctl(
                                 endpoints,
                                 self.syncer_state.bitcoin_syncer(),

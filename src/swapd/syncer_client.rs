@@ -172,20 +172,19 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
-    pub fn watch_addr_btc(&mut self, script_pubkey: Script, tx_label: TxLabel) -> Task {
+    pub fn watch_addr_btc(&mut self, address: bitcoin::Address, tx_label: TxLabel) -> Task {
         let id = self.tasks.new_taskid();
         let from_height = self.from_height(Blockchain::Bitcoin, 6);
         self.tasks.watched_addrs.insert(id, tx_label);
         info!(
-            "{} | Watching {} transaction with scriptPubkey: {}",
+            "{} | Watching address {} for {} transaction",
             self.swap_id.bright_blue_italic(),
+            address.bright_blue_italic(),
             tx_label.bright_white_bold(),
-            script_pubkey.asm().bright_blue_italic()
         );
         let addendum = BtcAddressAddendum {
-            address: None,
             from_height,
-            script_pubkey,
+            address,
         };
         let task = Task::WatchAddress(WatchAddress {
             id,
