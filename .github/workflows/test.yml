@@ -90,10 +90,10 @@ jobs:
         bitcoin: [ '23.0' ]
         electrs: [ 0.9.7 ]
         include:
-        - test: bitcoin_syncer
+        - test: bitcoin_syncer_transaction_test
           bitcoin: '22.0'
           electrs: 0.8.11
-        - test: bitcoin_syncer
+        - test: bitcoin_syncer_transaction_test
           bitcoin: '22.0'
           electrs: 0.9.7
 
