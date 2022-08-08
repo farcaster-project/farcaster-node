@@ -366,11 +366,15 @@ fn query_addr_history(
 
     let mut addr_txs = vec![];
     for hist in tx_hist {
-        // skip the transasction if it is either in the mempool (0 and -1) or below a
-        // certain block height
-        if hist.height <= address.from_height.try_into().unwrap() && hist.height > 0 {
-            continue;
+        // skip the transaction if it is too far back in the history by checking
+        // if it is not in the mempool (0 and -1) and confirmed below a certain
+        // block height
+        if hist.height > 0 {
+            if address.from_height >= hist.height as u64 {
+                continue;
+            }
         }
+
         let mut our_amount: u64 = 0;
         let txid = hist.tx_hash;
         // get the full transaction to calculate our_amount
