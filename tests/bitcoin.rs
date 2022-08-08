@@ -45,14 +45,14 @@ macro_rules! make_polling_test {
     ($name:ident) => {
         paste! {
             #[test]
-            #[timeout(300000)]
+            #[timeout(600000)]
             #[ignore]
             fn [< $name _polling >] () {
                 $name(true);
             }
 
             #[test]
-            #[timeout(300000)]
+            #[timeout(600000)]
             #[ignore]
             fn [< $name _no_polling >] () {
                 $name(false);
