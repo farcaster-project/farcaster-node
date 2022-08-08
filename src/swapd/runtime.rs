@@ -210,16 +210,18 @@ pub struct Runtime {
 }
 
 // FIXME Something more meaningful than ServiceId to index
-#[derive(Default)]
-pub struct PendingRequests(HashMap<ServiceId, Vec<PendingRequest>>);
+type PendingRequests = HashMap<ServiceId, Vec<PendingRequest>>;
 
-impl From<HashMap<ServiceId, Vec<PendingRequest>>> for PendingRequests {
-    fn from(m: HashMap<ServiceId, Vec<PendingRequest>>) -> Self {
-        PendingRequests(m)
+impl PendingRequestsT for PendingRequests {
+    fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest) {
+        let pending_reqs = self.entry(key).or_insert(vec![]);
+        pending_reqs.push(pending_req);
     }
 }
 
-impl PendingRequests {}
+trait PendingRequestsT {
+    fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest);
+}
 
 #[derive(Debug, Clone)]
 pub struct PendingRequest {
@@ -237,10 +239,6 @@ impl PendingRequest {
             bus_id,
             request,
         }
-    }
-    fn defer_request(self, pending_requests: &mut PendingRequests, key: ServiceId) {
-        let pending_reqs = pending_requests.0.entry(key).or_insert(vec![]);
-        pending_reqs.push(self);
     }
 }
 
@@ -467,7 +465,7 @@ impl Runtime {
     }
 
     fn pending_requests(&mut self) -> &mut HashMap<ServiceId, Vec<PendingRequest>> {
-        &mut self.pending_requests.0
+        &mut self.pending_requests
     }
 
     fn continue_deferred_requests(
@@ -631,8 +629,9 @@ impl Runtime {
                             ServiceBus::Msg,
                             request,
                         );
-                        pending_request
-                            .defer_request(&mut self.pending_requests, ServiceId::Wallet);
+
+                        self.pending_requests
+                            .defer_request(ServiceId::Wallet, pending_request);
                     }
                     SwapRole::Alice => {
                         debug!("Alice: forwarding reveal");
@@ -661,10 +660,8 @@ impl Runtime {
                     &request
                 );
                 let pending_req = PendingRequest::new(source, self.identity(), msg_bus, request);
-                pending_req.defer_request(
-                    &mut self.pending_requests,
-                    self.syncer_state.bitcoin_syncer(),
-                );
+                self.pending_requests
+                    .defer_request(self.syncer_state.bitcoin_syncer(), pending_req);
             }
             // bob and alice
             // store parameters from counterparty if we have not received them yet.
@@ -729,7 +726,8 @@ impl Runtime {
                             msg_bus,
                             request,
                         );
-                        pending_req.defer_request(&mut self.pending_requests, ServiceId::Wallet);
+                        self.pending_requests
+                            .defer_request(ServiceId::Wallet, pending_req);
                     }
                     _ => unreachable!(
                         "Bob btc_fee_estimate_sat_per_kvb.is_none() was handled previously"
@@ -936,7 +934,7 @@ impl Runtime {
                 let dest = self.syncer_state.monero_syncer();
                 let pending_request =
                     PendingRequest::new(self.identity(), dest.clone(), ServiceBus::Ctl, request);
-                pending_request.defer_request(&mut self.pending_requests, dest);
+                self.pending_requests.defer_request(dest, pending_request);
             }
             Request::TakeSwap(InitSwap {
                 peerd,
@@ -2258,10 +2256,8 @@ impl Runtime {
                     ServiceBus::Msg,
                     request,
                 );
-                pending_request.defer_request(
-                    &mut self.pending_requests,
-                    self.syncer_state.monero_syncer(),
-                );
+                self.pending_requests
+                    .defer_request(self.syncer_state.monero_syncer(), pending_request);
             }
 
             Request::AbortSwap
@@ -2377,7 +2373,7 @@ impl Runtime {
                     self.state = state;
                     self.enquirer = enquirer;
                     self.temporal_safety = temporal_safety;
-                    self.pending_requests = PendingRequests(pending_requests);
+                    self.pending_requests = pending_requests;
                     self.txs = txs.clone();
                     trace!("Watch height bitcoin");
                     let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
