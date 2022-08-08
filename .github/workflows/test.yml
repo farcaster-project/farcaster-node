@@ -96,9 +96,6 @@ jobs:
         - test: bitcoin_syncer
           bitcoin: '22.0'
           electrs: 0.9.7
-        - test: bitcoin_syncer
-          bitcoin: '23.0'
-          electrs: 0.8.11
 
     runs-on: ubuntu-latest
     env:
