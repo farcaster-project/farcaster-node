@@ -115,7 +115,7 @@ impl ElectrumRpc {
             None
         } else {
             self.client
-                .script_subscribe(&address_addendum.script_pubkey)?
+                .script_subscribe(&address_addendum.address.script_pubkey())?
         };
         if self
             .addresses
@@ -124,15 +124,11 @@ impl ElectrumRpc {
         {
         } else {
             debug!(
-                "registering address {:?} with script_status {:?}",
-                &address_addendum, &script_status
+                "registering address {} with script_status {:?}",
+                &address_addendum.address, &script_status
             );
         }
-        let txs = query_addr_history(
-            &mut self.client,
-            address_addendum.script_pubkey.clone(),
-            address_addendum.from_height,
-        )?;
+        let txs = query_addr_history(&mut self.client, &address_addendum)?;
         logging(&txs, &address_addendum);
         let notif = AddressNotif {
             address: address_addendum,
@@ -172,9 +168,8 @@ impl ElectrumRpc {
     pub fn address_change_check(&mut self) -> Vec<AddressNotif> {
         let mut notifs: Vec<AddressNotif> = vec![];
         if self.polling {
-            let scripts = self.addresses.keys().map(|addr| addr.script_pubkey.clone());
-            for (script, address) in scripts.zip(self.addresses.keys().clone()) {
-                if let Ok(txs) = query_addr_history(&mut self.client, script, address.from_height) {
+            for address in self.addresses.keys().clone() {
+                if let Ok(txs) = query_addr_history(&mut self.client, address) {
                     logging(&txs, &address);
                     let new_notif = AddressNotif {
                         address: address.clone(),
@@ -186,7 +181,7 @@ impl ElectrumRpc {
         } else {
             for (address, previous_status) in self.addresses.clone().into_iter() {
                 // get pending notifications for this address/script_pubkey
-                let script_pubkey = &address.script_pubkey;
+                let script_pubkey = &address.address.script_pubkey();
 
                 while let Ok(Some(script_status)) = self.client.script_pop(script_pubkey) {
                     if Some(script_status) != previous_status {
@@ -205,11 +200,7 @@ impl ElectrumRpc {
                                 &address, &script_status
                             );
                         }
-                        if let Ok(txs) = query_addr_history(
-                            &mut self.client,
-                            script_pubkey.clone(),
-                            address.from_height,
-                        ) {
+                        if let Ok(txs) = query_addr_history(&mut self.client, &address) {
                             debug!("creating AddressNotif");
                             logging(&txs, &address);
                             let new_notif = AddressNotif {
@@ -365,19 +356,19 @@ impl ElectrumRpc {
 
 fn query_addr_history(
     client: &mut Client,
-    script: Script,
-    min_block_height: u64,
+    address: &BtcAddressAddendum,
 ) -> Result<Vec<AddressTx>, Error> {
     // now that we have established _something_ has changed get the full transaction
     // history of the address
-    let tx_hist = client.script_get_history(&script)?;
+    let script_pubkey = address.address.script_pubkey();
+    let tx_hist = client.script_get_history(&script_pubkey)?;
     trace!("history: {:?}", tx_hist);
 
     let mut addr_txs = vec![];
     for hist in tx_hist {
         // skip the transasction if it is either in the mempool (0 and -1) or below a
         // certain block height
-        if hist.height <= min_block_height.try_into().unwrap() && hist.height > 0 {
+        if hist.height <= address.from_height.try_into().unwrap() && hist.height > 0 {
             continue;
         }
         let mut our_amount: u64 = 0;
@@ -386,7 +377,7 @@ fn query_addr_history(
         let tx = client.transaction_get(&txid)?;
         let mut output_found = false;
         for output in tx.output.iter() {
-            if output.script_pubkey == script {
+            if output.script_pubkey == script_pubkey {
                 output_found = true;
                 our_amount += output.value;
             }
@@ -1099,7 +1090,7 @@ fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
     txs.iter().for_each(|tx| {
         trace!(
             "processing address {} notification txid {}",
-            address.address.clone().unwrap(),
+            address.address,
             bitcoin::Txid::from_slice(&tx.tx_id).unwrap().addr()
         );
     });

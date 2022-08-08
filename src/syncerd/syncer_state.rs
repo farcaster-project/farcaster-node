@@ -908,9 +908,8 @@ async fn syncer_state_addresses() {
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let address = bitcoin::Address::from_str("32BkaQeAVcd65Vn7pjEziohf5bCiryNQov").unwrap();
     let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum {
-        address: Some(address.clone()),
         from_height: 0,
-        script_pubkey: address.script_pubkey(),
+        address,
     });
     let address_task = WatchAddress {
         id: TaskId(0),
