@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         test: [
-          bitcoin_syncer,
+          bitcoin_syncer_transaction_test,
           monero_syncer,
           swap_alice_maker,
           swap_bob_funds_incorrect_amount,
