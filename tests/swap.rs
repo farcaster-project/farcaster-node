@@ -2497,7 +2497,7 @@ async fn run_swap(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
 }
 
 fn kill_connected_peerd() {
