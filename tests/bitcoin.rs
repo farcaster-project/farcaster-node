@@ -1,6 +1,6 @@
 use amplify::map;
 use bitcoin::hashes::Hash;
-use bitcoincore_rpc::{Client, RpcApi};
+use bitcoincore_rpc::RpcApi;
 use clap::Parser;
 use farcaster_core::blockchain::{Blockchain, Network};
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
@@ -21,6 +21,7 @@ use std::sync::mpsc::Sender;
 
 use utils::assert;
 use utils::config;
+use utils::fc::bitcoin_setup;
 use utils::misc;
 use utils::setup_logging;
 
@@ -1065,19 +1066,4 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
         }
     }
     0
-}
-
-fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let conf = config::TestConfig::parse();
-    let bitcoin_rpc =
-        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
-
-    // make sure a wallet is created and loaded
-    if bitcoin_rpc
-        .create_wallet("wallet", None, None, None, None)
-        .is_err()
-    {
-        let _ = bitcoin_rpc.load_wallet("wallet");
-    }
-    bitcoin_rpc
 }

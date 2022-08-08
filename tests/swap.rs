@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use bitcoincore_rpc::{Client, RpcApi};
+use bitcoincore_rpc::RpcApi;
 use farcaster_core::swap::SwapId;
 use farcaster_node::rpc::request::{BitcoinFundingInfo, MoneroFundingInfo, NodeInfo};
 use futures::future::join_all;
@@ -2945,24 +2945,6 @@ async fn retry_until_finish_state_transition(
         "timeout before finish state {:?} could be retrieved",
         finish_state
     );
-}
-
-fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let conf = config::TestConfig::parse();
-    let bitcoin_rpc =
-        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
-
-    // make sure a wallet is created and loaded
-    if bitcoin_rpc
-        .create_wallet("wallet", None, None, None, None)
-        .is_err()
-    {
-        let _ = bitcoin_rpc.load_wallet("wallet");
-    }
-
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc.generate_to_address(200, &address).unwrap();
-    bitcoin_rpc
 }
 
 async fn monero_setup() -> (
