@@ -833,3 +833,10 @@ impl State {
         }
     }
 }
+
+fn inner_msg(message: Request) -> Option<Msg> {
+    match message {
+        Request::Protocol(msg) => Some(msg),
+        _ => None,
+    }
+}
