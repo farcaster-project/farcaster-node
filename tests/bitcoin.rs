@@ -425,8 +425,11 @@ the threshold confs are reached
 */
 fn bitcoin_syncer_transaction_test(polling: bool) {
     setup_logging();
+    info!("logging set up");
     let bitcoin_rpc = bitcoin_setup();
+    info!("bitcoin set up");
     let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
+    info!("syncer created");
 
     // generate some blocks to an address
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -439,8 +442,10 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         .send_to_address(&address_1, amount, None, None, None, None, None, None)
         .unwrap();
 
+    info!("sleeping to index the mempool transaction");
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
+    info!("sleep to index the mempool transaction is over");
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
