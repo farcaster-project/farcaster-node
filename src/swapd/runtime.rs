@@ -195,22 +195,22 @@ pub struct Runtime {
     swap_id: SwapId,
     identity: ServiceId,
     peer_service: ServiceId,
-    state: State,
+    pub state: State,
     maker_peer: Option<NodeAddr>,
     started: SystemTime,
     enquirer: Option<ServiceId>,
-    syncer_state: SyncerState,
-    temporal_safety: TemporalSafety,
-    pending_requests: PendingRequests,
-    pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
-    txs: HashMap<TxLabel, bitcoin::Transaction>,
+    pub syncer_state: SyncerState,
+    pub temporal_safety: TemporalSafety,
+    pub pending_requests: PendingRequests,
+    pub pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
+    pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
     public_offer: PublicOffer,
 }
 
 // FIXME Something more meaningful than ServiceId to index
-type PendingRequests = HashMap<ServiceId, Vec<PendingRequest>>;
+pub type PendingRequests = HashMap<ServiceId, Vec<PendingRequest>>;
 
 impl PendingRequestsT for PendingRequests {
     fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest) {
@@ -219,7 +219,7 @@ impl PendingRequestsT for PendingRequests {
     }
 }
 
-trait PendingRequestsT {
+pub trait PendingRequestsT {
     fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest);
 }
 
@@ -232,7 +232,7 @@ pub struct PendingRequest {
 }
 
 impl PendingRequest {
-    fn new(source: ServiceId, dest: ServiceId, bus_id: ServiceBus, request: Request) -> Self {
+    pub fn new(source: ServiceId, dest: ServiceId, bus_id: ServiceBus, request: Request) -> Self {
         PendingRequest {
             source,
             dest,
@@ -455,7 +455,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn swap_id(&self) -> SwapId {
+    pub fn swap_id(&self) -> SwapId {
         match self.identity {
             ServiceId::Swap(swap_id) => swap_id,
             _ => {
@@ -464,7 +464,15 @@ impl Runtime {
         }
     }
 
-    fn pending_requests(&mut self) -> &mut HashMap<ServiceId, Vec<PendingRequest>> {
+    pub fn syncer_state(&self) -> &SyncerState {
+        &self.syncer_state
+    }
+
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
+    pub fn pending_requests(&mut self) -> &mut HashMap<ServiceId, Vec<PendingRequest>> {
         &mut self.pending_requests
     }
 
@@ -2599,7 +2607,7 @@ fn aggregate_xmr_spend_view(
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 
-fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
+pub fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
     // parameter processing irrespective of maker & taker role
     let core_wallet = CommitmentEngine;
     match reveal {
