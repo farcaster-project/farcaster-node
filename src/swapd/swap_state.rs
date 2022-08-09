@@ -4,7 +4,15 @@ use farcaster_core::{
 };
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::rpc::request::{Commit, Outcome, Params};
+use crate::{
+    automata::Event,
+    rpc::{
+        request::{Commit, Msg, Outcome, Params, Reveal},
+        Request,
+    },
+};
+
+use super::syncer_client::SyncerState;
 
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum AliceState {
@@ -607,7 +615,6 @@ impl State {
         }
         true
     }
-
     /// Update Bob BuySig state from XMR unlocked to locked state
     pub fn b_sup_buysig_buy_tx_seen(&mut self) -> bool {
         if !self.b_buy_sig() {
