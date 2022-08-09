@@ -2644,3 +2644,23 @@ fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Par
         ))),
     }
 }
+
+// TODO trade role as input
+fn white_list_p2p_msgs(request: &Request) -> bool {
+    if let Request::Protocol(msg) = request {
+        match msg {
+            Msg::MakerCommit(_) => true,
+            Msg::TakerCommit(_) => false,
+            Msg::Reveal(request::Reveal::Proof(_)) => true,
+            Msg::Reveal(_) => true,
+            Msg::CoreArbitratingSetup(_) => true,
+            Msg::RefundProcedureSignatures(_) => true,
+            Msg::BuyProcedureSignature(_) => true,
+            Msg::Abort(_) => false,
+            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => false,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
