@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         test: [
-          bitcoin_syncer_transaction_test,
+          bitcoin_syncer,
           monero_syncer,
           swap_alice_maker,
           swap_bob_funds_incorrect_amount,
@@ -77,10 +77,10 @@ jobs:
         bitcoin: [ '23.0' ]
         electrs: [ 0.9.7 ]
         include:
-        - test: bitcoin_syncer_transaction_test
+        - test: bitcoin_syncer
           bitcoin: '22.0'
           electrs: 0.8.11
-        - test: bitcoin_syncer_transaction_test
+        - test: bitcoin_syncer
           bitcoin: '22.0'
           electrs: 0.9.7
 
