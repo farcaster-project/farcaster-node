@@ -547,6 +547,7 @@ async fn run_syncerd_task_receiver(
     state: Arc<Mutex<SyncerState>>,
     transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
     transaction_get_tx: TokioSender<(GetTx, ServiceId)>,
+    terminate_tx: TokioSender<()>,
 ) {
     let task_receiver = Arc::new(Mutex::new(receive_task_channel));
     tokio::spawn(async move {
@@ -627,6 +628,13 @@ async fn run_syncerd_task_receiver(
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                             drop(state_guard);
+                        }
+                        Task::Terminate => {
+                            debug!("terminating async syncer runtime");
+                            terminate_tx
+                                .send(())
+                                .await
+                                .expect("terminating, don't care if we panic");
                         }
                     }
                 }
@@ -1032,6 +1040,18 @@ fn transaction_fetcher(
     })
 }
 
+fn terminate_polling(
+    mut rx_terminate: TokioReceiver<()>,
+) -> tokio::task::JoinHandle<Result<(), Error>> {
+    tokio::task::spawn(async move {
+        let _ = rx_terminate.recv().await;
+        debug!("received terminate");
+        panic!("terminate this thread");
+
+        Err(Error::Farcaster("terminating".to_string()))
+    })
+}
+
 impl Synclet for BitcoinSyncer {
     fn run(
         &mut self,
@@ -1067,6 +1087,8 @@ impl Synclet for BitcoinSyncer {
                         TokioSender<(GetTx, ServiceId)>,
                         TokioReceiver<(GetTx, ServiceId)>,
                     ) = tokio::sync::mpsc::channel(200);
+                    let (terminate_tx, terminate_rx): (TokioSender<()>, TokioReceiver<()>) =
+                        tokio::sync::mpsc::channel(1);
                     let state = Arc::new(Mutex::new(SyncerState::new(
                         event_tx.clone(),
                         Blockchain::Bitcoin,
@@ -1077,6 +1099,7 @@ impl Synclet for BitcoinSyncer {
                         Arc::clone(&state),
                         transaction_broadcast_tx,
                         transaction_get_tx,
+                        terminate_tx,
                     )
                     .await;
                     run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
@@ -1111,6 +1134,8 @@ impl Synclet for BitcoinSyncer {
                     let sweep_handle =
                         sweep_polling(Arc::clone(&state), electrum_server, btc_network);
 
+                    let terminate_handle = terminate_polling(terminate_rx);
+
                     let res = tokio::try_join!(
                         address_handle,
                         height_handle,
@@ -1119,6 +1144,7 @@ impl Synclet for BitcoinSyncer {
                         transaction_get_handle,
                         estimate_fee_handle,
                         sweep_handle,
+                        terminate_handle,
                     );
                     debug!("exiting bitcoin synclet run routine with: {:?}", res);
                 });
