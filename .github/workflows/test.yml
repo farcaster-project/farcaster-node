@@ -72,20 +72,6 @@ jobs:
       matrix:
         test: [
           bitcoin_syncer,
-          monero_syncer,
-          swap_alice_maker,
-          swap_bob_funds_incorrect_amount,
-          swap_bob_maker_kill_peerd,
-          swap_bob_maker_manual_monero_sweep,
-          swap_bob_maker_normal,
-          swap_bob_maker_punish_kill_bob,
-          swap_bob_maker_refund,
-          swap_bob_maker_restore_checkpoint,
-          swap_bob_maker_user_abort_sweep_btc,
-          swap_parallel_execution,
-          swap_revoke_offer_bob_maker_normal,
-          cli,
-          grpc,
         ]
         bitcoin: [ '23.0' ]
         electrs: [ 0.9.7 ]
@@ -93,13 +79,15 @@ jobs:
         - test: bitcoin_syncer
           bitcoin: '22.0'
           electrs: 0.8.11
+          logs: true
         - test: bitcoin_syncer
           bitcoin: '22.0'
           electrs: 0.9.7
+          logs: true
 
     runs-on: ubuntu-latest
     env:
-      RUST_LOG: 'info,farcaster_node=debug,microservices=debug'
+      RUST_LOG: 'info,farcaster_node=trace,microservices=debug'
       RUST_BACKTRACE: 1
     container:
       image: rust:slim-bullseye
@@ -165,4 +153,4 @@ jobs:
           key: ${{ matrix.test }}
 
       - name: Cargo functional test
-        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --color always -- --ignored --test-threads=1
+        run: cargo test ${{ matrix.test }} --workspace --all-targets --all-features --color always -- --ignored --nocapture --test-threads=1
