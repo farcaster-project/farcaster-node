@@ -62,7 +62,7 @@ pub struct Event<'esb, Message> {
 
 impl<'esb, Message> Event<'esb, Message>
 where
-    Message: Into<Request>,
+    Message: Into<Request> + Clone,
     // FIXME: should be Message: Into<BusMsg> after api split
 {
     /// Constructs event out of the provided data
@@ -104,6 +104,19 @@ where
             self.service.clone(),
             self.source.clone(),
             message.into(),
+        )
+    }
+
+    pub fn forward(
+        &mut self,
+        bus: ServiceBus,
+        service: ServiceId,
+    ) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints.send_to(
+            bus,
+            self.source.clone(),
+            service,
+            self.message.clone().into(),
         )
     }
 
