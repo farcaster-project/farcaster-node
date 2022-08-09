@@ -131,10 +131,106 @@ pub enum SwapCheckpointType {
     CheckpointAlicePreBuy,
 }
 
+pub enum SwapPhase {
+    Init(Option<TradeRole>),
+    Eval(SwapRole),
+}
+
+pub enum Awaiting {
+    MakerCommit,
+    RevealProof,
+    RevealAlice,
+    Reveal,
+    CoreArb,
+    RefundSigs,
+    BuySig,
+    Unknown,
+}
+
+impl Awaiting {
+    pub fn with(state: &State, event: &Event<Request>, syncer_state: Option<&SyncerState>) -> Self {
+        if state.p_maker_commit(&event) {
+            Awaiting::MakerCommit
+        } else if state.p_reveal_proof(&event) {
+            Awaiting::RevealProof
+        } else if syncer_state.is_some() && state.p_reveal_alice(&event, syncer_state.unwrap()) {
+            Awaiting::RevealAlice
+        } else if syncer_state.is_some() && state.p_reveal(event, syncer_state.unwrap()) {
+            Awaiting::Reveal
+        } else if state.p_core_arb(event) {
+            Awaiting::CoreArb
+        } else if state.p_refund_sigs(event) {
+            Awaiting::RefundSigs
+        } else if state.p_buy_sig(event) {
+            Awaiting::BuySig
+        } else {
+            Awaiting::Unknown
+        }
+    }
+}
+
 // The state impl is not public and may contain code not used yet, we can relax the linter and
 // allow dead code.
 #[allow(dead_code)]
 impl State {
+    pub fn p_maker_commit(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Protocol(Msg::MakerCommit(_)))
+            && self.commit()
+            && self.trade_role() == Some(TradeRole::Taker)
+            && self.remote_commit().is_none()
+    }
+    pub fn p_reveal_proof(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
+    }
+    pub fn p_reveal_alice(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+        matches!(
+            ev.message,
+            Request::Protocol(Msg::Reveal(Reveal::AliceParameters(..)))
+        ) && self.swap_role() == SwapRole::Bob
+            && (self.b_address().is_none() || syncer_state.btc_fee_estimate_sat_per_kvb.is_none())
+    }
+    pub fn p_reveal(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+        !matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_)))) // FIXME: remove when Reveal Proof split
+            && matches!(ev.message, Request::Protocol(Msg::Reveal(_)))
+            && self.remote_commit().is_some()
+            && (self.commit() || self.reveal())
+            && {
+                match (
+                    self.swap_role(),
+                    self.b_address().is_some(),
+                    syncer_state.btc_fee_estimate_sat_per_kvb.is_some(),
+                ) {
+                    (SwapRole::Bob, true, true) => true,
+                    (SwapRole::Bob, ..) => false,
+                    (SwapRole::Alice, ..) => true,
+                }
+            }
+    }
+    pub fn p_core_arb(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Protocol(Msg::CoreArbitratingSetup(_)))
+            && self.swap_role() == SwapRole::Alice
+            && self.reveal()
+    }
+    pub fn p_refund_sigs(&self, ev: &Event<Request>) -> bool {
+        matches!(
+            ev.message,
+            Request::Protocol(Msg::RefundProcedureSignatures(_))
+        ) && self.b_core_arb()
+    }
+
+    pub fn p_buy_sig(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Protocol(Msg::BuyProcedureSignature(_)))
+            && self.a_refundsig()
+            && !self.a_overfunded()
+    }
+
+    pub fn swap_phase(&self) -> SwapPhase {
+        if self.start() || self.commit() || self.reveal() {
+            SwapPhase::Init(self.trade_role())
+        } else {
+            SwapPhase::Eval(self.swap_role())
+        }
+    }
     pub fn swap_role(&self) -> SwapRole {
         match self {
             State::Alice(_) => SwapRole::Alice,
