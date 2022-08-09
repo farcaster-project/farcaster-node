@@ -240,6 +240,14 @@ impl PendingRequest {
             request,
         }
     }
+    pub fn from_event(event: &crate::automata::Event<Request>, bus: ServiceBus) -> Self {
+        Self::new(
+            event.source.clone(),
+            event.service.clone(),
+            bus,
+            event.message.clone(),
+        )
+    }
 }
 
 impl StrictEncode for PendingRequest {
