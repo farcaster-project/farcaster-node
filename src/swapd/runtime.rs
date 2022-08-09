@@ -194,23 +194,23 @@ pub fn run(
 pub struct Runtime {
     swap_id: SwapId,
     identity: ServiceId,
-    peer_service: ServiceId,
-    state: State,
-    maker_peer: Option<NodeAddr>,
+    pub peer_service: ServiceId,
+    pub state: State,
+    pub maker_peer: Option<NodeAddr>,
     started: SystemTime,
-    enquirer: Option<ServiceId>,
-    syncer_state: SyncerState,
-    temporal_safety: TemporalSafety,
-    pending_requests: PendingRequests,
-    pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
-    txs: HashMap<TxLabel, bitcoin::Transaction>,
+    pub enquirer: Option<ServiceId>,
+    pub syncer_state: SyncerState,
+    pub temporal_safety: TemporalSafety,
+    pub pending_requests: PendingRequests,
+    pub pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
+    pub txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
     storage: Box<dyn storage::Driver>,
-    public_offer: PublicOffer,
+    pub public_offer: PublicOffer,
 }
 
 // FIXME Something more meaningful than ServiceId to index
-type PendingRequests = HashMap<ServiceId, Vec<PendingRequest>>;
+pub type PendingRequests = HashMap<ServiceId, Vec<PendingRequest>>;
 
 impl PendingRequestsT for PendingRequests {
     fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest) {
@@ -266,7 +266,7 @@ impl PendingRequestsT for PendingRequests {
     }
 }
 
-trait PendingRequestsT {
+pub trait PendingRequestsT {
     fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest);
     fn continue_deferred_requests(
         runtime: &mut Runtime, // needed for recursion
@@ -278,14 +278,14 @@ trait PendingRequestsT {
 
 #[derive(Debug, Clone)]
 pub struct PendingRequest {
-    source: ServiceId,
-    dest: ServiceId,
-    bus_id: ServiceBus,
-    request: Request,
+    pub source: ServiceId,
+    pub dest: ServiceId,
+    pub bus_id: ServiceBus,
+    pub request: Request,
 }
 
 impl PendingRequest {
-    fn new(source: ServiceId, dest: ServiceId, bus_id: ServiceBus, request: Request) -> Self {
+    pub fn new(source: ServiceId, dest: ServiceId, bus_id: ServiceBus, request: Request) -> Self {
         PendingRequest {
             source,
             dest,
@@ -484,7 +484,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: request::Msg) -> Result<(), Error> {
+    pub fn send_peer(&mut self, endpoints: &mut Endpoints, msg: request::Msg) -> Result<(), Error> {
         trace!("sending peer message {}", msg.bright_yellow_bold());
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
@@ -508,7 +508,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn swap_id(&self) -> SwapId {
+    pub fn swap_id(&self) -> SwapId {
         match self.identity {
             ServiceId::Swap(swap_id) => swap_id,
             _ => {
@@ -517,11 +517,68 @@ impl Runtime {
         }
     }
 
-    fn pending_requests(&mut self) -> &mut HashMap<ServiceId, Vec<PendingRequest>> {
+    pub fn syncer_state(&self) -> &SyncerState {
+        &self.syncer_state
+    }
+
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
+    pub fn pending_requests(&mut self) -> &mut HashMap<ServiceId, Vec<PendingRequest>> {
         &mut self.pending_requests
     }
 
-    fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
+    pub fn continue_deferred_requests(
+        &mut self,
+        endpoints: &mut Endpoints,
+        key: ServiceId,
+        predicate: fn(&PendingRequest) -> bool,
+    ) -> bool {
+        let success = if let Some(pending_reqs) = self.pending_requests().remove(&key) {
+            let len0 = pending_reqs.len();
+            let remaining_pending_reqs: Vec<_> =
+                pending_reqs
+                    .into_iter()
+                    .filter_map(|r| {
+                        if predicate(&r) {
+                            if let Ok(_) = match &r.bus_id {
+                                ServiceBus::Ctl if &r.dest == &self.identity => self
+                                    .handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone()),
+                                ServiceBus::Msg if &r.dest == &self.identity => self
+                                    .handle_rpc_msg(endpoints, r.source.clone(), r.request.clone()),
+                                _ => endpoints
+                                    .send_to(
+                                        r.bus_id.clone(),
+                                        r.source.clone(),
+                                        r.dest.clone(),
+                                        r.request.clone(),
+                                    )
+                                    .map_err(Into::into),
+                            } {
+                                None
+                            } else {
+                                Some(r)
+                            }
+                        } else {
+                            Some(r)
+                        }
+                    })
+                    .collect();
+            let len1 = remaining_pending_reqs.len();
+            self.pending_requests().insert(key, remaining_pending_reqs);
+            if len0 - len1 > 1 {
+                error!("consumed more than one request with this predicate")
+            }
+            len0 > len1
+        } else {
+            error!("no request consumed with this predicate");
+            false
+        };
+        success
+    }
+
+    pub fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
         info!(
             "{} | State transition: {} -> {}",
             self.swap_id.bright_blue_italic(),
@@ -534,7 +591,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn broadcast(
+    pub fn broadcast(
         &mut self,
         tx: bitcoin::Transaction,
         tx_label: TxLabel,
@@ -2575,7 +2632,7 @@ impl Runtime {
         Ok(commitment)
     }
 
-    fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+    pub fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         let swap_success_req = Request::SwapOutcome(Outcome::Abort);
         self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
         self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
@@ -2592,7 +2649,7 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
     }
 }
 
-fn aggregate_xmr_spend_view(
+pub fn aggregate_xmr_spend_view(
     alice_params: &Parameters,
     bob_params: &Parameters,
 ) -> (monero::PublicKey, monero::PrivateKey) {
@@ -2613,7 +2670,7 @@ fn aggregate_xmr_spend_view(
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 
-fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
+pub fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
     // parameter processing irrespective of maker & taker role
     let core_wallet = CommitmentEngine;
     match reveal {
