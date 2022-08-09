@@ -1009,6 +1009,7 @@ fn create_bitcoin_syncer(
     let mut rng = rand::thread_rng();
     let id: u64 = rng.gen();
     let addr = format!("inproc://testbitcoinbridge-{}-{}", socket_name, id);
+    debug!("creating Bitcoin syncer on addr {}", addr);
 
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();

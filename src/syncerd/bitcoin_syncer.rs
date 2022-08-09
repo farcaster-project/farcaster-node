@@ -236,7 +236,7 @@ impl ElectrumRpc {
         };
         drop(state_guard);
         for tx_id in txids.iter() {
-            let tx_id = bitcoin::Txid::from_slice(tx_id).unwrap();
+            let tx_id = bitcoin::Txid::from_slice(tx_id).expect("invalid txid");
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
@@ -994,8 +994,9 @@ fn transaction_fetcher(
     tokio::task::spawn(async move {
         while let Some((get_transaction, source)) = transaction_get_rx.recv().await {
             match Client::new(&electrum_server).and_then(|transaction_client| {
-                transaction_client
-                    .transaction_get(&bitcoin::Txid::from_slice(&get_transaction.hash).unwrap())
+                transaction_client.transaction_get(
+                    &bitcoin::Txid::from_slice(&get_transaction.hash).expect("invalid txid"),
+                )
             }) {
                 Ok(tx) => {
                     tx_event
@@ -1046,11 +1047,13 @@ impl Synclet for BitcoinSyncer {
             let electrum_server = electrum_server.clone();
             std::thread::spawn(move || {
                 use tokio::runtime::Builder;
+                info!("building tokio syncer runtime");
                 let rt = Builder::new_multi_thread()
                     .worker_threads(2)
                     .enable_all()
                     .build()
-                    .unwrap();
+                    .expect("failed to build tokio runtime");
+                info!("completed tokio syncer runtime");
                 rt.block_on(async {
                     let (event_tx, event_rx): (
                         TokioSender<SyncerdBridgeEvent>,
@@ -1133,7 +1136,9 @@ fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
         trace!(
             "processing address {} notification txid {}",
             address.address,
-            bitcoin::Txid::from_slice(&tx.tx_id).unwrap().addr()
+            bitcoin::Txid::from_slice(&tx.tx_id)
+                .expect("invalid txid")
+                .addr()
         );
     });
 }
