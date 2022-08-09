@@ -325,7 +325,7 @@ impl SyncerState {
         self.tasks.broadcasting_txs.remove(&event.id);
         self.tasks.tasks.remove(&event.id);
     }
-    pub fn pending_broadcast_txs(&mut self) -> Vec<bitcoin::Transaction> {
+    pub fn pending_broadcast_txs(&self) -> Vec<bitcoin::Transaction> {
         self.tasks
             .broadcasting_txs
             .iter()
