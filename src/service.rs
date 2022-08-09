@@ -326,6 +326,9 @@ where
         }
         Ok(())
     }
+    fn enquirer(&self) -> Option<ServiceId> {
+        None
+    }
 
     fn report_progress_message_to(
         &mut self,
