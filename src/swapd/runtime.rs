@@ -451,7 +451,11 @@ impl StrictDecode for CheckpointSwapd {
     }
 }
 
-impl CtlServer for Runtime {}
+impl CtlServer for Runtime {
+    fn enquirer(&self) -> Option<ServiceId> {
+        self.enquirer.clone()
+    }
+}
 
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
