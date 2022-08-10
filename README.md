@@ -27,6 +27,11 @@ Farcaster Node is build on atomic swap primitives described in the [RFCs](https:
 ## Documentation
 
 Checkout Farcaster documentation in the [wiki](https://github.com/farcaster-project/farcaster-node/wiki).
+If you want a local copy of the doc you can clone the wiki:
+
+```
+git clone https://github.com/farcaster-project/farcaster-node.wiki.git
+```
 
 ## Releases and Changelog
 
