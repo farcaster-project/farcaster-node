@@ -1074,10 +1074,8 @@ fn terminate_polling(
 ) -> tokio::task::JoinHandle<Result<(), Error>> {
     tokio::task::spawn(async move {
         let _ = rx_terminate.recv().await;
-        debug!("received terminate");
+        debug!("received terminate thread");
         panic!("terminate this thread");
-
-        Err(Error::Farcaster("terminating".to_string()))
     })
 }
 
@@ -1198,6 +1196,8 @@ impl Synclet for BitcoinSyncer {
                     );
                     debug!("exiting bitcoin synclet run routine with: {:?}", res);
                 });
+                debug!("shutting down runtime");
+                rt.shutdown_timeout(Duration::from_millis(100));
             });
             Ok(())
         } else {
