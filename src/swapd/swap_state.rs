@@ -1,18 +1,20 @@
 use farcaster_core::{
     negotiation::PublicOffer,
     role::{SwapRole, TradeRole},
+    transaction::TxLabel,
 };
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
     automata::Event,
     rpc::{
-        request::{Commit, Msg, Outcome, Params, Reveal},
+        request::{Commit, InitSwap, Msg, Outcome, Params, Reveal, Tx},
         Request,
     },
+    ServiceId,
 };
 
-use super::syncer_client::SyncerState;
+use super::{runtime::PendingRequests, syncer_client::SyncerState};
 
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum AliceState {
@@ -128,6 +130,7 @@ pub enum SwapPhase {
 }
 
 pub enum Awaiting {
+    // Msg
     MakerCommit,
     RevealProof,
     RevealAlice,
@@ -135,11 +138,34 @@ pub enum Awaiting {
     CoreArb,
     RefundSigs,
     BuySig,
+    // Ctl
+    TakeSwapCtl,
+    RevealProofCtl,
+    FundingUpdatedCtl,
+    MakeSwapCtl,
+    CoreArbCtl,
+    RefundSigsCtl,
+    BuySigCtl,
+    TxLock,
+    Tx,
+    SweepMonero,
+    Terminate,
+    SweepBitcoin,
+    AbortSimple,
+    AbortBob,
+    AbortBlocked,
+
+    // else
     Unknown,
 }
 
 impl Awaiting {
-    pub fn with(state: &State, event: &Event<Request>, syncer_state: Option<&SyncerState>) -> Self {
+    pub fn with(
+        state: &State,
+        event: &Event<Request>,
+        syncer_state: Option<&SyncerState>,
+        pending_requests: Option<&PendingRequests>,
+    ) -> Self {
         if state.p_maker_commit(&event) {
             Awaiting::MakerCommit
         } else if state.p_reveal_proof(&event) {
@@ -154,6 +180,38 @@ impl Awaiting {
             Awaiting::RefundSigs
         } else if state.p_buy_sig(event) {
             Awaiting::BuySig
+        } else if state.p_take_swap(event) {
+            Awaiting::TakeSwapCtl
+        } else if state.p_reveal_proof_ctl(event) {
+            Awaiting::RevealProofCtl
+        } else if state.p_make_swap_ctl(event) {
+            Awaiting::MakeSwapCtl
+        } else if pending_requests.is_some()
+            && state.p_funding_updated_ctl(event, pending_requests.unwrap())
+        {
+            Awaiting::FundingUpdatedCtl
+        } else if state.p_core_arb_ctl(event) {
+            Awaiting::CoreArbCtl
+        } else if state.p_refund_sigs_ctl(event) {
+            Awaiting::RefundSigsCtl
+        } else if syncer_state.is_some() && state.p_buy_sig_ctl(event, syncer_state.unwrap()) {
+            Awaiting::BuySigCtl
+        } else if state.p_tx_lock(event) {
+            Awaiting::TxLock
+        } else if state.p_tx(event) {
+            Awaiting::Tx
+        } else if state.p_sweep_monero(event) {
+            Awaiting::SweepMonero
+        } else if state.p_sweep_bitcoin(event) {
+            Awaiting::SweepBitcoin
+        } else if state.p_terminate(event) {
+            Awaiting::Terminate
+        } else if state.p_abort_simple(event) {
+            Awaiting::AbortSimple
+        } else if state.p_abort_bob(event) {
+            Awaiting::AbortBob
+        } else if state.p_abort_blocked(event) {
+            Awaiting::AbortBlocked
         } else {
             Awaiting::Unknown
         }
@@ -164,6 +222,8 @@ impl Awaiting {
 // allow dead code.
 #[allow(dead_code)]
 impl State {
+    // p stands for predicate, TODO add more predicates to ev, such as source, dest
+    // Msg
     pub fn p_maker_commit(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::MakerCommit(_)))
             && self.commit()
@@ -215,6 +275,103 @@ impl State {
             && !self.a_overfunded()
     }
 
+    // Ctl
+    pub fn p_take_swap(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::TakeSwap(_))
+    }
+    pub fn p_reveal_proof_ctl(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
+            && self.commit()
+            && self.remote_commit().is_some()
+    }
+    pub fn p_make_swap_ctl(&self, ev: &Event<Request>) -> bool {
+        matches!(
+            ev.message,
+            Request::MakeSwap(InitSwap {
+                remote_commit: Some(_),
+                ..
+            })
+        ) && self.start()
+    }
+    pub fn p_funding_updated_ctl(
+        &self,
+        ev: &Event<Request>,
+        pending_requests: &PendingRequests, // FIXME pending_request should be PendingEvents
+    ) -> bool {
+        matches!(ev.message, Request::FundingUpdated)
+            && ev.source == ServiceId::Wallet
+            && ((self.trade_role() == Some(TradeRole::Taker) && self.reveal())
+                || (self.trade_role() == Some(TradeRole::Maker) && self.commit()))
+            && pending_requests.contains_key(&ev.service)
+            && pending_requests
+                .get(&ev.service)
+                .map(|reqs| reqs.len() == 2)
+                .unwrap()
+    }
+
+    pub fn p_core_arb_ctl(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Protocol(Msg::CoreArbitratingSetup(_)))
+            && self.reveal()
+            && self.remote_params().is_some()
+            && self.local_params().is_some()
+    }
+
+    pub fn p_refund_sigs_ctl(&self, ev: &Event<Request>) -> bool {
+        matches!(
+            ev.message,
+            Request::Protocol(Msg::RefundProcedureSignatures(_))
+        ) && self.reveal()
+            && self.remote_params().is_some()
+            && self.local_params().is_some()
+    }
+
+    pub fn p_buy_sig_ctl(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+        matches!(ev.message, Request::Protocol(Msg::BuyProcedureSignature(_)))
+            && self.b_core_arb()
+            && !syncer_state.tasks.txids.contains_key(&TxLabel::Buy)
+    }
+
+    pub fn p_tx_lock(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Tx(Tx::Lock(_)))
+            && self.b_core_arb()
+            && self.local_params().is_some()
+            && self.remote_params().is_some()
+    }
+    // FIXME: disambiguate p_tx from p_tx_lock if needed
+    pub fn p_tx(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Tx(_)) && !self.p_tx_lock(ev)
+    }
+
+    pub fn p_sweep_monero(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::SweepMoneroAddress(_)) && ev.source == ServiceId::Wallet
+    }
+
+    pub fn p_terminate(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Terminate) && ev.source == ServiceId::Farcasterd
+    }
+
+    pub fn p_sweep_bitcoin(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::SweepBitcoinAddress(_))
+    }
+    pub fn p_abort_simple(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::AbortSwap)
+            && (self.b_start()
+                || self.a_start()
+                || self.a_commit()
+                || self.a_reveal()
+                || (self.a_refundsig() && !self.a_btc_locked()))
+    }
+    pub fn p_abort_bob(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::AbortSwap)
+            && (self.b_commit()
+                || self.b_reveal()
+                || (self.b_core_arb() && !self.b_received_refund_procedure_signatures()))
+    }
+    pub fn p_abort_blocked(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::AbortSwap)
+            && !self.p_abort_simple(ev)
+            && !self.p_abort_bob(ev)
+    }
     pub fn swap_phase(&self) -> SwapPhase {
         if self.start() || self.commit() || self.reveal() {
             SwapPhase::Init(self.trade_role())
