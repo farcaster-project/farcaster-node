@@ -237,22 +237,20 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
         Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
 
     // make sure a wallet is created and loaded
-    if bitcoin_rpc
-        .call::<bitcoincore_rpc::json::LoadWalletResult>(
-            "createwallet",
-            &[
-                serde_json::to_value("wallet").unwrap(),
-                false.into(),
-                false.into(),
-                serde_json::to_value("").unwrap(),
-                false.into(),
-                false.into(), // descriptor false
-            ],
-        )
-        .is_err()
-    {
-        let _ = bitcoin_rpc.load_wallet("wallet");
-    }
+    bitcoin_rpc.call::<bitcoincore_rpc::json::LoadWalletResult>(
+        "createwallet",
+        &[
+            serde_json::to_value("wallet").unwrap(),
+            false.into(),
+            false.into(),
+            serde_json::to_value("").unwrap(),
+            false.into(),
+            false.into(), // descriptor false
+        ],
+    );
+    let _ = bitcoin_rpc.load_wallet("wallet");
+
+    sleep(Duration::from_secs(10));
 
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     bitcoin_rpc.generate_to_address(200, &address).unwrap();

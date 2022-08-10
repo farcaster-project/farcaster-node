@@ -640,6 +640,7 @@ async fn run_syncerd_task_receiver(
                             drop(state_guard);
                         }
                         Task::WatchTransaction(task) => {
+                            debug!("received new task: {:?}", task);
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                             drop(state_guard);
