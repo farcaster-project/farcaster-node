@@ -2278,10 +2278,11 @@ impl Runtime {
             "Proposing to take swap {} to Maker remote peer",
             self.swap_id()
         );
-        let enquirer = self.enquirer.clone();
-        // Ignoring possible reporting errors here and after: do not want to
-        // halt the swap just because the client disconnected
-        let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
+        // FIXME: report progress
+        // let enquirer = self.enquirer.clone();
+        // // Ignoring possible reporting errors here and after: do not want to
+        // // halt the swap just because the client disconnected
+        // let _ = self.report_progress_message_to(endpoints, &enquirer, msg);
 
         let engine = CommitmentEngine;
         let commitment = match params {
