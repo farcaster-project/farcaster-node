@@ -1425,7 +1425,11 @@ impl Runtime {
                     // sending this request will initialize the
                     // arbitrating setup, that can be only performed
                     // after the funding tx was seen
-                    let pending_req = PendingRequest::from_event(&event, ServiceBus::Msg);
+                    let pending_req = PendingRequest::from_event_forward(
+                        &event,
+                        ServiceBus::Msg,
+                        ServiceId::Wallet,
+                    );
                     self.pending_requests()
                         .defer_request(ServiceId::Wallet, pending_req);
                 }
@@ -1460,7 +1464,8 @@ impl Runtime {
         // parameter reveal forward is triggered. If Alice, send immediately.
         match self.state().swap_role() {
             SwapRole::Bob => {
-                let pending_request = PendingRequest::from_event(&event, ServiceBus::Msg);
+                let pending_request =
+                    PendingRequest::from_event_forward(&event, ServiceBus::Msg, ServiceId::Wallet);
                 self.pending_requests()
                     .defer_request(ServiceId::Wallet, pending_request);
             }
