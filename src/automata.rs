@@ -107,19 +107,6 @@ where
         )
     }
 
-    pub fn forward(
-        &mut self,
-        bus: ServiceBus,
-        service: ServiceId,
-    ) -> Result<(), esb::Error<ServiceId>> {
-        self.endpoints.send_to(
-            bus,
-            self.source.clone(),
-            service,
-            self.message.clone().into(),
-        )
-    }
-
     /// Sends reply message via CTL message bus to a specific service (different from the event
     /// originating service).
     pub fn send_ctl_service(
@@ -135,15 +122,44 @@ where
         )
     }
 
+    /// Advances event processing by sending reply message via CTL message bus to a specific
+    /// service (different from the event originating service).
+    pub fn advance_ctl_service(
+        &mut self,
+        service: ServiceId,
+        message: Message,
+    ) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints.send_to(
+            ServiceBus::Ctl,
+            self.service.clone(),
+            service,
+            message.into(),
+        )
+    }
+
+    pub fn forward(
+        &mut self,
+        bus: ServiceBus,
+        service: ServiceId,
+    ) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints.send_to(
+            bus,
+            self.service.clone(),
+            service,
+            self.message.clone().into(),
+        )
+    }
+
+
     /// Finalizes event processing by sending reply message via MSG message bus
-    pub fn complete_msg(self, message: Message) -> Result<(), esb::Error<ServiceId>> {
+    pub fn complete_p2p(self, message: Message) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Msg, self.service, self.source, message.into())
     }
 
     /// Finalizes event processing by sending reply message via MSG message bus to a specific
     /// service (different from the event originating service).
-    pub fn complete_msg_service(
+    pub fn complete_p2p_service(
         self,
         service: ServiceId,
         message: Message,
