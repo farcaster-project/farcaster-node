@@ -50,9 +50,14 @@ impl Runtime {
             Ok(_) => {
                 // Ignoring possible reporting errors here and after: do not want to
                 // halt the swap just because the client disconnected
-                let _ = self.report_progress_message_to(
-                    endpoints, source, "", // self.state().state_machine.info_message(swap_id),
-                );
+
+                // FIXME: fix report messages
+                // let _ = self.report_progress_message_to(
+                //     endpoints,
+                //     self.enquirer(),
+                //     "", // self.state().state_machine.info_message(swap_id),
+                // );
+
                 true
             }
             // We pass ESB errors forward such that they can fail the swap.
