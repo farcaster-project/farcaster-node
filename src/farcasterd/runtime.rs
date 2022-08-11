@@ -517,7 +517,12 @@ impl Runtime {
                     self.peerd_ids
                         .insert(public_offer.offer.id(), source.clone());
 
-                    endpoints.send_to(ServiceBus::Msg, source, ServiceId::Wallet, request)?;
+                    endpoints.send_to(
+                        ServiceBus::Msg,
+                        self.identity(),
+                        ServiceId::Wallet,
+                        request,
+                    )?;
                 }
                 return Ok(());
             }
