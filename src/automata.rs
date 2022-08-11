@@ -150,7 +150,6 @@ where
         )
     }
 
-
     /// Finalizes event processing by sending reply message via MSG message bus
     pub fn complete_p2p(self, message: Message) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
