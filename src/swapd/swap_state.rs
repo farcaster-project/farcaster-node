@@ -222,7 +222,7 @@ impl Awaiting {
 // allow dead code.
 #[allow(dead_code)]
 impl State {
-    // p stands for predicate, TODO add more predicates to ev, such as source, dest
+    // p stands for predicate, TODO add more predicates such as source, dest, syncer_state, txs,
     // Msg
     pub fn p_maker_commit(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::MakerCommit(_)))
@@ -241,8 +241,8 @@ impl State {
             && (self.b_address().is_none() || syncer_state.btc_fee_estimate_sat_per_kvb.is_none())
     }
     pub fn p_reveal(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
-        !matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_)))) // FIXME: remove when Reveal Proof split
-            && matches!(ev.message, Request::Protocol(Msg::Reveal(_)))
+        matches!(ev.message, Request::Protocol(Msg::Reveal(_)))
+            && !matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_)))) // FIXME: remove when Reveal Proof split
             && self.remote_commit().is_some()
             && (self.commit() || self.reveal())
             && {
