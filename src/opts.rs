@@ -36,7 +36,6 @@ pub const FARCASTER_DATA_DIR: &str = ".";
 pub const FARCASTER_MSG_SOCKET_NAME: &str = "{data_dir}/msg";
 pub const FARCASTER_CTL_SOCKET_NAME: &str = "{data_dir}/ctl";
 
-pub const FARCASTER_TOR_PROXY: &str = "127.0.0.1:9050";
 pub const FARCASTER_KEY_FILE: &str = "{data_dir}/key.dat";
 
 /// Shared options used by different binaries
@@ -58,19 +57,18 @@ pub struct Opts {
 
     /// Use Tor
     ///
-    /// If set, specifies SOCKS5 proxy used for Tor connectivity and directs
-    /// all network traffic through Tor network.
-    /// If the argument is provided in form of flag, without value, uses
-    /// `127.0.0.1:9050` as default Tor proxy address.
+    /// If set, specifies SOCKS5 proxy used for Tor connectivity and directs all
+    /// network traffic through Tor network. On most systems this is
+    /// 127.0.0.1:9050 by default.
     #[clap(
         short = 'T',
         long,
         alias = "tor",
         global = true,
         env = "FARCASTER_TOR_PROXY",
-        value_hint = ValueHint::Hostname
+        value_hint = ValueHint::Hostname,
     )]
-    pub tor_proxy: Option<Option<SocketAddr>>,
+    pub tor_proxy: Option<SocketAddr>,
 
     /// ZMQ socket name/address to forward all incoming protocol messages
     ///

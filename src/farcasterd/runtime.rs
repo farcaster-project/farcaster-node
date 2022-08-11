@@ -2210,14 +2210,9 @@ pub fn launch(
 
     // Forward tor proxy argument
     let parsed = Opts::parse();
-    match &parsed.shared.tor_proxy {
-        Some(None) => {
-            cmd.args(&["-T"]);
-        }
-        Some(Some(val)) => {
-            cmd.args(&["-T", &format!("{}", val)]);
-        }
-        _ => (),
+    info!("tor opts: {:?}", parsed.shared.tor_proxy);
+    if let Some(t) = &matches.value_of("tor-proxy") {
+        cmd.args(&["-T", &format!("{}", t)]);
     }
 
     // Given specialized args in launch
