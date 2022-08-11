@@ -376,7 +376,7 @@ pub enum Request {
 
     // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
-    #[display(Debug)]
+    #[display("get_info()")]
     GetInfo,
 
     // Can be issued from `cli` to `lnpd`
