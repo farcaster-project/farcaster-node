@@ -29,10 +29,10 @@ use bitcoin::hashes::{
 };
 use bitcoin::BlockHash;
 use bitcoin::Script;
-use electrum_client::Hex32Bytes;
-use electrum_client::{raw_client::ElectrumSslStream, HeaderNotification};
-use electrum_client::{raw_client::RawClient, GetHistoryRes};
-use electrum_client::{Client, ElectrumApi};
+use electrum_client::{
+    raw_client::RawClient, Client, ConfigBuilder, ElectrumApi, GetHistoryRes, HeaderNotification,
+    Hex32Bytes, Socks5Config,
+};
 use farcaster_core::bitcoin::segwitv0::signature_hash;
 use farcaster_core::bitcoin::transaction::TxInRef;
 use farcaster_core::blockchain::{Blockchain, Network};
@@ -82,9 +82,26 @@ pub struct AddressNotif {
     txs: Vec<AddressTx>,
 }
 
+fn create_electrum_client(
+    electrum_server: &str,
+    proxy_address: Option<String>,
+) -> Result<Client, electrum_client::Error> {
+    if let Some(proxy_address) = proxy_address {
+        let proxy = Socks5Config::new(proxy_address);
+        let config = ConfigBuilder::new().socks5(Some(proxy)).unwrap().build();
+        Client::from_config(electrum_server, config)
+    } else {
+        Client::new(electrum_server)
+    }
+}
+
 impl ElectrumRpc {
-    fn new(electrum_server: &str, polling: bool) -> Result<Self, electrum_client::Error> {
-        let client = Client::new(electrum_server)?;
+    fn new(
+        electrum_server: &str,
+        polling: bool,
+        proxy_address: Option<String>,
+    ) -> Result<Self, electrum_client::Error> {
+        let client = create_electrum_client(electrum_server, proxy_address)?;
         let header = client.block_headers_subscribe()?;
         debug!("New ElectrumRpc at height {:?}", header.height);
 
@@ -637,11 +654,12 @@ async fn run_syncerd_task_receiver(
 fn address_polling(
     state: Arc<Mutex<SyncerState>>,
     electrum_server: String,
+    proxy_address: Option<String>,
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
-            let mut rpc = match ElectrumRpc::new(&electrum_server, polling) {
+            let mut rpc = match ElectrumRpc::new(&electrum_server, polling, proxy_address.clone()) {
                 Ok(client) => client,
                 Err(err) => {
                     error!(
@@ -710,12 +728,13 @@ fn address_polling(
 fn height_polling(
     state: Arc<Mutex<SyncerState>>,
     electrum_server: String,
+    proxy_address: Option<String>,
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         // outer loop ensures the polling restarts if there is an error
         loop {
-            let mut rpc = match ElectrumRpc::new(&electrum_server, polling) {
+            let mut rpc = match ElectrumRpc::new(&electrum_server, polling, proxy_address.clone()) {
                 Ok(client) => client,
                 Err(err) => {
                     error!(
@@ -775,12 +794,13 @@ fn height_polling(
 fn unseen_transaction_polling(
     state: Arc<Mutex<SyncerState>>,
     electrum_server: String,
+    proxy_address: Option<String>,
     polling: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         // outer loop ensures the polling restarts if there is an error
         loop {
-            let rpc = match ElectrumRpc::new(&electrum_server, polling) {
+            let rpc = match ElectrumRpc::new(&electrum_server, polling, proxy_address.clone()) {
                 Ok(client) => client,
                 Err(err) => {
                     error!(
@@ -811,14 +831,17 @@ impl BitcoinSyncer {
 
 fn transaction_broadcasting(
     electrum_server: String,
+    proxy_address: Option<String>,
     mut transaction_broadcast_rx: TokioReceiver<(BroadcastTransaction, ServiceId)>,
     tx_event: TokioSender<SyncerdBridgeEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         while let Some((broadcast_transaction, source)) = transaction_broadcast_rx.recv().await {
-            match Client::new(&electrum_server).and_then(|broadcast_client| {
-                broadcast_client.transaction_broadcast_raw(&broadcast_transaction.tx.clone())
-            }) {
+            match create_electrum_client(&electrum_server, proxy_address.clone()).and_then(
+                |broadcast_client| {
+                    broadcast_client.transaction_broadcast_raw(&broadcast_transaction.tx.clone())
+                },
+            ) {
                 Ok(txid) => {
                     tx_event
                         .send(SyncerdBridgeEvent {
@@ -854,13 +877,14 @@ fn transaction_broadcasting(
 
 fn estimate_fee_polling(
     electrum_server: String,
+    proxy_address: Option<String>,
     state: Arc<Mutex<SyncerState>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         let high_priority_confs = 2;
         let low_priority_confs = 6;
         loop {
-            if let Ok(client) = Client::new(&electrum_server) {
+            if let Ok(client) = create_electrum_client(&electrum_server, proxy_address.clone()) {
                 loop {
                     match client
                         .estimate_fee(high_priority_confs) // docs say sat/kB, but its BTC/kvB
@@ -897,6 +921,7 @@ fn estimate_fee_polling(
 fn sweep_polling(
     state: Arc<Mutex<SyncerState>>,
     electrum_server: String,
+    proxy_address: Option<String>,
     network: bitcoin::Network,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
@@ -905,7 +930,7 @@ fn sweep_polling(
             let sweep_addresses = state_guard.sweep_addresses.clone();
             drop(state_guard);
             if !sweep_addresses.is_empty() {
-                match Client::new(&electrum_server) {
+                match create_electrum_client(&electrum_server, proxy_address.clone()) {
                     Err(err) => {
                         error!(
                             "Failed to create btc sweep electrum client: {}, retrying",
@@ -950,15 +975,18 @@ fn sweep_polling(
 
 fn transaction_fetcher(
     electrum_server: String,
+    proxy_address: Option<String>,
     mut transaction_get_rx: TokioReceiver<(GetTx, ServiceId)>,
     tx_event: TokioSender<SyncerdBridgeEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         while let Some((get_transaction, source)) = transaction_get_rx.recv().await {
-            match Client::new(&electrum_server).and_then(|transaction_client| {
-                transaction_client
-                    .transaction_get(&bitcoin::Txid::from_slice(&get_transaction.hash).unwrap())
-            }) {
+            match create_electrum_client(&electrum_server, proxy_address.clone()).and_then(
+                |transaction_client| {
+                    transaction_client
+                        .transaction_get(&bitcoin::Txid::from_slice(&get_transaction.hash).unwrap())
+                },
+            ) {
                 Ok(tx) => {
                     tx_event
                         .send(SyncerdBridgeEvent {
@@ -1004,6 +1032,9 @@ impl Synclet for BitcoinSyncer {
         polling: bool,
     ) -> Result<(), Error> {
         let btc_network = network.into();
+        let proxy_address = opts.shared.tor_proxy.map(|address| address.to_string());
+        info!("using proxy: {:?}", proxy_address);
+
         if let Some(electrum_server) = &opts.electrum_server {
             let electrum_server = electrum_server.clone();
             std::thread::spawn(move || {
@@ -1040,35 +1071,53 @@ impl Synclet for BitcoinSyncer {
                     .await;
                     run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
 
-                    let address_handle =
-                        address_polling(Arc::clone(&state), electrum_server.clone(), polling);
+                    let address_handle = address_polling(
+                        Arc::clone(&state),
+                        electrum_server.clone(),
+                        proxy_address.clone(),
+                        polling,
+                    );
 
-                    let height_handle =
-                        height_polling(Arc::clone(&state), electrum_server.clone(), polling);
+                    let height_handle = height_polling(
+                        Arc::clone(&state),
+                        electrum_server.clone(),
+                        proxy_address.clone(),
+                        polling,
+                    );
 
                     let unseen_transaction_handle = unseen_transaction_polling(
                         Arc::clone(&state),
                         electrum_server.clone(),
+                        proxy_address.clone(),
                         polling,
                     );
 
                     let transaction_broadcast_handle = transaction_broadcasting(
                         electrum_server.clone(),
+                        proxy_address.clone(),
                         transaction_broadcast_rx,
                         event_tx.clone(),
                     );
 
                     let transaction_get_handle = transaction_fetcher(
                         electrum_server.clone(),
+                        proxy_address.clone(),
                         transaction_get_rx,
                         event_tx.clone(),
                     );
 
-                    let estimate_fee_handle =
-                        estimate_fee_polling(electrum_server.clone(), Arc::clone(&state));
+                    let estimate_fee_handle = estimate_fee_polling(
+                        electrum_server.clone(),
+                        proxy_address.clone(),
+                        Arc::clone(&state),
+                    );
 
-                    let sweep_handle =
-                        sweep_polling(Arc::clone(&state), electrum_server, btc_network);
+                    let sweep_handle = sweep_polling(
+                        Arc::clone(&state),
+                        electrum_server.clone(),
+                        proxy_address.clone(),
+                        btc_network,
+                    );
 
                     let res = tokio::try_join!(
                         address_handle,
