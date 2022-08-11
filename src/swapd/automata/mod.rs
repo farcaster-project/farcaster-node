@@ -140,7 +140,6 @@ impl Runtime {
 
             // Syncer
 
-
             // Others
             Awaiting::Unknown => Err(Error::Farcaster(s!("Invalid state for this event"))),
         }

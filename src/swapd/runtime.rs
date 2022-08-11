@@ -217,33 +217,34 @@ impl PendingRequestsT for PendingRequests {
     ) -> bool {
         let success = if let Some(pending_reqs) = runtime.pending_requests.remove(&key) {
             let len0 = pending_reqs.len();
-            let remaining_pending_reqs: Vec<_> = pending_reqs
-                .into_iter()
-                .filter_map(|r| {
-                    if predicate(&r) {
-                        if let Ok(_) = match &r.bus_id {
-                            ServiceBus::Ctl if &r.dest == &runtime.identity => runtime
-                                .handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone()),
-                            ServiceBus::Msg if &r.dest == &runtime.identity => runtime
-                                .handle_rpc_msg(endpoints, r.source.clone(), r.request.clone()),
-                            _ => endpoints
-                                .send_to(
-                                    r.bus_id.clone(),
-                                    r.source.clone(),
-                                    r.dest.clone(),
-                                    r.request.clone(),
-                                )
-                                .map_err(Into::into),
-                        } {
-                            None
+            let remaining_pending_reqs: Vec<_> =
+                pending_reqs
+                    .into_iter()
+                    .filter_map(|r| {
+                        if predicate(&r) {
+                            if let Ok(_) = match &r.bus_id {
+                                ServiceBus::Ctl if &r.dest == &runtime.identity => runtime
+                                    .handle_ctl(endpoints, r.source.clone(), r.request.clone()),
+                                ServiceBus::Msg if &r.dest == &runtime.identity => runtime
+                                    .handle_p2p(endpoints, r.source.clone(), r.request.clone()),
+                                _ => endpoints
+                                    .send_to(
+                                        r.bus_id.clone(),
+                                        r.source.clone(),
+                                        r.dest.clone(),
+                                        r.request.clone(),
+                                    )
+                                    .map_err(Into::into),
+                            } {
+                                None
+                            } else {
+                                Some(r)
+                            }
                         } else {
                             Some(r)
                         }
-                    } else {
-                        Some(r)
-                    }
-                })
-                .collect();
+                    })
+                    .collect();
             let len1 = remaining_pending_reqs.len();
             runtime.pending_requests.insert(key, remaining_pending_reqs);
             if len0 - len1 > 1 {
@@ -586,7 +587,11 @@ impl Runtime {
         success
     }
 
-    pub fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
+    pub fn state_update(
+        &mut self,
+        endpoints: &mut Endpoints,
+        next_state: State,
+    ) -> Result<(), Error> {
         info!(
             "{} | State transition: {} -> {}",
             self.swap_id.bright_blue_italic(),
