@@ -1,11 +1,15 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 use crate::{
     automata::Event,
     databased::checkpoint_send,
     rpc::{
         request::{
-            self, BitcoinFundingInfo, FundingInfo, InitSwap, Msg, Outcome, Params, Reveal, Tx,
+            self, BitcoinFundingInfo, CheckpointState, FundingInfo, InitSwap, Msg, Outcome, Params,
+            Reveal, Tx,
         },
         Failure, FailureCode, Request, ServiceBus,
     },
@@ -14,7 +18,7 @@ use crate::{
         swap_state::{AliceState, BobState},
         CheckpointSwapd, SwapCheckpointType,
     },
-    syncerd::{bitcoin_syncer::p2wpkh_signed_tx_fee, SweepMoneroAddress},
+    syncerd::{bitcoin_syncer::p2wpkh_signed_tx_fee, SweepMoneroAddress, XmrAddressAddendum},
     CtlServer, Endpoints, Error, LogStyle, ServiceId,
 };
 use farcaster_core::{
@@ -137,6 +141,10 @@ impl Runtime {
             Awaiting::AbortSimple => self.process_abort_simple(event),
             Awaiting::AbortBob => self.process_abort_bob(event),
             Awaiting::AbortBlocked => self.process_abort_blocked(event),
+            Awaiting::GetInfo => self.get_info(event),
+
+            Awaiting::PeerReconnected => self.peer_reconnected(event),
+            Awaiting::Checkpoint => self.checkpoint(event),
 
             // Syncer
 
@@ -644,124 +652,141 @@ impl Runtime {
         }
         Ok(())
     }
-    //     Request::GetInfo => {
-    //         let swap_id = if self.swap_id() == zero!() {
-    //             None
-    //         } else {
-    //             Some(self.swap_id())
-    //         };
-    //         let info = request::SwapInfo {
-    //             swap_id,
-    //             // state: self.state, // FIXME serde missing
-    //             maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
-    //             uptime: SystemTime::now()
-    //                 .duration_since(self.started)
-    //                 .unwrap_or_else(|_| Duration::from_secs(0)),
-    //             since: self
-    //                 .started
-    //                 .duration_since(SystemTime::UNIX_EPOCH)
-    //                 .unwrap_or_else(|_| Duration::from_secs(0))
-    //                 .as_secs(),
-    //             public_offer: self.public_offer.clone(),
-    //         };
-    //         self.send_ctl(endpoints, source, Request::SwapInfo(info))?;
-    //     }
 
-    //     Request::PeerdReconnected => {
-    //         for msg in self.pending_peer_request.clone().iter() {
-    //             self.send_peer(endpoints, msg.clone())?;
-    //         }
-    //         self.pending_peer_request.clear();
-    //     }
+    fn get_info(&mut self, event: Event<Request>) -> Result<(), Error> {
+        {
+            let swap_id = if self.swap_id() == zero!() {
+                None
+            } else {
+                Some(self.swap_id())
+            };
+            let info = request::SwapInfo {
+                swap_id,
+                // state: self.state, // FIXME serde missing
+                maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
+                uptime: SystemTime::now()
+                    .duration_since(self.started)
+                    .unwrap_or_else(|_| Duration::from_secs(0)),
+                since: self
+                    .started
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_else(|_| Duration::from_secs(0))
+                    .as_secs(),
+                public_offer: self.public_offer.clone(),
+            };
+            event.complete_ctl(Request::SwapInfo(info))?;
+            Ok(())
+        }
+    }
+    fn peer_reconnected(&mut self, event: Event<Request>) -> Result<(), Error> {
+        for msg in self.pending_peer_request.clone().iter() {
+            self.send_peer(event.endpoints, msg.clone())?;
+        }
+        self.pending_peer_request.clear();
+        Ok(())
+    }
 
-    //     Request::Checkpoint(request::Checkpoint { swap_id, state }) => match state {
-    //         CheckpointState::CheckpointSwapd(CheckpointSwapd {
-    //             state,
-    //             last_msg,
-    //             enquirer,
-    //             temporal_safety,
-    //             txs,
-    //             txids,
-    //             pending_requests,
-    //             pending_broadcasts,
-    //             xmr_addr_addendum,
-    //         }) => {
-    //             info!("{} | Restoring swap", swap_id);
-    //             self.state = state;
-    //             self.enquirer = enquirer;
-    //             self.temporal_safety = temporal_safety;
-    //             self.pending_requests = pending_requests;
-    //             self.txs = txs.clone();
-    //             trace!("Watch height bitcoin");
-    //             let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
-    //             endpoints.send_to(
-    //                 ServiceBus::Ctl,
-    //                 self.identity(),
-    //                 self.syncer_state.bitcoin_syncer(),
-    //                 Request::SyncerTask(watch_height_bitcoin),
-    //             )?;
+    fn checkpoint(&mut self, event: Event<Request>) -> Result<(), Error> {
+        if let Request::Checkpoint(request::Checkpoint { swap_id, state }) = event.message {
+            match state {
+                CheckpointState::CheckpointSwapd(CheckpointSwapd {
+                    state,
+                    last_msg,
+                    enquirer,
+                    temporal_safety,
+                    txs,
+                    txids,
+                    pending_requests,
+                    pending_broadcasts,
+                    xmr_addr_addendum,
+                }) => {
+                    info!("{} | Restoring swap", swap_id);
+                    self.state = state;
+                    self.enquirer = enquirer;
+                    self.temporal_safety = temporal_safety;
+                    self.pending_requests = pending_requests;
+                    self.txs = txs.clone();
+                    trace!("Watch height bitcoin");
+                    let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
+                    event.endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.bitcoin_syncer(),
+                        Request::SyncerTask(watch_height_bitcoin),
+                    )?;
 
-    //             trace!("Watch height monero");
-    //             let watch_height_monero = self.syncer_state.watch_height(Blockchain::Monero);
-    //             endpoints.send_to(
-    //                 ServiceBus::Ctl,
-    //                 self.identity(),
-    //                 self.syncer_state.monero_syncer(),
-    //                 Request::SyncerTask(watch_height_monero),
-    //             )?;
+                    trace!("Watch height monero");
+                    let watch_height_monero = self.syncer_state.watch_height(Blockchain::Monero);
+                    event.endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.monero_syncer(),
+                        Request::SyncerTask(watch_height_monero),
+                    )?;
 
-    //             trace!("Watching transactions");
-    //             for (tx_label, txid) in txids.iter() {
-    //                 let task = self
-    //                     .syncer_state
-    //                     .watch_tx_btc(txid.clone(), tx_label.clone());
-    //                 endpoints.send_to(
-    //                     ServiceBus::Ctl,
-    //                     self.identity(),
-    //                     self.syncer_state.bitcoin_syncer(),
-    //                     Request::SyncerTask(task),
-    //                 )?;
-    //             }
+                    trace!("Watching transactions");
+                    for (tx_label, txid) in txids.iter() {
+                        let task = self
+                            .syncer_state
+                            .watch_tx_btc(txid.clone(), tx_label.clone());
+                        event.endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
 
-    //             trace!("broadcasting txs pending broadcast");
-    //             for tx in pending_broadcasts.iter() {
-    //                 let task = self.syncer_state.broadcast(tx.clone());
-    //                 endpoints.send_to(
-    //                     ServiceBus::Ctl,
-    //                     self.identity(),
-    //                     self.syncer_state.bitcoin_syncer(),
-    //                     Request::SyncerTask(task),
-    //                 )?;
-    //             }
+                    trace!("broadcasting txs pending broadcast");
+                    for tx in pending_broadcasts.iter() {
+                        let task = self.syncer_state.broadcast(tx.clone());
+                        event.endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
 
-    //             if let Some(XmrAddressAddendum {
-    //                 view_key,
-    //                 spend_key,
-    //                 from_height,
-    //             }) = xmr_addr_addendum
-    //             {
-    //                 let task = self.syncer_state.watch_addr_xmr(
-    //                     spend_key,
-    //                     view_key,
-    //                     TxLabel::AccLock,
-    //                     Some(from_height),
-    //                 );
-    //                 endpoints.send_to(
-    //                     ServiceBus::Ctl,
-    //                     self.identity(),
-    //                     self.syncer_state.monero_syncer(),
-    //                     Request::SyncerTask(task),
-    //                 )?;
-    //             }
-    //             let msg = format!("Restored swap at state {}", self.state);
-    //             let _ = self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg);
+                    if let Some(XmrAddressAddendum {
+                        view_key,
+                        spend_key,
+                        from_height,
+                    }) = xmr_addr_addendum
+                    {
+                        let task = self.syncer_state.watch_addr_xmr(
+                            spend_key,
+                            view_key,
+                            TxLabel::AccLock,
+                            Some(from_height),
+                        );
+                        event.endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            Request::SyncerTask(task),
+                        )?;
+                    }
+                    let msg = format!("Restored swap at state {}", self.state);
+                    let _ = self.report_progress_message_to(
+                        event.endpoints,
+                        ServiceId::Farcasterd,
+                        msg,
+                    );
 
-    //             self.handle_ctl(endpoints, ServiceId::Database, Request::Protocol(last_msg))?;
-    //         }
-    //         s => {
-    //             error!("Checkpoint {} not supported in swapd", s);
-    //         }
-    //     },
+                    self.handle_ctl(
+                        event.endpoints,
+                        ServiceId::Database,
+                        Request::Protocol(last_msg),
+                    )?;
+                }
+                s => {
+                    error!("Checkpoint {} not supported in swapd", s);
+                }
+            }
+        }
+        Ok(())
+    }
 
     // match request {
     //     Request::SyncerEvent(ref event) if source == self.syncer_state.bitcoin_syncer => {

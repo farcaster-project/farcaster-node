@@ -197,7 +197,7 @@ pub struct Runtime {
     pub peer_service: ServiceId,
     pub state: State,
     pub maker_peer: Option<NodeAddr>,
-    started: SystemTime,
+    pub started: SystemTime,
     pub enquirer: Option<ServiceId>,
     pub syncer_state: SyncerState,
     pub temporal_safety: TemporalSafety,
@@ -674,7 +674,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_ctl(
+    pub fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
