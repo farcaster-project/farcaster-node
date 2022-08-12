@@ -1097,13 +1097,13 @@ impl Synclet for BitcoinSyncer {
             let electrum_server = electrum_server.clone();
             std::thread::spawn(move || {
                 use tokio::runtime::Builder;
-                info!("building tokio syncer runtime");
+                trace!("building tokio syncer runtime");
                 let rt = Builder::new_multi_thread()
                     .worker_threads(2)
                     .enable_all()
                     .build()
                     .expect("failed to build tokio runtime");
-                info!("completed tokio syncer runtime");
+                trace!("completed tokio syncer runtime");
                 rt.block_on(async {
                     let (event_tx, event_rx): (
                         TokioSender<SyncerdBridgeEvent>,
