@@ -124,11 +124,6 @@ pub enum SwapCheckpointType {
     CheckpointAlicePreBuy,
 }
 
-pub enum SwapPhase {
-    Init(Option<TradeRole>),
-    Eval(SwapRole),
-}
-
 pub enum Awaiting {
     // Msg
     MakerCommit,
@@ -389,13 +384,6 @@ impl State {
     }
     pub fn p_checkpoint(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Checkpoint(_))
-    }
-    pub fn swap_phase(&self) -> SwapPhase {
-        if self.start() || self.commit() || self.reveal() {
-            SwapPhase::Init(self.trade_role())
-        } else {
-            SwapPhase::Eval(self.swap_role())
-        }
     }
     pub fn swap_role(&self) -> SwapRole {
         match self {
