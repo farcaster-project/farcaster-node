@@ -154,6 +154,9 @@ pub enum Awaiting {
     AbortSimple,
     AbortBob,
     AbortBlocked,
+    GetInfo,
+    PeerReconnected,
+    Checkpoint,
 
     // else
     Unknown,
@@ -212,6 +215,12 @@ impl Awaiting {
             Awaiting::AbortBob
         } else if state.p_abort_blocked(event) {
             Awaiting::AbortBlocked
+        } else if state.p_get_info(event) {
+            Awaiting::GetInfo
+        } else if state.p_peer_reconnected(event) {
+            Awaiting::PeerReconnected
+        } else if state.p_checkpoint(event) {
+            Awaiting::Checkpoint
         } else {
             Awaiting::Unknown
         }
@@ -371,6 +380,15 @@ impl State {
         matches!(ev.message, Request::AbortSwap)
             && !self.p_abort_simple(ev)
             && !self.p_abort_bob(ev)
+    }
+    pub fn p_get_info(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::GetInfo)
+    }
+    pub fn p_peer_reconnected(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::PeerdReconnected)
+    }
+    pub fn p_checkpoint(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Checkpoint(_))
     }
     pub fn swap_phase(&self) -> SwapPhase {
         if self.start() || self.commit() || self.reveal() {
