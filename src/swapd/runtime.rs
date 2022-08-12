@@ -699,6 +699,10 @@ impl Runtime {
             ) => {}
             (Request::AbortSwap, ServiceId::Client(_)) => {}
             (Request::GetInfo, ServiceId::Client(_)) => {}
+            (r, _) if white_list_ctl_msgs(r) => {
+                // FIXME rm clone after syncer correctly handled through self.process
+                self.process(endpoints, source.clone(), request.clone())?;
+            }
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
