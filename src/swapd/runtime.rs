@@ -1786,7 +1786,28 @@ pub fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result
     }
 }
 
-// TODO trade role as input
+fn white_list_ctl_msgs(request: &Request) -> bool {
+    match request {
+        Request::TakeSwap(_) => true,
+        Request::Protocol(Msg::Reveal(Reveal::Proof(_))) => true, // split reveal proof
+        Request::Protocol(Msg::Reveal(_)) => true,
+        Request::MakeSwap(_) => true,
+        Request::FundingUpdated => true,
+        Request::Protocol(Msg::CoreArbitratingSetup(_)) => true,
+        Request::Protocol(Msg::RefundProcedureSignatures(_)) => true,
+        Request::Protocol(Msg::BuyProcedureSignature(_)) => true,
+        Request::Tx(_) => true,
+        Request::SweepMoneroAddress(_) => true,
+        Request::Terminate => true,
+        Request::SweepBitcoinAddress(_) => true,
+        Request::AbortSwap => true,
+        Request::GetInfo => true,
+        Request::PeerdReconnected => true,
+        Request::Checkpoint(_) => true,
+        _ => false,
+    }
+}
+
 fn white_list_p2p_msgs(request: &Request) -> bool {
     if let Request::Protocol(msg) = request {
         match msg {
