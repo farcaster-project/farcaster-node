@@ -35,7 +35,7 @@ use super::{
         aggregate_xmr_spend_view, remote_params_candidate, PendingRequest, PendingRequests,
         PendingRequestsT,
     },
-    swap_state::{Awaiting, SwapPhase},
+    swap_state::Awaiting,
     syncer_client::log_tx_received,
     State,
 };
@@ -151,18 +151,6 @@ impl Runtime {
             // Others
             Awaiting::Unknown => Err(Error::Farcaster(s!("Invalid state for this event"))),
         }
-    }
-
-    pub fn process_event_maker(&mut self, event: Event<Request>) -> Result<(), Error> {
-        todo!()
-    }
-
-    pub fn process_event_alice(&self, event: Event<Request>) -> Result<(), Error> {
-        todo!()
-    }
-
-    pub fn process_event_bob(&self, event: Event<Request>) -> Result<(), Error> {
-        todo!()
     }
 }
 
