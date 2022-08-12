@@ -136,15 +136,14 @@ impl Runtime {
             Awaiting::SweepMonero => self.process_sweep_monero(event),
             Awaiting::Terminate => self.process_terminate(),
             Awaiting::SweepBitcoin => self.process_sweep_bitcoin(event),
+            Awaiting::PeerReconnected => self.peer_reconnected(event),
+            Awaiting::Checkpoint => self.checkpoint(event),
 
             // RPC
             Awaiting::AbortSimple => self.process_abort_simple(event),
             Awaiting::AbortBob => self.process_abort_bob(event),
             Awaiting::AbortBlocked => self.process_abort_blocked(event),
             Awaiting::GetInfo => self.get_info(event),
-
-            Awaiting::PeerReconnected => self.peer_reconnected(event),
-            Awaiting::Checkpoint => self.checkpoint(event),
 
             // Syncer
 

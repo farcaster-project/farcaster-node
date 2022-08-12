@@ -656,10 +656,11 @@ impl Runtime {
                 | ServiceId::Wallet
                 | ServiceId::Database
             ) => {}
-            (Request::AbortSwap, ServiceId::Client(_)) => {}
-            (Request::GetInfo, ServiceId::Client(_)) => {}
+            // FIXME rm clone after syncer correctly handled through self.process
+            (r, ServiceId::Client(_)) if white_list_rpc_msgs(r) => {
+                self.process(endpoints, source.clone(), request.clone())?;
+            }
             (r, _) if white_list_ctl_msgs(r) => {
-                // FIXME rm clone after syncer correctly handled through self.process
                 self.process(endpoints, source.clone(), request.clone())?;
             }
             _ => return Err(Error::Farcaster(
@@ -1763,14 +1764,19 @@ fn white_list_ctl_msgs(request: &Request) -> bool {
         Request::SweepMoneroAddress(_) => true,
         Request::Terminate => true,
         Request::SweepBitcoinAddress(_) => true,
-        Request::AbortSwap => true,
-        Request::GetInfo => true,
         Request::PeerdReconnected => true,
         Request::Checkpoint(_) => true,
         _ => false,
     }
 }
 
+fn white_list_rpc_msgs(request: &Request) -> bool {
+    match request {
+        Request::AbortSwap => true,
+        Request::GetInfo => true,
+        _ => false,
+    }
+}
 fn white_list_p2p_msgs(request: &Request) -> bool {
     if let Request::Protocol(msg) = request {
         match msg {
