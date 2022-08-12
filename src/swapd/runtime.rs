@@ -223,9 +223,11 @@ impl PendingRequestsT for PendingRequests {
             }
             len0 > len1
         } else {
-            error!("no request consumed with this predicate");
             false
         };
+        if !success {
+            error!("no deferred request consumed with this predicate");
+        }
         success
     }
 }
