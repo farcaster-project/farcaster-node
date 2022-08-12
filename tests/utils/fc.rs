@@ -237,18 +237,25 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
         Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
 
     // make sure a wallet is created and loaded
-    bitcoin_rpc.call::<bitcoincore_rpc::json::LoadWalletResult>(
-        "createwallet",
-        &[
-            serde_json::to_value("wallet").unwrap(),
-            false.into(),
-            false.into(),
-            serde_json::to_value("").unwrap(),
-            false.into(),
-            false.into(), // descriptor false
-        ],
-    );
-    let _ = bitcoin_rpc.load_wallet("wallet");
+    // error may be returned because wallet exists, so we try to load the wallet
+    if bitcoin_rpc
+        .call::<bitcoincore_rpc::json::LoadWalletResult>(
+            "createwallet",
+            &[
+                serde_json::to_value("wallet").unwrap(),
+                false.into(),
+                false.into(),
+                serde_json::to_value("").unwrap(),
+                false.into(),
+                false.into(), // descriptor false
+            ],
+        )
+        .is_err()
+    {
+        bitcoin_rpc
+            .load_wallet("wallet")
+            .expect("wallet failed to create and did not load!");
+    }
 
     sleep(Duration::from_secs(10));
 
