@@ -651,17 +651,18 @@ impl Runtime {
             (_, ServiceId::Syncer(..)) if self.syncer_state.any_syncer(&source) => {
             }
             (
-                _,
+                r,
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
                 | ServiceId::Database
-            ) => {}
+            ) if white_list_ctl_msgs(r) => {
+                self.process(endpoints, source.clone(), request.clone())?;
+                return Ok(())
+            }
             // FIXME rm clone after syncer correctly handled through self.process
             (r, ServiceId::Client(_)) if white_list_rpc_msgs(r) => {
                 self.process(endpoints, source.clone(), request.clone())?;
-            }
-            (r, _) if white_list_ctl_msgs(r) => {
-                self.process(endpoints, source.clone(), request.clone())?;
+                return Ok(())
             }
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
@@ -1777,6 +1778,7 @@ fn white_list_rpc_msgs(request: &Request) -> bool {
         _ => false,
     }
 }
+
 fn white_list_p2p_msgs(request: &Request) -> bool {
     if let Request::Protocol(msg) = request {
         match msg {
