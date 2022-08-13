@@ -243,8 +243,11 @@ impl Runtime {
     }
 
     fn process_funding_updated_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
-        let success_proof =
-            self.continue_deferred_requests(event.endpoints, event.source.clone(), |r| {
+        let success_proof = PendingRequests::continue_deferred_requests(
+            self,
+            event.endpoints,
+            event.source.clone(),
+            |r| {
                 matches!(
                     r,
                     &PendingRequest {
@@ -254,22 +257,24 @@ impl Runtime {
                         ..
                     }
                 )
-            });
+            },
+        );
         if !success_proof {
             error!("Did not dispatch proof pending request");
         }
 
-        let success_params = self.continue_deferred_requests(event.endpoints, event.source, |r| {
-            matches!(
-                r,
-                &PendingRequest {
-                    dest: ServiceId::Wallet,
-                    bus_id: ServiceBus::Msg,
-                    request: Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
-                    ..
-                }
-            )
-        });
+        let success_params =
+            PendingRequests::continue_deferred_requests(self, event.endpoints, event.source, |r| {
+                matches!(
+                    r,
+                    &PendingRequest {
+                        dest: ServiceId::Wallet,
+                        bus_id: ServiceBus::Msg,
+                        request: Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
+                        ..
+                    }
+                )
+            });
         if !success_params {
             error!("Did not dispatch params pending requests");
         }
