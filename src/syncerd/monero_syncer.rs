@@ -775,11 +775,7 @@ impl Synclet for MoneroSyncer {
         syncer_address: Vec<u8>,
         opts: &Opts,
         network: Network,
-        polling: bool,
     ) -> Result<(), Error> {
-        if !polling {
-            warn!("monero syncer only supports polling for now - switching to polling=true");
-        }
         let network = network.into();
         if let Some(daemon) = &opts.monero_daemon {
             if let Some(rpc_wallet) = &opts.monero_rpc_wallet {

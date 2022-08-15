@@ -15,7 +15,6 @@ use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
 use farcaster_node::ServiceId;
 use microservices::ZMQ_CONTEXT;
 use ntest::timeout;
-use paste::paste;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
@@ -41,38 +40,13 @@ Timeout of 5 min max per test, otherwise test panic. This mitigate test that han
 because of syncers.
 */
 
-macro_rules! make_polling_test {
-    ($name:ident) => {
-        paste! {
-            #[test]
-            #[timeout(600000)]
-            #[ignore]
-            fn [< $name _polling >] () {
-                $name(true);
-            }
-
-            #[test]
-            #[timeout(600000)]
-            #[ignore]
-            fn [< $name _no_polling >] () {
-                $name(false);
-            }
-        }
-    };
-}
-
-make_polling_test!(bitcoin_syncer_block_height_test);
-make_polling_test!(bitcoin_syncer_address_test);
-make_polling_test!(bitcoin_syncer_transaction_test);
-make_polling_test!(bitcoin_syncer_broadcast_tx_test);
-
 #[test]
 #[timeout(600000)]
 #[ignore]
 fn bitcoin_syncer_retrieve_transaction_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let (tx, rx_event) = create_bitcoin_syncer(true, "gettransaction");
+    let (tx, rx_event) = create_bitcoin_syncer("gettransaction");
 
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
@@ -111,8 +85,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
 #[ignore]
 fn bitcoin_syncer_estimate_fee_test() {
     bitcoin_setup();
-    let (tx, rx_event) = create_bitcoin_syncer(true, "estimatefee");
-
+    let (tx, rx_event) = create_bitcoin_syncer("estimatefee");
     let task = SyncerdTask {
         task: Task::WatchEstimateFee(WatchEstimateFee {
             id: TaskId(1),
@@ -145,10 +118,14 @@ We test for the following scenarios in the block height tests:
 
 - Mine another block and receive two HeightChanged events
 */
-fn bitcoin_syncer_block_height_test(polling: bool) {
+#[test]
+#[timeout(300000)]
+#[ignore]
+fn bitcoin_syncer_block_height_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "block_height");
+    // start a bitcoin syncer
+    let (tx, rx_event) = create_bitcoin_syncer("block_height");
 
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -238,16 +215,19 @@ transaction below said height, ensure we receive only a later transaction above
 the minimum height
 
 */
-fn bitcoin_syncer_address_test(polling: bool) {
+
+#[test]
+#[timeout(300000)]
+#[ignore]
+fn bitcoin_syncer_address_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "address");
+    let (tx, rx_event) = create_bitcoin_syncer("address");
 
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
-
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
     // Generate two addresses and watch them
@@ -447,12 +427,16 @@ the threshold confs are reached
 
 - Submit two WatchTransaction tasks in parallel with the same recipient address, receive confirmation events for both
 */
-fn bitcoin_syncer_transaction_test(polling: bool) {
+
+#[test]
+#[timeout(300000)]
+#[ignore]
+fn bitcoin_syncer_transaction_test() {
     setup_logging();
     info!("logging set up");
     let bitcoin_rpc = bitcoin_setup();
     info!("bitcoin set up");
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
+    let (tx, rx_event) = create_bitcoin_syncer("transaction");
     info!("syncer created");
 
     // generate some blocks to an address
@@ -684,7 +668,7 @@ We test for the following scenarios in the abort tests:
 fn bitcoin_syncer_abort_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
+    let (tx, rx_event) = create_bitcoin_syncer("abort");
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -813,11 +797,14 @@ We test the following scenarios in the broadcast tx tests:
 
 - Submit a BroadcastTransaction task, receive a success event
 */
-fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
+
+#[test]
+#[timeout(300000)]
+#[ignore]
+fn bitcoin_syncer_broadcast_tx_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "broadcast");
-
+    let (tx, rx_event) = create_bitcoin_syncer("broadcast");
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     // 294 Satoshi is the dust limit for a segwit transaction
@@ -918,7 +905,7 @@ receive a success event and check that the address balance is sweeped
 fn bitcoin_syncer_sweep_address_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let (tx, rx_event) = create_bitcoin_syncer(false, "sweep");
+    let (tx, rx_event) = create_bitcoin_syncer("sweep");
 
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_source_address = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -1054,10 +1041,7 @@ fn bitcoin_syncer_sweep_address_test() {
 // TODO: move into utils from here
 //
 
-fn create_bitcoin_syncer(
-    polling: bool,
-    socket_name: &str,
-) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
+fn create_bitcoin_syncer(socket_name: &str) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
     use rand::prelude::*;
     let mut rng = rand::thread_rng();
     let id: u64 = rng.gen();
@@ -1080,14 +1064,7 @@ fn create_bitcoin_syncer(
     ]));
 
     syncer
-        .run(
-            rx,
-            tx_event,
-            SOURCE1.clone().into(),
-            &opts,
-            Network::Local,
-            polling,
-        )
+        .run(rx, tx_event, SOURCE1.clone().into(), &opts, Network::Local)
         .expect("Invalid Bitcoin syncer!");
     (tx, rx_event)
 }
