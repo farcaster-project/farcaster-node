@@ -32,13 +32,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: Install dependencies
         run: sudo apt-get install -y cmake
 
-      - name: Install latest nightly
+      - name: Install Rust stable
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           override: true
 
       - name: Rust cache
@@ -49,20 +50,6 @@ jobs:
         with:
           command: test
           args: --workspace --all-targets --all-features --no-fail-fast
-        env:
-          CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-
-      - id: coverage
-        name: Generate coverage
-        uses: actions-rs/grcov@v0.1.6
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ${{ steps.coverage.outputs.report }}
-          directory: ./coverage/reports/
 
   functional-test:
     name: Functional tests
@@ -145,6 +132,7 @@ jobs:
 
       - name: Refresh cache and add apt-utils
         run: apt-get update -y && apt-get install -y --no-install-recommends apt-utils
+
       - name: Install dependencies
         run: DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev pkg-config build-essential cmake
 
