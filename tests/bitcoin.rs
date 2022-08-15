@@ -125,8 +125,6 @@ We test for the following scenarios in the block height tests:
 fn bitcoin_syncer_block_height_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-
-    // start a bitcoin syncer
     let (tx, rx_event) = create_bitcoin_syncer("block_height");
 
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -444,7 +442,6 @@ fn bitcoin_syncer_transaction_test() {
 
     // generate some blocks to an address
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
-
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
 
