@@ -255,8 +255,7 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
         // cannot expect on this error as the wallet is sometimes already loaded from previous
         // tests so even loading fails, just ignore this error the test fails later if a wallet
         // problem occures
-        let _ = bitcoin_rpc
-            .load_wallet("wallet");
+        let _ = bitcoin_rpc.load_wallet("wallet");
     }
 
     sleep(Duration::from_secs(10));
