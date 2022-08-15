@@ -46,6 +46,7 @@ use std::{
 };
 use std::{convert::TryFrom, thread::sleep};
 use std::{convert::TryInto, ffi::OsStr};
+use uuid::Uuid;
 
 use bitcoin::{
     hashes::hex::ToHex,
@@ -67,7 +68,6 @@ use microservices::esb::{self, Handler};
 
 use farcaster_core::{
     blockchain::{Blockchain, Network},
-    negotiation::{OfferId, PublicOfferId},
     swap::SwapId,
 };
 
@@ -155,7 +155,7 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,
-    listens: HashMap<OfferId, InetSocketAddr>,
+    listens: HashMap<Uuid, InetSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
     report_peerd_reconnect: HashMap<NodeAddr, ServiceId>,
@@ -165,11 +165,11 @@ pub struct Runtime {
     taking_swaps: HashMap<ServiceId, (request::InitSwap, Network)>,
     pending_swap_init: HashMap<(ServiceId, ServiceId), Vec<(Request, SwapId)>>,
     public_offers: HashSet<PublicOffer>,
-    arb_addrs: HashMap<PublicOfferId, bitcoin::Address>,
-    acc_addrs: HashMap<PublicOfferId, monero::Address>,
+    arb_addrs: HashMap<Uuid, bitcoin::Address>,
+    acc_addrs: HashMap<Uuid, monero::Address>,
     consumed_offers: HashMap<PublicOffer, (SwapId, ServiceId)>,
-    node_ids: HashMap<OfferId, NodeId>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
-    peerd_ids: HashMap<OfferId, ServiceId>, // Only populated by maker.
+    node_ids: HashMap<Uuid, NodeId>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
+    peerd_ids: HashMap<Uuid, ServiceId>, // Only populated by maker.
     wallet_token: Token,
     pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     pending_sweep_requests: HashMap<ServiceId, Request>, // TODO: merge this with pending requests eventually

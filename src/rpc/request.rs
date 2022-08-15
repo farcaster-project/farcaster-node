@@ -29,10 +29,7 @@ use crate::{
     },
 };
 use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::{
-    consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable},
-    negotiation::PublicOfferId,
-};
+use farcaster_core::consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable};
 use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
 use lazy_static::lazy_static;
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
@@ -46,6 +43,7 @@ use std::{
 };
 use std::{iter::FromIterator, str::FromStr};
 use std::{num::ParseIntError, time::Duration};
+use uuid::Uuid;
 
 use bitcoin::{
     secp256k1::{
@@ -1023,7 +1021,7 @@ pub struct OfferInfo {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -1031,8 +1029,24 @@ pub struct OfferInfo {
 )]
 #[display(TookOffer::to_yaml_string)]
 pub struct TookOffer {
-    pub offerid: PublicOfferId,
+    pub offerid: Uuid,
     pub message: String,
+}
+
+impl StrictEncode for TookOffer {
+    fn strict_encode<W: std::io::Write>(&self, mut w: W) -> Result<usize, strict_encoding::Error> {
+        let mut len = self.offerid.to_bytes_le().strict_encode(&mut w)?;
+        len += self.message.strict_encode(&mut w)?;
+        Ok(len)
+    }
+}
+
+impl StrictDecode for TookOffer {
+    fn strict_decode<R: std::io::Read>(mut r: R) -> Result<Self, strict_encoding::Error> {
+        let offerid = Uuid::from_bytes_le(<[u8; 16]>::strict_decode(&mut r)?);
+        let message = String::strict_decode(&mut r)?;
+        Ok(TookOffer { offerid, message })
+    }
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
