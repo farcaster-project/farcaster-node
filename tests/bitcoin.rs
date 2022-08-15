@@ -99,11 +99,11 @@ fn bitcoin_syncer_estimate_fee_test() {
     let request = misc::get_request_from_message(message);
     assert::fee_estimation_received(request);
 
-    tx.send(SyncerdTask {
-        task: Task::Terminate,
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
+    // tx.send(SyncerdTask {
+        // task: Task::Terminate,
+        // source: SOURCE1.clone(),
+    // })
+    // .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 }
@@ -184,11 +184,11 @@ fn bitcoin_syncer_block_height_test() {
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert::received_height_changed(request, blocks);
 
-    tx.send(SyncerdTask {
-        task: Task::Terminate,
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
+    // tx.send(SyncerdTask {
+        // task: Task::Terminate,
+        // source: SOURCE1.clone(),
+    // })
+    // .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 }
@@ -406,11 +406,11 @@ fn bitcoin_syncer_address_test() {
     let request = misc::get_request_from_message(message);
     assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
 
-    tx.send(SyncerdTask {
-        task: Task::Terminate,
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
+    // tx.send(SyncerdTask {
+        // task: Task::Terminate,
+        // source: SOURCE1.clone(),
+    // })
+    // .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 }
@@ -643,11 +643,11 @@ fn bitcoin_syncer_transaction_test() {
     let request = misc::get_request_from_message(message);
     assert::transaction_confirmations(request, Some(0), vec![0]);
 
-    tx.send(SyncerdTask {
-        task: Task::Terminate,
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
+    // tx.send(SyncerdTask {
+        // task: Task::Terminate,
+        // source: SOURCE1.clone(),
+    // })
+    // .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 }
@@ -782,11 +782,11 @@ fn bitcoin_syncer_abort_test() {
         Some("abort failed, task from source Bitcoin (Local) syncer not found".to_string()),
         vec![],
     );
-    tx.send(SyncerdTask {
-        task: Task::Terminate,
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
+    // tx.send(SyncerdTask {
+        // task: Task::Terminate,
+        // source: SOURCE1.clone(),
+    // })
+    // .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 }
@@ -882,11 +882,11 @@ fn bitcoin_syncer_broadcast_tx_test() {
     info!("transaction broadcasted");
     let request = misc::get_request_from_message(message);
     assert::transaction_broadcasted(request, false, None);
-    tx.send(SyncerdTask {
-        task: Task::Terminate,
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
+    // tx.send(SyncerdTask {
+        // task: Task::Terminate,
+        // source: SOURCE1.clone(),
+    // })
+    // .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 }
@@ -1030,11 +1030,11 @@ fn bitcoin_syncer_sweep_address_test() {
         .unwrap();
     info!("received balance: {:?}", balance_2);
     assert!(balance_2.as_sat() > balance_1.as_sat());
-    tx.send(SyncerdTask {
-        task: Task::Terminate,
-        source: SOURCE1.clone(),
-    })
-    .unwrap();
+    // tx.send(SyncerdTask {
+        // task: Task::Terminate,
+        // source: SOURCE1.clone(),
+    // })
+    // .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 }

@@ -537,13 +537,10 @@ async fn run_syncerd_task_receiver(
     transaction_get_tx: TokioSender<(GetTx, ServiceId)>,
     terminate_tx: TokioSender<()>,
 ) {
-    let task_receiver = Arc::new(Mutex::new(receive_task_channel));
     tokio::spawn(async move {
         loop {
             // this is a hack around the Receiver not being Sync
-            let guard = task_receiver.lock().await;
-            let syncerd_task = guard.try_recv();
-            drop(guard);
+            let syncerd_task = receive_task_channel.try_recv();
             match syncerd_task {
                 Ok(syncerd_task) => {
                     match syncerd_task.task {
@@ -625,8 +622,9 @@ async fn run_syncerd_task_receiver(
                                 .expect("terminating, don't care if we panic");
                         }
                     }
+                    continue
                 }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => panic!("Task receiver is disconnected, will exit runtime"),
                 Err(TryRecvError::Empty) => {
                     // do nothing
                 }
