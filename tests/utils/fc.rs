@@ -5,9 +5,13 @@ use std::ffi::OsStr;
 use std::io;
 use std::process;
 use std::str;
+use std::thread::sleep;
+use std::time::Duration;
 
 use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
+
+use super::config;
 
 // TODO: rename this function, this launches fcd, not 'clients'
 pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
@@ -223,4 +227,44 @@ pub fn run(
         })
         .collect();
     Ok((stdout, stderr))
+}
+
+pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
+    use bitcoincore_rpc::{Client, RpcApi};
+
+    let conf = config::TestConfig::parse();
+    let bitcoin_rpc =
+        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
+
+    // make sure a wallet is created and loaded
+    // error may be returned because wallet exists, so we try to load the wallet
+    if bitcoin_rpc
+        .call::<bitcoincore_rpc::json::LoadWalletResult>(
+            "createwallet",
+            &[
+                serde_json::to_value("wallet").unwrap(),
+                false.into(),
+                false.into(),
+                serde_json::to_value("").unwrap(),
+                false.into(),
+                false.into(), // descriptor false
+            ],
+        )
+        .is_err()
+    {
+        // cannot expect on this error as the wallet is sometimes already loaded from previous
+        // tests so even loading fails, just ignore this error the test fails later if a wallet
+        // problem occures
+        let _ = bitcoin_rpc.load_wallet("wallet");
+    }
+
+    sleep(Duration::from_secs(10));
+
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    bitcoin_rpc.generate_to_address(200, &address).unwrap();
+
+    // We mined 200 blocks, allow things to happen, like the electrum server catching up
+    sleep(Duration::from_secs(10));
+
+    bitcoin_rpc
 }

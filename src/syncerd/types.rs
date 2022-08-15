@@ -157,6 +157,7 @@ pub enum Task {
     SweepAddress(SweepAddress),
     GetTx(GetTx),
     WatchEstimateFee(WatchEstimateFee),
+    Terminate,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

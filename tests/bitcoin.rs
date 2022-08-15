@@ -1,6 +1,6 @@
 use amplify::map;
 use bitcoin::hashes::Hash;
-use bitcoincore_rpc::{Client, RpcApi};
+use bitcoincore_rpc::RpcApi;
 use clap::Parser;
 use farcaster_core::blockchain::{Blockchain, Network};
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
@@ -21,6 +21,7 @@ use std::sync::mpsc::Sender;
 
 use utils::assert;
 use utils::config;
+use utils::fc::bitcoin_setup;
 use utils::misc;
 use utils::setup_logging;
 
@@ -44,14 +45,14 @@ macro_rules! make_polling_test {
     ($name:ident) => {
         paste! {
             #[test]
-            #[timeout(300000)]
+            #[timeout(600000)]
             #[ignore]
             fn [< $name _polling >] () {
                 $name(true);
             }
 
             #[test]
-            #[timeout(300000)]
+            #[timeout(600000)]
             #[ignore]
             fn [< $name _no_polling >] () {
                 $name(false);
@@ -71,9 +72,9 @@ make_polling_test!(bitcoin_syncer_broadcast_tx_test);
 fn bitcoin_syncer_retrieve_transaction_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let (tx, rx_event) = create_bitcoin_syncer(true, "gettransaction");
 
-    let (tx, rx_event) = create_bitcoin_syncer(true, "transaction");
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     let txid = bitcoin_rpc
         .send_to_address(
@@ -88,7 +89,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
         )
         .unwrap();
 
-    let duration = std::time::Duration::from_secs(30);
+    let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
 
     let task = SyncerdTask {
@@ -111,6 +112,7 @@ fn bitcoin_syncer_retrieve_transaction_test() {
 fn bitcoin_syncer_estimate_fee_test() {
     bitcoin_setup();
     let (tx, rx_event) = create_bitcoin_syncer(true, "estimatefee");
+
     let task = SyncerdTask {
         task: Task::WatchEstimateFee(WatchEstimateFee {
             id: TaskId(1),
@@ -121,7 +123,15 @@ fn bitcoin_syncer_estimate_fee_test() {
     tx.send(task).unwrap();
     let message = rx_event.recv_multipart(0).unwrap();
     let request = misc::get_request_from_message(message);
-    assert::fee_estimation_received(request)
+    assert::fee_estimation_received(request);
+
+    tx.send(SyncerdTask {
+        task: Task::Terminate,
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
 }
 
 /*
@@ -138,11 +148,9 @@ We test for the following scenarios in the block height tests:
 fn bitcoin_syncer_block_height_test(polling: bool) {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-
-    // start a bitcoin syncer
     let (tx, rx_event) = create_bitcoin_syncer(polling, "block_height");
 
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
     // Send a WatchHeight task
@@ -198,6 +206,14 @@ fn bitcoin_syncer_block_height_test(polling: bool) {
     let request = misc::get_request_from_message(message);
     let blocks = bitcoin_rpc.get_block_count().unwrap();
     assert::received_height_changed(request, blocks);
+
+    tx.send(SyncerdTask {
+        task: Task::Terminate,
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
 }
 
 /*
@@ -225,21 +241,12 @@ the minimum height
 fn bitcoin_syncer_address_test(polling: bool) {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "address");
 
     // generate some blocks to an address
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
-    // Generate over 101 blocks to reach block maturity, and some more for extra
-    // leeway
-    bitcoin_rpc.generate_to_address(110, &address).unwrap();
-
-    // allow some time for things to happen, like the electrum server catching up
-    let duration = std::time::Duration::from_secs(10);
-    std::thread::sleep(duration);
-
-    // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "address");
 
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
@@ -417,6 +424,14 @@ fn bitcoin_syncer_address_test(polling: bool) {
     info!("received address transaction message");
     let request = misc::get_request_from_message(message);
     assert::address_transaction(request, amount.as_sat(), vec![txid.to_vec()]);
+
+    tx.send(SyncerdTask {
+        task: Task::Terminate,
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
 }
 
 /*
@@ -434,23 +449,16 @@ the threshold confs are reached
 */
 fn bitcoin_syncer_transaction_test(polling: bool) {
     setup_logging();
+    info!("logging set up");
     let bitcoin_rpc = bitcoin_setup();
+    info!("bitcoin set up");
+    let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
+    info!("syncer created");
 
     // generate some blocks to an address
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc
-        .generate_to_address(110, &reusable_address)
-        .unwrap();
-
-    // start a bitcoin syncer
-    let (tx, rx_event) = create_bitcoin_syncer(polling, "transaction");
-
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
-
-    // allow some time for things to happen, like the electrum server catching up
-    let duration = std::time::Duration::from_secs(10);
-    std::thread::sleep(duration);
 
     let address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
     let blocks = bitcoin_rpc.get_block_count().unwrap();
@@ -458,7 +466,10 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
         .send_to_address(&address_1, amount, None, None, None, None, None, None)
         .unwrap();
 
+    info!("sleeping to index the mempool transaction");
+    let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
+    info!("sleep to index the mempool transaction is over");
 
     tx.send(SyncerdTask {
         task: Task::WatchTransaction(WatchTransaction {
@@ -646,6 +657,14 @@ fn bitcoin_syncer_transaction_test(polling: bool) {
     info!("received confirmation");
     let request = misc::get_request_from_message(message);
     assert::transaction_confirmations(request, Some(0), vec![0]);
+
+    tx.send(SyncerdTask {
+        task: Task::Terminate,
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
 }
 
 /*
@@ -664,8 +683,9 @@ We test for the following scenarios in the abort tests:
 #[ignore]
 fn bitcoin_syncer_abort_test() {
     setup_logging();
-    let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
     let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(true, "abort");
+
     let blocks = bitcoin_rpc.get_block_count().unwrap();
 
     let task = SyncerdTask {
@@ -777,6 +797,13 @@ fn bitcoin_syncer_abort_test() {
         Some("abort failed, task from source Bitcoin (Local) syncer not found".to_string()),
         vec![],
     );
+    tx.send(SyncerdTask {
+        task: Task::Terminate,
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
 }
 
 /*
@@ -789,9 +816,9 @@ We test the following scenarios in the broadcast tx tests:
 fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-
     let (tx, rx_event) = create_bitcoin_syncer(polling, "broadcast");
+
+    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 294;
@@ -866,6 +893,13 @@ fn bitcoin_syncer_broadcast_tx_test(polling: bool) {
     info!("transaction broadcasted");
     let request = misc::get_request_from_message(message);
     assert::transaction_broadcasted(request, false, None);
+    tx.send(SyncerdTask {
+        task: Task::Terminate,
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
 }
 
 /*
@@ -884,6 +918,8 @@ receive a success event and check that the address balance is sweeped
 fn bitcoin_syncer_sweep_address_test() {
     setup_logging();
     let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer(false, "sweep");
+
     let reusable_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_source_address = bitcoin_rpc.get_new_address(None, None).unwrap();
     let sweep_destination_address_1 = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -892,8 +928,6 @@ fn bitcoin_syncer_sweep_address_test() {
         .dump_private_key(&sweep_source_address)
         .unwrap()
         .inner;
-
-    let (tx, rx_event) = create_bitcoin_syncer(false, "broadcast");
 
     // 294 Satoshi is the dust limit for a segwit transaction
     let amount = bitcoin::Amount::ONE_SAT * 1000;
@@ -1007,6 +1041,13 @@ fn bitcoin_syncer_sweep_address_test() {
         .unwrap();
     info!("received balance: {:?}", balance_2);
     assert!(balance_2.as_sat() > balance_1.as_sat());
+    tx.send(SyncerdTask {
+        task: Task::Terminate,
+        source: SOURCE1.clone(),
+    })
+    .unwrap();
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
 }
 
 // =========================
@@ -1017,7 +1058,11 @@ fn create_bitcoin_syncer(
     polling: bool,
     socket_name: &str,
 ) -> (std::sync::mpsc::Sender<SyncerdTask>, zmq::Socket) {
-    let addr = format!("inproc://testmonerobridge-{}", socket_name);
+    use rand::prelude::*;
+    let mut rng = rand::thread_rng();
+    let id: u64 = rng.gen();
+    let addr = format!("inproc://testbitcoinbridge-{}-{}", socket_name, id);
+    debug!("creating Bitcoin syncer on addr {}", addr);
 
     let (tx, rx): (Sender<SyncerdTask>, Receiver<SyncerdTask>) = std::sync::mpsc::channel();
     let tx_event = ZMQ_CONTEXT.socket(zmq::PAIR).unwrap();
@@ -1043,7 +1088,7 @@ fn create_bitcoin_syncer(
             Network::Local,
             polling,
         )
-        .expect("Valid bitcoin syncer");
+        .expect("Invalid Bitcoin syncer!");
     (tx, rx_event)
 }
 
@@ -1065,19 +1110,4 @@ fn find_coinbase_transaction_amount(txs: Vec<bitcoin::Transaction>) -> u64 {
         }
     }
     0
-}
-
-fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let conf = config::TestConfig::parse();
-    let bitcoin_rpc =
-        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
-
-    // make sure a wallet is created and loaded
-    if bitcoin_rpc
-        .create_wallet("wallet", None, None, None, None)
-        .is_err()
-    {
-        let _ = bitcoin_rpc.load_wallet("wallet");
-    }
-    bitcoin_rpc
 }

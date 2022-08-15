@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use bitcoincore_rpc::{Client, RpcApi};
+use bitcoincore_rpc::RpcApi;
 use farcaster_core::swap::SwapId;
 use farcaster_node::rpc::request::{BitcoinFundingInfo, MoneroFundingInfo, NodeInfo};
 use futures::future::join_all;
@@ -832,7 +832,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
 
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
@@ -1012,7 +1012,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
         after_balance.balance, before_balance.balance
     );
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
     drop(lock);
 
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
@@ -1195,7 +1195,7 @@ async fn run_refund_swap_alice_overfunds(
     let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
     drop(monero_wallet_lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
     drop(lock);
 }
 
@@ -1352,7 +1352,7 @@ async fn run_refund_swap_race_cancel(
     let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
     drop(monero_wallet_lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
     drop(lock);
 }
 
@@ -2068,7 +2068,7 @@ async fn run_swaps_parallel(
         let after_balance = monero_wallet_lock.get_balance(0, None).await.unwrap();
         drop(monero_wallet_lock);
         let delta_balance = after_balance.balance - before_balances[swap_id];
-        assert!(delta_balance > monero::Amount::from_pico(999660000000));
+        assert!(delta_balance > monero::Amount::from_pico(998000000000));
     }
     drop(lock);
 }
@@ -2338,7 +2338,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
 
@@ -2497,7 +2497,7 @@ async fn run_swap(
     drop(monero_wallet_lock);
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
-    assert!(delta_balance > monero::Amount::from_pico(999660000000));
+    assert!(delta_balance > monero::Amount::from_pico(998000000000));
 }
 
 fn kill_connected_peerd() {
@@ -2945,24 +2945,6 @@ async fn retry_until_finish_state_transition(
         "timeout before finish state {:?} could be retrieved",
         finish_state
     );
-}
-
-fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    let conf = config::TestConfig::parse();
-    let bitcoin_rpc =
-        Client::new(&format!("{}", conf.bitcoin.daemon), conf.bitcoin.get_auth()).unwrap();
-
-    // make sure a wallet is created and loaded
-    if bitcoin_rpc
-        .create_wallet("wallet", None, None, None, None)
-        .is_err()
-    {
-        let _ = bitcoin_rpc.load_wallet("wallet");
-    }
-
-    let address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    bitcoin_rpc.generate_to_address(200, &address).unwrap();
-    bitcoin_rpc
 }
 
 async fn monero_setup() -> (

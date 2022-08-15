@@ -253,7 +253,7 @@ impl ElectrumRpc {
         };
         drop(state_guard);
         for tx_id in txids.iter() {
-            let tx_id = bitcoin::Txid::from_slice(tx_id).unwrap();
+            let tx_id = bitcoin::Txid::from_slice(tx_id).expect("invalid txid");
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
@@ -490,7 +490,12 @@ fn sweep_address(
 
     // TODO (maybe): make blocks_until_confirmation or fee_btc_per_kvb configurable by user (see FeeStrategy)
     let blocks_until_confirmation = 2;
-    let fee_sat_per_kvb = (client.estimate_fee(blocks_until_confirmation)? * 1.0e8).ceil() as u64;
+    let fee_sat_per_kvb = (client
+        // because near == far (target) low and high fee are equal
+        .estimate_priority_fee(blocks_until_confirmation, blocks_until_confirmation)?
+        .high_fee
+        * 1.0e8)
+        .ceil() as u64;
     let fee = p2wpkh_signed_tx_fee(fee_sat_per_kvb, unsigned_tx.vsize(), unspent_txs.len());
 
     unsigned_tx.output[0].value = in_amount - fee;
@@ -559,6 +564,7 @@ async fn run_syncerd_task_receiver(
     state: Arc<Mutex<SyncerState>>,
     transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
     transaction_get_tx: TokioSender<(GetTx, ServiceId)>,
+    terminate_tx: TokioSender<()>,
 ) {
     let task_receiver = Arc::new(Mutex::new(receive_task_channel));
     tokio::spawn(async move {
@@ -635,9 +641,17 @@ async fn run_syncerd_task_receiver(
                             drop(state_guard);
                         }
                         Task::WatchTransaction(task) => {
+                            debug!("received new task: {:?}", task);
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                             drop(state_guard);
+                        }
+                        Task::Terminate => {
+                            debug!("terminating async syncer runtime");
+                            terminate_tx
+                                .send(())
+                                .await
+                                .expect("terminating, don't care if we panic");
                         }
                     }
                 }
@@ -875,32 +889,64 @@ fn transaction_broadcasting(
     })
 }
 
+/// Result of querying electrum to get a low priority and high priority fee rate.
+struct FeeByPriority {
+    low_fee: f64,
+    high_fee: f64,
+}
+
+/// Extend electrum client capabilities and query fee for low and high priority.
+trait GenericEstimateFee {
+    /// Query electrum for estimate fee for low and high priority or fall back on node's relay fee.
+    fn estimate_priority_fee(
+        &self,
+        near_target: usize,
+        far_target: usize,
+    ) -> Result<FeeByPriority, electrum_client::Error>;
+}
+
+impl GenericEstimateFee for Client {
+    fn estimate_priority_fee(
+        &self,
+        near_target: usize,
+        far_target: usize,
+    ) -> Result<FeeByPriority, electrum_client::Error> {
+        let low_fee;
+        let mut high_fee = self.estimate_fee(near_target)?;
+        if high_fee == -1.0 {
+            // None returned internally between node and electrum, fallback on relay_fee
+            high_fee = self.relay_fee()?;
+            low_fee = high_fee;
+        } else {
+            // Shortcut in case we want only 1 fee and near == far
+            if far_target != near_target {
+                low_fee = self.estimate_fee(far_target)?;
+            } else {
+                low_fee = high_fee
+            }
+        }
+        Ok(FeeByPriority { low_fee, high_fee })
+    }
+}
+
 fn estimate_fee_polling(
     electrum_server: String,
     proxy_address: Option<String>,
     state: Arc<Mutex<SyncerState>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let high_priority_confs = 2;
-        let low_priority_confs = 6;
+        let high_priority_target = 2;
+        let low_priority_target = 6;
         loop {
             if let Ok(client) = create_electrum_client(&electrum_server, proxy_address.clone()) {
                 loop {
-                    match client
-                        .estimate_fee(high_priority_confs) // docs say sat/kB, but its BTC/kvB
-                        .and_then(|high_priority| {
-                            client
-                                .estimate_fee(low_priority_confs)
-                                .map(|low_priority| (high_priority, low_priority))
-                        }) {
-                        Ok((high_priority, low_priority)) => {
+                    match client.estimate_priority_fee(high_priority_target, low_priority_target) {
+                        Ok(FeeByPriority { low_fee, high_fee }) => {
                             let mut state_guard = state.lock().await;
                             state_guard
                                 .fee_estimated(FeeEstimations::BitcoinFeeEstimation {
-                                    high_priority_sats_per_kvbyte: (high_priority * 1.0e8).ceil()
-                                        as u64,
-                                    low_priority_sats_per_kvbyte: (low_priority * 1.0e8).ceil()
-                                        as u64,
+                                    high_priority_sats_per_kvbyte: (high_fee * 1.0e8).ceil() as u64,
+                                    low_priority_sats_per_kvbyte: (low_fee * 1.0e8).ceil() as u64,
                                 })
                                 .await;
                             drop(state_guard);
@@ -983,8 +1029,10 @@ fn transaction_fetcher(
         while let Some((get_transaction, source)) = transaction_get_rx.recv().await {
             match create_electrum_client(&electrum_server, proxy_address.clone()).and_then(
                 |transaction_client| {
-                    transaction_client
-                        .transaction_get(&bitcoin::Txid::from_slice(&get_transaction.hash).unwrap())
+                    transaction_client.transaction_get(
+                        &bitcoin::Txid::from_slice(&get_transaction.hash)
+                            .expect("invalid txid in transaction_get"),
+                    )
                 },
             ) {
                 Ok(tx) => {
@@ -1021,6 +1069,16 @@ fn transaction_fetcher(
     })
 }
 
+fn terminate_polling(
+    mut rx_terminate: TokioReceiver<()>,
+) -> tokio::task::JoinHandle<Result<(), Error>> {
+    tokio::task::spawn(async move {
+        let _ = rx_terminate.recv().await;
+        debug!("received terminate thread");
+        panic!("terminate this thread");
+    })
+}
+
 impl Synclet for BitcoinSyncer {
     fn run(
         &mut self,
@@ -1039,11 +1097,13 @@ impl Synclet for BitcoinSyncer {
             let electrum_server = electrum_server.clone();
             std::thread::spawn(move || {
                 use tokio::runtime::Builder;
+                trace!("building tokio syncer runtime");
                 let rt = Builder::new_multi_thread()
                     .worker_threads(2)
                     .enable_all()
                     .build()
-                    .unwrap();
+                    .expect("failed to build tokio runtime");
+                trace!("completed tokio syncer runtime");
                 rt.block_on(async {
                     let (event_tx, event_rx): (
                         TokioSender<SyncerdBridgeEvent>,
@@ -1057,6 +1117,8 @@ impl Synclet for BitcoinSyncer {
                         TokioSender<(GetTx, ServiceId)>,
                         TokioReceiver<(GetTx, ServiceId)>,
                     ) = tokio::sync::mpsc::channel(200);
+                    let (terminate_tx, terminate_rx): (TokioSender<()>, TokioReceiver<()>) =
+                        tokio::sync::mpsc::channel(1);
                     let state = Arc::new(Mutex::new(SyncerState::new(
                         event_tx.clone(),
                         Blockchain::Bitcoin,
@@ -1067,6 +1129,7 @@ impl Synclet for BitcoinSyncer {
                         Arc::clone(&state),
                         transaction_broadcast_tx,
                         transaction_get_tx,
+                        terminate_tx,
                     )
                     .await;
                     run_syncerd_bridge_event_sender(tx, event_rx, syncer_address).await;
@@ -1119,6 +1182,8 @@ impl Synclet for BitcoinSyncer {
                         btc_network,
                     );
 
+                    let terminate_handle = terminate_polling(terminate_rx);
+
                     let res = tokio::try_join!(
                         address_handle,
                         height_handle,
@@ -1127,9 +1192,12 @@ impl Synclet for BitcoinSyncer {
                         transaction_get_handle,
                         estimate_fee_handle,
                         sweep_handle,
+                        terminate_handle,
                     );
                     debug!("exiting bitcoin synclet run routine with: {:?}", res);
                 });
+                debug!("shutting down runtime");
+                rt.shutdown_timeout(Duration::from_millis(100));
             });
             Ok(())
         } else {
@@ -1144,7 +1212,9 @@ fn logging(txs: &[AddressTx], address: &BtcAddressAddendum) {
         trace!(
             "processing address {} notification txid {}",
             address.address,
-            bitcoin::Txid::from_slice(&tx.tx_id).unwrap().addr()
+            bitcoin::Txid::from_slice(&tx.tx_id)
+                .expect("invalid txid")
+                .addr()
         );
     });
 }
