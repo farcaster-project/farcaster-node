@@ -458,6 +458,9 @@ async fn run_syncerd_task_receiver(
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                         }
+                        Task::Terminate => {
+                            debug!("unimplemented");
+                        }
                     }
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => return,

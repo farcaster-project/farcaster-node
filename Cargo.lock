@@ -971,9 +971,9 @@ dependencies = [
 
 [[package]]
 name = "farcaster_core"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d2b0a0384bbd1feaf4ed5d52622f37565143e770398e13d4ee14f5f86014e10"
+checksum = "ed3a93bbb81b5e718fd69574d52b517f3a3442395525919a63764f91330eb0a9"
 dependencies = [
  "amplify",
  "base58-monero",
@@ -999,6 +999,7 @@ dependencies = [
  "strict_encoding_derive 1.7.6",
  "thiserror",
  "tiny-keccak",
+ "uuid",
 ]
 
 [[package]]
@@ -1054,6 +1055,7 @@ dependencies = [
  "toml",
  "tonic",
  "tonic-build",
+ "uuid",
  "zmq2",
 ]
 
@@ -3606,6 +3608,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
 dependencies = [
  "getrandom 0.2.7",
+ "serde 1.0.141",
 ]
 
 [[package]]

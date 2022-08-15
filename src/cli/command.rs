@@ -22,6 +22,7 @@ use std::{
     time::Duration,
 };
 use std::{str::FromStr, thread::sleep};
+use uuid::Uuid;
 
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use microservices::shell::Exec;
@@ -168,6 +169,7 @@ impl Exec for Command {
                     return Ok(());
                 }
                 let offer = Offer {
+                    uuid: Uuid::new_v4(),
                     network,
                     arbitrating_blockchain,
                     accordant_blockchain,
