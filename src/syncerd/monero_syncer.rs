@@ -459,7 +459,7 @@ async fn run_syncerd_task_receiver(
                             debug!("unimplemented");
                         }
                     }
-                    continue
+                    continue;
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
                 Err(TryRecvError::Empty) => {

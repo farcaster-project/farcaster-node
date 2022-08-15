@@ -622,9 +622,11 @@ async fn run_syncerd_task_receiver(
                                 .expect("terminating, don't care if we panic");
                         }
                     }
-                    continue
+                    continue;
                 }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => panic!("Task receiver is disconnected, will exit runtime"),
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    panic!("Task receiver is disconnected, will exit runtime")
+                }
                 Err(TryRecvError::Empty) => {
                     // do nothing
                 }
