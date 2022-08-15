@@ -849,14 +849,7 @@ fn create_monero_syncer(
     );
 
     syncer
-        .run(
-            rx,
-            tx_event,
-            SOURCE2.clone().into(),
-            &opts,
-            Network::Local,
-            true,
-        )
+        .run(rx, tx_event, SOURCE2.clone().into(), &opts, Network::Local)
         .expect("Invalid monero syncer");
     (tx, rx_event)
 }
