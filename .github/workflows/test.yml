@@ -132,6 +132,7 @@ jobs:
 
       - name: Refresh cache and add apt-utils
         run: apt-get update -y && apt-get install -y --no-install-recommends apt-utils
+
       - name: Install dependencies
         run: DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev pkg-config build-essential cmake
 
