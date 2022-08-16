@@ -314,6 +314,12 @@ impl SyncerState {
         }
     }
 
+    pub fn unsubscribe_addresses(&mut self) {
+        for (_, address) in self.addresses.iter_mut() {
+            address.subscribed = false;
+        }
+    }
+
     pub fn watch_transaction(&mut self, task: WatchTransaction, source: ServiceId) {
         // increment the count to use it as a unique internal id
         self.task_count.increment();
