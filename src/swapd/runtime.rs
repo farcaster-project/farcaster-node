@@ -605,6 +605,7 @@ impl Runtime {
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
                 | ServiceId::Database
+                | ServiceId::Swap(_) // for recursing
             ) if white_list_ctl_msgs(r) => {
                 self.process(endpoints, source.clone(), request.clone())?;
                 return Ok(())
@@ -978,7 +979,7 @@ impl Runtime {
                                         msg,
                                     )?;
                                     // FIXME: syncer shall not have permission to AbortSwap, replace source by identity?
-                                    self.handle_ctl(endpoints, source, Request::AbortSwap)?;
+                                    self.handle_ctl(endpoints, self.identity(), Request::AbortSwap)?;
                                     return Ok(());
                                 }
 
@@ -1717,6 +1718,7 @@ fn white_list_ctl_msgs(request: &Request) -> bool {
         Request::SweepBitcoinAddress(_) => true,
         Request::PeerdReconnected => true,
         Request::Checkpoint(_) => true,
+        Request::AbortSwap => true,
         _ => false,
     }
 }
