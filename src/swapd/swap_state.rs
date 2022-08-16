@@ -327,9 +327,9 @@ impl State {
             && ev.source == ServiceId::Wallet
             && ((self.trade_role() == Some(TradeRole::Taker) && self.reveal())
                 || (self.trade_role() == Some(TradeRole::Maker) && self.commit()))
-            && pending_requests.contains_key(&ev.service)
+            && pending_requests.contains_key(&ev.source)
             && pending_requests
-                .get(&ev.service)
+                .get(&ev.source)
                 .map(|reqs| reqs.len() == 2)
                 .unwrap()
     }
