@@ -217,6 +217,7 @@ impl Awaiting {
         } else if state.p_checkpoint(event) {
             Awaiting::Checkpoint
         } else {
+            error!("Could not match this event and state to any known condition");
             Awaiting::Unknown
         }
     }
