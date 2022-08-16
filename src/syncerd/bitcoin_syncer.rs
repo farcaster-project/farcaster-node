@@ -674,7 +674,10 @@ fn address_polling(
                         if !address.subscribed {
                             match rpc.script_subscribe(address_addendum.clone()) {
                                 Ok(notif) => {
-                                    debug!("successfully subscribed {} for script events", address_addendum.address);
+                                    debug!(
+                                        "successfully subscribed {} for script events",
+                                        address_addendum.address
+                                    );
                                     logging(&notif.txs, &address_addendum);
                                     let tx_set = create_set(notif.txs);
                                     let mut state_guard = state.lock().await;
@@ -693,7 +696,10 @@ fn address_polling(
                                 Err(Error::Syncer(SyncerError::Electrum(
                                     electrum_client::Error::AlreadySubscribed(_),
                                 ))) => {
-                                    warn!("successfully subscribed {} for script events", address_addendum.address);
+                                    warn!(
+                                        "Already subscribed {} for script events",
+                                        address_addendum.address
+                                    );
                                 }
                                 Err(e) => {
                                     error!("error in bitcoin address polling: {}", e);
