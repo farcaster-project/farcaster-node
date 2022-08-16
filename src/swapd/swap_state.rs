@@ -253,6 +253,7 @@ impl State {
     }
     pub fn p_reveal_proof(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
+            && !self.p_reveal_proof_ctl(ev)
     }
     pub fn p_reveal_alice(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
         matches!(
@@ -302,6 +303,8 @@ impl State {
     }
     pub fn p_reveal_proof_ctl(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
+            && matches!(ev.source, ServiceId::Wallet)
+            && matches!(ev.service, ServiceId::Swap(_))
             && self.commit()
             && self.remote_commit().is_some()
     }
