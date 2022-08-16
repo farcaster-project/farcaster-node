@@ -134,6 +134,7 @@ impl ElectrumRpc {
             let script_status = self
                 .client
                 .script_subscribe(&address_addendum.address.script_pubkey())?;
+            debug!("subscribed");
             self.addresses
                 .insert(address_addendum.clone(), script_status);
             debug!(
@@ -167,12 +168,14 @@ impl ElectrumRpc {
 
     /// check if a subscribed address received a new transaction
     pub fn address_change_check(&mut self) -> Vec<AddressNotif> {
+        trace!("checking for changes on subscribed addresses");
         let mut notifs: Vec<AddressNotif> = vec![];
         for (address, previous_status) in self.addresses.clone().into_iter() {
             // get pending notifications for this address/script_pubkey
             let script_pubkey = &address.address.script_pubkey();
 
             while let Ok(Some(script_status)) = self.client.script_pop(script_pubkey) {
+                trace!("detected new script status");
                 if Some(script_status) != previous_status {
                     if self
                         .addresses
@@ -200,7 +203,7 @@ impl ElectrumRpc {
                         notifs.push(new_notif);
                     }
                 } else {
-                    debug!("state did not change for given address");
+                    trace!("state did not change for given address");
                 }
             }
         }
@@ -671,6 +674,7 @@ fn address_polling(
                         if !address.subscribed {
                             match rpc.script_subscribe(address_addendum.clone()) {
                                 Ok(notif) => {
+                                    debug!("successfully subscribed {} for script events", address_addendum.address);
                                     logging(&notif.txs, &address_addendum);
                                     let tx_set = create_set(notif.txs);
                                     let mut state_guard = state.lock().await;
@@ -688,7 +692,9 @@ fn address_polling(
                                 // do nothing if we are already subscribed
                                 Err(Error::Syncer(SyncerError::Electrum(
                                     electrum_client::Error::AlreadySubscribed(_),
-                                ))) => {}
+                                ))) => {
+                                    warn!("successfully subscribed {} for script events", address_addendum.address);
+                                }
                                 Err(e) => {
                                     error!("error in bitcoin address polling: {}", e);
                                     break;
