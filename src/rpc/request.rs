@@ -85,7 +85,7 @@ pub enum Msg {
     #[display("taker_commit(...)")]
     TakerCommit(TakeCommit),
     #[api(type = 22)]
-    #[display("reveal(...)")]
+    #[display("reveal({0})")]
     Reveal(Reveal),
     #[api(type = 25)]
     #[display("refunprocsig_a(...)")]
@@ -256,10 +256,12 @@ fn format_keys(keys: &Keys) -> String {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("reveal")]
 pub enum Reveal {
+    #[display("alice_reveal")]
     AliceParameters(RevealAliceParameters),
+    #[display("bob_reveal")]
     BobParameters(RevealBobParameters),
+    #[display("reveal_proof")]
     Proof(RevealProof), // FIXME should be Msg::RevealProof(RevealProof<BtcXmr>)
 }
 
