@@ -1020,7 +1020,11 @@ impl Runtime {
                                         msg,
                                     )?;
                                     // FIXME: syncer shall not have permission to AbortSwap, replace source by identity?
-                                    self.handle_ctl(endpoints, self.identity(), Request::AbortSwap)?;
+                                    self.handle_ctl(
+                                        endpoints,
+                                        self.identity(),
+                                        Request::AbortSwap,
+                                    )?;
                                     return Ok(());
                                 }
 
