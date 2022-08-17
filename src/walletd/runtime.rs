@@ -421,8 +421,6 @@ impl Runtime {
                         if self.wallets.get(&swap_id).is_none() {
                             let funding = create_funding(&mut key_manager, offer.network)?;
                             let funding_addr = funding.get_address()?;
-                            let funding_fee = bitcoin::Amount::from_sat(150);
-                            let funding_amount = offer.arbitrating_amount + funding_fee;
                             self.send_ctl(
                                 endpoints,
                                 ServiceId::Database,
@@ -432,12 +430,6 @@ impl Runtime {
                                         .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
                                 }),
                             )?;
-                            debug!(
-                                "{} | Send {} to {}",
-                                swap_id.bright_blue_italic(),
-                                funding_amount.bright_green_bold(),
-                                funding_addr.addr(),
-                            );
                             debug!(
                                 "{} | Loading {}",
                                 swap_id.bright_blue_italic(),
@@ -1315,8 +1307,6 @@ impl Runtime {
                             bob.generate_parameters(&mut key_manager, &public_offer)?;
                         let funding = create_funding(&mut key_manager, offer.network)?;
                         let funding_addr = funding.get_address()?;
-                        let funding_fee = bitcoin::Amount::from_sat(200);
-                        let funding_amount = offer.arbitrating_amount + funding_fee;
                         self.send_ctl(
                             endpoints,
                             ServiceId::Database,
@@ -1326,12 +1316,6 @@ impl Runtime {
                                     .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
                             }),
                         )?;
-                        debug!(
-                            "{} | Send {} to {}",
-                            swap_id.bright_blue_italic(),
-                            funding_amount.to_string().bright_green_bold(),
-                            funding_addr.addr(),
-                        );
                         debug!(
                             "{} | Loading {}",
                             swap_id.bright_blue_italic(),
