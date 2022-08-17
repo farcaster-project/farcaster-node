@@ -438,7 +438,11 @@ impl Runtime {
             }
             // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
             self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
-            let pending_request = PendingRequest::from_event(&event, ServiceBus::Msg);
+            let pending_request = PendingRequest::from_event_forward(
+                &event,
+                ServiceBus::Msg,
+                self.peer_service.clone(),
+            );
             self.pending_requests
                 .defer_request(self.syncer_state.monero_syncer(), pending_request);
         }
