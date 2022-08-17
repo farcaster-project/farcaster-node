@@ -127,10 +127,10 @@ impl ElectrumRpc {
         &mut self,
         address_addendum: BtcAddressAddendum,
     ) -> Result<AddressNotif, Error> {
-        debug!("attempting subscribing: {:?}", address_addendum);
+        debug!("attempting subscribing to: {:?}", address_addendum);
 
         if !self.addresses.contains_key(&address_addendum) {
-            debug!("subscribing: {:?}", address_addendum);
+            debug!("subscribing to: {:?}", address_addendum);
             let script_status = self
                 .client
                 .script_subscribe(&address_addendum.address.script_pubkey())?;
@@ -829,7 +829,7 @@ fn transaction_broadcasting(
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         while let Some((broadcast_transaction, source)) = transaction_broadcast_rx.recv().await {
-            debug!("creating transaction broadcast client");
+            debug!("creating transaction broadcast electrum client");
             match create_electrum_client(&electrum_server, proxy_address.clone()).and_then(
                 |broadcast_client| {
                     broadcast_client.transaction_broadcast_raw(&broadcast_transaction.tx.clone())
@@ -847,7 +847,7 @@ fn transaction_broadcasting(
                         })
                         .await
                         .expect("error sending transaction broadcast event");
-                    info!("Successfully broadcasted: {}", txid.bright_yellow_italic());
+                    debug!("Successfully broadcasted: {}", txid.bright_yellow_italic());
                 }
                 Err(e) => {
                     tx_event
@@ -917,7 +917,7 @@ fn estimate_fee_polling(
         let high_priority_target = 2;
         let low_priority_target = 6;
         loop {
-            debug!("creating fee polling client");
+            debug!("creating fee polling electrum client");
             if let Ok(client) = create_electrum_client(&electrum_server, proxy_address.clone()) {
                 loop {
                     match client.estimate_priority_fee(high_priority_target, low_priority_target) {
@@ -1008,7 +1008,7 @@ fn transaction_fetcher(
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         while let Some((get_transaction, source)) = transaction_get_rx.recv().await {
-            debug!("creating transaction fetcher client");
+            debug!("creating transaction fetcher electrum client");
             match create_electrum_client(&electrum_server, proxy_address.clone()).and_then(
                 |transaction_client| {
                     transaction_client.transaction_get(
@@ -1028,7 +1028,7 @@ fn transaction_fetcher(
                         })
                         .await
                         .expect("error sending transaction retrieved event");
-                    info!(
+                    debug!(
                         "successfully retrieved tx: {:?}",
                         hex::encode(get_transaction.hash)
                     );
@@ -1044,7 +1044,7 @@ fn transaction_fetcher(
                         })
                         .await
                         .expect("error sending transaction retrieved event");
-                    info!("failed to retrieved tx: {:?}", e);
+                    debug!("failed to retrieved tx: {:?}", e);
                 }
             }
         }
@@ -1072,7 +1072,7 @@ impl Synclet for BitcoinSyncer {
     ) -> Result<(), Error> {
         let btc_network = network.into();
         let proxy_address = opts.shared.tor_proxy.map(|address| address.to_string());
-        info!("using proxy: {:?}", proxy_address);
+        debug!("bitcoin synclet using proxy: {:?}", proxy_address);
 
         if let Some(electrum_server) = &opts.electrum_server {
             let electrum_server = electrum_server.clone();
