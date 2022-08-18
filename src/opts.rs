@@ -86,7 +86,7 @@ pub struct Opts {
 
     /// ZMQ socket name/address for daemon control interface
     ///
-    /// Internal interface for control PRC protocol communications. Defaults
+    /// Internal interface for control RPC protocol communications. Defaults
     /// to `ctl.rpc` file inside `--data-dir` directory.
     #[clap(
         short = 'x',

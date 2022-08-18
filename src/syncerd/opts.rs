@@ -17,7 +17,7 @@ use std::str::FromStr;
 
 /// Syncer blockchain management daemon; part of Farcaster Node
 ///
-/// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
+/// The daemon is controlled through ZMQ ctl socket (see `ctl-socket` argument
 /// description)
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(name = "syncerd", bin_name = "syncerd", author, version)]
