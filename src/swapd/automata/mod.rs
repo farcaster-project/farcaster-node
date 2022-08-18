@@ -507,12 +507,12 @@ impl Runtime {
                 Tx::Cancel(_) | Tx::Buy(_) => {
                     // FIXME: use PendingRequests facility?
                     if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
-                        // self.handle_ctl(endpoints, source, lock_tx_confs_req)?; // FIXME uncomment
+                        self.handle_ctl(event.endpoints, source, lock_tx_confs_req)?;
                     }
                 }
                 Tx::Refund(_) | Tx::Punish(_) => {
                     if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone() {
-                        // self.handle_ctl(endpoints, source, cancel_tx_confs_req)?; // FIXME uncomment
+                        self.handle_ctl(event.endpoints, source, cancel_tx_confs_req)?;
                     }
                 }
                 _ => {}
