@@ -115,37 +115,39 @@ impl Runtime {
             Some(&self.pending_requests),
         ) {
             // Msg bus
-            Awaiting::MakerCommit => self.process_maker_commit(event),
-            Awaiting::RevealProof => self.process_reveal_proof(event),
-            Awaiting::RevealAlice => self.process_reveal_alice(event),
-            Awaiting::Reveal => self.process_reveal(event),
-            Awaiting::CoreArb => self.process_core_arb(event),
-            Awaiting::RefundSigs => self.process_refund_sigs(event),
-            Awaiting::BuySig => self.process_buy_sig(event),
+            Awaiting::TakerP2pMakerCommit => self.taker_p2p_maker_commit(event),
+            Awaiting::MakerTakerP2pRevealProof => self.maker_taker_p2p_reveal_proof(event),
+            Awaiting::MakerTakerP2pReveal => self.maker_taker_p2p_reveal(event),
+            Awaiting::AliceP2pCoreArb => self.alice_p2p_core_arb(event),
+            Awaiting::AliceP2pBuySig => self.alice_p2p_buy_sig(event),
+            Awaiting::BobP2pRevealAlice => self.bob_p2p_reveal_alice(event),
+            Awaiting::BobP2pRefundSigs => self.bob_p2p_refund_sigs(event),
 
             // Ctl bus
-            Awaiting::TakeSwapCtl => self.take_swap_ctl(event),
-            Awaiting::RevealProofCtl => self.process_reveal_proof_ctl(event),
-            Awaiting::MakeSwapCtl => self.process_make_swap_ctl(event),
-            Awaiting::FundingUpdatedCtl => self.process_funding_updated_ctl(event),
-            Awaiting::CoreArbCtl => self.process_core_arb_ctl(event),
-            Awaiting::RefundSigsCtl => self.process_refund_sigs_ctl(event),
-            Awaiting::BuySigCtl => self.process_buy_sig_ctl(event),
-            Awaiting::TxLock => self.process_tx_lock(event),
-            Awaiting::Tx => self.process_tx(event),
-            Awaiting::SweepMonero => self.process_sweep_monero(event),
-            Awaiting::Terminate => self.process_terminate(),
-            Awaiting::SweepBitcoin => self.process_sweep_bitcoin(event),
-            Awaiting::PeerReconnected => self.peer_reconnected(event),
-            Awaiting::Checkpoint => self.checkpoint(event),
+            Awaiting::TakerCtlTakeSwap => self.taker_ctl_take_swap(event),
+            Awaiting::MakerCtlRevealProof => self.maker_ctl_reveal_proof(event),
+            Awaiting::MakerCtlMakeSwap => self.maker_ctl_make_swap(event),
+            Awaiting::MakerTakerCtlFundingUpdated => self.maker_taker_ctl_funding_updated(event),
+            Awaiting::BobCtlCoreArb => self.bob_ctl_core_arb(event),
+            Awaiting::AliceCtlRefundSigs => self.alice_ctl_refund_sigs(event),
+            Awaiting::BobCtlBuySig => self.bob_ctl_buy_sig(event),
+            Awaiting::BobCtlTxLock => self.bob_ctl_tx_lock(event),
+            Awaiting::AliceBobCtlTx => self.alice_bob_ctl_tx(event),
+            Awaiting::AliceBobCtlSweepMonero => self.alice_bob_ctl_sweep_monero(event),
+            Awaiting::AliceBobCtlTerminate => self.alice_bob_ctl_terminate(),
+            Awaiting::AliceBobCtlSweepBitcoin => self.alice_bob_ctl_sweep_bitcoin(event),
+            Awaiting::AliceBobCtlPeerReconnected => self.alice_bob_ctl_peer_reconnected(event),
+            Awaiting::AliceBobCtlCheckpoint => self.alice_bob_ctl_checkpoint(event),
 
-            // RPC
-            Awaiting::AbortSimple => self.process_abort_simple(event),
-            Awaiting::AbortBob => self.process_abort_bob(event),
-            Awaiting::AbortBlocked => self.process_abort_blocked(event),
-            Awaiting::GetInfo => self.get_info(event),
+            // Ctl + Rpc bus
+            Awaiting::AliceBobCtlRpcAbortSimple => self.alice_bob_ctl_rpc_abort_simple(event),
+            Awaiting::BobCtlRpcAbortBob => self.bob_ctl_rpc_abort_bob(event),
+            Awaiting::AliceBobCtlRpcAbortBlocked => self.alice_bob_ctl_rpc_abort_blocked(event),
 
-            // Syncer
+            // Rpc bus
+            Awaiting::AliceBobRpcGetInfo => self.alice_bob_rpc_get_info(event),
+
+            // Syncer bus
 
             // Others
             Awaiting::Unknown => Err(Error::Farcaster(s!("Invalid state for this event"))),
@@ -155,7 +157,7 @@ impl Runtime {
 
 /// Ctl bus processing fns
 impl Runtime {
-    fn take_swap_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn taker_ctl_take_swap(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::TakeSwap(InitSwap {
             peerd,
             report_to,
@@ -191,7 +193,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_reveal_proof_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn maker_ctl_reveal_proof(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Protocol(Msg::Reveal(request::Reveal::Proof(proof))) = event.message.clone()
         {
             let reveal_proof = Msg::Reveal(request::Reveal::Proof(proof));
@@ -210,7 +212,7 @@ impl Runtime {
         }
         Ok(())
     }
-    fn process_make_swap_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn maker_ctl_make_swap(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::MakeSwap(InitSwap {
             peerd,
             report_to,
@@ -242,7 +244,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_funding_updated_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn maker_taker_ctl_funding_updated(&mut self, event: Event<Request>) -> Result<(), Error> {
         let success_proof = PendingRequests::continue_deferred_requests(
             self,
             event.endpoints,
@@ -281,7 +283,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_core_arb_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn bob_ctl_core_arb(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup)) = event.message {
             // checkpoint swap pre lock bob
             debug!(
@@ -345,7 +347,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_refund_sigs_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_ctl_refund_sigs(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs)) = event.message {
             // checkpoint alice pre lock bob
             debug!(
@@ -394,7 +396,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_buy_sig_ctl(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn bob_ctl_buy_sig(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig)) = event.message {
             // checkpoint bob pre buy
             debug!(
@@ -449,7 +451,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_tx_lock(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn bob_ctl_tx_lock(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Tx(Tx::Lock(btc_lock)) = event.message {
             log_tx_received(self.swap_id(), TxLabel::Lock);
             self.broadcast(btc_lock, TxLabel::Lock, event.endpoints)?;
@@ -478,7 +480,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_tx(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_ctl_tx(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Tx(transaction) = event.message {
             // update state
             match transaction.clone() {
@@ -521,7 +523,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_sweep_monero(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_ctl_sweep_monero(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::SweepMoneroAddress(SweepMoneroAddress {
             source_view_key,
             source_spend_key,
@@ -569,7 +571,7 @@ impl Runtime {
         }
         Ok(())
     }
-    fn process_terminate(&mut self) -> Result<(), Error> {
+    fn alice_bob_ctl_terminate(&mut self) -> Result<(), Error> {
         info!(
             "{} | {}",
             self.swap_id().bright_blue_italic(),
@@ -577,7 +579,7 @@ impl Runtime {
         );
         std::process::exit(0);
     }
-    fn process_sweep_bitcoin(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_ctl_sweep_bitcoin(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::SweepBitcoinAddress(sweep_bitcoin_address) = event.message.clone() {
             info!(
                 "{} | Sweeping source (funding) address: {} to destination address: {}",
@@ -594,7 +596,7 @@ impl Runtime {
         }
         Ok(())
     }
-    fn process_abort_simple(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_ctl_rpc_abort_simple(&mut self, event: Event<Request>) -> Result<(), Error> {
         // just cancel the swap, no additional logic required
         let new_state = match self.state.swap_role() {
             SwapRole::Alice => State::Alice(AliceState::FinishA(Outcome::Abort)),
@@ -612,7 +614,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_abort_bob(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn bob_ctl_rpc_abort_bob(&mut self, event: Event<Request>) -> Result<(), Error> {
         self.send_ctl(
             event.endpoints,
             ServiceId::Wallet,
@@ -632,7 +634,7 @@ impl Runtime {
         }
         Ok(())
     }
-    fn process_abort_blocked(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_ctl_rpc_abort_blocked(&mut self, event: Event<Request>) -> Result<(), Error> {
         let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
         warn!("{} | {}", self.swap_id(), msg);
 
@@ -649,7 +651,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn get_info(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_rpc_get_info(&mut self, event: Event<Request>) -> Result<(), Error> {
         {
             let swap_id = if self.swap_id() == zero!() {
                 None
@@ -674,7 +676,7 @@ impl Runtime {
             Ok(())
         }
     }
-    fn peer_reconnected(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_ctl_peer_reconnected(&mut self, event: Event<Request>) -> Result<(), Error> {
         for msg in self.pending_peer_request.clone().iter() {
             self.send_peer(event.endpoints, msg.clone())?;
         }
@@ -682,7 +684,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn checkpoint(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn alice_bob_ctl_checkpoint(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Checkpoint(request::Checkpoint { swap_id, state }) = event.message {
             match state {
                 CheckpointState::CheckpointSwapd(CheckpointSwapd {
@@ -1410,7 +1412,7 @@ impl Runtime {
 
 /// Msg bus processing fns
 impl Runtime {
-    fn process_reveal(&mut self, mut event: Event<Request>) -> Result<(), Error> {
+    fn maker_taker_p2p_reveal(&mut self, mut event: Event<Request>) -> Result<(), Error> {
         // bob and alice
         // store parameters from counterparty if we have not received them yet.
         // if we're maker, also reveal to taker if their commitment is valid.
@@ -1479,7 +1481,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_reveal_proof(&mut self, mut event: Event<Request>) -> Result<(), Error> {
+    fn maker_taker_p2p_reveal_proof(&mut self, mut event: Event<Request>) -> Result<(), Error> {
         // These messages are saved as pending if Bob and then forwarded once the
         // parameter reveal forward is triggered. If Alice, send immediately.
         match self.state().swap_role() {
@@ -1496,7 +1498,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_reveal_alice(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn bob_p2p_reveal_alice(&mut self, event: Event<Request>) -> Result<(), Error> {
         if self.state().b_address().is_none() {
             let msg = format!("FIXME: b_address is None, request {}", event.message);
             error!("{}", msg);
@@ -1513,7 +1515,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_maker_commit(&mut self, mut event: Event<Request>) -> Result<(), Error> {
+    fn taker_p2p_maker_commit(&mut self, mut event: Event<Request>) -> Result<(), Error> {
         if let Request::Protocol(Msg::MakerCommit(ref remote_commit)) = event.message {
             trace!("received remote commitment");
             self.state.t_sup_remote_commit(remote_commit.clone());
@@ -1538,7 +1540,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_core_arb(&mut self, mut event: Event<Request>) -> Result<(), Error> {
+    fn alice_p2p_core_arb(&mut self, mut event: Event<Request>) -> Result<(), Error> {
         // alice receives, bob sends
         if let Request::Protocol(Msg::CoreArbitratingSetup(CoreArbitratingSetup {
             lock,
@@ -1576,13 +1578,13 @@ impl Runtime {
         Ok(())
     }
 
-    fn process_refund_sigs(&mut self, mut event: Event<Request>) -> Result<(), Error> {
+    fn bob_p2p_refund_sigs(&mut self, mut event: Event<Request>) -> Result<(), Error> {
         self.state.sup_received_refund_procedure_signatures();
         event.forward(ServiceBus::Msg, ServiceId::Wallet)?;
         Ok(())
     }
 
-    fn process_buy_sig(&mut self, mut event: Event<Request>) -> Result<(), Error> {
+    fn alice_p2p_buy_sig(&mut self, mut event: Event<Request>) -> Result<(), Error> {
         // alice receives, bob sends
         if let Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) = event.message.clone() {
             // Alice verifies that she has sent refund procedure signatures before
