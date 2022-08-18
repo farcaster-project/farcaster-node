@@ -126,32 +126,32 @@ pub enum SwapCheckpointType {
 
 pub enum Awaiting {
     // Msg
-    MakerCommit,
-    RevealProof,
-    RevealAlice,
-    Reveal,
-    CoreArb,
-    RefundSigs,
-    BuySig,
+    TakerP2pMakerCommit,
+    MakerTakerP2pRevealProof,
+    BobP2pRevealAlice,
+    MakerTakerP2pReveal,
+    AliceP2pCoreArb,
+    BobP2pRefundSigs,
+    AliceP2pBuySig,
     // Ctl
-    TakeSwapCtl,
-    RevealProofCtl,
-    FundingUpdatedCtl,
-    MakeSwapCtl,
-    CoreArbCtl,
-    RefundSigsCtl,
-    BuySigCtl,
-    TxLock,
-    Tx,
-    SweepMonero,
-    Terminate,
-    SweepBitcoin,
-    AbortSimple,
-    AbortBob,
-    AbortBlocked,
-    GetInfo,
-    PeerReconnected,
-    Checkpoint,
+    TakerCtlTakeSwap,
+    MakerCtlRevealProof,
+    MakerTakerCtlFundingUpdated,
+    MakerCtlMakeSwap,
+    BobCtlCoreArb,
+    AliceCtlRefundSigs,
+    BobCtlBuySig,
+    BobCtlTxLock,
+    AliceBobCtlTx,
+    AliceBobCtlSweepMonero,
+    AliceBobCtlTerminate,
+    AliceBobCtlSweepBitcoin,
+    AliceBobCtlRpcAbortSimple,
+    BobCtlRpcAbortBob,
+    AliceBobCtlRpcAbortBlocked,
+    AliceBobRpcGetInfo,
+    AliceBobCtlPeerReconnected,
+    AliceBobCtlCheckpoint,
 
     // else
     Unknown,
@@ -164,59 +164,68 @@ impl Awaiting {
         syncer_state: Option<&SyncerState>,
         pending_requests: Option<&PendingRequests>,
     ) -> Self {
-        if state.p_maker_commit(&event) {
-            Awaiting::MakerCommit
-        } else if state.p_reveal_proof(&event) {
-            Awaiting::RevealProof
-        } else if syncer_state.is_some() && state.p_reveal_alice(&event, syncer_state.unwrap()) {
-            Awaiting::RevealAlice
-        } else if syncer_state.is_some() && state.p_reveal(event, syncer_state.unwrap()) {
-            Awaiting::Reveal
-        } else if state.p_core_arb(event) {
-            Awaiting::CoreArb
-        } else if state.p_refund_sigs(event) {
-            Awaiting::RefundSigs
-        } else if state.p_buy_sig(event) {
-            Awaiting::BuySig
-        } else if state.p_take_swap(event) {
-            Awaiting::TakeSwapCtl
-        } else if state.p_reveal_proof_ctl(event) {
-            Awaiting::RevealProofCtl
-        } else if state.p_make_swap_ctl(event) {
-            Awaiting::MakeSwapCtl
+        // Msg bus
+        if state.p_t_p2p_maker_commit(&event) {
+            Awaiting::TakerP2pMakerCommit
+        } else if state.p_mt_p2p_reveal_proof(&event) {
+            Awaiting::MakerTakerP2pRevealProof
+        } else if syncer_state.is_some() && state.p_b_reveal_alice(&event, syncer_state.unwrap()) {
+            Awaiting::BobP2pRevealAlice
+        } else if syncer_state.is_some() && state.p_mt_p2p_reveal(event, syncer_state.unwrap()) {
+            Awaiting::MakerTakerP2pReveal
+        } else if state.p_a_p2p_core_arb(event) {
+            Awaiting::AliceP2pCoreArb
+        } else if state.p_b_p2p_refund_sigs(event) {
+            Awaiting::BobP2pRefundSigs
+        } else if state.p_a_p2p_buy_sig(event) {
+            Awaiting::AliceP2pBuySig
+        }
+        // Ctl bus
+        else if state.p_t_ctl_take_swap(event) {
+            Awaiting::TakerCtlTakeSwap
+        } else if state.p_tm_ctl_reveal_proof(event) {
+            Awaiting::MakerCtlRevealProof
+        } else if state.p_m_ctl_make_swap(event) {
+            Awaiting::MakerCtlMakeSwap
         } else if pending_requests.is_some()
-            && state.p_funding_updated_ctl(event, pending_requests.unwrap())
+            && state.p_mt_ctl_funding_updated(event, pending_requests.unwrap())
         {
-            Awaiting::FundingUpdatedCtl
-        } else if state.p_core_arb_ctl(event) {
-            Awaiting::CoreArbCtl
-        } else if state.p_refund_sigs_ctl(event) {
-            Awaiting::RefundSigsCtl
-        } else if syncer_state.is_some() && state.p_buy_sig_ctl(event, syncer_state.unwrap()) {
-            Awaiting::BuySigCtl
-        } else if state.p_tx_lock(event) {
-            Awaiting::TxLock
-        } else if state.p_tx(event) {
-            Awaiting::Tx
-        } else if state.p_sweep_monero(event) {
-            Awaiting::SweepMonero
-        } else if state.p_sweep_bitcoin(event) {
-            Awaiting::SweepBitcoin
-        } else if state.p_terminate(event) {
-            Awaiting::Terminate
-        } else if state.p_abort_simple(event) {
-            Awaiting::AbortSimple
-        } else if state.p_abort_bob(event) {
-            Awaiting::AbortBob
-        } else if state.p_abort_blocked(event) {
-            Awaiting::AbortBlocked
-        } else if state.p_get_info(event) {
-            Awaiting::GetInfo
-        } else if state.p_peer_reconnected(event) {
-            Awaiting::PeerReconnected
-        } else if state.p_checkpoint(event) {
-            Awaiting::Checkpoint
-        } else {
+            Awaiting::MakerTakerCtlFundingUpdated
+        } else if state.p_b_ctl_core_arb(event) {
+            Awaiting::BobCtlCoreArb
+        } else if state.p_a_ctl_refund_sigs(event) {
+            Awaiting::AliceCtlRefundSigs
+        } else if syncer_state.is_some() && state.p_b_ctl_buy_sig(event, syncer_state.unwrap()) {
+            Awaiting::BobCtlBuySig
+        } else if state.p_b_ctl_tx_lock(event) {
+            Awaiting::BobCtlTxLock
+        } else if state.p_ab_ctl_tx(event) {
+            Awaiting::AliceBobCtlTx
+        } else if state.p_ab_ctl_sweep_monero(event) {
+            Awaiting::AliceBobCtlSweepMonero
+        } else if state.p_ab_ctl_sweep_bitcoin(event) {
+            Awaiting::AliceBobCtlSweepBitcoin
+        } else if state.p_ab_ctl_terminate(event) {
+            Awaiting::AliceBobCtlTerminate
+        } else if state.p_ab_ctl_peer_reconnected(event) {
+            Awaiting::AliceBobCtlPeerReconnected
+        } else if state.p_ab_ctl_checkpoint(event) {
+            Awaiting::AliceBobCtlCheckpoint
+        }
+        // Ctl + Rpc buses
+        else if state.p_ab_ctl_rpc_abort_simple(event) {
+            Awaiting::AliceBobCtlRpcAbortSimple
+        } else if state.p_b_ctl_rpc_abort_bob(event) {
+            Awaiting::BobCtlRpcAbortBob
+        } else if state.p_ab_ctl_rpc_abort_blocked(event) {
+            Awaiting::AliceBobCtlRpcAbortBlocked
+        }
+        // Rpc bus
+        else if state.p_ab_rpc_get_info(event) {
+            Awaiting::AliceBobRpcGetInfo
+        }
+        // Unknown
+        else {
             error!("Could not match this event and state to any known condition");
             Awaiting::Unknown
         }
@@ -227,26 +236,31 @@ impl Awaiting {
 // allow dead code.
 #[allow(dead_code)]
 impl State {
-    // p stands for predicate, TODO add more predicates such as source, dest, syncer_state, txs,
-    // Msg
-    pub fn p_maker_commit(&self, ev: &Event<Request>) -> bool {
+    // p stands for predicate, TODO add more predicates such as source, dest,
+    // syncer_state, txs. FIXME for events that require data, e.g., b_address,
+    // Awaiting enum should hold that data, and no unwraps should be needed on
+    // the processing fns. Probably segregate the predicate from the event.
+    // Needed for the automata that runs not in response to events, but because
+    // it already has all the needed preconditions and can perform actions
+    // independently
+    pub fn p_t_p2p_maker_commit(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::MakerCommit(_)))
             && self.commit()
             && self.trade_role() == Some(TradeRole::Taker)
             && self.remote_commit().is_none()
     }
-    pub fn p_reveal_proof(&self, ev: &Event<Request>) -> bool {
+    pub fn p_mt_p2p_reveal_proof(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
-            && !self.p_reveal_proof_ctl(ev)
+            && !self.p_tm_ctl_reveal_proof(ev)
     }
-    pub fn p_reveal_alice(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+    pub fn p_b_reveal_alice(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
         matches!(
             ev.message,
             Request::Protocol(Msg::Reveal(Reveal::AliceParameters(..)))
         ) && self.swap_role() == SwapRole::Bob
             && (self.b_address().is_none() || syncer_state.btc_fee_estimate_sat_per_kvb.is_none())
     }
-    pub fn p_reveal(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+    pub fn p_mt_p2p_reveal(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
         matches!(ev.message, Request::Protocol(Msg::Reveal(_)))
             && !matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_)))) // FIXME: remove when Reveal Proof split
             && self.remote_commit().is_some()
@@ -263,36 +277,37 @@ impl State {
                 }
             }
     }
-    pub fn p_core_arb(&self, ev: &Event<Request>) -> bool {
+    pub fn p_a_p2p_core_arb(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::CoreArbitratingSetup(_)))
             && self.swap_role() == SwapRole::Alice
             && self.reveal()
     }
-    pub fn p_refund_sigs(&self, ev: &Event<Request>) -> bool {
+    pub fn p_b_p2p_refund_sigs(&self, ev: &Event<Request>) -> bool {
         matches!(
             ev.message,
             Request::Protocol(Msg::RefundProcedureSignatures(_))
         ) && self.b_core_arb()
     }
 
-    pub fn p_buy_sig(&self, ev: &Event<Request>) -> bool {
+    pub fn p_a_p2p_buy_sig(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::BuyProcedureSignature(_)))
             && self.a_refundsig()
+            // && self.a_sup_checkpoint_pre_buy() // FIXME turn on, off for not changing behavior on refactor
             && !self.a_overfunded()
     }
 
     // Ctl
-    pub fn p_take_swap(&self, ev: &Event<Request>) -> bool {
+    pub fn p_t_ctl_take_swap(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::TakeSwap(_))
     }
-    pub fn p_reveal_proof_ctl(&self, ev: &Event<Request>) -> bool {
+    pub fn p_tm_ctl_reveal_proof(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
             && matches!(ev.source, ServiceId::Wallet)
             && matches!(ev.service, ServiceId::Swap(_))
             && self.commit()
             && self.remote_commit().is_some()
     }
-    pub fn p_make_swap_ctl(&self, ev: &Event<Request>) -> bool {
+    pub fn p_m_ctl_make_swap(&self, ev: &Event<Request>) -> bool {
         matches!(
             ev.message,
             Request::MakeSwap(InitSwap {
@@ -301,7 +316,7 @@ impl State {
             })
         ) && self.start()
     }
-    pub fn p_funding_updated_ctl(
+    pub fn p_mt_ctl_funding_updated(
         &self,
         ev: &Event<Request>,
         pending_requests: &PendingRequests, // FIXME pending_request should be PendingEvents
@@ -317,51 +332,52 @@ impl State {
                 .unwrap()
     }
 
-    pub fn p_core_arb_ctl(&self, ev: &Event<Request>) -> bool {
+    pub fn p_b_ctl_core_arb(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::CoreArbitratingSetup(_)))
             && self.reveal()
+            && self.swap_role() == SwapRole::Bob
             && self.remote_params().is_some()
             && self.local_params().is_some()
     }
 
-    pub fn p_refund_sigs_ctl(&self, ev: &Event<Request>) -> bool {
+    pub fn p_a_ctl_refund_sigs(&self, ev: &Event<Request>) -> bool {
         matches!(
             ev.message,
             Request::Protocol(Msg::RefundProcedureSignatures(_))
         ) && self.reveal()
+            && self.swap_role() == SwapRole::Alice
             && self.remote_params().is_some()
             && self.local_params().is_some()
     }
 
-    pub fn p_buy_sig_ctl(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+    pub fn p_b_ctl_buy_sig(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
         matches!(ev.message, Request::Protocol(Msg::BuyProcedureSignature(_)))
             && self.b_core_arb()
             && !syncer_state.tasks.txids.contains_key(&TxLabel::Buy)
     }
 
-    pub fn p_tx_lock(&self, ev: &Event<Request>) -> bool {
+    pub fn p_b_ctl_tx_lock(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Tx(Tx::Lock(_)))
             && self.b_core_arb()
             && self.local_params().is_some()
             && self.remote_params().is_some()
     }
-    // FIXME: disambiguate p_tx from p_tx_lock if needed
-    pub fn p_tx(&self, ev: &Event<Request>) -> bool {
-        matches!(ev.message, Request::Tx(_)) && !self.p_tx_lock(ev)
+    pub fn p_ab_ctl_tx(&self, ev: &Event<Request>) -> bool {
+        matches!(ev.message, Request::Tx(_)) && !self.p_b_ctl_tx_lock(ev)
     }
 
-    pub fn p_sweep_monero(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_ctl_sweep_monero(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::SweepMoneroAddress(_)) && ev.source == ServiceId::Wallet
     }
 
-    pub fn p_terminate(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_ctl_terminate(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Terminate) && ev.source == ServiceId::Farcasterd
     }
 
-    pub fn p_sweep_bitcoin(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_ctl_sweep_bitcoin(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::SweepBitcoinAddress(_))
     }
-    pub fn p_abort_simple(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_ctl_rpc_abort_simple(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::AbortSwap)
             && (self.b_start()
                 || self.a_start()
@@ -369,24 +385,24 @@ impl State {
                 || self.a_reveal()
                 || (self.a_refundsig() && !self.a_btc_locked()))
     }
-    pub fn p_abort_bob(&self, ev: &Event<Request>) -> bool {
+    pub fn p_b_ctl_rpc_abort_bob(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::AbortSwap)
             && (self.b_commit()
                 || self.b_reveal()
                 || (self.b_core_arb() && !self.b_received_refund_procedure_signatures()))
     }
-    pub fn p_abort_blocked(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_ctl_rpc_abort_blocked(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::AbortSwap)
-            && !self.p_abort_simple(ev)
-            && !self.p_abort_bob(ev)
+            && !self.p_ab_ctl_rpc_abort_simple(ev)
+            && !self.p_b_ctl_rpc_abort_bob(ev)
     }
-    pub fn p_get_info(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_rpc_get_info(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::GetInfo)
     }
-    pub fn p_peer_reconnected(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_ctl_peer_reconnected(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::PeerdReconnected)
     }
-    pub fn p_checkpoint(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ab_ctl_checkpoint(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Checkpoint(_))
     }
     pub fn swap_role(&self) -> SwapRole {
