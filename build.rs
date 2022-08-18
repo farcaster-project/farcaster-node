@@ -70,6 +70,7 @@ fn main() -> Result<(), configure_me_codegen::Error> {
         generate_to(Bash, app, &name, &outdir)?;
         generate_to(PowerShell, app, &name, &outdir)?;
         generate_to(Zsh, app, &name, &outdir)?;
+        generate_to(Fish, app, &name, &outdir)?;
     }
 
     configure_me_codegen::build_script_auto()
