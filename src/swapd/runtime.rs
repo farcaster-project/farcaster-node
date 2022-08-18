@@ -1439,11 +1439,6 @@ impl Runtime {
                                 )?;
                                 // If the bitcoin amount does not match the expected funding amount, abort the swap
                                 let amount = bitcoin::Amount::from_sat(*amount);
-                                info!(
-                                    "LMAO: {}, {:?}",
-                                    self.state,
-                                    self.state.b_required_funding_amount()
-                                );
                                 let required_funding_amount =
                                     self.state.b_required_funding_amount().unwrap();
 

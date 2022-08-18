@@ -628,7 +628,7 @@ async fn run_syncerd_task_receiver(
                     continue;
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    panic!("Task receiver is disconnected, will exit runtime")
+                    panic!("Task receiver is disconnected, will exit synclet runtime")
                 }
                 Err(TryRecvError::Empty) => {
                     // do nothing
