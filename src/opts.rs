@@ -20,7 +20,7 @@ use std::{fs, io};
 
 use internet2::addr::ServiceAddr;
 
-#[cfg(any(target_os = "linux"))]
+#[cfg(target_os = "linux")]
 pub const FARCASTER_DATA_DIR: &str = "~/.farcaster";
 #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
 pub const FARCASTER_DATA_DIR: &str = "~/.farcaster";
