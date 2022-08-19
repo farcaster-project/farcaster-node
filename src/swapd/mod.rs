@@ -12,9 +12,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-mod automata;
 #[cfg(feature = "shell")]
 mod opts;
+mod process_msgs;
 mod runtime;
 #[allow(dead_code)]
 mod swap_state;
