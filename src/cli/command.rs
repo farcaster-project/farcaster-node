@@ -186,8 +186,6 @@ impl Exec for Command {
                     offer,
                     public_addr,
                     bind_addr,
-                    peer_secret_key: None,
-                    peer_public_key: None,
                     arbitrating_addr,
                     accordant_addr,
                 };

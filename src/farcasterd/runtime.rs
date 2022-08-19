@@ -118,6 +118,10 @@ pub fn run(
 
     let runtime = Runtime {
         identity: ServiceId::Farcasterd,
+        walletd_ready: false,
+        databased_ready: false,
+        node_secret_key: None,
+        node_public_key: None,
         listens: none!(),
         started: SystemTime::now(),
         connections: none!(),
@@ -133,7 +137,6 @@ pub fn run(
         node_ids: none!(),
         peerd_ids: none!(),
         wallet_token,
-        pending_requests: none!(),
         pending_sweep_requests: none!(),
         syncers: none!(),
         consumed_offers: none!(),
@@ -155,6 +158,10 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,
+    walletd_ready: bool,
+    databased_ready: bool,
+    node_secret_key: Option<SecretKey>,
+    node_public_key: Option<PublicKey>,
     listens: HashMap<Uuid, InetSocketAddr>,
     started: SystemTime,
     connections: HashSet<NodeAddr>,
@@ -171,7 +178,6 @@ pub struct Runtime {
     node_ids: HashMap<Uuid, NodeId>, // Only populated by maker. TODO is it possible? HashMap<SwapId, PublicKey>
     peerd_ids: HashMap<Uuid, ServiceId>, // Only populated by maker.
     wallet_token: Token,
-    pending_requests: HashMap<request::RequestId, (Request, ServiceId)>,
     pending_sweep_requests: HashMap<ServiceId, Request>, // TODO: merge this with pending requests eventually
     syncers: Syncers,
     progress: HashMap<ServiceId, VecDeque<Request>>,
@@ -311,6 +317,26 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
+    fn services_ready(&self) -> Result<(), Error> {
+        if !self.walletd_ready {
+            Err(Error::Farcaster(
+                "Farcaster not ready yet, walletd still starting".to_string(),
+            ))
+        } else if !self.databased_ready {
+            Err(Error::Farcaster(
+                "Farcaster not ready yet, databased still starting".to_string(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+    fn peer_keys_ready(&self) -> Result<(SecretKey, PublicKey), Error> {
+        if self.node_secret_key.is_some() && self.node_public_key.is_some() {
+            Ok((self.node_secret_key.unwrap(), self.node_public_key.unwrap()))
+        } else {
+            Err(Error::Farcaster("Peer keys not ready yet".to_string()))
+        }
+    }
     fn clean_up_after_swap(
         &mut self,
         swapid: &SwapId,
@@ -555,6 +581,19 @@ impl Runtime {
                             "{}",
                             "Unexpected another farcasterd instance connection".err()
                         );
+                    }
+                    ServiceId::Database => {
+                        self.databased_ready = true;
+                    }
+                    ServiceId::Wallet => {
+                        self.walletd_ready = true;
+                        let wallet_token = GetKeys(self.wallet_token.clone());
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            source.clone(),
+                            Request::GetKeys(wallet_token),
+                        )?;
                     }
                     ServiceId::Peer(connection_id) => {
                         if self.connections.insert(*connection_id) {
@@ -858,29 +897,10 @@ impl Runtime {
                 }
             }
 
-            Request::Keys(Keys(sk, pk, id)) if self.pending_requests.contains_key(&id) => {
+            Request::Keys(Keys(sk, pk)) => {
                 debug!("received peerd keys {}", sk.display_secret());
-                if let Some((request, source)) = self.pending_requests.remove(&id) {
-                    // storing node_id
-                    trace!("Received expected peer keys, injecting key in request");
-                    let req = if let Request::MakeOffer(mut req) = request {
-                        req.peer_secret_key = Some(sk);
-                        req.peer_public_key = Some(pk);
-                        Ok(Request::MakeOffer(req))
-                    } else if let Request::TakeOffer(mut req) = request {
-                        req.peer_secret_key = Some(sk);
-                        Ok(Request::TakeOffer(req))
-                    } else {
-                        Err(Error::Farcaster(s!(
-                            "Unexpected request: calling back from Keypair handling"
-                        )))
-                    }?;
-                    trace!("Procede executing pending request");
-                    // recurse with request containing key
-                    self.handle_rpc_ctl(endpoints, source, req)?
-                } else {
-                    error!("Received unexpected peer keys");
-                }
+                self.node_secret_key = Some(sk);
+                self.node_public_key = Some(pk);
             }
 
             Request::GetInfo => {
@@ -1024,6 +1044,17 @@ impl Runtime {
             }
 
             Request::RestoreCheckpoint(swap_id) => {
+                if let Err(err) = self.services_ready() {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        source.clone(),
+                        Request::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: err.to_string(),
+                        }),
+                    )?
+                }
                 // check if wallet is running
                 if endpoints
                     .send_to(
@@ -1133,48 +1164,40 @@ impl Runtime {
                 offer,
                 public_addr,
                 bind_addr,
-                peer_secret_key,
-                peer_public_key,
                 arbitrating_addr,
                 accordant_addr,
             }) => {
-                let (bindaddr, peer_public_key) = if let Some((pk, bindaddr)) = self
-                    .listens
-                    .iter()
-                    .find(|(_, a)| a == &&bind_addr)
-                    .and_then(|(k, v)| self.node_ids.get(k).map(|pk| (pk.public_key(), v)))
-                {
-                    (Some(bindaddr), Some(pk))
-                } else {
-                    (None, peer_public_key)
-                };
-                let res = match (bindaddr, peer_secret_key, peer_public_key) {
-                    (None, None, None) => {
-                        trace!("Push MakeOffer to pending_requests and requesting a secret from Wallet");
-                        return self.get_secret(endpoints, source, request);
+                let res = self.services_ready().and_then(|_| {
+                    let (peer_secret_key, peer_public_key) = self.peer_keys_ready()?;
+                    let bindaddr = self
+                        .listens
+                        .iter()
+                        .find(|(_, a)| a == &&bind_addr)
+                        .map(|(_, addr)| *addr);
+                    match bindaddr {
+                        None => {
+                            info!(
+                                "{} for incoming peer connections on {}",
+                                "Starting listener".bright_blue_bold(),
+                                bind_addr.bright_blue_bold()
+                            );
+                            let node_id = NodeId::from(peer_public_key);
+                            self.listen(NodeAddr::new(node_id, bind_addr), peer_secret_key)
+                                .and_then(|_| {
+                                    self.listens.insert(offer.id(), bind_addr);
+                                    self.node_ids.insert(offer.id(), node_id);
+                                    Ok(())
+                                })?;
+                        }
+                        Some(addr) => {
+                            // no need for the keys, because peerd already knows them
+                            self.listens.insert(offer.id(), addr);
+                            self.node_ids
+                                .insert(offer.id(), NodeId::from(peer_public_key));
+                            let msg = format!("Already listening on {}", &bind_addr);
+                            debug!("{}", &msg);
+                        }
                     }
-                    (None, Some(sk), Some(pk)) => {
-                        info!(
-                            "{} for incoming peer connections on {}",
-                            "Starting listener".bright_blue_bold(),
-                            bind_addr.bright_blue_bold()
-                        );
-                        let node_id = NodeId::from(pk);
-                        self.listen(NodeAddr::new(node_id, bind_addr), sk).map(|_| {
-                            self.listens.insert(offer.id(), bind_addr);
-                            self.node_ids.insert(offer.id(), node_id);
-                        })
-                    }
-                    (Some(&addr), _, Some(pk)) => {
-                        // no need for the keys, because peerd already knows them
-                        self.listens.insert(offer.id(), addr);
-                        self.node_ids.insert(offer.id(), NodeId::from(pk));
-                        let msg = format!("Already listening on {}", &bind_addr);
-                        debug!("{}", &msg);
-                        Ok(())
-                    }
-                    _ => unreachable!(),
-                }.and_then(|_| {
                     info!(
                         "Connection daemon {} for incoming peer connections on {}",
                         "listens".bright_green_bold(),
@@ -1196,12 +1219,16 @@ impl Runtime {
                         pub_offer_id.bright_yellow_bold()
                     );
                     self.arb_addrs.insert(pub_offer_id, arbitrating_addr);
-                    self.acc_addrs
-                        .insert(pub_offer_id, accordant_addr);
-                    endpoints.send_to(ServiceBus::Ctl, ServiceId::Farcasterd, ServiceId::Database, Request::SetOfferStatus(OfferStatusPair {
-                        offer: public_offer.clone(),
-                        status: OfferStatus::Open,
-                    }))?;
+                    self.acc_addrs.insert(pub_offer_id, accordant_addr);
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Farcasterd,
+                        ServiceId::Database,
+                        Request::SetOfferStatus(OfferStatusPair {
+                            offer: public_offer.clone(),
+                            status: OfferStatus::Open,
+                        }),
+                    )?;
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd, // source
@@ -1211,7 +1238,7 @@ impl Runtime {
                             offer_info: OfferInfo {
                                 offer: serialized_offer,
                                 details: public_offer,
-                            }
+                            },
                         }),
                     )?;
                     Ok(())
@@ -1233,7 +1260,6 @@ impl Runtime {
                 public_offer,
                 external_address,
                 internal_address,
-                peer_secret_key,
             }) => {
                 if self.public_offers.contains(&public_offer)
                     || self.consumed_offers_contains(&public_offer)
@@ -1266,29 +1292,23 @@ impl Runtime {
                     addr: peer_address,
                 };
 
-                // Connect
-                let res = match (self.connections.contains(&peer), peer_secret_key) {
-                    (false, None) => {
-                        return self.get_secret(endpoints, source, request);
-                    }
-                    (false, Some(sk)) => {
-                        debug!(
-                            "{} to remote peer {}",
-                            "Connecting".bright_blue_bold(),
-                            peer.bright_blue_italic()
-                        );
-                        self.connect_peer(source.clone(), &peer, sk)
-                    }
-                    (true, _) => {
+                let res = self.services_ready().and_then(|_| {
+                    let (peer_secret_key, _) = self.peer_keys_ready()?;
+                    // Connect
+                    if self.connections.contains(&peer) {
                         let msg = format!(
                             "Already connected to remote peer {}",
                             peer.bright_blue_italic()
                         );
                         warn!("{}", &msg);
-                        Ok(())
+                    } else {
+                        debug!(
+                            "{} to remote peer {}",
+                            "Connecting".bright_blue_bold(),
+                            peer.bright_blue_italic()
+                        );
+                        self.connect_peer(source.clone(), &peer, peer_secret_key)?;
                     }
-                }
-                .and_then(|_| {
                     let offer_registered = "Public offer registered".to_string();
                     // not yet in the set
                     self.public_offers.insert(public_offer.clone());
@@ -1298,13 +1318,10 @@ impl Runtime {
                         &public_offer.id().bright_yellow_bold()
                     );
 
-                    // reconstruct original request, but drop peer_secret_key
-                    // from offer
                     let request = Request::TakeOffer(PubOffer {
                         public_offer: public_offer.clone(),
                         external_address,
                         internal_address,
-                        peer_secret_key: None,
                     });
                     endpoints.send_to(
                         ServiceBus::Ctl,
@@ -1999,29 +2016,6 @@ impl Runtime {
             .insert(ServiceId::Peer(*node_addr), source);
         debug!("Awaiting for peerd to connect...");
 
-        Ok(())
-    }
-
-    fn get_secret(
-        &mut self,
-        endpoints: &mut Endpoints,
-        source: ServiceId,
-        request: Request,
-    ) -> Result<(), Error> {
-        trace!(
-            "Peer keys not available yet - waiting to receive them on Request::Keypair\
-                and then proceed with parent request"
-        );
-        let req_id = RequestId::rand();
-        self.pending_requests
-            .insert(req_id.clone(), (request, source));
-        let wallet_token = GetKeys(self.wallet_token.clone(), req_id);
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            ServiceId::Farcasterd,
-            ServiceId::Wallet,
-            Request::GetKeys(wallet_token),
-        )?;
         Ok(())
     }
 
