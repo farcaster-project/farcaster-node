@@ -66,7 +66,7 @@ colored = { version = "2", optional = true }
 config = "0.11"
 configure_me = { version = "0.4", optional = true }
 dotenv = { version = "0.15", optional = true }
-electrum-client = "0.10.0"
+electrum-client = { git = "https://github.com/bitcoindevkit/rust-electrum-client", branch = "master" }
 env_logger = "0.7"
 farcaster_core = "0.5.1"
 uuid = { version = "1.1", features = ["v4", "serde"]}
@@ -117,7 +117,7 @@ clap_complete = "3.1"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 shellexpand = "2"
 configure_me_codegen = "0.4"
-electrum-client = "0.10.0"
+electrum-client = { git = "https://github.com/bitcoindevkit/rust-electrum-client", branch = "master" }
 tonic-build = "0.7"
 
 [dev-dependencies]

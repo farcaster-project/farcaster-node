@@ -50,7 +50,6 @@ pub trait Synclet {
         syncer_address: Vec<u8>,
         opts: &Opts,
         network: Network,
-        polling: bool,
     ) -> Result<(), Error>;
 }
 
@@ -83,15 +82,9 @@ pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
         syncer,
         tx,
     };
-    let polling = true;
-    runtime.syncer.run(
-        rx,
-        tx_event,
-        runtime.identity().into(),
-        &opts,
-        network,
-        polling,
-    )?;
+    runtime
+        .syncer
+        .run(rx, tx_event, runtime.identity().into(), &opts, network)?;
     let mut service = Service::service(config, runtime)?;
     service.add_bridge_service_bus(rx_event)?;
     service.run_loop()?;
