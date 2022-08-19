@@ -15,6 +15,7 @@
 #[cfg(feature = "shell")]
 mod opts;
 mod runtime;
+mod tor;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;

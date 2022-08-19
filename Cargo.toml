@@ -67,6 +67,7 @@ config = "0.11"
 configure_me = { version = "0.4", optional = true }
 dotenv = { version = "0.15", optional = true }
 electrum-client = { git = "https://github.com/bitcoindevkit/rust-electrum-client", branch = "master" }
+torut = "0.2.1"
 env_logger = "0.7"
 farcaster_core = "0.5.1"
 uuid = { version = "1.1", features = ["v4", "serde"]}
@@ -83,6 +84,7 @@ nix = { version = "0.19", optional = true }
 paste = "1.0"
 prost = "0.10.3"
 regex = { version = "1.5", optional = true }
+reqwest = { version = "0.11", features = ["json", "socks"] }
 rustc-hex = "2.1.0"
 serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
@@ -116,8 +118,10 @@ clap = { version = "3.0.0", features = ["env"] }
 clap_complete = "3.1"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 shellexpand = "2"
+reqwest = { version = "0.11", features = ["json", "socks"] }
 configure_me_codegen = "0.4"
 electrum-client = { git = "https://github.com/bitcoindevkit/rust-electrum-client", branch = "master" }
+torut = "0.2.1"
 tonic-build = "0.7"
 
 [dev-dependencies]

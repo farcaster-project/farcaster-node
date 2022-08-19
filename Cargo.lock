@@ -1042,6 +1042,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "regex",
+ "reqwest",
  "rustc-hex",
  "serde 1.0.141",
  "serde_json",
@@ -1056,6 +1057,7 @@ dependencies = [
  "toml",
  "tonic",
  "tonic-build",
+ "torut",
  "uuid",
  "zmq2",
 ]
@@ -2580,6 +2582,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-socks",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -3316,6 +3319,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-socks"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51165dfa029d2a65969413a6cc96f354b86b464498702f174a4efa13608fd8c0"
+dependencies = [
+ "either",
+ "futures-util",
+ "thiserror",
  "tokio",
 ]
 
