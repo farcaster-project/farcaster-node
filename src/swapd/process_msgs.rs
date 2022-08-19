@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::{
-    event::Event,
     databased::checkpoint_send,
+    event::Event,
     rpc::{
         request::{
             self, BitcoinFundingInfo, CheckpointState, FundingInfo, InitSwap, Msg, Outcome, Params,
