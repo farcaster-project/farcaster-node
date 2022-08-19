@@ -56,9 +56,9 @@ pub mod opts;
 pub mod rpc;
 
 #[cfg(feature = "node")]
-pub mod event;
-#[cfg(feature = "node")]
 pub mod databased;
+#[cfg(feature = "node")]
+pub mod event;
 #[cfg(feature = "node")]
 pub mod farcasterd;
 #[cfg(feature = "node")]
