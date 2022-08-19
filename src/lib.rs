@@ -58,7 +58,7 @@ pub mod opts;
 pub mod rpc;
 
 #[cfg(feature = "node")]
-pub mod automata;
+pub mod event;
 #[cfg(feature = "node")]
 pub mod databased;
 #[cfg(feature = "node")]

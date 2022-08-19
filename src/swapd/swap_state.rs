@@ -6,7 +6,7 @@ use farcaster_core::{
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::{
-    automata::Event,
+    event::Event,
     rpc::{
         request::{Commit, InitSwap, Msg, Outcome, Params, Reveal, Tx},
         Request,
