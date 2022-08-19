@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    automata::Event,
+    event::Event,
     databased::checkpoint_send,
     rpc::{
         request::{

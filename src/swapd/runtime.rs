@@ -259,7 +259,7 @@ impl PendingRequest {
             request,
         }
     }
-    pub fn from_event(event: &crate::automata::Event<Request>, bus: ServiceBus) -> Self {
+    pub fn from_event(event: &crate::event::Event<Request>, bus: ServiceBus) -> Self {
         Self::new(
             event.source.clone(),
             event.service.clone(),
@@ -268,7 +268,7 @@ impl PendingRequest {
         )
     }
     pub fn from_event_forward(
-        event: &crate::automata::Event<Request>,
+        event: &crate::event::Event<Request>,
         bus: ServiceBus,
         dest: ServiceId,
     ) -> Self {
