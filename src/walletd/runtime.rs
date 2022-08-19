@@ -353,18 +353,23 @@ impl Runtime {
     ) -> Result<(), Error> {
         let req_swap_id = get_swap_id(&source).ok();
         match &request {
-            Request::Protocol(Msg::TakerCommit(_)) if source == ServiceId::Farcasterd => {}
+            Request::Protocol(msg)
+                if req_swap_id.is_some() && Some(msg.swap_id()) == req_swap_id => {}
+
+            req if source == ServiceId::Farcasterd => match req {
+                // TODO enter farcasterd messages allowed
+                Request::Protocol(Msg::TakerCommit(_)) => {}
+                Request::Protocol(_) => return Ok(()),
+                _ => {}
+            },
+
+            // errors
             Request::Protocol(msg)
                 if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id =>
             {
                 error!("Msg and source don't have same swap_id, ignoring...");
                 return Ok(());
             }
-
-            Request::Protocol(msg)
-                if req_swap_id.is_some() && Some(msg.swap_id()) == req_swap_id => {}
-            // TODO enter farcasterd messages allowed
-            _ if source == ServiceId::Farcasterd => {}
             _ => {
                 error!(
                     "Service not supported by wallet, req: {}, source: {}",
