@@ -27,7 +27,7 @@ use internet2::addr::{LocalNode, NodeAddr};
 /// `msg.rpc` file inside the data directory from `--data-dir`). It also
 /// forwards messages from the same socket to the remote peer.
 ///
-/// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
+/// The daemon is controlled through ZMQ ctl socket (see `ctl-socket` argument
 /// description)
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(

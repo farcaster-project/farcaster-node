@@ -18,7 +18,7 @@ pub const FARCASTER_CONFIG: &str = "{data_dir}/farcasterd.toml";
 
 /// Farcaster node management daemon; part of Farcaster Node
 ///
-/// The daemon is controlled though ZMQ ctl socket (see `ctl-socket` argument
+/// The daemon is controlled through ZMQ ctl socket (see `ctl-socket` argument
 /// description)
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(name = "farcasterd", bin_name = "farcasterd", author, version)]
