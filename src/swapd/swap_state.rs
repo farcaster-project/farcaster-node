@@ -124,7 +124,6 @@ pub enum SwapCheckpointType {
     CheckpointAlicePreBuy,
 }
 
-
 // Awaiting enum variants encode the state abstractly by enforcing a set of
 // predicates to validade the swap actually is in a given state, and thus is
 // able to process the received event. It can be used as a state-machine to
