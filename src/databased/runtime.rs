@@ -118,11 +118,9 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => match &source {
-                source => {
-                    debug!("Received Hello from {}", source);
-                }
-            },
+            Request::Hello => {
+                debug!("Received Hello from {}", source);
+            }
 
             Request::Checkpoint(Checkpoint { swap_id, state }) => {
                 match state {
@@ -453,7 +451,7 @@ impl Database {
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
         let _key_size = offer.strict_encode(&mut key);
-        if !tx.get(db, &key).is_err() {
+        if tx.get(db, &key).is_ok() {
             tx.del(db, &key.clone(), None)?;
         }
         let mut val = vec![];
@@ -605,7 +603,7 @@ impl Database {
     fn set_checkpoint_state(&mut self, key: &CheckpointKey, val: &[u8]) -> Result<(), lmdb::Error> {
         let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
         let mut tx = self.0.begin_rw_txn()?;
-        if !tx.get(db, &Vec::from(key.clone())).is_err() {
+        if tx.get(db, &Vec::from(key.clone())).is_ok() {
             tx.del(db, &Vec::from(key.clone()), None)?;
         }
         tx.put(db, &Vec::from(key.clone()), &val, lmdb::WriteFlags::empty())?;

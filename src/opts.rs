@@ -121,10 +121,7 @@ impl Opts {
     pub fn process(&mut self) {
         let env = env_logger::Env::new().default_filter_or("farcaster_node=info");
         // standard environment variable set to "true" when running in CI environments
-        let is_test = match std::env::var("CI") {
-            Ok(v) if v == "true" => true,
-            _ => false,
-        };
+        let is_test = matches!(std::env::var("CI"), Ok(v) if v == "true");
         env_logger::from_env(env)
             .is_test(is_test)
             .try_init()

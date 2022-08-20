@@ -866,7 +866,7 @@ pub enum AddressSecretKey {
 impl FromStr for BitcoinFundingInfo {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Error> {
-        let content: Vec<&str> = s.split(" ").collect();
+        let content: Vec<&str> = s.split(' ').collect();
 
         Ok(BitcoinFundingInfo {
             swap_id: SwapId::from_str(content[0])?,
@@ -896,7 +896,7 @@ pub struct BitcoinFundingInfo {
 impl FromStr for MoneroFundingInfo {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Error> {
-        let content: Vec<&str> = s.split(" ").collect();
+        let content: Vec<&str> = s.split(' ').collect();
         Ok(MoneroFundingInfo {
             swap_id: SwapId::from_str(content[0])?,
             amount: monero::Amount::from_str_with_denomination(&format!(
@@ -1169,7 +1169,7 @@ where
     T: Clone + PartialEq + Eq + Debug + Display + StrictEncode + StrictDecode;
 
 #[cfg(feature = "serde")]
-impl<'a, T> Display for List<T>
+impl<T> Display for List<T>
 where
     T: Clone + PartialEq + Eq + Debug + Display + serde::Serialize + StrictEncode + StrictDecode,
 {

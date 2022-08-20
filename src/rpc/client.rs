@@ -38,10 +38,7 @@ impl Client {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
         let bus_config = esb::BusConfig::with_addr(
-            config
-                .ctl_endpoint
-                .try_into()
-                .expect("Only ZMQ RPC is currently supported"),
+            config.ctl_endpoint,
             ZmqSocketType::RouterConnect,
             Some(ServiceId::router()),
         );
@@ -105,11 +102,12 @@ impl Client {
         // loop on all requests received until a progress termination condition is recieved
         // report failure transform Request::Failure in error already, terminate on error or on
         // success
-        let res = loop {
+        loop {
             match self.report_failure() {
-                Err(e) => {
-                    // terminate on error
-                    break Err(e);
+                Err(e) =>
+                // terminate on error
+                {
+                    break Err(e)
                 }
                 Ok(Request::Success(s)) => {
                     println!("{}", s.bright_green_bold());
@@ -118,8 +116,7 @@ impl Client {
                 }
                 Ok(req) => println!("{}", req),
             }
-        };
-        res
+        }
     }
 }
 
