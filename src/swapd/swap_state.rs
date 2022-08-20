@@ -155,16 +155,16 @@ pub enum Awaiting {
     AliceCtlRefundSigs,
     BobCtlBuySig,
     BobCtlTxLock,
-    AliceBobCtlTx,
-    AliceBobCtlSweepMonero,
-    AliceBobCtlTerminate,
-    AliceBobCtlSweepBitcoin,
-    AliceBobCtlRpcAbortSimple,
+    CtlTx,
+    CtlSweepMonero,
+    CtlTerminate,
+    CtlSweepBitcoin,
+    CtlRpcAbortSimple,
     BobCtlRpcAbortBob,
-    AliceBobCtlRpcAbortBlocked,
-    AliceBobRpcGetInfo,
-    AliceBobCtlPeerReconnected,
-    AliceBobCtlCheckpoint,
+    CtlRpcAbortBlocked,
+    RpcGetInfo,
+    CtlPeerReconnected,
+    CtlCheckpoint,
 
     // else
     Unknown,
@@ -212,30 +212,30 @@ impl Awaiting {
             Awaiting::BobCtlBuySig
         } else if state.p_b_ctl_tx_lock(event) {
             Awaiting::BobCtlTxLock
-        } else if state.p_ab_ctl_tx(event) {
-            Awaiting::AliceBobCtlTx
-        } else if state.p_ab_ctl_sweep_monero(event) {
-            Awaiting::AliceBobCtlSweepMonero
-        } else if state.p_ab_ctl_sweep_bitcoin(event) {
-            Awaiting::AliceBobCtlSweepBitcoin
-        } else if state.p_ab_ctl_terminate(event) {
-            Awaiting::AliceBobCtlTerminate
-        } else if state.p_ab_ctl_peer_reconnected(event) {
-            Awaiting::AliceBobCtlPeerReconnected
-        } else if state.p_ab_ctl_checkpoint(event) {
-            Awaiting::AliceBobCtlCheckpoint
+        } else if state.p_ctl_tx(event) {
+            Awaiting::CtlTx
+        } else if state.p_ctl_sweep_monero(event) {
+            Awaiting::CtlSweepMonero
+        } else if state.p_ctl_sweep_bitcoin(event) {
+            Awaiting::CtlSweepBitcoin
+        } else if state.p_ctl_terminate(event) {
+            Awaiting::CtlTerminate
+        } else if state.p_ctl_peer_reconnected(event) {
+            Awaiting::CtlPeerReconnected
+        } else if state.p_ctl_checkpoint(event) {
+            Awaiting::CtlCheckpoint
         }
         // Ctl + Rpc buses
-        else if state.p_ab_ctl_rpc_abort_simple(event) {
-            Awaiting::AliceBobCtlRpcAbortSimple
+        else if state.p_ctl_rpc_abort_simple(event) {
+            Awaiting::CtlRpcAbortSimple
         } else if state.p_b_ctl_rpc_abort_bob(event) {
             Awaiting::BobCtlRpcAbortBob
-        } else if state.p_ab_ctl_rpc_abort_blocked(event) {
-            Awaiting::AliceBobCtlRpcAbortBlocked
+        } else if state.p_ctl_rpc_abort_blocked(event) {
+            Awaiting::CtlRpcAbortBlocked
         }
         // Rpc bus
-        else if state.p_ab_rpc_get_info(event) {
-            Awaiting::AliceBobRpcGetInfo
+        else if state.p_rpc_get_info(event) {
+            Awaiting::RpcGetInfo
         }
         // Unknown
         else {
@@ -374,22 +374,22 @@ impl State {
             && self.local_params().is_some()
             && self.remote_params().is_some()
     }
-    pub fn p_ab_ctl_tx(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_tx(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Tx(_)) && !self.p_b_ctl_tx_lock(ev)
     }
 
-    pub fn p_ab_ctl_sweep_monero(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_sweep_monero(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::SweepMoneroAddress(_)) && ev.source == ServiceId::Wallet
     }
 
-    pub fn p_ab_ctl_terminate(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_terminate(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Terminate) && ev.source == ServiceId::Farcasterd
     }
 
-    pub fn p_ab_ctl_sweep_bitcoin(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_sweep_bitcoin(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::SweepBitcoinAddress(_))
     }
-    pub fn p_ab_ctl_rpc_abort_simple(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_rpc_abort_simple(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::AbortSwap)
             && (self.b_start()
                 || self.a_start()
@@ -403,18 +403,18 @@ impl State {
                 || self.b_reveal()
                 || (self.b_core_arb() && !self.b_received_refund_procedure_signatures()))
     }
-    pub fn p_ab_ctl_rpc_abort_blocked(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_rpc_abort_blocked(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::AbortSwap)
-            && !self.p_ab_ctl_rpc_abort_simple(ev)
+            && !self.p_ctl_rpc_abort_simple(ev)
             && !self.p_b_ctl_rpc_abort_bob(ev)
     }
-    pub fn p_ab_rpc_get_info(&self, ev: &Event<Request>) -> bool {
+    pub fn p_rpc_get_info(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::GetInfo)
     }
-    pub fn p_ab_ctl_peer_reconnected(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_peer_reconnected(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::PeerdReconnected)
     }
-    pub fn p_ab_ctl_checkpoint(&self, ev: &Event<Request>) -> bool {
+    pub fn p_ctl_checkpoint(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Checkpoint(_))
     }
     pub fn swap_role(&self) -> SwapRole {
