@@ -16,7 +16,6 @@
 mod opts;
 mod runtime;
 #[allow(dead_code)]
-pub(self) mod storage;
 mod swap_state;
 mod syncer_client;
 mod temporal_safety;

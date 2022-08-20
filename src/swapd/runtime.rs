@@ -37,7 +37,6 @@ use std::{
 };
 
 use super::{
-    storage::{self, Driver},
     swap_state::{AliceState, BobState, State, SwapCheckpointType},
     syncer_client::{log_tx_received, log_tx_seen, SyncerState, SyncerTasks},
     temporal_safety::TemporalSafety,
@@ -174,12 +173,6 @@ pub fn run(
         syncer_state,
         temporal_safety,
         enquirer: None,
-        storage: Box::new(storage::DiskDriver::init(
-            swap_id,
-            Box::new(storage::DiskConfig {
-                path: Default::default(),
-            }),
-        )?),
         pending_requests: none!(),
         pending_peer_request: none!(),
         txs: none!(),
@@ -205,7 +198,6 @@ pub struct Runtime {
     pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     #[allow(dead_code)]
-    storage: Box<dyn storage::Driver>,
     public_offer: PublicOffer,
 }
 
