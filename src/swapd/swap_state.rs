@@ -195,7 +195,7 @@ impl Awaiting {
         // Ctl bus
         else if state.p_t_ctl_take_swap(event) {
             Awaiting::TakerCtlTakeSwap
-        } else if state.p_tm_ctl_reveal_proof(event) {
+        } else if state.p_mt_ctl_reveal_proof(event) {
             Awaiting::MakerCtlRevealProof
         } else if state.p_m_ctl_make_swap(event) {
             Awaiting::MakerCtlMakeSwap
@@ -262,7 +262,7 @@ impl State {
     }
     pub fn p_mt_p2p_reveal_proof(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
-            && !self.p_tm_ctl_reveal_proof(ev)
+            && !self.p_mt_ctl_reveal_proof(ev)
     }
     pub fn p_b_reveal_alice(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
         matches!(
@@ -311,7 +311,7 @@ impl State {
     pub fn p_t_ctl_take_swap(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::TakeSwap(_))
     }
-    pub fn p_tm_ctl_reveal_proof(&self, ev: &Event<Request>) -> bool {
+    pub fn p_mt_ctl_reveal_proof(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Protocol(Msg::Reveal(Reveal::Proof(_))))
             && matches!(ev.source, ServiceId::Wallet)
             && matches!(ev.service, ServiceId::Swap(_))
