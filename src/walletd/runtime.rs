@@ -761,14 +761,13 @@ impl Runtime {
                                 ServiceId::Wallet,
                                 ServiceId::Database,
                                 request::CheckpointState::CheckpointWallet(CheckpointWallet {
-                                    xmr_addr: self
+                                    xmr_addr: *self
                                         .xmr_addrs
                                         .get(&swap_id)
-                                        .expect("checked at start of swap")
-                                        .clone(),
+                                        .expect("checked at start of swap"),
                                     wallet: Wallet::Bob(BobState {
                                         bob: bob.clone(),
-                                        local_trade_role: local_trade_role.clone(),
+                                        local_trade_role: *local_trade_role,
                                         local_params: local_params.clone(),
                                         key_manager: key_manager.clone(),
                                         pub_offer: pub_offer.clone(),
@@ -926,11 +925,10 @@ impl Runtime {
                         ServiceId::Wallet,
                         ServiceId::Database,
                         request::CheckpointState::CheckpointWallet(CheckpointWallet {
-                            xmr_addr: self
+                            xmr_addr: *self
                                 .xmr_addrs
                                 .get(&swap_id)
-                                .expect("checked at start of swap")
-                                .clone(),
+                                .expect("checked at start of swap"),
                             wallet: Wallet::Bob(BobState {
                                 bob: bob.clone(),
                                 local_params: local_params.clone(),
@@ -940,7 +938,7 @@ impl Runtime {
                                 core_arb_setup: Some(core_arb_setup.clone()),
                                 adaptor_buy: adaptor_buy.clone(),
                                 funding_tx: funding_tx.clone(),
-                                local_trade_role: local_trade_role.clone(),
+                                local_trade_role: *local_trade_role,
                                 remote_commit_params: remote_commit_params.clone(),
                                 remote_proof: remote_proof.clone(),
                             }),
@@ -1007,8 +1005,7 @@ impl Runtime {
                     }
 
                     {
-                        let buy_proc_sig =
-                            Msg::BuyProcedureSignature(adaptor_buy.clone().unwrap().clone());
+                        let buy_proc_sig = Msg::BuyProcedureSignature(adaptor_buy.clone().unwrap());
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id,
@@ -1087,21 +1084,20 @@ impl Runtime {
                         ServiceId::Wallet,
                         ServiceId::Database,
                         request::CheckpointState::CheckpointWallet(CheckpointWallet {
-                            xmr_addr: self
+                            xmr_addr: *self
                                 .xmr_addrs
                                 .get(&swap_id)
-                                .expect("checked at start of swap")
-                                .clone(),
+                                .expect("checked at start of swap"),
                             wallet: Wallet::Alice(AliceState {
                                 alice: alice.clone(),
                                 local_params: local_params.clone(),
                                 pub_offer: pub_offer.clone(),
                                 remote_params: Some(bob_parameters.clone()),
                                 core_arb_setup: core_arb_setup.clone(),
-                                alice_cancel_signature: alice_cancel_signature.clone(),
+                                alice_cancel_signature: *alice_cancel_signature,
                                 adaptor_refund: adaptor_refund.clone(),
                                 key_manager: key_manager.clone(),
-                                local_trade_role: local_trade_role.clone(),
+                                local_trade_role: *local_trade_role,
                                 remote_commit: remote_commit.clone(),
                                 remote_proof: remote_proof.clone(),
                             }),
@@ -1184,11 +1180,10 @@ impl Runtime {
                         ServiceId::Wallet,
                         ServiceId::Database,
                         request::CheckpointState::CheckpointWallet(CheckpointWallet {
-                            xmr_addr: self
+                            xmr_addr: *self
                                 .xmr_addrs
                                 .get(&swap_id)
-                                .expect("checked at start of swap")
-                                .clone(),
+                                .expect("checked at start of swap"),
                             wallet: Wallet::Alice(state.clone()),
                         }),
                     )?;

@@ -171,21 +171,17 @@ fn response_loop(
     tokio::task::spawn(async move {
         loop {
             let response = mpsc_rx_response.try_recv();
-            match response {
-                Ok((id, request)) => {
-                    let mut pending_requests = pending_requests_lock.lock().await;
-                    if pending_requests.contains_key(&id) {
-                        let sender = pending_requests.remove(&id).unwrap();
-                        sender.send(request).expect(
-                            "unable to send response from grpc response loop to its handler",
-                        );
-                    } else {
-                        error!("id {} not found in pending grpc requests", id);
-                    }
+            if let Ok((id, request)) = response {
+                let mut pending_requests = pending_requests_lock.lock().await;
+                if pending_requests.contains_key(&id) {
+                    let sender = pending_requests.remove(&id).unwrap();
+                    sender
+                        .send(request)
+                        .expect("unable to send response from grpc response loop to its handler");
+                } else {
+                    error!("id {} not found in pending grpc requests", id);
                 }
-                _ => {}
             }
-
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     })

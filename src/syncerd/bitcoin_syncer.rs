@@ -171,7 +171,6 @@ impl ElectrumRpc {
         for (address, previous_status) in self.addresses.clone().into_iter() {
             // get pending notifications for this address/script_pubkey
             let script_pubkey = &address.address.script_pubkey();
-
             while let Ok(Some(script_status)) = self.client.script_pop(script_pubkey) {
                 if Some(script_status) != previous_status {
                     if self
@@ -357,10 +356,8 @@ fn query_addr_history(
         // skip the transaction if it is too far back in the history by checking
         // if it is not in the mempool (0 and -1) and confirmed below a certain
         // block height
-        if hist.height > 0 {
-            if address.from_height >= hist.height as u64 {
-                continue;
-            }
+        if hist.height > 0 && address.from_height >= hist.height as u64 {
+            continue;
         }
 
         let mut our_amount: u64 = 0;
@@ -417,7 +414,7 @@ fn sweep_address(
                 address_type
             )));
         }
-        None => return Err(Error::Farcaster(format!("Invalid to be swept address"))),
+        None => return Err(Error::Farcaster("Invalid to be swept address".to_string())),
     }
 
     let sk = bitcoin::PrivateKey::new(source_secret_key, network);
@@ -425,7 +422,7 @@ fn sweep_address(
 
     let unspent_txs = client.script_list_unspent(&source_address.script_pubkey())?;
 
-    if unspent_txs.len() == 0 {
+    if unspent_txs.is_empty() {
         debug!(
             "No sweepable outputs detected for address: {}",
             source_address

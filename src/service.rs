@@ -103,8 +103,8 @@ pub struct ServiceConfig {
 impl From<Opts> for ServiceConfig {
     fn from(opts: Opts) -> Self {
         ServiceConfig {
-            msg_endpoint: opts.msg_socket.into(),
-            ctl_endpoint: opts.ctl_socket.into(),
+            msg_endpoint: opts.msg_socket,
+            ctl_endpoint: opts.ctl_socket,
         }
     }
 }

@@ -363,7 +363,7 @@ impl Exec for Command {
                         Request::SweepMoneroAddress(SweepMoneroAddress {
                             source_spend_key: spend,
                             source_view_key: view,
-                            destination_address: destination_address,
+                            destination_address,
                             minimum_balance: monero::Amount::from_pico(0),
                         }),
                     )?;

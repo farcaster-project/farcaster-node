@@ -141,9 +141,7 @@ impl From<Opts> for PeerSocket {
             Self::Connect(peer_addr)
         } else if let Some(bind_addr) = opts.listen {
             Self::Listen(InetSocketAddr::socket(
-                bind_addr
-                    .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
-                    .into(),
+                bind_addr.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
                 opts.port,
             ))
         } else {
@@ -231,7 +229,7 @@ fn main() {
             debug!("Peerd running in CONNECT mode");
 
             forked_from_listener = false;
-            remote_node_addr = Some(remote_node.clone());
+            remote_node_addr = Some(remote_node);
 
             debug!("Connecting to {}", &remote_node.addr());
             PeerConnection::connect_brontozaur(local_node, remote_node)

@@ -70,7 +70,6 @@ pub fn run(
         );
         ServiceId::Peer(
             remote_node_addr
-                .clone()
                 .expect("remote node addr should never be None in taker (connect) case"),
         )
     } else {
@@ -306,7 +305,6 @@ impl esb::Handler<ServiceBus> for Runtime {
                 "{} with the remote peer {}",
                 "Initializing connection".bright_blue_bold(),
                 self.remote_node_addr
-                    .clone()
                     .expect("remote node addr is never None if forked from listener")
             );
         }
@@ -398,13 +396,11 @@ impl Runtime {
                     local_id: self.local_node.node_id(),
                     remote_id: self
                         .remote_node_addr
-                        .clone()
                         .map(|addr| vec![addr.id])
                         .unwrap_or_default(),
                     local_socket: self.local_socket,
                     remote_socket: self
                         .remote_node_addr
-                        .clone()
                         .map(|addr| vec![addr.addr])
                         .unwrap_or_default(),
                     uptime: SystemTime::now()
@@ -436,9 +432,8 @@ impl Runtime {
         // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
         // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
         let mut connection = PeerConnection::connect_brontozaur(
-            self.local_node.clone(),
+            self.local_node,
             self.remote_node_addr
-                .clone()
                 .expect("is some if not forked from listener"),
         );
         let mut attempt = 0;
@@ -449,9 +444,8 @@ impl Runtime {
             warn!("reconnect failed attempting again in {} seconds", attempt);
             std::thread::sleep(std::time::Duration::from_secs(attempt));
             connection = PeerConnection::connect_brontozaur(
-                self.local_node.clone(),
+                self.local_node,
                 self.remote_node_addr
-                    .clone()
                     .expect("is some if not forked from listener"),
             );
         }

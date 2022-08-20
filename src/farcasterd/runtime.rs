@@ -419,8 +419,7 @@ impl Runtime {
                     }
                 },
             )
-            .collect::<HashMap<(Blockchain, Network), Syncer>>()
-            .into();
+            .collect::<HashMap<(Blockchain, Network), Syncer>>();
         Ok(())
     }
 
@@ -558,7 +557,7 @@ impl Runtime {
                         );
                     }
                     ServiceId::Peer(connection_id) => {
-                        if self.connections.insert(connection_id.clone()) {
+                        if self.connections.insert(*connection_id) {
                             info!(
                                 "Connection {} is registered; total {} connections are known",
                                 connection_id.bright_blue_italic(),
@@ -637,7 +636,7 @@ impl Runtime {
                                         if let Ok(()) = endpoints.send_to(
                                             ServiceBus::Ctl,
                                             self.identity(),
-                                            ServiceId::Swap(swap_id.clone()),
+                                            ServiceId::Swap(swap_id),
                                             init_swap_req,
                                         ) {
                                             self.pending_swap_init.remove(k);
@@ -791,7 +790,7 @@ impl Runtime {
                 funding_address,
             }) => {
                 let offerid = public_offer.offer.id();
-                let network = public_offer.offer.network.clone();
+                let network = public_offer.offer.network;
                 let peerd_id = self.peerd_ids.get(&offerid); // Some for Maker after TakerCommit, None for Taker
                 let peer: ServiceId = match local_trade_role {
                     TradeRole::Maker if peerd_id.is_some() => peerd_id.unwrap().clone(),
@@ -1052,7 +1051,7 @@ impl Runtime {
                     .send_to(
                         ServiceBus::Msg,
                         ServiceId::Farcasterd,
-                        ServiceId::Swap(swap_id.clone()),
+                        ServiceId::Swap(swap_id),
                         Request::Hello,
                     )
                     .is_ok()
@@ -1161,10 +1160,9 @@ impl Runtime {
                             bind_addr.bright_blue_bold()
                         );
                         let node_id = NodeId::from(pk);
-                        self.listen(NodeAddr::new(node_id, bind_addr), sk).and_then(|_| {
+                        self.listen(NodeAddr::new(node_id, bind_addr), sk).map(|_| {
                             self.listens.insert(offer.id(), bind_addr);
                             self.node_ids.insert(offer.id(), node_id);
-                            Ok(())
                         })
                     }
                     (Some(&addr), _, Some(pk)) => {
@@ -1183,7 +1181,7 @@ impl Runtime {
                         bind_addr
                     );
                     let node_id = self.node_ids.get(&offer.id()).cloned().unwrap();
-                    let public_offer = offer.to_public_v1(node_id.public_key(), public_addr.into());
+                    let public_offer = offer.to_public_v1(node_id.public_key(), public_addr);
                     let pub_offer_id = public_offer.id();
                     let serialized_offer = public_offer.to_string();
                     if !self.public_offers.insert(public_offer.clone()) {
@@ -1453,7 +1451,7 @@ impl Runtime {
                         source.clone(),
                         swapid
                     );
-                    if subscribed.len() == 0 {
+                    if subscribed.is_empty() {
                         // we drop the empty set located at the swap index
                         let _ = self.progress_subscriptions.remove(&service);
                     }
@@ -1855,8 +1853,7 @@ impl Runtime {
                             }
                         }
                     })
-                    .collect::<HashMap<(Blockchain, Network), Syncer>>()
-                    .into();
+                    .collect::<HashMap<(Blockchain, Network), Syncer>>();
             }
 
             Request::PeerdTerminated => {
@@ -1869,7 +1866,7 @@ impl Runtime {
 
                         // log a message if a swap running over this connection
                         // is not completed, and thus present in consumed_offers
-                        let peerd_id = ServiceId::Peer(addr.clone());
+                        let peerd_id = ServiceId::Peer(addr);
                         if self
                             .consumed_offers
                             .iter()
@@ -1892,7 +1889,7 @@ impl Runtime {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Farcasterd,
-                        ServiceId::Peer(addr.clone()),
+                        ServiceId::Peer(addr),
                         Request::Terminate,
                     )?;
                 }
@@ -1999,7 +1996,7 @@ impl Runtime {
         debug!("New instance of peerd launched with PID {}", child.id());
 
         self.spawning_services
-            .insert(ServiceId::Peer(node_addr.clone()), source);
+            .insert(ServiceId::Peer(*node_addr), source);
         debug!("Awaiting for peerd to connect...");
 
         Ok(())
@@ -2217,7 +2214,7 @@ pub fn launch(
     let parsed = Opts::parse();
     info!("tor opts: {:?}", parsed.shared.tor_proxy);
     if let Some(t) = &matches.value_of("tor-proxy") {
-        cmd.args(&["-T", &format!("{}", t)]);
+        cmd.args(&["-T", *t]);
     }
 
     // Given specialized args in launch
@@ -2249,7 +2246,7 @@ impl SyncersT for Syncers {
             .unwrap_or(false)
     }
     fn pair_ready(&self, coin0: (Blockchain, Network), coin1: (Blockchain, Network)) -> bool {
-        SyncerPair::new(&self, coin0, coin1)
+        SyncerPair::new(self, coin0, coin1)
             .map(|syncer_pair| syncer_pair.ready())
             .unwrap_or(false)
     }
