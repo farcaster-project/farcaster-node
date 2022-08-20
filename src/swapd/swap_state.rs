@@ -124,6 +124,19 @@ pub enum SwapCheckpointType {
     CheckpointAlicePreBuy,
 }
 
+
+// Awaiting enum variants encode the state abstractly by enforcing a set of
+// predicates to validade the swap actually is in a given state, and thus is
+// able to process the received event. It can be used as a state-machine to
+// evolve through the protocol. Awaiting enum should eventually hold data
+// extracted from the full state. The full state comprises all the input
+// parameters to the contructor fn with. Each variant has an associated event
+// processing fn. When calling the associated event processing fn, Awaiting then
+// can deliver the required data to the processing fn. Currently the full
+// runtime is available to the associated processing fns and thus this is not
+// needed, although many unwraps and unneeded checks are still in there.
+/// Awaiting enum variants encode the state abstractly by enforcing a set of
+/// predicates to validade the swap actually is in a given state
 pub enum Awaiting {
     // Msg
     TakerP2pMakerCommit,
@@ -238,8 +251,7 @@ impl Awaiting {
 impl State {
     // p stands for predicate, TODO add more predicates such as source, dest,
     // syncer_state, txs. FIXME for events that require data, e.g., b_address,
-    // Awaiting enum should hold that data, and no unwraps should be needed on
-    // the processing fns. Probably segregate the predicate from the event.
+    // extract data. Probably segregate the predicate from the event.message.
     // Needed for the automata that runs not in response to events, but because
     // it already has all the needed preconditions and can perform actions
     // independently
