@@ -23,12 +23,7 @@ use crate::rpc::ServiceBus;
 use crate::Endpoints;
 use crate::ServiceId;
 
-/// State machine used by runtimes for managing complex asynchronous workflows:
-/// - Launching and managing channel daemon by lnpd for a locally created channel;
-/// - Managing channel creation by channeld for a locally created channel;
-/// - Accepting channel creation by channeld;
-/// - Cooperative and non-cooperative channel closings;
-/// - Channel operations.
+/// State machine used by runtimes for managing complex asynchronous workflows
 pub trait StateMachine<Message, Runtime: esb::Handler<ServiceBus>>
 where
     esb::Error<ServiceId>: From<<Runtime as esb::Handler<ServiceBus>>::Error>,
@@ -47,7 +42,7 @@ where
         Self: Sized;
 }
 
-/// Event changing state machine state, consisting of a certain P2P or PRC `message` sent from some
+/// Event changing state machine state, consisting of a certain P2P or RPC `message` sent from some
 /// serivce `source` to the current `service`.
 pub struct Event<'esb, Message> {
     /// ESB API provided by a controller
@@ -122,6 +117,7 @@ where
         )
     }
 
+    /// Forwards a message through bus to service (new source is the service forwarding)
     pub fn forward(
         &mut self,
         bus: ServiceBus,
