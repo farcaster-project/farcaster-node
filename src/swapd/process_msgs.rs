@@ -132,20 +132,20 @@ impl Runtime {
             Awaiting::AliceCtlRefundSigs => self.alice_ctl_refund_sigs(event),
             Awaiting::BobCtlBuySig => self.bob_ctl_buy_sig(event),
             Awaiting::BobCtlTxLock => self.bob_ctl_tx_lock(event),
-            Awaiting::AliceBobCtlTx => self.alice_bob_ctl_tx(event),
-            Awaiting::AliceBobCtlSweepMonero => self.alice_bob_ctl_sweep_monero(event),
-            Awaiting::AliceBobCtlTerminate => self.alice_bob_ctl_terminate(),
-            Awaiting::AliceBobCtlSweepBitcoin => self.alice_bob_ctl_sweep_bitcoin(event),
-            Awaiting::AliceBobCtlPeerReconnected => self.alice_bob_ctl_peer_reconnected(event),
-            Awaiting::AliceBobCtlCheckpoint => self.alice_bob_ctl_checkpoint(event),
+            Awaiting::CtlTx => self.ctl_tx(event),
+            Awaiting::CtlSweepMonero => self.ctl_sweep_monero(event),
+            Awaiting::CtlTerminate => self.ctl_terminate(),
+            Awaiting::CtlSweepBitcoin => self.ctl_sweep_bitcoin(event),
+            Awaiting::CtlPeerReconnected => self.ctl_peer_reconnected(event),
+            Awaiting::CtlCheckpoint => self.ctl_checkpoint(event),
 
             // Ctl + Rpc bus
-            Awaiting::AliceBobCtlRpcAbortSimple => self.alice_bob_ctl_rpc_abort_simple(event),
+            Awaiting::CtlRpcAbortSimple => self.ctl_rpc_abort_simple(event),
             Awaiting::BobCtlRpcAbortBob => self.bob_ctl_rpc_abort_bob(event),
-            Awaiting::AliceBobCtlRpcAbortBlocked => self.alice_bob_ctl_rpc_abort_blocked(event),
+            Awaiting::CtlRpcAbortBlocked => self.ctl_rpc_abort_blocked(event),
 
             // Rpc bus
-            Awaiting::AliceBobRpcGetInfo => self.alice_bob_rpc_get_info(event),
+            Awaiting::RpcGetInfo => self.rpc_get_info(event),
 
             // Syncer bus
 
@@ -480,7 +480,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn alice_bob_ctl_tx(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn ctl_tx(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Tx(transaction) = event.message {
             // update state
             match transaction.clone() {
@@ -523,7 +523,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn alice_bob_ctl_sweep_monero(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn ctl_sweep_monero(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::SweepMoneroAddress(SweepMoneroAddress {
             source_view_key,
             source_spend_key,
@@ -571,7 +571,7 @@ impl Runtime {
         }
         Ok(())
     }
-    fn alice_bob_ctl_terminate(&mut self) -> Result<(), Error> {
+    fn ctl_terminate(&mut self) -> Result<(), Error> {
         info!(
             "{} | {}",
             self.swap_id().bright_blue_italic(),
@@ -579,7 +579,7 @@ impl Runtime {
         );
         std::process::exit(0);
     }
-    fn alice_bob_ctl_sweep_bitcoin(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn ctl_sweep_bitcoin(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::SweepBitcoinAddress(sweep_bitcoin_address) = event.message.clone() {
             info!(
                 "{} | Sweeping source (funding) address: {} to destination address: {}",
@@ -596,7 +596,7 @@ impl Runtime {
         }
         Ok(())
     }
-    fn alice_bob_ctl_rpc_abort_simple(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn ctl_rpc_abort_simple(&mut self, event: Event<Request>) -> Result<(), Error> {
         // just cancel the swap, no additional logic required
         let new_state = match self.state.swap_role() {
             SwapRole::Alice => State::Alice(AliceState::FinishA(Outcome::Abort)),
@@ -634,7 +634,7 @@ impl Runtime {
         }
         Ok(())
     }
-    fn alice_bob_ctl_rpc_abort_blocked(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn ctl_rpc_abort_blocked(&mut self, event: Event<Request>) -> Result<(), Error> {
         let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
         warn!("{} | {}", self.swap_id(), msg);
 
@@ -651,7 +651,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn alice_bob_rpc_get_info(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn rpc_get_info(&mut self, event: Event<Request>) -> Result<(), Error> {
         {
             let swap_id = if self.swap_id() == zero!() {
                 None
@@ -676,7 +676,7 @@ impl Runtime {
             Ok(())
         }
     }
-    fn alice_bob_ctl_peer_reconnected(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn ctl_peer_reconnected(&mut self, event: Event<Request>) -> Result<(), Error> {
         for msg in self.pending_peer_request.clone().iter() {
             self.send_peer(event.endpoints, msg.clone())?;
         }
@@ -684,7 +684,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn alice_bob_ctl_checkpoint(&mut self, event: Event<Request>) -> Result<(), Error> {
+    fn ctl_checkpoint(&mut self, event: Event<Request>) -> Result<(), Error> {
         if let Request::Checkpoint(request::Checkpoint { swap_id, state }) = event.message {
             match state {
                 CheckpointState::CheckpointSwapd(CheckpointSwapd {
