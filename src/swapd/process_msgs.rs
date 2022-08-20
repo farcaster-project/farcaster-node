@@ -64,6 +64,8 @@ impl Runtime {
 
                 true
             }
+
+            // FIXME: currently only logging
             // We pass ESB errors forward such that they can fail the swap.
             // In the future they can be caught here and used to re-iterate sending of the same
             // message later without swap halting.
@@ -81,7 +83,8 @@ impl Runtime {
                         info: err.to_string(),
                     },
                 );
-                return Err(err);
+                // return Err(err);
+                false
             }
             Err(other_err) => {
                 error!("{}: {}", "Swap error".err(), other_err.err_details());
