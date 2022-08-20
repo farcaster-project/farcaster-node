@@ -27,10 +27,14 @@ use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Display, StrictEncode, StrictDecode)]
 pub enum ServiceBus {
+    /// Msg bus is the p2p service bus used for wire protocol messages sent by
+    /// or to peerd
     #[display("MSG")]
     Msg,
+    /// The Ctl bus are used for internal communication
     #[display("CTL")]
     Ctl,
+    /// Service bus used to bridge runtimes
     #[display("BRIDGE")]
     Bridge,
 }
