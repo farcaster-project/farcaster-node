@@ -498,6 +498,10 @@ impl Runtime {
         }
     }
 
+    pub fn enquirer(&self) -> Option<ServiceId> {
+        self.enquirer.clone()
+    }
+
     pub fn syncer_state(&self) -> &SyncerState {
         &self.syncer_state
     }
