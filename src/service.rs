@@ -336,7 +336,7 @@ where
         dest: impl TryToServiceId,
         msg: impl ToString,
     ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
+        if let Some(dest) = self.report_to() {
             senders.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
@@ -353,7 +353,7 @@ where
         dest: impl TryToServiceId,
         msg: impl ToString,
     ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
+        if let Some(dest) = self.report_to() {
             senders.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
@@ -370,7 +370,7 @@ where
         dest: impl TryToServiceId,
         failure: Failure,
     ) -> Error {
-        if let Some(dest) = dest.try_to_service_id() {
+        if let Some(dest) = self.report_to() {
             // Even if we fail, we still have to terminate :)
             let _ = senders.send_to(
                 ServiceBus::Ctl,
@@ -388,7 +388,7 @@ where
         dest: impl TryToServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
+        if let Some(dest) = self.report_to() {
             senders.send_to(ServiceBus::Ctl, self.identity(), dest, request)?;
         }
         Ok(())
