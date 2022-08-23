@@ -14,7 +14,6 @@
 
 use crate::Error;
 use farcaster_core::blockchain::Network;
-use internet2::addr::NodeAddr;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
@@ -28,9 +27,6 @@ pub const FARCASTER_MAINNET_MONERO_RPC_WALLET: &str = "http://localhost:18083";
 pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993";
 pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.community.rino.io:38081";
 pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
-
-#[cfg(feature = "shell")]
-use crate::opts::Opts;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]

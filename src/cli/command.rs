@@ -15,25 +15,14 @@
 use crate::rpc::request::{Address, AddressSecretKey};
 use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
 use farcaster_core::swap::btcxmr::Offer;
-use std::{
-    convert::TryFrom,
-    io::{self, Read, Write},
-    sync::mpsc,
-    time::Duration,
-};
-use std::{str::FromStr, thread::sleep};
+use std::io::Read;
+use std::str::FromStr;
 use uuid::Uuid;
 
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use microservices::shell::Exec;
 
-use farcaster_core::{
-    blockchain::{Blockchain, Network},
-    negotiation::PublicOffer,
-    role::{SwapRole, TradeRole},
-    swap::SwapId,
-};
-use strict_encoding::ReadExt;
+use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
 
 use super::Command;
 use crate::rpc::{request, Client, Request};

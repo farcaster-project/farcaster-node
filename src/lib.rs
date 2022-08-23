@@ -30,9 +30,6 @@ extern crate amplify;
 extern crate amplify_derive;
 // #[cfg_attr(feature = "_rpc", macro_use)]
 
-#[macro_use]
-extern crate internet2;
-
 #[cfg(feature = "shell")]
 #[macro_use]
 extern crate clap;

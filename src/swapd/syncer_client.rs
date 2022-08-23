@@ -9,7 +9,7 @@ use crate::{
     },
     Error,
 };
-use bitcoin::{consensus::Decodable, Script, Txid};
+use bitcoin::{consensus::Decodable, Txid};
 use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel};
 use std::collections::{HashMap, HashSet};
 
@@ -18,7 +18,6 @@ use crate::{
     syncerd::{Task, TaskId},
     ServiceId,
 };
-use strict_encoding::{StrictDecode, StrictEncode};
 
 pub struct SyncerTasks {
     pub counter: u32,

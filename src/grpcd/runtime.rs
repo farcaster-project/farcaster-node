@@ -2,37 +2,20 @@ use crate::service::Endpoints;
 use internet2::DuplexConnection;
 use internet2::Encrypt;
 use internet2::PlainTranscoder;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::{
-    any::Any,
-    collections::{HashMap, HashSet},
-    convert::{TryFrom, TryInto},
-    io::{self, Write},
-    ptr::swap_nonoverlapping,
-    str::FromStr,
-};
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 
-use crate::rpc::{
-    request::{self},
-    Request, ServiceBus,
-};
-use crate::swapd::get_swap_id;
-use crate::walletd::NodeSecrets;
-use crate::LogStyle;
+use crate::rpc::{Request, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use colored::Colorize;
 use internet2::{
-    addr::NodeAddr,
-    presentation, transport,
     zeromq::{Connection, ZmqSocketType},
     TypedEnum,
 };
-use microservices::esb::{self, Handler};
+use microservices::esb;
 use microservices::ZMQ_CONTEXT;
-use request::{LaunchSwap, NodeId};
 use std::sync::mpsc::{Receiver, Sender};
 
 use farcaster::farcaster_server::{Farcaster, FarcasterServer};

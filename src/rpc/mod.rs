@@ -22,7 +22,6 @@ pub use request::OfferStatusSelector;
 pub use request::{Failure, FailureCode, Request};
 
 use microservices::esb::BusId;
-use microservices::rpc::Api;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Display, StrictEncode, StrictDecode)]

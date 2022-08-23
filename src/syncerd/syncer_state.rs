@@ -1,20 +1,11 @@
-use crate::farcaster_core::{
-    blockchain::{Blockchain, Network},
-    consensus::Decodable,
-};
 use crate::rpc::request::SyncerdBridgeEvent;
-use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::{TaskId, TaskTarget};
 use crate::Error;
 use crate::ServiceId;
-use microservices::rpc::Request;
+use farcaster_core::blockchain::Blockchain;
 use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
-use std::io;
-use std::marker::{Send, Sized};
 use tokio::sync::mpsc::Sender as TokioSender;
 
-use crate::serde::Deserialize;
 use crate::service::LogStyle;
 use crate::syncerd::*;
 use hex;
@@ -793,6 +784,8 @@ async fn send_event(
 
 #[tokio::test]
 async fn syncer_state_transaction() {
+    use farcaster_core::blockchain::Network;
+
     use tokio::sync::mpsc::Receiver as TokioReceiver;
     let (event_tx, mut event_rx): (
         TokioSender<SyncerdBridgeEvent>,
@@ -908,8 +901,10 @@ async fn syncer_state_transaction() {
 
 #[tokio::test]
 async fn syncer_state_addresses() {
+    use farcaster_core::blockchain::Network;
     use std::str::FromStr;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
+
     let (event_tx, mut event_rx): (
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
@@ -1064,8 +1059,10 @@ async fn syncer_state_addresses() {
 
 #[tokio::test]
 async fn syncer_state_sweep_addresses() {
+    use farcaster_core::blockchain::Network;
     use std::str::FromStr;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
+
     let (event_tx, mut event_rx): (
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,
@@ -1119,7 +1116,9 @@ async fn syncer_state_sweep_addresses() {
 
 #[tokio::test]
 async fn syncer_state_height() {
+    use farcaster_core::blockchain::Network;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
+
     let (event_tx, mut event_rx): (
         TokioSender<SyncerdBridgeEvent>,
         TokioReceiver<SyncerdBridgeEvent>,

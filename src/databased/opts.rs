@@ -12,17 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::opts::FARCASTER_KEY_FILE;
-use clap::{AppSettings, Parser, ValueHint};
 use std::path::PathBuf;
-use std::{fs, io::Read};
-
-use crate::opts::TokenString;
-use bitcoin::secp256k1::{
-    rand::{rngs::ThreadRng, thread_rng},
-    PublicKey, Secp256k1, SecretKey,
-};
-use strict_encoding::{StrictDecode, StrictEncode};
 
 /// database daemon; part of Farcaster Node
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
