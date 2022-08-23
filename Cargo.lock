@@ -360,17 +360,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec8a7b6a70fde80372154c65702f00a0f56f3e1c36abbc6c440484be248856db"
 
 [[package]]
-name = "cargo_toml"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "513d17226888c7b8283ac02a1c1b0d8a9d4cbf6db65dfadb79f598f5d7966fe9"
-dependencies = [
- "serde 1.0.141",
- "serde_derive",
- "toml",
-]
-
-[[package]]
 name = "cc"
 version = "1.0.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -570,34 +559,6 @@ dependencies = [
  "serde_json",
  "toml",
  "yaml-rust",
-]
-
-[[package]]
-name = "configure_me"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d03c1fbdead926855bdafee8ddf16cd42efb3c75d8cde8c87f8937b99510b39d"
-dependencies = [
- "parse_arg",
- "serde 1.0.141",
- "serde_derive",
- "toml",
-]
-
-[[package]]
-name = "configure_me_codegen"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9aa65df44cc55922b4e22f49939727156a8de25492bf6bd2462a75afc5e155d6"
-dependencies = [
- "cargo_toml",
- "fmt2io",
- "man",
- "serde 1.0.141",
- "serde_derive",
- "toml",
- "unicode-segmentation",
- "void",
 ]
 
 [[package]]
@@ -1020,8 +981,6 @@ dependencies = [
  "colored",
  "config 0.10.1",
  "config 0.11.0",
- "configure_me",
- "configure_me_codegen",
  "dotenv",
  "electrum-client",
  "env_logger",
@@ -1086,12 +1045,6 @@ name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
-
-[[package]]
-name = "fmt2io"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9db8691f0820ad11ce6eb94057d0dd9c456500da04da0c12a85c90d6f979cc9"
 
 [[package]]
 name = "fnv"
@@ -1713,15 +1666,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "man"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccbbb1d623a3cbcaeef9a072f7ccbd6f8ca1e788f3e301d5c49bdd67b1f5a942"
-dependencies = [
- "roff",
 ]
 
 [[package]]
@@ -2602,12 +2546,6 @@ dependencies = [
  "web-sys",
  "winapi",
 ]
-
-[[package]]
-name = "roff"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e33e4fb37ba46888052c763e4ec2acfedd8f00f62897b630cadb6298b833675e"
 
 [[package]]
 name = "rust-ini"
@@ -3618,12 +3556,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "void"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "vte"

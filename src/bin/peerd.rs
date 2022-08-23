@@ -108,13 +108,6 @@ use internet2::addr::NodeAddr;
 use internet2::session;
 use microservices::peer::PeerConnection;
 
-/*
-mod internal {
-    #![allow(unused)]
-    include!(concat!(env!("OUT_DIR"), "/configure_me_config.rs"));
-}
- */
-
 /// Chooses type of service runtime (see `--listen` and `--connect` option
 /// details in [`Opts`] structure.
 #[derive(Clone, PartialEq, Eq, Debug, Display)]
