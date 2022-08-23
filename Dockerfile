@@ -56,4 +56,4 @@ EXPOSE 9735 9981
 
 ENTRYPOINT ["farcasterd"]
 
-CMD ["--data-dir", "$DATA_DIR", "-x", "lnpz://0.0.0.0:9981/?api=esb", "--help"]
+CMD ["--help"]
