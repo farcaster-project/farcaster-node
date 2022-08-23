@@ -79,40 +79,51 @@ use strict_encoding::{
 #[display(inner)]
 pub enum Msg {
     #[api(type = 28)]
-    #[display("maker_commit(...)")]
+    #[display("maker_commit({0})")]
     MakerCommit(Commit),
+
     #[api(type = 21)]
-    #[display("taker_commit(...)")]
+    #[display("taker_commit({0})")]
     TakerCommit(TakeCommit),
+
     #[api(type = 22)]
-    #[display("reveal(...)")]
+    #[display("reveal({0})")]
     Reveal(Reveal),
+
     #[api(type = 25)]
-    #[display("refunprocsig_a(...)")]
+    #[display("refund_procedure_signatures(..)")]
     RefundProcedureSignatures(RefundProcedureSignatures),
+
     #[api(type = 27)]
-    #[display("abort(...)")]
+    #[display("abort(..)")]
     Abort(Abort),
+
     #[api(type = 24)]
-    #[display("corearb_b(...)")]
+    #[display("core_arbitrating_setup(..)")]
     CoreArbitratingSetup(CoreArbitratingSetup),
+
     #[api(type = 26)]
-    #[display("buyprocsig_b(...)")]
+    #[display("buy_procedure_signature(..)")]
     BuyProcedureSignature(BuyProcedureSignature),
+
     #[api(type = 29)]
     #[display("ping({0})")]
     Ping(u16),
+
     #[api(type = 31)]
-    #[display("pong(...)")]
+    #[display("pong(..)")]
     Pong(Vec<u8>),
+
     #[api(type = 33)]
-    #[display("ping_peer")]
+    #[display("ping_peer()")]
     PingPeer,
+
     #[api(type = 34)]
-    #[display("error_shutdown")]
+    #[display("error_shutdown()")]
     PeerReceiverRuntimeShutdown,
+
     #[api(type = 35)]
-    #[display("identity")]
+    #[display("identity(..)")]
     Identity(internet2::addr::NodeId),
 }
 
@@ -177,18 +188,19 @@ impl RequestId {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("commit")]
 pub enum Commit {
+    #[display("alice(..)")]
     AliceParameters(CommitAliceParameters),
+    #[display("bob(..)")]
     BobParameters(CommitBobParameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("nodeid")]
+#[display(inner)]
 pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{public_offer}")]
+#[display("{public_offer}, ..")]
 pub struct PubOffer {
     pub public_offer: PublicOffer,
     pub external_address: bitcoin::Address,
@@ -211,15 +223,15 @@ impl From<(PublicOffer, bitcoin::Address, monero::Address)> for PubOffer {
 pub struct Token(pub String);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("get keys(token({0}))")]
+#[display("token({0})")]
 pub struct GetKeys(pub Token);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("reconnect peer(node addr({0})))")]
+#[display("{0}, ..")]
 pub struct ReconnectPeer(pub NodeAddr, pub Option<SecretKey>);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("launch_swap")]
+#[display("{public_offer}, ..")]
 pub struct LaunchSwap {
     pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer,
@@ -229,7 +241,8 @@ pub struct LaunchSwap {
     pub funding_address: Option<bitcoin::Address>,
 }
 
-#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]
+#[display("{swap_id}, ..")]
 pub struct TakeCommit {
     pub commit: Commit,
     pub public_offer: String, // TODO: replace by public offer id
@@ -248,11 +261,13 @@ fn format_keys(keys: &Keys) -> String {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("reveal")]
 pub enum Reveal {
+    #[display("alice(..)")]
     AliceParameters(RevealAliceParameters),
+    #[display("bob(..)")]
     BobParameters(RevealBobParameters),
-    Proof(RevealProof), // FIXME should be Msg::RevealProof(RevealProof<BtcXmr>)
+    #[display("proof(..)")]
+    Proof(RevealProof), // FIXME should be Msg::RevealProof(..)
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -262,26 +277,27 @@ pub enum Reveal {
 //     serde(crate = "serde_crate")
 // )]
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("params")]
 pub enum Params {
+    #[display("alice(..)")]
     Alice(Parameters),
+    #[display("bob(..)")]
     Bob(Parameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display(inner)]
 pub enum Tx {
-    #[display("lock")]
+    #[display("lock(..)")]
     Lock(Transaction),
-    #[display("buy")]
+    #[display("buy(..)")]
     Buy(Transaction),
-    #[display("funding")]
+    #[display("funding(..)")]
     Funding(Transaction),
-    #[display("cancel")]
+    #[display("cancel(..)")]
     Cancel(Transaction),
-    #[display("refund")]
+    #[display("refund(..)")]
     Refund(Transaction),
-    #[display("punish")]
+    #[display("punish(..)")]
     Punish(Transaction),
 }
 
@@ -305,7 +321,7 @@ pub enum Request {
     /// Within the received ping message, the sender will specify the number of
     /// bytes to be included within the data payload of the pong message.
     #[api(type = 19)]
-    #[display("pong(...)")]
+    #[display("pong(..)")]
     Pong(Vec<u8>),
 
     #[api(type = 0)]
@@ -313,31 +329,31 @@ pub enum Request {
     Hello,
 
     #[api(type = 3)]
-    #[display("terminate")]
+    #[display("terminate()")]
     Terminate,
 
     #[api(type = 4)]
-    #[display("peerd_terminated")]
+    #[display("peerd_terminated()")]
     PeerdTerminated,
 
     #[api(type = 5)]
-    #[display("send_message({0})")]
+    #[display("protocol_message({0})")]
     Protocol(Msg),
 
     #[api(type = 6)]
-    #[display("peerd_unreachable")]
+    #[display("peerd_unreachable({0})")]
     PeerdUnreachable(ServiceId),
 
     #[api(type = 7)]
-    #[display("reconnect_peer")]
+    #[display("reconnect_peer({0})")]
     ReconnectPeer(ReconnectPeer),
 
     #[api(type = 8)]
-    #[display("peerd_reconnected")]
+    #[display("peerd_reconnected()")]
     PeerdReconnected,
 
     #[api(type = 32)]
-    #[display("nodeid({0})")]
+    #[display("node_id({0})")]
     NodeId(NodeId),
 
     #[api(type = 30)]
@@ -345,7 +361,7 @@ pub enum Request {
     GetKeys(GetKeys),
 
     #[api(type = 36)]
-    #[display("get_sweep_bitcoin_address")]
+    #[display("get_sweep_bitcoin_address({0})")]
     GetSweepBitcoinAddress(bitcoin::Address),
 
     #[api(type = 29)]
@@ -361,20 +377,17 @@ pub enum Request {
     FundingUpdated,
 
     #[api(type = 46)]
-    #[display("swap_success()")]
+    #[display("swap_outcome({0})")]
     SwapOutcome(Outcome),
 
-    // Can be issued from `cli` to `lnpd`
     #[api(type = 100)]
-    #[display(Debug)]
+    #[display("get_info()")]
     GetInfo,
 
-    // Can be issued from `cli` to `lnpd`
     #[api(type = 101)]
     #[display("list_peers()")]
     ListPeers,
 
-    // Can be issued from `cli` to `lnpd`
     #[api(type = 102)]
     #[display("list_swaps()")]
     ListSwaps,
@@ -384,59 +397,43 @@ pub enum Request {
     ListTasks,
 
     #[api(type = 104)]
-    #[display("list_offers()")]
+    #[display("list_offers({0})")]
     ListOffers(OfferStatusSelector),
 
-    // #[api(type = 105)]
-    // #[display("list_offer_ids()")]
-    // ListOfferIds,
     #[api(type = 105)]
     #[display("list_listens()")]
     ListListens,
 
-    // Can be issued from `cli` to `lnpd`
     #[api(type = 200)]
     #[display("listen({0})")]
     Listen(InetSocketAddr),
 
-    // Can be issued from `cli` to `lnpd`
     #[api(type = 201)]
     #[display("connect({0})")]
     ConnectPeer(NodeAddr),
 
-    // Can be issued from `cli` to a specific `peerd`
     #[api(type = 202)]
     #[display("ping_peer()")]
     PingPeer,
 
-    // Can be issued from `cli` to `lnpd`
     #[api(type = 203)]
     #[display("take_swap({0})")]
     TakeSwap(InitSwap),
 
-    // Can be issued from `cli` to `lnpd`
     #[api(type = 204)]
     #[display("make_swap({0})")]
     MakeSwap(InitSwap),
 
     #[api(type = 199)]
-    #[display("public_offer({0:#}))")]
+    #[display("take_offer({0}))")]
     TakeOffer(PubOffer),
 
     #[api(type = 198)]
-    #[display("proto_puboffer({0:#})")]
+    #[display("make_offer({0})")]
     MakeOffer(ProtoPublicOffer),
 
-    #[api(type = 206)]
-    #[display(inner)]
-    MadeOffer(MadeOffer),
-
-    #[api(type = 207)]
-    #[display("took_offer({0})", alt = "{0:#}")]
-    TookOffer(TookOffer),
-
     #[api(type = 197)]
-    #[display("params({0:#})")]
+    #[display("params({0})")]
     Params(Params),
 
     #[api(type = 196)]
@@ -444,11 +441,11 @@ pub enum Request {
     Tx(Tx),
 
     #[api(type = 195)]
-    #[display("bitcoin address()")]
+    #[display("bitcoin_address({0})")]
     BitcoinAddress(BitcoinAddress),
 
     #[api(type = 194)]
-    #[display("monero address()")]
+    #[display("monero_address({0})")]
     MoneroAddress(MoneroAddress),
 
     #[api(type = 193)]
@@ -456,27 +453,15 @@ pub enum Request {
     RevokeOffer(PublicOffer),
 
     #[api(type = 192)]
-    #[display("abort_swap")]
+    #[display("abort_swap()")]
     AbortSwap,
 
     #[api(type = 205)]
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
 
-    // Responses to CLI
+    // Progress functionalities
     // ----------------
-    #[api(type = 1004)]
-    #[display("{0}")]
-    String(String),
-
-    #[api(type = 1002)]
-    #[display("progress: {0}")]
-    Progress(Progress),
-
-    #[api(type = 1005)]
-    #[display(inner)]
-    SwapProgress(SwapProgress),
-
     #[api(type = 1003)]
     #[display("read_progress({0})")]
     ReadProgress(SwapId),
@@ -488,6 +473,28 @@ pub enum Request {
     #[api(type = 1007)]
     #[display("unsubscribe_progress({0})")]
     UnsubscribeProgress(SwapId),
+
+    // Responses to CLI
+    // ----------------
+    #[api(type = 1004)]
+    #[display(inner)]
+    String(String),
+
+    #[api(type = 206)]
+    #[display(inner)]
+    MadeOffer(MadeOffer),
+
+    #[api(type = 207)]
+    #[display(inner)]
+    TookOffer(TookOffer),
+
+    #[api(type = 1002)]
+    #[display(inner)]
+    Progress(Progress),
+
+    #[api(type = 1005)]
+    #[display(inner)]
+    SwapProgress(SwapProgress),
 
     #[api(type = 1001)]
     #[display(inner)]
@@ -503,22 +510,22 @@ pub enum Request {
     PublicOfferHex(String),
 
     #[api(type = 1099)]
-    #[display("syncer_info({0})", alt = "{0:#}")]
+    #[display("syncer_info(..)")]
     #[from]
     SyncerInfo(SyncerInfo),
 
     #[api(type = 1100)]
-    #[display("node_info({0})", alt = "{0:#}")]
+    #[display("node_info(..)")]
     #[from]
     NodeInfo(NodeInfo),
 
     #[api(type = 1101)]
-    #[display("node_info({0})", alt = "{0:#}")]
+    #[display("node_info(..)")]
     #[from]
     PeerInfo(PeerInfo),
 
     #[api(type = 1102)]
-    #[display("channel_info({0})", alt = "{0:#}")]
+    #[display("channel_info(..)")]
     #[from]
     SwapInfo(SwapInfo),
 
@@ -553,7 +560,7 @@ pub enum Request {
     ListenList(List<String>),
 
     #[api(type = 1108)]
-    #[display("funding_info({0})", alt = "{0:#}")]
+    #[display("funding_info({0})")]
     #[from]
     FundingInfo(FundingInfo),
 
@@ -570,7 +577,7 @@ pub enum Request {
     FundingCompleted(Blockchain),
 
     #[api(type = 1112)]
-    #[display("funding_canceled")]
+    #[display("funding_canceled({0})")]
     FundingCanceled(Blockchain),
 
     // #[api(type = 1203)]
@@ -628,11 +635,11 @@ pub enum Request {
     SweepBitcoinAddress(SweepBitcoinAddress),
 
     #[api(type = 1311)]
-    #[display("get_address_secret_key")]
+    #[display("get_address_secret_key({0})")]
     GetAddressSecretKey(Address),
 
     #[api(type = 1312)]
-    #[display("get_addresses")]
+    #[display("get_addresses({0})")]
     GetAddresses(Blockchain),
 
     #[api(type = 1313)]
@@ -652,7 +659,7 @@ pub enum Request {
     SetOfferStatus(OfferStatusPair),
 
     #[api(type = 1316)]
-    #[display("retrieve_offers")]
+    #[display("retrieve_offers({0})")]
     RetrieveOffers(OfferStatusSelector),
 
     #[api(type = 1317)]
@@ -799,16 +806,18 @@ pub enum Outcome {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display("address")]
 pub enum Address {
+    #[display("{0}")]
     Bitcoin(bitcoin::Address),
+    #[display("{0}")]
     Monero(monero::Address),
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display("funding_info")]
 pub enum FundingInfo {
+    #[display("bitcoin(..)")]
     Bitcoin(BitcoinFundingInfo),
+    #[display("monero(..)")]
     Monero(MoneroFundingInfo),
 }
 
@@ -928,7 +937,7 @@ pub struct SyncerdBridgeEvent {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{peerd}, {swap_id}")]
+#[display("{peerd}, {swap_id}, ..")]
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
@@ -967,15 +976,15 @@ pub struct NodeInfo {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[display("bitcoin_address")]
+#[display("{1}")]
 pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[display("monero_address")]
+#[display("{1}")]
 pub struct MoneroAddress(pub SwapId, pub monero::Address);
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[display("proto_puboffer")]
+#[display("..")]
 pub struct ProtoPublicOffer {
     pub offer: Offer,
     pub public_addr: InetSocketAddr,
