@@ -50,7 +50,7 @@ pub mod grpcd {
     include!("src/grpcd/opts.rs");
 }
 
-fn main() -> Result<(), configure_me_codegen::Error> {
+fn main() -> Result<(), std::io::Error> {
     let proto_file = "./src/grpcd/proto/farcaster.proto";
 
     tonic_build::configure()
@@ -81,5 +81,5 @@ fn main() -> Result<(), configure_me_codegen::Error> {
         generate_to(Fish, app, &name, &outdir)?;
     }
 
-    configure_me_codegen::build_script_auto()
+    Ok(())
 }
