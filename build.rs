@@ -43,6 +43,12 @@ pub mod syncerd {
 pub mod walletd {
     include!("src/walletd/opts.rs");
 }
+pub mod databased {
+    include!("src/databased/opts.rs");
+}
+pub mod grpcd {
+    include!("src/grpcd/opts.rs");
+}
 
 fn main() -> Result<(), configure_me_codegen::Error> {
     let proto_file = "./src/grpcd/proto/farcaster.proto";
@@ -63,6 +69,8 @@ fn main() -> Result<(), configure_me_codegen::Error> {
         cli::Opts::command(),
         walletd::Opts::command(),
         syncerd::Opts::command(),
+        databased::Opts::command(),
+        grpcd::Opts::command(),
     ]
     .iter_mut()
     {
