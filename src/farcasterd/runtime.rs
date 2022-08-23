@@ -331,8 +331,8 @@ impl Runtime {
         }
     }
     fn peer_keys_ready(&self) -> Result<(SecretKey, PublicKey), Error> {
-        if self.node_secret_key.is_some() && self.node_public_key.is_some() {
-            Ok((self.node_secret_key.unwrap(), self.node_public_key.unwrap()))
+        if let (Some(sk),Some(pk)) = (self.node_secret_key, self.node_public_key) {
+            Ok((sk, pk))
         } else {
             Err(Error::Farcaster("Peer keys not ready yet".to_string()))
         }
