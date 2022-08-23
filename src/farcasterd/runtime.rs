@@ -1169,34 +1169,28 @@ impl Runtime {
             }) => {
                 let res = self.services_ready().and_then(|_| {
                     let (peer_secret_key, peer_public_key) = self.peer_keys_ready()?;
-                    let bindaddr = self
-                        .listens
-                        .iter()
-                        .find(|(_, a)| a == &&bind_addr)
-                        .map(|(_, addr)| *addr);
-                    match bindaddr {
-                        None => {
-                            info!(
-                                "{} for incoming peer connections on {}",
-                                "Starting listener".bright_blue_bold(),
-                                bind_addr.bright_blue_bold()
-                            );
-                            let node_id = NodeId::from(peer_public_key);
-                            self.listen(NodeAddr::new(node_id, bind_addr), peer_secret_key)
-                                .and_then(|_| {
-                                    self.listens.insert(offer.id(), bind_addr);
-                                    self.node_ids.insert(offer.id(), node_id);
-                                    Ok(())
-                                })?;
-                        }
-                        Some(addr) => {
-                            // no need for the keys, because peerd already knows them
-                            self.listens.insert(offer.id(), addr);
-                            self.node_ids
-                                .insert(offer.id(), NodeId::from(peer_public_key));
-                            let msg = format!("Already listening on {}", &bind_addr);
-                            debug!("{}", &msg);
-                        }
+                    let address_bound = self.listens.iter().any(|(_, a)| a == &bind_addr);
+                    if !address_bound {
+                        // if address not bound, bind first
+                        info!(
+                            "{} for incoming peer connections on {}",
+                            "Starting listener".bright_blue_bold(),
+                            bind_addr.bright_blue_bold()
+                        );
+                        let node_id = NodeId::from(peer_public_key);
+                        self.listen(NodeAddr::new(node_id, bind_addr), peer_secret_key)
+                            .and_then(|_| {
+                                self.listens.insert(offer.id(), bind_addr);
+                                self.node_ids.insert(offer.id(), node_id);
+                                Ok(())
+                            })?;
+                    } else {
+                        // no need for the keys, because peerd already knows them
+                        self.listens.insert(offer.id(), bind_addr);
+                        self.node_ids
+                            .insert(offer.id(), NodeId::from(peer_public_key));
+                        let msg = format!("Already listening on {}", &bind_addr);
+                        debug!("{}", &msg);
                     }
                     info!(
                         "Connection daemon {} for incoming peer connections on {}",
