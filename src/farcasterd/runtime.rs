@@ -571,7 +571,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     swap_service_id,
-                                    Request::PeerdReconnected,
+                                    Request::PeerdReconnected(source.clone()),
                                 )?;
                             }
                         } else {
