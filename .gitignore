@@ -18,3 +18,6 @@
 /tests/fc2
 /tests/fc2.log
 **/*.mdb
+
+# folder created by compose/docker-compose.yml
+/compose/.farcaster
