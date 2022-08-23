@@ -12,7 +12,6 @@ include = [
   "README.md",
   "CHANGELOG.md",
   "LICENSE",
-  "config_spec.toml",
 ]
 keywords = ["bitcoin", "monero", "node", "atomic swaps"]
 license = "MIT"
@@ -64,7 +63,6 @@ chrono = "0.4"
 clap = { version = "3.0.0", optional = true, features = ["env", "derive"] }
 colored = { version = "2", optional = true }
 config = "0.11"
-configure_me = { version = "0.4", optional = true }
 dotenv = { version = "0.15", optional = true }
 electrum-client = { git = "https://github.com/bitcoindevkit/rust-electrum-client", branch = "master" }
 env_logger = "0.7"
@@ -116,7 +114,6 @@ clap = { version = "3.0.0", features = ["env"] }
 clap_complete = "3.1"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_debug"] }
 shellexpand = "2"
-configure_me_codegen = "0.4"
 electrum-client = { git = "https://github.com/bitcoindevkit/rust-electrum-client", branch = "master" }
 tonic-build = "0.7"
 
@@ -174,7 +171,6 @@ shell = [
   "dotenv",
   "clap",
   "settings",
-  "configure_me",
   "serde",
   "amplify/parse_arg",
   "microservices/shell",
@@ -202,6 +198,3 @@ serde = [
 tor = ["microservices/tor", "internet2/tor"]
 
 integration_test = ["regex"]
-
-[package.metadata.configure_me]
-spec = "config_spec.toml"

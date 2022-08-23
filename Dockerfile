@@ -18,7 +18,7 @@ WORKDIR "$SRC_DIR"
 COPY doc ${SRC_DIR}/doc
 COPY shell ${SRC_DIR}/shell
 COPY src ${SRC_DIR}/src
-COPY build.rs Cargo.lock Cargo.toml codecov.yml config_spec.toml \
+COPY build.rs Cargo.lock Cargo.toml codecov.yml \
      LICENSE README.md ${SRC_DIR}/
 
 WORKDIR ${SRC_DIR}
