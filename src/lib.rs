@@ -11,7 +11,6 @@
 // You should have received a copy of the MIT License
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
-#![allow(unused_imports)]
 #![recursion_limit = "256"]
 // Coding conventions
 #![deny(
@@ -19,9 +18,8 @@
     non_camel_case_types,
     non_snake_case,
     unused_mut,
-    // unused_imports,
-    // dead_code
-    // missing_docs,
+    unused_imports,
+    dead_code
 )]
 
 extern crate farcaster_core;
