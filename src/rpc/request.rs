@@ -211,7 +211,7 @@ impl From<(PublicOffer, bitcoin::Address, monero::Address)> for PubOffer {
 pub struct Token(pub String);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("get keys(token({0})))")]
+#[display("get keys(token({0}))")]
 pub struct GetKeys(pub Token);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
