@@ -1,4 +1,5 @@
 use farcaster_core::{
+    blockchain::Blockchain,
     negotiation::PublicOffer,
     role::{SwapRole, TradeRole},
     transaction::TxLabel,
@@ -11,10 +12,17 @@ use crate::{
         request::{Commit, InitSwap, Msg, Outcome, Params, Reveal, Tx},
         Request,
     },
+    syncerd::{
+        syncer_state, AddressTransaction, Event as SyncerEvent, TaskId, TransactionConfirmations,
+    },
     ServiceId,
 };
 
-use super::{runtime::PendingRequests, syncer_client::SyncerState};
+use super::{
+    runtime::PendingRequests,
+    syncer_client::SyncerState,
+    temporal_safety::{self, TemporalSafety},
+};
 
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum AliceState {
@@ -164,7 +172,11 @@ pub enum Awaiting {
     RpcGetInfo,
     CtlPeerReconnected,
     CtlCheckpoint,
-
+    MoneroSyncerHeightchanged,
+    MoneroSyncerAliceAddressTx,
+    MoneroSyncerBobAddressTx,
+    MoneroSyncerTxConfsSendDeferredReq,
+    MoneroSyncerTxConfsSendBuysig,
     // else
     Unknown,
 }
@@ -175,6 +187,7 @@ impl Awaiting {
         event: &Event<Request>,
         syncer_state: Option<&SyncerState>,
         pending_requests: Option<&PendingRequests>,
+        temporal_safety: &TemporalSafety,
     ) -> Self {
         // Msg bus
         if state.p_t_p2p_maker_commit(&event) {
@@ -235,6 +248,28 @@ impl Awaiting {
         // Rpc bus
         else if state.p_rpc_get_info(event) {
             Awaiting::RpcGetInfo
+        }
+        // Monero Syncer
+        else if state.p_monero_syncer_height_changed(event, syncer_state.unwrap()) {
+            Awaiting::MoneroSyncerHeightchanged
+        } else if state.p_monero_syncer_a_address_tx(event, syncer_state.unwrap()) {
+            Awaiting::MoneroSyncerAliceAddressTx
+        } else if state.p_monero_syncer_b_address_tx(event, syncer_state.unwrap()) {
+            Awaiting::MoneroSyncerBobAddressTx
+        } else if state.p_monero_syncer_tx_confs(
+            event,
+            syncer_state.unwrap(),
+            pending_requests.unwrap(),
+            temporal_safety,
+        ) {
+            Awaiting::MoneroSyncerTxConfsSendDeferredReq
+        } else if state.p_monero_syncer_tx_confs_send_buysig(
+            event,
+            syncer_state.unwrap(),
+            pending_requests.unwrap(),
+            temporal_safety,
+        ) {
+            Awaiting::MoneroSyncerTxConfsSendBuysig
         }
         // Unknown
         else {
@@ -416,6 +451,124 @@ impl State {
     pub fn p_ctl_checkpoint(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Checkpoint(_))
     }
+
+    // Syncer
+    pub fn p_ctl_monero_syncer(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+        &ev.source == syncer_state.syncer(Blockchain::Monero)
+            && matches!(ev.message, Request::SyncerEvent(..))
+    }
+
+    pub fn p_monero_syncer_height_changed(
+        &self,
+        ev: &Event<Request>,
+        syncer_state: &SyncerState,
+    ) -> bool {
+        self.p_ctl_monero_syncer(ev, syncer_state)
+            && matches!(
+                ev.message,
+                Request::SyncerEvent(SyncerEvent::HeightChanged(..))
+            )
+    }
+    pub fn p_monero_syncer_a_address_tx(
+        &self,
+        ev: &Event<Request>,
+        syncer_state: &SyncerState,
+    ) -> bool {
+        self.p_ctl_monero_syncer(ev, syncer_state)
+            && matches!(
+                ev.message,
+                Request::SyncerEvent(SyncerEvent::AddressTransaction(..))
+            )
+            && self.swap_role() == SwapRole::Alice
+            && !self.a_xmr_locked()
+            && {
+                let id = task_id(&ev.message).unwrap();
+                syncer_state.tasks.watched_addrs.contains_key(id)
+                    && syncer_state.tasks.watched_addrs.get(id).unwrap() == &TxLabel::AccLock
+            }
+    }
+
+    pub fn p_monero_syncer_b_address_tx(
+        &self,
+        ev: &Event<Request>,
+        syncer_state: &SyncerState,
+    ) -> bool {
+        self.p_ctl_monero_syncer(ev, syncer_state)
+            && matches!(
+                ev.message,
+                Request::SyncerEvent(SyncerEvent::AddressTransaction(..))
+            )
+            && self.swap_role() == SwapRole::Bob
+            && syncer_state.is_watched_addr(&TxLabel::AccLock)
+            && {
+                let id = task_id(&ev.message).unwrap();
+                syncer_state.tasks.watched_addrs.contains_key(&id)
+                    && syncer_state.tasks.watched_addrs.get(&id).unwrap() == &TxLabel::AccLock
+            }
+    }
+    pub fn p_monero_syncer_tx_confs(
+        &self,
+        ev: &Event<Request>,
+        syncer_state: &SyncerState,
+        pending_requests: &PendingRequests,
+        temporal_safety: &TemporalSafety,
+    ) -> bool {
+        self.p_ctl_monero_syncer(ev, syncer_state)
+            && (self.b_buy_sig() || (self.a_refundsig() && self.a_xmr_locked()))
+            && {
+                if let Request::SyncerEvent(SyncerEvent::TransactionConfirmations(
+                    TransactionConfirmations {
+                        confirmations: Some(confirmations),
+                        ..
+                    },
+                )) = ev.message
+                {
+                    confirmations >= temporal_safety.sweep_monero_thr
+                } else {
+                    false
+                }
+            }
+            && pending_requests.contains_key(&ev.source)
+            && pending_requests
+                .get(&ev.source)
+                .map(|r| r.len() > 0)
+                .unwrap_or(false)
+    }
+
+    pub fn p_monero_syncer_tx_confs_send_buysig(
+        &self,
+        ev: &Event<Request>,
+        syncer_state: &SyncerState,
+        pending_requests: &PendingRequests,
+        temporal_safety: &TemporalSafety,
+    ) -> bool {
+        self.p_ctl_monero_syncer(ev, syncer_state)
+            && self.b_core_arb()
+            && !self.cancel_seen()
+            && {
+                if let Request::SyncerEvent(SyncerEvent::TransactionConfirmations(
+                    TransactionConfirmations {
+                        confirmations: Some(confirmations),
+                        ..
+                    },
+                )) = ev.message
+                {
+                    temporal_safety.final_tx(confirmations, Blockchain::Monero)
+                } else {
+                    false
+                }
+            }
+            && pending_requests.contains_key(&ev.source)
+            && pending_requests
+                .get(&ev.source)
+                .map(|reqs| reqs.len() == 1)
+                .unwrap()
+    }
+    pub fn p_ctl_bitcoin_syncer(&self, ev: &Event<Request>, syncer_state: &SyncerState) -> bool {
+        &ev.source == syncer_state.syncer(Blockchain::Bitcoin)
+            && matches!(ev.message, Request::SyncerEvent(..))
+    }
+
     pub fn swap_role(&self) -> SwapRole {
         match self {
             State::Alice(_) => SwapRole::Alice,
@@ -1008,5 +1161,14 @@ impl State {
             error!("Not on CoreArbB state");
             false
         }
+    }
+}
+
+fn task_id(request: &Request) -> Option<&TaskId> {
+    match request {
+        Request::SyncerEvent(SyncerEvent::AddressTransaction(AddressTransaction {
+            id, ..
+        })) => Some(id),
+        _ => None,
     }
 }

@@ -18,7 +18,10 @@ use crate::{
         swap_state::{AliceState, BobState},
         CheckpointSwapd, SwapCheckpointType,
     },
-    syncerd::{bitcoin_syncer::p2wpkh_signed_tx_fee, SweepMoneroAddress, XmrAddressAddendum},
+    syncerd::{
+        bitcoin_syncer::p2wpkh_signed_tx_fee, AddressTransaction, Event as SyncerEvent,
+        HeightChanged, SweepMoneroAddress, Task, TransactionConfirmations, XmrAddressAddendum,
+    },
     CtlServer, Endpoints, Error, LogStyle, ServiceId,
 };
 use farcaster_core::{
@@ -116,6 +119,7 @@ impl Runtime {
             &event,
             Some(self.syncer_state()),
             Some(&self.pending_requests),
+            &self.temporal_safety,
         ) {
             // Msg bus
             Awaiting::TakerP2pMakerCommit => self.taker_p2p_maker_commit(event),
@@ -151,11 +155,339 @@ impl Runtime {
             Awaiting::RpcGetInfo => self.rpc_get_info(event),
 
             // Syncer bus
+            Awaiting::MoneroSyncerHeightchanged => self.monero_syncer_height_changed(event),
+            Awaiting::MoneroSyncerAliceAddressTx => self.monero_syncer_alice_address_tx(event),
+            Awaiting::MoneroSyncerBobAddressTx => self.monero_syncer_bob_address_tx(event),
+            Awaiting::MoneroSyncerTxConfsSendDeferredReq => {
+                self.monero_syncer_tx_confs_send_deferred_req(event)
+            }
+            Awaiting::MoneroSyncerTxConfsSendBuysig => {
+                self.monero_syncer_tx_confs_send_buysig(event)
+            }
 
             // Others
             Awaiting::Unknown => Err(Error::Farcaster(s!("Invalid state for this event"))),
         }
     }
+}
+
+//  Syncer processing fns
+impl Runtime {
+    fn monero_syncer_height_changed(&mut self, event: Event<Request>) -> Result<(), Error> {
+        if let Request::SyncerEvent(SyncerEvent::HeightChanged(HeightChanged { height, .. })) =
+            &event.message
+        {
+            self.syncer_state
+                .handle_height_change(*height, Blockchain::Monero);
+        }
+        Ok(())
+    }
+    fn monero_syncer_alice_address_tx(&mut self, event: Event<Request>) -> Result<(), Error> {
+        if let Request::SyncerEvent(SyncerEvent::AddressTransaction(AddressTransaction {
+            id,
+            hash,
+            amount,
+            block,
+            tx,
+        })) = event.message
+        {
+            debug!(
+                "Event details: {} {:?} {} {:?} {:?}",
+                id, hash, amount, block, tx
+            );
+            self.state.a_sup_refundsig_xmrlocked();
+
+            let required_funding_amount = self
+                .state
+                .a_required_funding_amount()
+                .expect("set when monero funding address is displayed");
+            if amount.clone() < required_funding_amount {
+                // Alice still views underfunding as valid in the hope that Bob still passes her BuyProcSig
+                let msg = format!(
+                        "Too small amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
+                        monero::Amount::from_pico(required_funding_amount),
+                        monero::Amount::from_pico(amount.clone())
+                    );
+                error!("{}", msg);
+                self.report_progress_message_to(event.endpoints, self.enquirer.clone(), msg)?;
+            } else if amount.clone() > required_funding_amount {
+                // Alice set overfunded to ensure that she does not publish the buy transaction if Bob gives her the BuySig.
+                self.state.a_sup_overfunded();
+                let msg = format!(
+                        "Too big amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will attempt to refund.",
+                        monero::Amount::from_pico(required_funding_amount),
+                        monero::Amount::from_pico(amount.clone())
+                    );
+                error!("{}", msg);
+                self.report_progress_message_to(event.endpoints, self.enquirer.clone(), msg)?;
+            }
+
+            let txlabel = TxLabel::AccLock;
+            if !self.syncer_state.is_watched_tx(&txlabel) {
+                if self.syncer_state.awaiting_funding {
+                    event.endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Farcasterd,
+                        Request::FundingCompleted(Blockchain::Monero),
+                    )?;
+                    self.syncer_state.awaiting_funding = false;
+                }
+                let task = self.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
+                event.endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.monero_syncer(),
+                    Request::SyncerTask(task),
+                )?;
+            }
+            if self.syncer_state.tasks.watched_addrs.remove(&id).is_some() {
+                let abort_task = self.syncer_state.abort_task(id);
+                event.endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.monero_syncer(),
+                    Request::SyncerTask(abort_task),
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+    fn monero_syncer_bob_address_tx(&mut self, event: Event<Request>) -> Result<(), Error> {
+        if let Request::SyncerEvent(SyncerEvent::AddressTransaction(AddressTransaction {
+            id,
+            hash,
+            amount,
+            ..
+        })) = event.message
+        {
+            let amount = monero::Amount::from_pico(amount);
+            if amount < self.syncer_state.monero_amount {
+                warn!(
+                    "Not enough monero locked: expected {}, found {}",
+                    self.syncer_state.monero_amount, amount
+                );
+                return Ok(());
+            }
+            if let Some(tx_label) = self.syncer_state.tasks.watched_addrs.remove(&id) {
+                if !self.syncer_state.is_watched_tx(&tx_label) {
+                    let watch_tx = self.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
+                    event.endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.monero_syncer(),
+                        Request::SyncerTask(watch_tx),
+                    )?;
+                }
+                let abort_task = self.syncer_state.abort_task(id);
+                event.endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    self.syncer_state.monero_syncer(),
+                    Request::SyncerTask(abort_task),
+                )?;
+            }
+        }
+        Ok(())
+    }
+    fn monero_syncer_tx_confs_send_deferred_req(
+        &mut self,
+        event: Event<Request>,
+    ) -> Result<(), Error> {
+        if let Request::SyncerEvent(SyncerEvent::TransactionConfirmations(
+            TransactionConfirmations {
+                confirmations: Some(confirmations),
+                ..
+            },
+        )) = event.message
+        {
+            // FIXME: use pending request functionality: what request is sent here?
+            let PendingRequest {
+                source: _,
+                request,
+                dest,
+                bus_id,
+            } = self
+                .pending_requests()
+                .remove(&event.source)
+                .expect("Checked above")
+                .pop()
+                .unwrap();
+            if let (Request::SyncerTask(Task::SweepAddress(mut task)), ServiceBus::Ctl) =
+                (request.clone(), bus_id)
+            {
+                // safe cast
+                task.from_height = Some(self.syncer_state.monero_height - confirmations as u64);
+                let request = Request::SyncerTask(Task::SweepAddress(task));
+
+                info!(
+                    "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
+                    self.swap_id().bright_blue_italic(),
+                    self.syncer_state.monero_height.bright_white_bold()
+                );
+                event
+                    .endpoints
+                    .send_to(bus_id, self.identity(), dest, request)?;
+            } else {
+                error!(
+                    "Not the sweep task {} or not Ctl bus found {}",
+                    request, bus_id
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn monero_syncer_tx_confs_send_buysig(&mut self, event: Event<Request>) -> Result<(), Error> {
+        // error!("not checking tx rcvd is accordant lock");
+        let success =
+            PendingRequests::continue_deferred_requests(self, event.endpoints, event.source, |r| {
+                matches!(
+                    r,
+                    &PendingRequest {
+                        bus_id: ServiceBus::Msg,
+                        request: Request::Protocol(Msg::BuyProcedureSignature(_)),
+                        ..
+                    }
+                )
+            });
+        if success {
+            let next_state = State::Bob(BobState::BuySigB {
+                buy_tx_seen: false,
+                last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
+            });
+            self.state_update(event.endpoints, next_state)?;
+        }
+        Ok(())
+    }
+    // Request::SyncerEvent(ref event) if source == self.syncer_state.monero_syncer => {
+    //     match &event {
+    //         Event::TransactionConfirmations(TransactionConfirmations {
+    //             confirmations: Some(confirmations),
+    //             ..
+    //         }) if self
+    //             .temporal_safety
+    //             .final_tx(*confirmations, Blockchain::Monero)
+    //             && self.state.b_core_arb()
+    //             && !self.state.cancel_seen()
+    //             && self.pending_requests().contains_key(&source)
+    //             && self
+    //                 .pending_requests()
+    //                 .get(&source)
+    //                 .map(|reqs| reqs.len() == 1)
+    //                 .unwrap() =>
+    //         {
+    //         }
+    //         Event::TransactionConfirmations(TransactionConfirmations {
+    //             id,
+    //             confirmations,
+    //             ..
+    //         }) if self.syncer_state.tasks.watched_txs.contains_key(id)
+    //             && !self
+    //                 .temporal_safety
+    //                 .final_tx(confirmations.unwrap_or(0), Blockchain::Monero) =>
+    //         {
+    //             self.syncer_state.handle_tx_confs(
+    //                 id,
+    //                 confirmations,
+    //                 self.swap_id(),
+    //                 self.temporal_safety.xmr_finality_thr,
+    //             );
+    //         }
+    //         Event::TransactionConfirmations(TransactionConfirmations {
+    //             id,
+    //             confirmations,
+    //             ..
+    //         }) => {
+    //             self.syncer_state.handle_tx_confs(
+    //                 id,
+    //                 confirmations,
+    //                 self.swap_id(),
+    //                 self.temporal_safety.xmr_finality_thr,
+    //             );
+    //         }
+
+    //         Event::TaskAborted(_) => {}
+    //         Event::SweepSuccess(SweepSuccess { id, .. })
+    //             if (self.state.b_buy_sig() || self.state.a_xmr_locked())
+    //                 && self.syncer_state.tasks.sweeping_addr.is_some()
+    //                 && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
+    //         {
+    //             if self.syncer_state.awaiting_funding {
+    //                 warn!(
+    //                     "FundingCompleted never emitted, but not possible to sweep\
+    //                        monero without passing through funding completed:\
+    //                        emitting it now to clean up farcasterd"
+    //                 );
+    //                 self.syncer_state.awaiting_funding = false;
+    //                 match self.state.swap_role() {
+    //                     SwapRole::Alice => {
+    //                         endpoints.send_to(
+    //                             ServiceBus::Ctl,
+    //                             self.identity(),
+    //                             ServiceId::Farcasterd,
+    //                             Request::FundingCompleted(Blockchain::Monero),
+    //                         )?;
+    //                     }
+    //                     SwapRole::Bob => {
+    //                         endpoints.send_to(
+    //                             ServiceBus::Ctl,
+    //                             self.identity(),
+    //                             ServiceId::Farcasterd,
+    //                             Request::FundingCompleted(Blockchain::Bitcoin),
+    //                         )?;
+    //                     }
+    //                 }
+    //             }
+    //             let abort_all = Task::Abort(Abort {
+    //                 task_target: TaskTarget::AllTasks,
+    //                 respond: Boolean::False,
+    //             });
+    //             endpoints.send_to(
+    //                 ServiceBus::Ctl,
+    //                 self.identity(),
+    //                 self.syncer_state.monero_syncer(),
+    //                 Request::SyncerTask(abort_all.clone()),
+    //             )?;
+    //             endpoints.send_to(
+    //                 ServiceBus::Ctl,
+    //                 self.identity(),
+    //                 self.syncer_state.bitcoin_syncer(),
+    //                 Request::SyncerTask(abort_all),
+    //             )?;
+    //             let success = if self.state.b_buy_sig() {
+    //                 self.state_update(
+    //                     endpoints,
+    //                     State::Bob(BobState::FinishB(Outcome::Buy)),
+    //                 )?;
+    //                 Some(Outcome::Buy)
+    //             } else if self.state.a_refund_seen() {
+    //                 self.state_update(
+    //                     endpoints,
+    //                     State::Alice(AliceState::FinishA(Outcome::Refund)),
+    //                 )?;
+    //                 Some(Outcome::Refund)
+    //             } else {
+    //                 error!("Unexpected sweeping state, not sending finalization commands to wallet and farcasterd");
+    //                 None
+    //             };
+    //             if let Some(success) = success {
+    //                 let swap_success_req = Request::SwapOutcome(success);
+    //                 self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
+    //                 self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
+    //                 // remove txs to invalidate outdated states
+    //                 self.txs.remove(&TxLabel::Cancel);
+    //                 self.txs.remove(&TxLabel::Refund);
+    //                 self.txs.remove(&TxLabel::Buy);
+    //                 self.txs.remove(&TxLabel::Punish);
+    //             }
+    //         }
+    //         event => {
+    //             error!("event not handled {}", event)
+    //         }
+    //     }
+    // }
 }
 
 /// Ctl bus processing fns
