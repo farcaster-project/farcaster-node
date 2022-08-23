@@ -42,6 +42,9 @@ extern crate clap;
 extern crate log;
 
 #[cfg(feature = "serde")]
+// on the `[dependencies]` section of `Cargo.toml`, check the comments above
+// the `serde_crate` dependency; we can remove this rename once we move to
+// version 1.60.0 of Rust
 extern crate serde_crate as serde;
 #[cfg(feature = "serde")]
 #[macro_use]

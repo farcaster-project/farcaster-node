@@ -84,7 +84,14 @@ paste = "1.0"
 prost = "0.10.3"
 regex = { version = "1.5", optional = true }
 rustc-hex = "2.1.0"
-serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
+# we rename the crate below because there is already a feature called `serde`,
+# so it would conflict with the implicit feature that would be added by adding
+# the `serde` crate;
+# this can be fixed once rust-version is updated to 1.60.0, which solves this
+# by adding the `dep:` prefix for features defined by dependencies
+serde_crate = { package = "serde", version = "1", features = [
+    "derive",
+], optional = true }
 serde_json = { version = "1", optional = true }
 serde_with = { version = "1.8", optional = true }
 serde_yaml = { version = "0.8", optional = true }
