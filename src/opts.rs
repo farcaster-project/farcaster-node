@@ -134,7 +134,7 @@ impl Opts {
 
         for s in vec![&mut self.msg_socket, &mut self.ctl_socket] {
             match s {
-                ServiceAddr::Ipc(path, ..) | ServiceAddr::Inproc(path) => {
+                ServiceAddr::Ipc(path) | ServiceAddr::Inproc(path) => {
                     me.process_dir(path);
                 }
                 _ => {}
