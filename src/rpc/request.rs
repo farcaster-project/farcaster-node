@@ -79,11 +79,11 @@ use strict_encoding::{
 #[display(inner)]
 pub enum Msg {
     #[api(type = 28)]
-    #[display("maker_commit(...)")]
+    #[display("maker_commit({0})")]
     MakerCommit(Commit),
 
     #[api(type = 21)]
-    #[display("taker_commit(...)")]
+    #[display("taker_commit({0})")]
     TakerCommit(TakeCommit),
 
     #[api(type = 22)]
@@ -91,19 +91,19 @@ pub enum Msg {
     Reveal(Reveal),
 
     #[api(type = 25)]
-    #[display("refund_procedure_signatures_a(...)")]
+    #[display("refund_procedure_signatures(..)")]
     RefundProcedureSignatures(RefundProcedureSignatures),
 
     #[api(type = 27)]
-    #[display("abort(...)")]
+    #[display("abort(..)")]
     Abort(Abort),
 
     #[api(type = 24)]
-    #[display("core_arbitrating_setup_b(...)")]
+    #[display("core_arbitrating_setup(..)")]
     CoreArbitratingSetup(CoreArbitratingSetup),
 
     #[api(type = 26)]
-    #[display("buy_procedure_signature_b(...)")]
+    #[display("buy_procedure_signature(..)")]
     BuyProcedureSignature(BuyProcedureSignature),
 
     #[api(type = 29)]
@@ -111,7 +111,7 @@ pub enum Msg {
     Ping(u16),
 
     #[api(type = 31)]
-    #[display("pong(...)")]
+    #[display("pong(..)")]
     Pong(Vec<u8>),
 
     #[api(type = 33)]
@@ -123,7 +123,7 @@ pub enum Msg {
     PeerReceiverRuntimeShutdown,
 
     #[api(type = 35)]
-    #[display("identity(...)")]
+    #[display("identity(..)")]
     Identity(internet2::addr::NodeId),
 }
 
@@ -189,18 +189,18 @@ impl RequestId {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 pub enum Commit {
-    #[display("alice(...)")]
+    #[display("alice(..)")]
     AliceParameters(CommitAliceParameters),
-    #[display("bob(...)")]
+    #[display("bob(..)")]
     BobParameters(CommitBobParameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("nodeid")]
+#[display(inner)]
 pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{public_offer}, ...")]
+#[display("{public_offer}, ..")]
 pub struct PubOffer {
     pub public_offer: PublicOffer,
     pub peer_secret_key: Option<SecretKey>,
@@ -229,11 +229,11 @@ pub struct Token(pub String);
 pub struct GetKeys(pub Token, pub RequestId);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{0}, ...")]
+#[display("{0}, ..")]
 pub struct ReconnectPeer(pub NodeAddr, pub Option<SecretKey>);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{public_offer}")]
+#[display("{public_offer}, ..")]
 pub struct LaunchSwap {
     pub local_trade_role: TradeRole,
     pub public_offer: PublicOffer,
@@ -243,7 +243,8 @@ pub struct LaunchSwap {
     pub funding_address: Option<bitcoin::Address>,
 }
 
-#[derive(Clone, Debug, From, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]
+#[display("{swap_id}, ..")]
 pub struct TakeCommit {
     pub commit: Commit,
     pub public_offer: String, // TODO: replace by public offer id
@@ -269,12 +270,12 @@ fn format_keys(keys: &Keys) -> String {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 pub enum Reveal {
-    #[display("alice(...)")]
+    #[display("alice(..)")]
     AliceParameters(RevealAliceParameters),
-    #[display("bob(...)")]
+    #[display("bob(..)")]
     BobParameters(RevealBobParameters),
-    #[display("proof(...)")]
-    Proof(RevealProof), // FIXME should be Msg::RevealProof(...)
+    #[display("proof(..)")]
+    Proof(RevealProof), // FIXME should be Msg::RevealProof(..)
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -285,26 +286,26 @@ pub enum Reveal {
 // )]
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 pub enum Params {
-    #[display("alice(...)")]
+    #[display("alice(..)")]
     Alice(Parameters),
-    #[display("bob(...)")]
+    #[display("bob(..)")]
     Bob(Parameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display(inner)]
 pub enum Tx {
-    #[display("lock")]
+    #[display("lock(..)")]
     Lock(Transaction),
-    #[display("buy")]
+    #[display("buy(..)")]
     Buy(Transaction),
-    #[display("funding")]
+    #[display("funding(..)")]
     Funding(Transaction),
-    #[display("cancel")]
+    #[display("cancel(..)")]
     Cancel(Transaction),
-    #[display("refund")]
+    #[display("refund(..)")]
     Refund(Transaction),
-    #[display("punish")]
+    #[display("punish(..)")]
     Punish(Transaction),
 }
 
@@ -328,7 +329,7 @@ pub enum Request {
     /// Within the received ping message, the sender will specify the number of
     /// bytes to be included within the data payload of the pong message.
     #[api(type = 19)]
-    #[display("pong(...)")]
+    #[display("pong(..)")]
     Pong(Vec<u8>),
 
     #[api(type = 0)]
@@ -344,7 +345,7 @@ pub enum Request {
     PeerdTerminated,
 
     #[api(type = 5)]
-    #[display("send_protocol_message({0})")]
+    #[display("protocol_message({0})")]
     Protocol(Msg),
 
     #[api(type = 6)]
@@ -436,7 +437,7 @@ pub enum Request {
     TakeOffer(PubOffer),
 
     #[api(type = 198)]
-    #[display("make_offer(...)")]
+    #[display("make_offer({0})")]
     MakeOffer(ProtoPublicOffer),
 
     #[api(type = 197)]
@@ -467,28 +468,8 @@ pub enum Request {
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
 
-    // Responses to CLI
+    // Progress functionalities
     // ----------------
-    #[api(type = 1004)]
-    #[display("{0}")]
-    String(String),
-
-    #[api(type = 206)]
-    #[display(inner)]
-    MadeOffer(MadeOffer),
-
-    #[api(type = 207)]
-    #[display(inner)]
-    TookOffer(TookOffer),
-
-    #[api(type = 1002)]
-    #[display("progress: {0}")]
-    Progress(Progress),
-
-    #[api(type = 1005)]
-    #[display(inner)]
-    SwapProgress(SwapProgress),
-
     #[api(type = 1003)]
     #[display("read_progress({0})")]
     ReadProgress(SwapId),
@@ -500,6 +481,28 @@ pub enum Request {
     #[api(type = 1007)]
     #[display("unsubscribe_progress({0})")]
     UnsubscribeProgress(SwapId),
+
+    // Responses to CLI
+    // ----------------
+    #[api(type = 1004)]
+    #[display(inner)]
+    String(String),
+
+    #[api(type = 206)]
+    #[display(inner)]
+    MadeOffer(MadeOffer),
+
+    #[api(type = 207)]
+    #[display(inner)]
+    TookOffer(TookOffer),
+
+    #[api(type = 1002)]
+    #[display(inner)]
+    Progress(Progress),
+
+    #[api(type = 1005)]
+    #[display(inner)]
+    SwapProgress(SwapProgress),
 
     #[api(type = 1001)]
     #[display(inner)]
@@ -515,22 +518,22 @@ pub enum Request {
     PublicOfferHex(String),
 
     #[api(type = 1099)]
-    #[display("syncer_info({0})", alt = "{0:#}")]
+    #[display("syncer_info(..)")]
     #[from]
     SyncerInfo(SyncerInfo),
 
     #[api(type = 1100)]
-    #[display("node_info({0})", alt = "{0:#}")]
+    #[display("node_info(..)")]
     #[from]
     NodeInfo(NodeInfo),
 
     #[api(type = 1101)]
-    #[display("node_info({0})", alt = "{0:#}")]
+    #[display("node_info(..)")]
     #[from]
     PeerInfo(PeerInfo),
 
     #[api(type = 1102)]
-    #[display("channel_info({0})", alt = "{0:#}")]
+    #[display("channel_info(..)")]
     #[from]
     SwapInfo(SwapInfo),
 
@@ -565,7 +568,7 @@ pub enum Request {
     ListenList(List<String>),
 
     #[api(type = 1108)]
-    #[display("funding_info({0})", alt = "{0:#}")]
+    #[display("funding_info({0})")]
     #[from]
     FundingInfo(FundingInfo),
 
@@ -819,9 +822,10 @@ pub enum Address {
 }
 
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
-#[display("funding_info")]
 pub enum FundingInfo {
+    #[display("bitcoin(..)")]
     Bitcoin(BitcoinFundingInfo),
+    #[display("monero(..)")]
     Monero(MoneroFundingInfo),
 }
 
@@ -941,7 +945,7 @@ pub struct SyncerdBridgeEvent {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{peerd}, {swap_id}, ...")]
+#[display("{peerd}, {swap_id}, ..")]
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,
@@ -988,7 +992,7 @@ pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
 pub struct MoneroAddress(pub SwapId, pub monero::Address);
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[display(Debug)]
+#[display("..")]
 pub struct ProtoPublicOffer {
     pub offer: Offer,
     pub public_addr: InetSocketAddr,
