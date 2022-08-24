@@ -13,31 +13,26 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
-use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::{FeeEstimation, FeeEstimations};
 use crate::{
     rpc::request::Outcome,
-    rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
+    rpc::request::{FundingInfo, MoneroFundingInfo},
     syncerd::{
-        Abort, HeightChanged, SweepMoneroAddress, SweepSuccess, TaskTarget, TransactionRetrieved,
-        XmrAddressAddendum,
+        Abort, HeightChanged, SweepSuccess, TaskTarget, TransactionRetrieved, XmrAddressAddendum,
     },
 };
 use std::collections::HashMap;
-use std::{
-    io::Cursor,
-    time::{Duration, SystemTime},
-};
+use std::io::Cursor;
+use std::time::SystemTime;
 
 use super::{
-    swap_state::{AliceState, BobState, State, SwapCheckpointType},
-    syncer_client::{log_tx_received, log_tx_seen, SyncerState, SyncerTasks},
+    swap_state::{AliceState, BobState, State},
+    syncer_client::{log_tx_seen, SyncerState, SyncerTasks},
     temporal_safety::TemporalSafety,
 };
 use crate::rpc::{
-    request::{self, Failure, FailureCode, Msg},
+    request::{self, Msg},
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -50,13 +45,13 @@ use farcaster_core::{
     crypto::{CommitmentEngine, SharedKeyId},
     monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::{message::CoreArbitratingSetup, Offer, Parameters, PublicOffer},
+    swap::btcxmr::{Offer, Parameters, PublicOffer},
     swap::SwapId,
     transaction::TxLabel,
 };
 use internet2::{addr::NodeAddr, CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller};
 use microservices::esb::{self, Handler};
-use request::{CheckpointState, Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
+use request::{Commit, Params, Reveal, Tx};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(

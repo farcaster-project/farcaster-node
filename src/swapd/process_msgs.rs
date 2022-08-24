@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    time::{Duration, SystemTime},
-};
+use std::time::{Duration, SystemTime};
 
 use crate::{
     databased::checkpoint_send,
@@ -27,10 +24,9 @@ use farcaster_core::{
     swap::btcxmr::message::CoreArbitratingSetup,
     transaction::TxLabel,
 };
-use microservices::esb::{self, Handler};
+use microservices::esb::Handler;
 
 use super::{
-    get_swap_id,
     runtime::{
         aggregate_xmr_spend_view, remote_params_candidate, PendingRequest, PendingRequests,
         PendingRequestsT,

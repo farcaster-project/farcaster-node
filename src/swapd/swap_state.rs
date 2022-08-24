@@ -1,5 +1,4 @@
 use farcaster_core::{
-    negotiation::PublicOffer,
     role::{SwapRole, TradeRole},
     transaction::TxLabel,
 };
