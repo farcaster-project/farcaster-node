@@ -336,8 +336,8 @@ pub enum Request {
     ReconnectPeer(ReconnectPeer),
 
     #[api(type = 8)]
-    #[display("peerd_reconnected()")]
-    PeerdReconnected,
+    #[display("peerd_reconnected({0})")]
+    PeerdReconnected(ServiceId),
 
     #[api(type = 32)]
     #[display("node_id({0})")]

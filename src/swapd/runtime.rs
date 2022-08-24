@@ -452,7 +452,7 @@ impl Runtime {
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
-            self.peer_service.clone(), // = ServiceId::Loopback
+            self.peer_service.clone(), // ServiceId::Loopback if not initiailized
             Request::Protocol(msg.clone()),
         ) {
             error!(
@@ -2327,7 +2327,13 @@ impl Runtime {
                 self.send_ctl(endpoints, source, Request::SwapInfo(info))?;
             }
 
-            Request::PeerdReconnected => {
+            Request::PeerdReconnected(service_id) => {
+                // set the reconnected service id, if it is not set yet. This
+                // can happen if this is a maker launched swap after restoration
+                // and the taker reconnects
+                if self.peer_service == ServiceId::Loopback {
+                    self.peer_service = service_id;
+                }
                 for msg in self.pending_peer_request.clone().iter() {
                     self.send_peer(endpoints, msg.clone())?;
                 }
