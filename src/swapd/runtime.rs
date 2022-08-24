@@ -21,16 +21,11 @@ use crate::{
     rpc::request::Outcome,
     rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
     syncerd::{
-        Abort, GetTx, HeightChanged, SweepAddress, SweepAddressAddendum, SweepMoneroAddress,
-        SweepSuccess, TaskId, TaskTarget, TransactionRetrieved, WatchHeight, XmrAddressAddendum,
+        Abort, HeightChanged, SweepMoneroAddress, SweepSuccess, TaskTarget, TransactionRetrieved,
+        XmrAddressAddendum,
     },
 };
-use std::{
-    any::Any,
-    collections::{BTreeMap, HashMap, HashSet},
-    convert::TryInto,
-};
-use std::{convert::TryFrom, str::FromStr};
+use std::collections::HashMap;
 use std::{
     io::Cursor,
     time::{Duration, SystemTime},
@@ -46,45 +41,22 @@ use crate::rpc::{
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-use bitcoin::{consensus::Encodable, secp256k1};
-use bitcoin::{
-    hashes::{hex::FromHex, ripemd160, sha256, Hash, HashEngine},
-    Txid,
-};
-use bitcoin::{
-    util::psbt::{serialize::Deserialize, PartiallySignedTransaction},
-    Script,
-};
+use bitcoin::util::psbt::serialize::Deserialize;
+use bitcoin::Txid;
 
-use crate::syncerd::types::{
-    AddressAddendum, AddressTransaction, Boolean, BroadcastTransaction, BtcAddressAddendum, Event,
-    Task, TransactionConfirmations, WatchAddress, WatchTransaction,
-};
+use crate::syncerd::types::{AddressTransaction, Boolean, Event, Task, TransactionConfirmations};
 use farcaster_core::{
-    bitcoin::{
-        fee::SatPerVByte, segwitv0::LockTx, segwitv0::SegwitV0, timelock::CSVTimelock, Bitcoin,
-        BitcoinSegwitV0,
-    },
-    blockchain::{self, Blockchain, FeeStrategy},
-    consensus::{self, Encodable as FarEncodable},
-    crypto::{CommitmentEngine, SharedKeyId, TaggedElement},
-    monero::{Monero, SHARED_VIEW_KEY_ID},
+    blockchain::Blockchain,
+    crypto::{CommitmentEngine, SharedKeyId},
+    monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::{
-        message::{CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup},
-        Offer, Parameters, PublicOffer,
-    },
+    swap::btcxmr::{message::CoreArbitratingSetup, Offer, Parameters, PublicOffer},
     swap::SwapId,
-    transaction::{Broadcastable, Transaction, TxLabel, Witnessable},
+    transaction::TxLabel,
 };
-use internet2::zeromq::{self, ZmqSocketType};
-use internet2::{
-    addr::NodeAddr, session, CreateUnmarshaller, Session, TypedEnum, Unmarshall, Unmarshaller,
-};
+use internet2::{addr::NodeAddr, CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller};
 use microservices::esb::{self, Handler};
-use monero::{cryptonote::hash::keccak_256, PrivateKey, ViewPair};
-use request::{Checkpoint, CheckpointState, Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
-use std::net::SocketAddr;
+use request::{CheckpointState, Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(
@@ -197,7 +169,6 @@ pub struct Runtime {
     pending_requests: PendingRequests,
     pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
-    #[allow(dead_code)]
     public_offer: PublicOffer,
 }
 

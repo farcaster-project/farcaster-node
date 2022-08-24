@@ -1,11 +1,3 @@
-use crate::opts::FARCASTER_KEY_FILE;
-use clap::ValueHint;
-use std::path::PathBuf;
-use std::{fs, io::Read};
-
-use crate::opts::TokenString;
-use strict_encoding::{StrictDecode, StrictEncode};
-
 /// Grpcd daemon; part of Farcaster Node
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(name = "grpcd", bin_name = "grpcd", author, version)]

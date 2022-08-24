@@ -15,14 +15,12 @@
 use internet2::addr::LocalNode;
 use microservices::peer::PeerReceiver;
 use microservices::peer::RecvMessage;
-use std::thread::JoinHandle;
+use std::sync::Arc;
+use std::thread::spawn;
 use std::time::{Duration, SystemTime};
-use std::{collections::HashMap, sync::Arc};
-use std::{rc::Rc, thread::spawn};
 
 use amplify::Bipolar;
 use bitcoin::secp256k1::rand::{self, Rng, RngCore};
-use bitcoin::secp256k1::PublicKey;
 use internet2::{addr::InetSocketAddr, CreateUnmarshaller, Unmarshall, Unmarshaller};
 use internet2::{
     addr::NodeAddr,
@@ -36,7 +34,7 @@ use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 use microservices::ZMQ_CONTEXT;
 
 use crate::rpc::{
-    request::{self, Msg, PeerInfo, TakeCommit, Token},
+    request::{Msg, PeerInfo},
     Request, ServiceBus,
 };
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};

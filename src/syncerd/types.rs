@@ -1,7 +1,3 @@
-use monero::consensus::Decodable;
-use monero::consensus::Encodable;
-use std::io;
-use std::ops::Add;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(

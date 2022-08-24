@@ -23,46 +23,28 @@ use crate::{
     error::SyncerError,
     rpc::request::{
         BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
-        MoneroFundingInfo, OfferInfo, Outcome, PubOffer, RequestId, Reveal, Token,
+        MoneroFundingInfo, OfferInfo, Outcome, PubOffer, RequestId, Token,
     },
     service::Endpoints,
     swapd::get_swap_id,
-    walletd::NodeSecrets,
 };
-use amplify::Wrapper;
 use bitcoin::hashes::Hash as BitcoinHash;
 use clap::IntoApp;
 use request::{Commit, List, Params};
-use std::collections::hash_map::Drain;
+use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::io;
 use std::iter::FromIterator;
-use std::net::SocketAddr;
 use std::process;
 use std::time::{Duration, SystemTime};
-use std::{collections::VecDeque, hash::Hash};
-use std::{
-    collections::{HashMap, HashSet},
-    io::Read,
-};
-use std::{convert::TryFrom, thread::sleep};
-use std::{convert::TryInto, ffi::OsStr};
 use uuid::Uuid;
 
-use bitcoin::{
-    hashes::hex::ToHex,
-    secp256k1::{PublicKey, SecretKey},
-};
-use bitcoin::{
-    secp256k1::{
-        self,
-        rand::{thread_rng, RngCore},
-    },
-    Address,
-};
+use bitcoin::{hashes::hex::ToHex, secp256k1::SecretKey};
 use internet2::{
     addr::NodeAddr,
     addr::{InetSocketAddr, NodeId},
-    TypedEnum, UrlString,
+    TypedEnum,
 };
 use microservices::esb::{self, Handler};
 
@@ -72,17 +54,11 @@ use farcaster_core::{
 };
 
 use crate::farcasterd::Opts;
-use crate::rpc::request::{
-    Failure, FailureCode, GetKeys, IntoProgressOrFailure, Msg, NodeInfo, OptionDetails,
-};
+use crate::rpc::request::{Failure, FailureCode, GetKeys, Msg, NodeInfo};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
-use farcaster_core::{
-    blockchain::FeePriority,
-    role::TradeRole,
-    swap::btcxmr::{KeyManager, PublicOffer},
-};
+use farcaster_core::{role::TradeRole, swap::btcxmr::PublicOffer};
 
 use std::str::FromStr;
 
@@ -1479,9 +1455,7 @@ impl Runtime {
                         );
 
                         use bitcoincore_rpc::{Auth, Client, Error, RpcApi};
-                        use std::env;
                         use std::path::PathBuf;
-                        use std::str::FromStr;
 
                         let host = auto_fund_config.bitcoin_rpc;
                         let bitcoin_rpc = match auto_fund_config.bitcoin_cookie_path {

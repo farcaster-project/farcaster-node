@@ -1,7 +1,4 @@
 use crate::error::{Error, SyncerError};
-use crate::internet2::DuplexConnection;
-use crate::internet2::Encrypt;
-use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
 use crate::service::LogStyle;
@@ -18,20 +15,20 @@ use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
 use farcaster_core::blockchain::{Blockchain, Network};
 use internet2::zeromq::{Connection, ZmqSocketType};
+use internet2::DuplexConnection;
+use internet2::Encrypt;
 use internet2::PlainTranscoder;
+use internet2::TypedEnum;
 use monero::Hash;
 use monero_rpc::{
     GenerateFromKeysArgs, GetBlockHeaderSelector, GetTransfersCategory, GetTransfersSelector,
-    PrivateKeyType, TransferType,
+    PrivateKeyType,
 };
 use std::collections::HashMap;
 use std::fs;
-use std::ops::Range;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
-use tokio::runtime::Runtime;
 use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;

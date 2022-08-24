@@ -13,15 +13,12 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::service::Endpoints;
-use std::convert::TryInto;
-use std::thread::{self, sleep};
+use std::thread::sleep;
 use std::time::Duration;
 
 use internet2::ZmqSocketType;
 use microservices::esb;
 
-use crate::rpc::request::OptionDetails;
-use crate::rpc::request::SwapProgress;
 use crate::rpc::{Request, ServiceBus};
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};

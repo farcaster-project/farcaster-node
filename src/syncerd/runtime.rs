@@ -17,28 +17,20 @@ use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::request::Progress;
-use amplify::Wrapper;
 use farcaster_core::blockchain::{Blockchain, Network};
-use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
-use std::ffi::OsStr;
-use std::io;
-use std::net::SocketAddr;
-use std::process;
+use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, SystemTime};
 
-use bitcoin::hashes::hex::ToHex;
-use bitcoin::secp256k1;
-use farcaster_core::swap::SwapId;
-use internet2::{addr::NodeAddr, presentation, transport, zeromq::ZmqSocketType, TypedEnum};
+use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
-use microservices::rpc::Failure;
 use microservices::ZMQ_CONTEXT;
 
-use crate::rpc::request::{IntoProgressOrFailure, OptionDetails, SyncerInfo};
-use crate::rpc::{request, Request, ServiceBus};
+use crate::rpc::{
+    request::{self, SyncerInfo},
+    Request, ServiceBus,
+};
 use crate::syncerd::*;
 use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
 

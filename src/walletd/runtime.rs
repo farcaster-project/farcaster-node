@@ -1,18 +1,8 @@
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use crate::syncerd::SweepBitcoinAddress;
-use lmdb::{Cursor, Transaction as LMDBTransaction};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
-use request::Checkpoint;
-use std::path::PathBuf;
-use std::{
-    any::Any,
-    collections::{HashMap, HashSet},
-    convert::{TryFrom, TryInto},
-    io::{self, Write},
-    ptr::swap_nonoverlapping,
-    str::FromStr,
-};
+use std::{collections::HashMap, convert::TryInto, io, str::FromStr};
 
 use crate::swapd::get_swap_id;
 use crate::walletd::NodeSecrets;
@@ -28,22 +18,13 @@ use crate::{
     syncerd::SweepMoneroAddress,
 };
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use bitcoin::{
-    hashes::hex::FromHex,
-    hashes::{ripemd160, Hash},
-    secp256k1::{self, ecdsa::Signature, rand::thread_rng, PublicKey, Secp256k1, SecretKey},
-    util::{
-        bip32::{DerivationPath, ExtendedPrivKey},
-        psbt::serialize::Deserialize,
-    },
-    Address,
-};
+use bitcoin::secp256k1::ecdsa::Signature;
 use colored::Colorize;
 use farcaster_core::{
     bitcoin::{
+        segwitv0::LockTx,
         segwitv0::{BuyTx, CancelTx, FundingTx, PunishTx, RefundTx},
-        segwitv0::{LockTx, SegwitV0},
-        Bitcoin, BitcoinSegwitV0,
+        BitcoinSegwitV0,
     },
     blockchain::FeePriority,
     consensus::{self, CanonicalBytes, Decodable, Encodable},
@@ -62,11 +43,11 @@ use farcaster_core::{
         TxSignatures,
     },
     swap::SwapId,
-    transaction::{Broadcastable, Fundable, Transaction, TxLabel, Witnessable},
+    transaction::{Broadcastable, Fundable, Transaction, Witnessable},
 };
-use internet2::{addr::LocalNode, TypedEnum};
+use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
-use request::{CheckpointState, LaunchSwap, NodeId};
+use request::{CheckpointState, LaunchSwap};
 
 pub fn run(
     config: ServiceConfig,
@@ -105,9 +86,7 @@ impl Runtime {
     }
 }
 
-use strict_encoding::{
-    strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
-};
+use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(Clone, Debug)]
 pub struct CheckpointWallet {

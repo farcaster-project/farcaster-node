@@ -1,7 +1,4 @@
-use farcaster_core::{
-    negotiation::PublicOffer,
-    role::{SwapRole, TradeRole},
-};
+use farcaster_core::role::{SwapRole, TradeRole};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::rpc::request::{Commit, Outcome, Params};

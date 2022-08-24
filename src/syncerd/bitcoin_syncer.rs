@@ -1,7 +1,4 @@
 use crate::error::SyncerError;
-use crate::internet2::DuplexConnection;
-use crate::internet2::Encrypt;
-use crate::internet2::TypedEnum;
 use crate::rpc::request::SyncerdBridgeEvent;
 use crate::rpc::Request;
 use crate::syncerd::opts::Opts;
@@ -9,7 +6,6 @@ use crate::syncerd::runtime::SyncerdTask;
 use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
-use crate::syncerd::syncer_state::WatchedTransaction;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
 use crate::syncerd::BroadcastTransaction;
 use crate::syncerd::BtcAddressAddendum;
@@ -19,39 +15,26 @@ use crate::syncerd::GetTx;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::TransactionRetrieved;
-use crate::syncerd::WatchEstimateFee;
-use crate::ServiceId;
 use crate::{error::Error, syncerd::syncer_state::create_set};
-use crate::{farcaster_core::consensus::Decodable, LogStyle};
-use bitcoin::hashes::{
-    hex::{FromHex, ToHex},
-    Hash,
-};
+use crate::{LogStyle, ServiceId};
+use bitcoin::hashes::{hex::ToHex, Hash};
 use bitcoin::BlockHash;
 use bitcoin::Script;
 use electrum_client::{
-    raw_client::RawClient, Client, ConfigBuilder, ElectrumApi, GetHistoryRes, HeaderNotification,
-    Hex32Bytes, Socks5Config,
+    Client, ConfigBuilder, ElectrumApi, HeaderNotification, Hex32Bytes, Socks5Config,
 };
 use farcaster_core::bitcoin::segwitv0::signature_hash;
 use farcaster_core::bitcoin::transaction::TxInRef;
 use farcaster_core::blockchain::{Blockchain, Network};
-use farcaster_core::consensus;
 use internet2::zeromq::{Connection, ZmqSocketType};
+use internet2::DuplexConnection;
+use internet2::Encrypt;
 use internet2::PlainTranscoder;
-use microservices::ZMQ_CONTEXT;
-use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
-use std::io;
-use std::iter::FromIterator;
-use std::marker::{Send, Sized};
-use std::ops::Range;
-use std::sync::mpsc::Sender;
+use internet2::TypedEnum;
+use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
-use tokio::runtime::Runtime;
 use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;

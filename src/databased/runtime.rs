@@ -1,45 +1,25 @@
 use crate::databased::runtime::request::{
     Address, OfferStatus, OfferStatusPair, OfferStatusSelector,
 };
-use crate::farcaster_core::consensus::Encodable;
 use crate::walletd::runtime::{CheckpointWallet, Wallet};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
+use std::convert::TryInto;
 use std::path::PathBuf;
-use std::{
-    any::Any,
-    collections::{HashMap, HashSet},
-    convert::{TryFrom, TryInto},
-    io::{self, Write},
-    ptr::swap_nonoverlapping,
-    str::FromStr,
-};
-use strict_encoding::StrictDecode;
-use strict_encoding::StrictEncode;
+use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::swapd::get_swap_id;
 use crate::Endpoints;
-use crate::LogStyle;
-use bitcoin::hashes::{ripemd160, Hash};
 use bitcoin::secp256k1::SecretKey;
 
-use crate::{
-    rpc::{
-        request::{
-            self, BitcoinAddress, Checkpoint, CheckpointEntry, CheckpointState, Commit, Failure,
-            FailureCode, Keys, LaunchSwap, List, MoneroAddress, Msg, NodeId, Params, Reveal, Token,
-            Tx,
-        },
-        Request, ServiceBus,
-    },
-    syncerd::SweepMoneroAddress,
+use crate::rpc::{
+    request::{self, Checkpoint, CheckpointEntry, CheckpointState, Failure, FailureCode, List},
+    Request, ServiceBus,
 };
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use colored::Colorize;
 use internet2::TypedEnum;
-use microservices::esb::{self, Handler};
+use microservices::esb;
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
@@ -645,6 +625,8 @@ impl Database {
 
 #[test]
 fn test_lmdb_state() {
+    use std::str::FromStr;
+
     let val1 = vec![0, 1];
     let val2 = vec![2, 3, 4, 5];
     let key1 = CheckpointKey {

@@ -16,33 +16,17 @@
 
 use crate::cli::OfferSelector;
 use crate::swapd::CheckpointSwapd;
-use crate::syncerd::SweepBitcoinAddress;
-use crate::walletd::{
-    runtime::{AliceState, CheckpointWallet},
-    NodeSecrets,
-};
-use crate::{
-    farcasterd,
-    syncerd::{
-        types::{Event, Task},
-        SweepMoneroAddress,
-    },
-};
-use amplify::{Holder, ToYamlString, Wrapper};
-use farcaster_core::consensus::{Decodable as CoreDecodable, Encodable as CoreEncodable};
-use internet2::{CreateUnmarshaller, Payload, Unmarshall, Unmarshaller};
+use crate::syncerd::{Event, SweepBitcoinAddress, SweepMoneroAddress, Task};
+use crate::walletd::runtime::CheckpointWallet;
+use amplify::{ToYamlString, Wrapper};
+use internet2::{CreateUnmarshaller, Unmarshaller};
 use lazy_static::lazy_static;
-use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 #[cfg(feature = "serde")]
-use serde_with::{skip_serializing_none, DisplayFromStr, DurationSeconds, Same};
-use std::{collections::BTreeMap, convert::TryInto};
-use std::{
-    fmt::{self, Debug, Display, Formatter},
-    io,
-    marker::PhantomData,
-};
+use serde_with::{DisplayFromStr, DurationSeconds};
+use std::collections::BTreeMap;
+use std::fmt::{self, Debug, Display, Formatter};
+use std::time::Duration;
 use std::{iter::FromIterator, str::FromStr};
-use std::{num::ParseIntError, time::Duration};
 use uuid::Uuid;
 
 use bitcoin::{
@@ -51,13 +35,10 @@ use bitcoin::{
         rand::{thread_rng, RngCore},
         SecretKey,
     },
-    OutPoint, PublicKey, Transaction,
+    OutPoint, Transaction,
 };
 use farcaster_core::{
-    bitcoin::BitcoinSegwitV0,
-    blockchain::{Blockchain, FeePriority},
-    crypto::dleq::DLEQProof,
-    monero::Monero,
+    blockchain::Blockchain,
     protocol::message::Abort,
     role::TradeRole,
     swap::btcxmr::message::{
@@ -70,9 +51,7 @@ use farcaster_core::{
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
 use microservices::rpc;
-use strict_encoding::{
-    strategies::HashFixedBytes, strict_encode_list, Strategy, StrictDecode, StrictEncode,
-};
+use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "strict")]

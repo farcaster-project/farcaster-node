@@ -14,7 +14,6 @@
 
 use crate::rpc::request::{Failure, Progress, Request};
 use crate::rpc::ServiceBus;
-use std::convert::TryInto;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 

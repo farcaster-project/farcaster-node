@@ -15,7 +15,6 @@
 #[cfg(feature = "shell")]
 mod opts;
 mod runtime;
-#[allow(dead_code)]
 mod swap_state;
 mod syncer_client;
 mod temporal_safety;
