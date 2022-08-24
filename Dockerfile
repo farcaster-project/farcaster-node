@@ -16,10 +16,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 WORKDIR "$SRC_DIR"
 
 COPY doc ${SRC_DIR}/doc
-COPY shell ${SRC_DIR}/shell
 COPY src ${SRC_DIR}/src
-COPY build.rs Cargo.lock Cargo.toml codecov.yml \
-     LICENSE README.md ${SRC_DIR}/
+COPY build.rs Cargo.lock Cargo.toml LICENSE README.md ${SRC_DIR}/
 
 WORKDIR ${SRC_DIR}
 
@@ -47,6 +45,8 @@ RUN adduser --home "${DATA_DIR}" --shell /bin/bash --disabled-login \
 COPY --from=builder --chown=${USER}:${USER} \
      "${BUILDER_DIR}/bin/" "${BIN_DIR}"
 
+RUN swap-cli completion bash >> .bashrc
+
 WORKDIR "${BIN_DIR}"
 USER ${USER}
 
@@ -55,5 +55,3 @@ VOLUME "$DATA_DIR"
 EXPOSE 9735
 
 ENTRYPOINT ["farcasterd"]
-
-CMD ["--help"]
