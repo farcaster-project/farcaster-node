@@ -410,7 +410,7 @@ impl State {
         matches!(ev.message, Request::GetInfo)
     }
     pub fn p_ctl_peer_reconnected(&self, ev: &Event<Request>) -> bool {
-        matches!(ev.message, Request::PeerdReconnected)
+        matches!(ev.message, Request::PeerdReconnected(_))
     }
     pub fn p_ctl_checkpoint(&self, ev: &Event<Request>) -> bool {
         matches!(ev.message, Request::Checkpoint(_))

@@ -676,6 +676,14 @@ impl Runtime {
         }
     }
     fn ctl_peer_reconnected(&mut self, event: Event<Request>) -> Result<(), Error> {
+        // set the reconnected service id, if it is not set yet. This
+        // can happen if this is a maker launched swap after restoration
+        // and the taker reconnects
+        if self.peer_service == ServiceId::Loopback {
+            if let Request::PeerdReconnected(service_id) = event.message {
+                self.peer_service = service_id;
+            }
+        }
         for msg in self.pending_peer_request.clone().iter() {
             self.send_peer(event.endpoints, msg.clone())?;
         }

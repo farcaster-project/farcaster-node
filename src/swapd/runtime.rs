@@ -1718,7 +1718,7 @@ fn white_list_ctl_msgs(request: &Request) -> bool {
         Request::SweepMoneroAddress(_) => true,
         Request::Terminate => true,
         Request::SweepBitcoinAddress(_) => true,
-        Request::PeerdReconnected => true,
+        Request::PeerdReconnected(_) => true,
         Request::Checkpoint(_) => true,
         Request::AbortSwap => true,
         _ => false,
