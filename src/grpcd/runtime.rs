@@ -90,11 +90,6 @@ impl Farcaster for FarcasterService {
             Ok(Request::NodeInfo(info)) => {
                 let reply = farcaster::InfoResponse {
                     id: request.into_inner().id,
-                    node_ids: info
-                        .node_ids
-                        .iter()
-                        .map(|node_id| format!("{}", node_id))
-                        .collect(),
                     listens: info
                         .listens
                         .iter()
