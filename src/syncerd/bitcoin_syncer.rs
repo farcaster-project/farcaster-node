@@ -235,6 +235,9 @@ impl ElectrumRpc {
                         }
                     };
 
+                    debug!("tx.outputs: {:?} {:?}", &tx.output.len(), &tx.output);
+                    debug!("history for transaction {:?}: {:?}", &tx_id, history);
+
                     let entry = history.iter().find(|history_res| {
                         history_res.tx_hash == tx_id
                     }).expect("Should be found in the history if we successfully queried `transaction_get`");
