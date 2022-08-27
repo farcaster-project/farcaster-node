@@ -222,11 +222,15 @@ impl ElectrumRpc {
                                 debug!("history for transaction {:?}: {:?}", &tx_id, history_res);
 
                                 history = history_res;
-                                entry_option = history.iter().find(|history_entry| {history_entry.tx_hash == tx_id});
-                                if entry_option.is_some() {break}
-                                debug!("Should be found in the history if we successfully queried `transaction_get` - reattempting");
+                                entry_option = history
+                                    .iter()
+                                    .find(|history_entry| history_entry.tx_hash == tx_id);
+                                if entry_option.is_some() {
+                                    break;
+                                }
+                                debug!("Should be found in the history if we successfully queried `transaction_get` - reattempting {:?}", attempts);
                                 std::thread::sleep(Duration::from_secs_f32(30.0));
-                            },
+                            }
                             Err(err) => {
                                 trace!(
                                     "error getting script history, treating as not found: {}",
