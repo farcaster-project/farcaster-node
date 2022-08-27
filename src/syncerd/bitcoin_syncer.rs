@@ -228,7 +228,7 @@ impl ElectrumRpc {
                                 if entry_option.is_some() {
                                     break;
                                 }
-                                debug!("{:?} should be found in the history if we successfully queried `transaction_get` - reattempting {:?}", &tx_id, attempts);
+                                warn!("{:?} should be found in the history if we successfully queried `transaction_get` - reattempting {:?}", &tx_id, attempts);
                                 std::thread::sleep(Duration::from_secs_f32(0.5 * attempts));
                             }
                             Err(err) => {
