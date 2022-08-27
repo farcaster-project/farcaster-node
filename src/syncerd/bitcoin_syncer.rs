@@ -213,34 +213,44 @@ impl ElectrumRpc {
                     debug!("Updated tx: {}", &tx_id);
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
-                    let history = match self.client.script_get_history(&tx.output[0].script_pubkey)
-                    {
-                        Ok(history) => history,
-                        Err(err) => {
-                            trace!(
-                                "error getting script history, treating as not found: {}",
-                                err
-                            );
-                            let mut state_guard = state.lock().await;
-                            state_guard
-                                .change_transaction(
-                                    tx_id.to_vec(),
-                                    None,
-                                    Some(0),
-                                    bitcoin::consensus::serialize(&tx),
-                                )
-                                .await;
-                            drop(state_guard);
-                            continue;
+                    let mut entry_option = None;
+                    let mut history: Vec<electrum_client::GetHistoryRes> = vec![];
+                    for attempts in 0..30 {
+                        match self.client.script_get_history(&tx.output[0].script_pubkey) {
+                            Ok(history_res) => {
+                                debug!("tx.outputs: {:?} {:?}", &tx.output.len(), &tx.output);
+                                debug!("history for transaction {:?}: {:?}", &tx_id, history_res);
+
+                                history = history_res;
+                                entry_option = history.iter().find(|history_entry| {history_entry.tx_hash == tx_id});
+                                if entry_option.is_some() {break}
+                                debug!("Should be found in the history if we successfully queried `transaction_get` - reattempting");
+                                std::thread::sleep(Duration::from_secs_f32(30.0));
+                            },
+                            Err(err) => {
+                                trace!(
+                                    "error getting script history, treating as not found: {}",
+                                    err
+                                );
+                                let mut state_guard = state.lock().await;
+                                state_guard
+                                    .change_transaction(
+                                        tx_id.to_vec(),
+                                        None,
+                                        Some(0),
+                                        bitcoin::consensus::serialize(&tx),
+                                    )
+                                    .await;
+                                drop(state_guard);
+                                break;
+                            }
                         }
+                    }
+
+                    let entry = match entry_option {
+                        Some(entry) => entry,
+                        None => break,
                     };
-
-                    debug!("tx.outputs: {:?} {:?}", &tx.output.len(), &tx.output);
-                    debug!("history for transaction {:?}: {:?}", &tx_id, history);
-
-                    let entry = history.iter().find(|history_res| {
-                        history_res.tx_hash == tx_id
-                    }).expect("Should be found in the history if we successfully queried `transaction_get`");
 
                     let (conf_in_block, blockhash) = match entry.height {
                         // Transaction unconfirmed (0 or -1)
