@@ -215,7 +215,7 @@ impl ElectrumRpc {
                     // to be used multiple times, so more efficient?!)
                     let mut entry_option = None;
                     let mut history: Vec<electrum_client::GetHistoryRes> = vec![];
-                    for attempts in 0..30 {
+                    for attempts in 0..200 {
                         match self.client.script_get_history(&tx.output[0].script_pubkey) {
                             Ok(history_res) => {
                                 debug!("tx.outputs: {:?} {:?}", &tx.output.len(), &tx.output);
@@ -228,8 +228,8 @@ impl ElectrumRpc {
                                 if entry_option.is_some() {
                                     break;
                                 }
-                                debug!("Should be found in the history if we successfully queried `transaction_get` - reattempting {:?}", attempts);
-                                std::thread::sleep(Duration::from_secs_f32(30.0));
+                                debug!("{:?} should be found in the history if we successfully queried `transaction_get` - reattempting {:?}", &tx_id, attempts);
+                                std::thread::sleep(Duration::from_secs_f32(0.5 * attempts));
                             }
                             Err(err) => {
                                 trace!(
