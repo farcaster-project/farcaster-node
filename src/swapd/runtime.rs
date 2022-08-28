@@ -946,7 +946,7 @@ impl Runtime {
                 );
                 let take_swap = TakeCommit {
                     commit: local_commit,
-                    public_offer: self.public_offer.to_string(),
+                    public_offer: self.public_offer.clone(),
                     swap_id,
                 };
                 self.send_peer(endpoints, Msg::TakerCommit(take_swap))?;

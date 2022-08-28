@@ -2,7 +2,7 @@ use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use crate::syncerd::SweepBitcoinAddress;
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
-use std::{collections::HashMap, convert::TryInto, io, str::FromStr};
+use std::{collections::HashMap, convert::TryInto, io};
 
 use crate::swapd::get_swap_id;
 use crate::walletd::NodeSecrets;
@@ -393,12 +393,11 @@ impl Runtime {
             })) if self.btc_addrs.contains_key(&swap_id)
                 && self.xmr_addrs.contains_key(&swap_id) =>
             {
-                let pub_offer = PublicOffer::from_str(&public_offer)?;
                 trace!(
                     "Offer {} is known, you created it previously, initiating swap with taker",
-                    &pub_offer
+                    &public_offer
                 );
-                let PublicOffer { offer, .. } = pub_offer.clone();
+                let PublicOffer { offer, .. } = public_offer.clone();
                 let external_address = self.btc_addrs.get(&swap_id).expect("checked above").clone();
                 match offer.maker_role {
                     SwapRole::Bob => {
@@ -411,7 +410,8 @@ impl Runtime {
                         let wallet_index = self.node_secrets.increment_wallet_counter();
                         let mut key_manager =
                             KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
-                        let local_params = bob.generate_parameters(&mut key_manager, &pub_offer)?;
+                        let local_params =
+                            bob.generate_parameters(&mut key_manager, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             let funding = create_funding(&mut key_manager, offer.network)?;
                             let funding_addr = funding.get_address()?;
@@ -438,7 +438,7 @@ impl Runtime {
                                     local_trade_role,
                                     local_params.clone(),
                                     key_manager,
-                                    pub_offer.clone(),
+                                    public_offer.clone(),
                                     Some(funding),
                                     Some(remote_commit),
                                 );
@@ -449,7 +449,7 @@ impl Runtime {
                             }
                             let launch_swap = LaunchSwap {
                                 local_trade_role,
-                                public_offer: pub_offer,
+                                public_offer: public_offer,
                                 local_params: Params::Bob(local_params),
                                 swap_id,
                                 remote_commit: Some(remote_commit),
@@ -476,7 +476,7 @@ impl Runtime {
                         let wallet_index = self.node_secrets.increment_wallet_counter();
                         let mut key_manager = KeyManager::new(wallet_seed, wallet_index)?;
                         let local_params =
-                            alice.generate_parameters(&mut key_manager, &pub_offer)?;
+                            alice.generate_parameters(&mut key_manager, &public_offer)?;
                         if self.wallets.get(&swap_id).is_none() {
                             debug!(
                                 "{} | Loading {}",
@@ -492,7 +492,7 @@ impl Runtime {
                                     local_trade_role,
                                     local_params.clone(),
                                     key_manager,
-                                    pub_offer.clone(),
+                                    public_offer.clone(),
                                     Some(bob_commit),
                                 );
 
@@ -500,7 +500,7 @@ impl Runtime {
 
                                 let launch_swap = LaunchSwap {
                                     local_trade_role,
-                                    public_offer: pub_offer,
+                                    public_offer: public_offer,
                                     local_params: Params::Alice(local_params),
                                     swap_id,
                                     remote_commit: Some(remote_commit),
