@@ -182,7 +182,6 @@ pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
 #[display("{public_offer}, ..")]
 pub struct PubOffer {
     pub public_offer: PublicOffer,
-    pub peer_secret_key: Option<SecretKey>,
     pub external_address: bitcoin::Address,
     pub internal_address: monero::Address,
 }
@@ -194,7 +193,6 @@ impl From<(PublicOffer, bitcoin::Address, monero::Address)> for PubOffer {
             public_offer,
             external_address,
             internal_address,
-            peer_secret_key: None,
         }
     }
 }
@@ -204,8 +202,8 @@ impl From<(PublicOffer, bitcoin::Address, monero::Address)> for PubOffer {
 pub struct Token(pub String);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("token({0}), req_id({1})")]
-pub struct GetKeys(pub Token, pub RequestId);
+#[display("token({0})")]
+pub struct GetKeys(pub Token);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display("{0}, ..")]
@@ -235,16 +233,10 @@ pub struct TakeCommit {
 pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
     pub bitcoin::secp256k1::PublicKey,
-    pub RequestId,
 );
 
 fn format_keys(keys: &Keys) -> String {
-    format!(
-        "sk: {}, pk: {}, id: {}",
-        keys.0.display_secret(),
-        keys.1,
-        keys.2
-    )
+    format!("sk: {}, pk: {}", keys.0.display_secret(), keys.1,)
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -978,8 +970,6 @@ pub struct ProtoPublicOffer {
     pub bind_addr: InetSocketAddr,
     pub arbitrating_addr: bitcoin::Address,
     pub accordant_addr: monero::Address,
-    pub peer_secret_key: Option<SecretKey>,
-    pub peer_public_key: Option<secp256k1::PublicKey>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

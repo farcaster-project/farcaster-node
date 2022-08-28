@@ -1272,7 +1272,6 @@ impl Runtime {
                 public_offer,
                 external_address,
                 internal_address,
-                peer_secret_key: None,
             }) if source == ServiceId::Farcasterd => {
                 let PublicOffer { offer, .. } = public_offer.clone();
 
@@ -1609,7 +1608,7 @@ impl Runtime {
                     error!("Call to refund transaction expects an Alice wallet");
                 }
             }
-            Request::GetKeys(request::GetKeys(wallet_token, request_id)) => {
+            Request::GetKeys(request::GetKeys(wallet_token)) => {
                 if wallet_token != self.wallet_token {
                     return Err(Error::InvalidToken);
                 }
@@ -1623,7 +1622,6 @@ impl Runtime {
                     Request::Keys(Keys(
                         self.node_secrets.peerd_secret_key,
                         self.node_secrets.node_id(),
-                        request_id,
                     )),
                 )?
             }

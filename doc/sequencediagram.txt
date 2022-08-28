@@ -16,22 +16,19 @@ participant m_swap
 participant m_wallet
 participant m_syncer
 
-==Setup and Commit-Reveal: Bob and Alice can be on both sides==
+==Start farcaster - same for Maker and Taker==
 m_farcasterd -> m_farcasterd : launch farcasterd\nmanually
 m_farcasterd -> m_farcasterd : launch walletd
+m_farcasterd -> m_farcasterd : launch databased
 m_farcasterd <- m_wallet : Ctl Hello
-m_cli -> m_farcasterd : MakeOffer (deferred)
 m_farcasterd -> m_wallet : Ctl GetKeys
-m_farcasterd <- m_wallet : Ctl Keys (not to be held on state)
-m_farcasterd -> m_farcasterd : MakeOffer (continues)
+m_farcasterd <- m_database : Ctl Hello
+m_farcasterd <- m_wallet : Ctl Keys
+
+==Setup and Commit-Reveal: Bob and Alice can be on both sides==
+m_cli -> m_farcasterd : MakeOffer
 m_farcasterd -> m_farcasterd : launch\npeerd listen
-t_farcasterd -> t_farcasterd : launch farcasterd\nmanually
-t_farcasterd -> t_farcasterd : launch walletd
-t_wallet -> t_farcasterd : Ctl Hello
-t_cli -> t_farcasterd : Ctl TakeOffer (deferred)
-t_wallet <- t_farcasterd : Ctl GetKeys
-t_wallet -> t_farcasterd : Ctl Keys (not to be held on state)
-t_farcasterd <- t_farcasterd : Ctl TakeOffer (continues)
+t_farcasterd <- t_farcasterd : Ctl TakeOffer
 t_farcasterd -> t_farcasterd : launch\npeerd connect
 t_wallet <- t_farcasterd : Ctl TakeOffer
 t_wallet -> t_wallet : create taker wallet
