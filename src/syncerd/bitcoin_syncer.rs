@@ -210,7 +210,7 @@ impl ElectrumRpc {
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
-                    debug!("Updated tx: {}", &tx_id);
+                    debug!("Updated tx: {}: {:?}", &tx_id, tx);
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
                     let history_res;
