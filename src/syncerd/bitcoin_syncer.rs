@@ -211,15 +211,15 @@ impl ElectrumRpc {
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
                     debug!("Updated tx: {}: {:?}", &tx_id, tx);
+                    let history_res;
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
-                    let history_res;
                     let entry = match self.client.script_get_history(&tx.output[0].script_pubkey) {
                         Ok(history) => {
                             history_res = history;
                             match history_res
                                 .iter()
-                                .find(|history_res| history_res.tx_hash == tx_id)
+                                .find(|history_entry| history_entry.tx_hash == tx_id)
                             {
                                 Some(entry) => entry,
                                 None => {
