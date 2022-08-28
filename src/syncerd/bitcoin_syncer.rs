@@ -213,31 +213,33 @@ impl ElectrumRpc {
                     debug!("Updated tx: {}", &tx_id);
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
-                    // let mut history_res;
+                    let history_res;
                     let entry = match self.client.script_get_history(&tx.output[0].script_pubkey) {
-                        Ok(history) => match history
-                            .iter()
-                            .find(|history_res| history_res.tx_hash == tx_id)
-                        {
-                            Some(entry) => entry,
-                            None => {
-                                warn!(
-                                    "{:?} should be found in the history if we successfully queried `transaction_get` for it",
-                                    &tx_id
-                                );
-                                let mut state_guard = state.lock().await;
-                                state_guard
-                                    .change_transaction(
-                                        tx_id.to_vec(),
-                                        None,
-                                        Some(0),
-                                        bitcoin::consensus::serialize(&tx),
-                                    )
-                                    .await;
-                                drop(state_guard);
-                                continue;
-                            }
-                        },
+                        Ok(history) => {
+                            history_res = history;
+                            match history_res
+                                .iter()
+                                .find(|history_res| history_res.tx_hash == tx_id)
+                            {
+                                Some(entry) => entry,
+                                None => {
+                                    warn!(
+                                        "{:?} should be found in the history if we successfully queried `transaction_get` for it",
+                                        &tx_id
+                                    );
+                                    let mut state_guard = state.lock().await;
+                                    state_guard
+                                        .change_transaction(
+                                            tx_id.to_vec(),
+                                            None,
+                                            Some(0),
+                                            bitcoin::consensus::serialize(&tx),
+                                        )
+                                        .await;
+                                    drop(state_guard);
+                                    continue;
+                                }
+                            }},
                         Err(err) => {
                             trace!(
                                 "error getting script history, treating as not found: {}",
