@@ -955,18 +955,27 @@ impl Runtime {
         ssm: SyncerStateMachine,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         let event = Event::with(endpoints, self.identity(), source, request);
-        let tsm_display = ssm.to_string();
+        let ssm_display = ssm.to_string();
         if let Some(new_ssm) = ssm.next(event, self)? {
-            info!(
-                "Syncer state transition {} -> {}",
-                tsm_display.red_bold(),
-                new_ssm.bright_green_bold()
-            );
+            let new_ssm_display = new_ssm.to_string();
+            // relegate state transitions staying the same to debug
+            if new_ssm_display == ssm_display {
+                debug!(
+                    "Syncer state self transition {}",
+                    new_ssm.bright_green_bold()
+                );
+            } else {
+                info!(
+                    "Syncer state transition {} -> {}",
+                    ssm_display.red_bold(),
+                    new_ssm.bright_green_bold()
+                );
+            }
             Ok(Some(new_ssm))
         } else {
             info!(
                 "Syncer state machine ended {} -> {}",
-                tsm_display.red_bold(),
+                ssm_display.red_bold(),
                 "End".to_string().bright_green_bold()
             );
             Ok(None)
@@ -983,11 +992,20 @@ impl Runtime {
         let event = Event::with(endpoints, self.identity(), source, request);
         let tsm_display = tsm.to_string();
         if let Some(new_tsm) = tsm.next(event, self)? {
-            info!(
-                "Trade state transition {} -> {}",
-                tsm_display.red_bold(),
-                new_tsm.bright_green_bold()
-            );
+            let new_tsm_display = new_tsm.to_string();
+            // relegate state transitions staying the same to debug
+            if new_tsm_display == tsm_display {
+                debug!(
+                    "Trade state self transition {}",
+                    new_tsm.bright_green_bold()
+                );
+            } else {
+                info!(
+                    "Trade state transition {} -> {}",
+                    tsm_display.red_bold(),
+                    new_tsm.bright_green_bold()
+                );
+            }
             Ok(Some(new_tsm))
         } else {
             info!(
