@@ -1445,9 +1445,22 @@ impl Runtime {
                         match txlabel {
                             TxLabel::Buy if self.state.b_buy_sig() => {
                                 log_tx_seen(self.swap_id, &txlabel, &tx.txid());
-                                self.state.b_sup_buysig_buy_tx_seen();
+                                self.state.b_sup_buy_tx_seen();
                                 let req = Request::Tx(Tx::Buy(tx.clone()));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?
+                            }
+                            TxLabel::Buy if self.state.b_core_arb() => {
+                                log_tx_seen(self.swap_id, &txlabel, &tx.txid());
+                                self.state.b_sup_buy_tx_seen();
+                                let req = Request::Tx(Tx::Buy(tx.clone()));
+                                self.send_wallet(ServiceBus::Ctl, endpoints, req)?;
+
+                                // The buy transaction is received in Corearb state, go straight to buy state
+                                let next_state = State::Bob(BobState::BuySigB {
+                                    buy_tx_seen: false,
+                                    last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
+                                });
+                                self.state_update(endpoints, next_state)?;
                             }
                             TxLabel::Buy => {
                                 warn!(
@@ -2048,6 +2061,7 @@ impl Runtime {
                     remote_params: self.state.remote_params().unwrap(),
                     b_address: self.state.b_address().cloned().unwrap(),
                     last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
+                    buy_tx_seen: false,
                 });
                 self.state_update(endpoints, next_state)?;
             }

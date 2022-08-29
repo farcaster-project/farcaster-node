@@ -79,6 +79,7 @@ pub enum BobState {
         remote_params: Params,
         local_params: Params,
         b_address: bitcoin::Address,
+        buy_tx_seen: bool,
     }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
     BuySigB {
@@ -352,10 +353,11 @@ impl State {
         )
     }
     pub fn b_buy_tx_seen(&self) -> bool {
-        if !self.b_buy_sig() {
+        if !self.b_buy_sig() && !self.b_core_arb() {
             return false;
         }
         match self {
+            State::Bob(BobState::CorearbB { buy_tx_seen, .. }) => *buy_tx_seen,
             State::Bob(BobState::BuySigB { buy_tx_seen, .. }) => *buy_tx_seen,
             _ => unreachable!("conditional early return"),
         }
@@ -510,10 +512,10 @@ impl State {
     }
 
     /// Update Bob BuySig state from XMR unlocked to locked state
-    pub fn b_sup_buysig_buy_tx_seen(&mut self) -> bool {
-        if !self.b_buy_sig() {
+    pub fn b_sup_buy_tx_seen(&mut self) -> bool {
+        if !self.b_buy_sig() && !self.b_core_arb() {
             error!(
-                "Wrong state, not updating. Expected BuySig, found {}",
+                "Wrong state, not updating. Expected BuySig or Corearb, found {}",
                 &*self
             );
             return false;
@@ -522,6 +524,10 @@ impl State {
             return false;
         }
         match self {
+            State::Bob(BobState::CorearbB { buy_tx_seen, .. }) if !(*buy_tx_seen) => {
+                *buy_tx_seen = true;
+                true
+            }
             State::Bob(BobState::BuySigB { buy_tx_seen, .. }) if !(*buy_tx_seen) => {
                 *buy_tx_seen = true;
                 true
