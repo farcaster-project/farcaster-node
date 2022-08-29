@@ -1093,11 +1093,14 @@ fn attempt_transition_to_end(
                         .build()
                         .unwrap();
                     rt.block_on(async {
-                            let host = auto_fund_config.monero_rpc_wallet;
-                            let wallet_client =
-                                monero_rpc::RpcClient::new(host);
-                            let wallet = wallet_client.wallet();
-                            let options = monero_rpc::TransferOptions::default();
+                        let host = auto_fund_config.monero_rpc_wallet;
+                        let wallet_client =
+                            monero_rpc::RpcClient::new(host);
+                        let wallet = wallet_client.wallet();
+                        let options = monero_rpc::TransferOptions::default();
+
+                        let mut auto_funded = false;
+                        for retries in (0..10).rev() {
                             match wallet
                                 .transfer(
                                     [(address, amount)].iter().cloned().collect(),
@@ -1112,33 +1115,31 @@ fn attempt_transition_to_end(
                                         &swap_id.bright_blue_italic(),
                                         tx.tx_hash.to_string()
                                     );
-                                    Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
-                                         peerd,
-                                         public_offer,
-                                         swap_id,
-                                         connected: true,
-                                         arbitrating_syncer,
-                                         accordant_syncer,
-                                         funding_info: Some(info),
-                                         auto_funded: true,
-                                     })))
+                                    auto_funded = true;
+                                    break;
                                 }
                                 Err(err) => {
-                                    warn!("{}", err);
-                                    error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
-                                    Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
-                                         peerd,
-                                         public_offer,
-                                         swap_id,
-                                         connected: true,
-                                         arbitrating_syncer,
-                                         accordant_syncer,
-                                         funding_info: Some(info),
-                                         auto_funded: false,
-                                     })))
+                                    if (err.to_string().contains("not enough") && err.to_string().contains("money")) || retries == 0 {
+                                        warn!("{}", err);
+                                        error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
+                                        break;
+                                    } else {
+                                        warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.bright_blue_italic(), err, retries);
+                                    }
                                 }
                             }
-                        })
+                        }
+                        Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
+                             peerd,
+                             public_offer,
+                             swap_id,
+                             connected: true,
+                             arbitrating_syncer,
+                             accordant_syncer,
+                             funding_info: Some(info),
+                             auto_funded,
+                         })))
+                    })
                 } else {
                     Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                         peerd,
