@@ -17,7 +17,7 @@ use crate::event::{Event, StateMachine};
 use crate::farcasterd::runtime::request::{
     CheckpointEntry, OfferStatusSelector, ProgressEvent, SwapProgress,
 };
-use crate::syncerd::{Event as SyncerEvent, SweepSuccess};
+use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
     clap::Parser,
     error::SyncerError,
@@ -104,7 +104,7 @@ pub fn run(
         config,
         syncer_task_counter: 0,
         trade_state_machines: vec![],
-        syncer_state_machines: vec![],
+        syncer_state_machines: none!(),
     };
 
     let broker = true;
@@ -112,23 +112,23 @@ pub fn run(
 }
 
 pub struct Runtime {
-    pub identity: ServiceId,
-    pub wallet_token: Token,
-    pub started: SystemTime,
-    pub node_secret_key: Option<SecretKey>,
-    pub node_public_key: Option<PublicKey>,
-    pub listens: HashSet<InetSocketAddr>,
-    pub spawning_services: HashSet<ServiceId>,
-    pub registered_services: HashSet<ServiceId>,
-    pub public_offers: HashSet<PublicOffer>,
-    pub progress: HashMap<ServiceId, VecDeque<Request>>,
-    pub progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>,
-    pub checkpointed_pub_offers: List<CheckpointEntry>,
-    pub stats: Stats,
-    pub config: Config,
-    pub syncer_task_counter: u32,
-    pub trade_state_machines: Vec<TradeStateMachine>,
-    pub syncer_state_machines: Vec<SyncerStateMachine>,
+    pub identity: ServiceId,                     // Set on Runtime instantiation
+    pub wallet_token: Token,                     // Set on Runtime instantiation
+    pub started: SystemTime,                     // Set on Runtime instantiation
+    pub node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
+    pub node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
+    pub listens: HashSet<InetSocketAddr>,   // The socket address of the binding peerd listeners
+    pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
+    pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
+    pub public_offers: HashSet<PublicOffer>,     // The set of all known public offers
+    pub progress: HashMap<ServiceId, VecDeque<Request>>, // A mapping from Swap ServiceId to its sent and received progress requests
+    pub progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
+    pub checkpointed_pub_offers: List<CheckpointEntry>, // A list of existing swap checkpoint entries that may be restored again
+    pub stats: Stats,                                   // Some stats about offers and swaps
+    pub config: Config, // Configuration for syncers, auto-funding, and grpc
+    pub syncer_task_counter: u32, // A strictly incrementing counter of issued syncer tasks
+    pub trade_state_machines: Vec<TradeStateMachine>, // New trade state machines are inserted on creation and destroyed upon state machine end transitions
+    pub syncer_state_machines: HashMap<TaskId, SyncerStateMachine>, // New syncer state machines are inserted by their syncer task id when sending a syncer request and destroyed upon matching syncer request receival
 }
 
 impl CtlServer for Runtime {}
@@ -367,16 +367,16 @@ impl Runtime {
                 }
                 let mut moved_syncer_state_machines = self
                     .syncer_state_machines
-                    .drain(..)
-                    .collect::<Vec<SyncerStateMachine>>();
-                for ssm in moved_syncer_state_machines.drain(..) {
+                    .drain()
+                    .collect::<Vec<(TaskId, SyncerStateMachine)>>();
+                for (task_id, ssm) in moved_syncer_state_machines.drain(..) {
                     if let Some(new_ssm) = self.execute_syncer_state_machine(
                         endpoints,
                         source.clone(),
                         request.clone(),
                         ssm,
                     )? {
-                        self.syncer_state_machines.push(new_ssm);
+                        self.syncer_state_machines.insert(task_id, new_ssm);
                     }
                 }
             }
@@ -815,7 +815,7 @@ impl Runtime {
                 .any(|client_syncer| client_syncer == syncerd)
         }) || self
             .syncer_state_machines
-            .iter()
+            .values()
             .filter_map(|ssm| ssm.syncer())
             .any(|client_syncer| client_syncer == *syncerd)
     }
@@ -863,20 +863,9 @@ impl Runtime {
             (Request::SweepMoneroAddress(..), _) | (Request::SweepBitcoinAddress(..), _) => {
                 Ok(Some(SyncerStateMachine::Start))
             }
-            (
-                Request::SyncerEvent(SyncerEvent::SweepSuccess(SweepSuccess { id, .. })),
-                service_id,
-            ) => Ok(self
-                .syncer_state_machines
-                .iter()
-                .position(|tsm| {
-                    if let (Some(tsm_id), Some(tsm_syncer)) = (tsm.task_id(), tsm.syncer()) {
-                        tsm_id == id && tsm_syncer == service_id
-                    } else {
-                        false
-                    }
-                })
-                .map(|pos| self.syncer_state_machines.remove(pos))),
+            (Request::SyncerEvent(SyncerEvent::SweepSuccess(SweepSuccess { id, .. })), _) => {
+                Ok(self.syncer_state_machines.remove(&id))
+            }
             _ => Ok(None),
         }
     }
@@ -972,7 +961,11 @@ impl Runtime {
             if let Some(new_ssm) =
                 self.execute_syncer_state_machine(endpoints, source, request, ssm)?
             {
-                self.syncer_state_machines.push(new_ssm);
+                if let Some(task_id) = new_ssm.task_id() {
+                    self.syncer_state_machines.insert(task_id, new_ssm);
+                } else {
+                    error!("Cannot process new syncer state machine without a task id");
+                }
             }
             Ok(())
         } else {
