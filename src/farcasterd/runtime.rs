@@ -114,7 +114,7 @@ pub struct Runtime {
     pub listens: HashSet<InetSocketAddr>,   // The socket address of the binding peerd listeners
     pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
     pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
-    pub public_offers: HashSet<PublicOffer>,     // The set of all known public offers
+    pub public_offers: HashSet<PublicOffer>, // The set of all known public offers. Includes open, consumed and ended offers includes open, consumed and ended offers
     pub progress: HashMap<ServiceId, VecDeque<Request>>, // A mapping from Swap ServiceId to its sent and received progress requests
     pub progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
     pub checkpointed_pub_offers: List<CheckpointEntry>, // A list of existing swap checkpoint entries that may be restored again
@@ -402,10 +402,9 @@ impl Runtime {
                             .filter_map(|tsm| tsm.swap_id())
                             .collect(),
                         offers: self
-                            .public_offers
+                            .trade_state_machines
                             .iter()
-                            .filter(|k| self.open_offers_contains(k))
-                            .cloned()
+                            .filter_map(|tsm| tsm.open_offer())
                             .collect(),
                     }),
                 )?;
@@ -437,10 +436,10 @@ impl Runtime {
             Request::ListOffers(offer_status_selector) => {
                 match offer_status_selector {
                     OfferStatusSelector::Open => {
-                        let pub_offers = self
-                            .public_offers
+                        let open_offers = self
+                            .trade_state_machines
                             .iter()
-                            .filter(|k| self.open_offers_contains(k))
+                            .filter_map(|tsm| tsm.open_offer())
                             .map(|offer| OfferInfo {
                                 offer: offer.to_string(),
                                 details: offer.clone(),
@@ -450,14 +449,14 @@ impl Runtime {
                             ServiceBus::Ctl,
                             ServiceId::Farcasterd, // source
                             source,                // destination
-                            Request::OfferList(pub_offers),
+                            Request::OfferList(open_offers),
                         )?;
                     }
                     OfferStatusSelector::InProgress => {
                         let pub_offers = self
                             .public_offers
                             .iter()
-                            .filter(|k| !self.open_offers_contains(k))
+                            .filter(|k| self.consumed_offers_contains(k))
                             .map(|offer| OfferInfo {
                                 offer: offer.to_string(),
                                 details: offer.clone(),
@@ -787,10 +786,10 @@ impl Runtime {
         Ok(())
     }
 
-    fn open_offers_contains(&self, offer: &PublicOffer) -> bool {
+    fn consumed_offers_contains(&self, offer: &PublicOffer) -> bool {
         self.trade_state_machines
             .iter()
-            .filter_map(|tsm| tsm.open_offer())
+            .filter_map(|tsm| tsm.consumed_offer())
             .any(|tsm_offer| tsm_offer.offer.id() == offer.offer.id())
     }
 
