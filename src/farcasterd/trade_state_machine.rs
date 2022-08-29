@@ -680,11 +680,18 @@ fn attempt_transition_to_taker_commited(
                 })))
             }
         }
-        (req, _) => {
+        (req, source) => {
             if let Request::Hello = req {
-                trace!("Request {} invalid for state make offer.", req);
+                trace!(
+                    "Request {} from {} invalid for state make offer.",
+                    req,
+                    source
+                );
             } else {
-                warn!("Request {} invalid for state make offer.", req);
+                warn!(
+                    "Request {} from {} invalid for state make offer.",
+                    req, source
+                );
             }
             Ok(Some(TradeStateMachine::MakeOffer(MakeOffer {
                 public_offer,
@@ -1257,11 +1264,18 @@ fn attempt_transition_to_end(
             Ok(None)
         }
 
-        (req, _) => {
+        (req, source) => {
             if let Request::Hello = req {
-                trace!("Request {} invalid for state swapd running.", req);
+                trace!(
+                    "Request {} from {} invalid for state swapd running.",
+                    req,
+                    source
+                );
             } else {
-                warn!("Request {} invalid for state Swapd Running.", req);
+                warn!(
+                    "Request {} from {} invalid for state Swapd Running.",
+                    req, source
+                );
             }
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,

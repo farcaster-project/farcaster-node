@@ -227,12 +227,26 @@ fn transition_to_awaiting_syncer_request(
                 },
             )))
         }
-        _ => Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
-            source,
-            syncer,
-            syncer_task,
-            syncer_task_id,
-        }))),
+        (req, source) => {
+            if let Request::Hello = req {
+                trace!(
+                    "Request {} from {} invalid for state awaiting syncer.",
+                    req,
+                    source
+                );
+            } else {
+                warn!(
+                    "Request {} from {} invalid for state awaiting syncer.",
+                    req, source
+                );
+            }
+            Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
+                source,
+                syncer,
+                syncer_task,
+                syncer_task_id,
+            })))
+        }
     }
 }
 
@@ -288,12 +302,26 @@ fn transition_to_end(
                 .collect();
             Ok(None)
         }
-        _ => Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
-            AwaitingSyncerRequest {
-                syncer_task_id,
-                source,
-                syncer,
-            },
-        ))),
+        (req, source) => {
+            if let Request::Hello = req {
+                trace!(
+                    "Request {} from {} invalid for state awaiting syncer.",
+                    req,
+                    source
+                );
+            } else {
+                warn!(
+                    "Request {} from {} invalid for state awaiting syncer.",
+                    req, source
+                );
+            }
+            Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
+                AwaitingSyncerRequest {
+                    syncer_task_id,
+                    source,
+                    syncer,
+                },
+            )))
+        }
     }
 }
