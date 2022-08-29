@@ -244,7 +244,8 @@ impl ElectrumRpc {
                             }},
                         Err(err) => {
                             trace!(
-                                "error getting script history, treating as not found: {}",
+                                "error getting script history for {}, treating as not found: {}",
+                                &tx_id,
                                 err
                             );
                             let mut state_guard = state.lock().await;
