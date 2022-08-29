@@ -31,7 +31,6 @@ use uuid::Uuid;
 
 use bitcoin::{
     secp256k1::{
-        self,
         rand::{thread_rng, RngCore},
         SecretKey,
     },

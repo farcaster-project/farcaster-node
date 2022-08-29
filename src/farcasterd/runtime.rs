@@ -23,7 +23,7 @@ use crate::{
     error::SyncerError,
     rpc::request::{
         BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
-        MoneroFundingInfo, OfferInfo, Outcome, PubOffer, RequestId, Token,
+        MoneroFundingInfo, OfferInfo, Outcome, PubOffer, Token,
     },
     service::Endpoints,
     swapd::get_swap_id,
@@ -40,7 +40,10 @@ use std::process;
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
-use bitcoin::{hashes::hex::ToHex, secp256k1::SecretKey};
+use bitcoin::{
+    hashes::hex::ToHex,
+    secp256k1::{PublicKey, SecretKey},
+};
 use internet2::{
     addr::NodeAddr,
     addr::{InetSocketAddr, NodeId},
