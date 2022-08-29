@@ -1549,26 +1549,33 @@ impl Runtime {
                                 monero_rpc::RpcClient::new(host);
                             let wallet = wallet_client.wallet();
                             let options = monero_rpc::TransferOptions::default();
-                            match wallet
-                                .transfer(
-                                    [(address, amount)].iter().cloned().collect(),
-                                    monero_rpc::TransferPriority::Default,
-                                    options.clone(),
-                                )
-                                .await
-                            {
-                                Ok(tx) => {
-                                    info!(
-                                        "{} | Auto-funded Monero with txid: {}",
-                                        &swap_id.bright_blue_italic(),
-                                        tx.tx_hash.to_string()
-                                    );
-                                    self.funding_xmr.insert(swap_id, (address, amount, true));
-                                }
-                                Err(err) => {
-                                    warn!("{}", err);
-                                    error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
-                                    self.funding_xmr.insert(swap_id, (address, amount, false));
+                            for retries in (0..10).rev() {
+                                match wallet
+                                    .transfer(
+                                        [(address, amount)].iter().cloned().collect(),
+                                        monero_rpc::TransferPriority::Default,
+                                        options.clone(),
+                                    )
+                                    .await
+                                {
+                                    Ok(tx) => {
+                                        info!(
+                                            "{} | Auto-funded Monero with txid: {}",
+                                            &swap_id.bright_blue_italic(),
+                                            tx.tx_hash.to_string()
+                                        );
+                                        self.funding_xmr.insert(swap_id, (address, amount, true));
+                                        break;
+                                    }
+                                    Err(err) => {
+                                        if (err.to_string().contains("not enough") && err.to_string().contains("money")) || retries == 0 {
+                                            error!("{} | Auto-funding Monero transaction failed with {}, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic(), err);
+                                            self.funding_xmr.insert(swap_id, (address, amount, false));
+                                            break;
+                                        } else {
+                                            warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.bright_blue_italic(), err, retries);
+                                        }
+                                    }
                                 }
                             }
                         });
