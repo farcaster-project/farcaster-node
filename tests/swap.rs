@@ -2249,7 +2249,9 @@ async fn run_swap_bob_maker_manual_bitcoin_sweep(
 
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
-    bitcoin_rpc.generate_to_address(1, &reusable_btc_address()).unwrap();
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
 
     let after_balance = bitcoin_rpc.get_balance(None, None).unwrap();
     let delta_balance = after_balance - before_balance;
@@ -2772,7 +2774,11 @@ fn get_info(args: Vec<String>) -> NodeInfo {
     cli_output_to_node_info(stdout)
 }
 
-fn sweep_bitcoin(data_dir: Vec<String>, source_addr: bitcoin::Address, dest_addr: bitcoin::Address) {
+fn sweep_bitcoin(
+    data_dir: Vec<String>,
+    source_addr: bitcoin::Address,
+    dest_addr: bitcoin::Address,
+) {
     let res = run(
         "../swap-cli",
         sweep_bitcoin_args(data_dir, source_addr, dest_addr),
