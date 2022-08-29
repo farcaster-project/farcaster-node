@@ -221,7 +221,9 @@ impl ElectrumRpc {
                                 .iter()
                                 .find(|history_entry| history_entry.tx_hash == tx_id)
                             {
-                                Some(entry) => entry,
+                                Some(entry) => {
+                                    debug!("Found tx: {}", &tx_id);
+                                    entry},
                                 None => {
                                     warn!(
                                         "{:?} should be found in the history if we successfully queried `transaction_get` for it",
