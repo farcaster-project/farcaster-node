@@ -1581,7 +1581,7 @@ impl Runtime {
                                         break;
                                     }
                                     Err(err) => {
-                                        if err.to_string().contains("not enough money") || retries == 0 {
+                                        if (err.to_string().contains("not enough") && err.to_string().contains("money")) || retries == 0 {
                                             error!("{} | Auto-funding Monero transaction failed with {}, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic(), err);
                                             self.funding_xmr.insert(swap_id, (address, amount, false));
                                             break;
