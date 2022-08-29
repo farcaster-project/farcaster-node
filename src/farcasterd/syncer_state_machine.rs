@@ -162,7 +162,7 @@ fn transition_to_awaiting_syncer_or_awaiting_syncer_request(
         }
 
         Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
-            let blockchain = Blockchain::Monero;
+            let blockchain = Blockchain::Bitcoin;
             let network = sweep_bitcoin_address.source_address.network.into();
 
             let syncer_task_id = TaskId(runtime.syncer_task_counter);
