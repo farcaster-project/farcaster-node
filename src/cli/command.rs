@@ -15,13 +15,16 @@
 use crate::rpc::request::{Address, AddressSecretKey};
 use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
 use farcaster_core::swap::btcxmr::Offer;
-use std::io::Read;
+use std::io::{self, Read};
 use std::str::FromStr;
 use uuid::Uuid;
 
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use microservices::shell::Exec;
 
+use clap::IntoApp;
+use clap_complete::generate;
+use clap_complete::shells::*;
 use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
 
 use super::Command;
@@ -357,6 +360,23 @@ impl Exec for Command {
                     runtime.report_response_or_fail()?;
                 } else {
                     return Err(Error::Farcaster("Received unexpected response".to_string()));
+                }
+            }
+
+            Command::Completion { shell } => {
+                let mut app = super::Opts::command();
+                let name = app.get_name().to_string();
+                match shell {
+                    Shell::Bash => generate(Bash, &mut app, &name, &mut io::stdout()),
+                    Shell::Elvish => generate(Elvish, &mut app, &name, &mut io::stdout()),
+                    Shell::Fish => generate(Fish, &mut app, &name, &mut io::stdout()),
+                    Shell::PowerShell => generate(PowerShell, &mut app, &name, &mut io::stdout()),
+                    Shell::Zsh => generate(Zsh, &mut app, &name, &mut io::stdout()),
+                    _ => {
+                        return Err(Error::Other(s!(
+                            "Unsupported shell, cannot generate completion scripts!"
+                        )))
+                    }
                 }
             }
         }

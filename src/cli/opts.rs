@@ -13,6 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use bitcoin::Address as BtcAddress;
+use clap_complete::shells::Shell;
 use monero::Address as XmrAddress;
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -248,6 +249,23 @@ pub enum Command {
         source_address: XmrAddress,
         /// The destination address receiving the coins.
         destination_address: XmrAddress,
+    },
+
+    /// Output shell completion code for the specified shell (bash, zsh or fish)
+    ///
+    /// The shell code must be evaluated to provide interactive completion of swap-cli commands.
+    /// This can be done by sourcing it from the .bash_profile.
+    ///
+    /// A list of usual folders and filenames on Linux
+    ///
+    /// fish -> /usr/share/fish/vendor_completions.d/farcaster
+    ///
+    /// bash -> /usr/share/bash-completion/completions/farcaster
+    ///
+    /// zsh -> /usr/share/zsh/site-functions/_farcaster
+    Completion {
+        #[clap(value_parser = clap::builder::EnumValueParser::<Shell>::new())]
+        shell: Shell,
     },
 }
 
