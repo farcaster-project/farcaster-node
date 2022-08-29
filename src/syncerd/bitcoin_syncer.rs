@@ -227,16 +227,16 @@ impl ElectrumRpc {
                                         "{:?} should be found in the history if we successfully queried `transaction_get` for it",
                                         &tx_id
                                     );
-                                    let mut state_guard = state.lock().await;
-                                    state_guard
-                                        .change_transaction(
-                                            tx_id.to_vec(),
-                                            None,
-                                            Some(0),
-                                            bitcoin::consensus::serialize(&tx),
-                                        )
-                                        .await;
-                                    drop(state_guard);
+                                    // let mut state_guard = state.lock().await;
+                                    // state_guard
+                                    //     .change_transaction(
+                                    //         tx_id.to_vec(),
+                                    //         None,
+                                    //         Some(0),
+                                    //         bitcoin::consensus::serialize(&tx),
+                                    //     )
+                                    //     .await;
+                                    // drop(state_guard);
                                     continue;
                                 }
                             }},
