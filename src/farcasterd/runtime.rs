@@ -17,6 +17,9 @@ use crate::event::{Event, StateMachine};
 use crate::farcasterd::runtime::request::{
     CheckpointEntry, OfferStatusSelector, ProgressEvent, SwapProgress,
 };
+use crate::farcasterd::Opts;
+use crate::rpc::request::{Failure, FailureCode, GetKeys, Msg, NodeInfo};
+use crate::rpc::{request, Request, ServiceBus};
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
     clap::Parser,
@@ -26,7 +29,16 @@ use crate::{
     },
     service::Endpoints,
 };
+use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
+use bitcoin::{hashes::hex::ToHex, secp256k1::PublicKey, secp256k1::SecretKey};
 use clap::IntoApp;
+use farcaster_core::{
+    blockchain::{Blockchain, Network},
+    swap::SwapId,
+};
+use farcaster_core::{role::TradeRole, swap::btcxmr::PublicOffer};
+use internet2::{addr::InetSocketAddr, addr::NodeAddr, TypedEnum};
+use microservices::esb::{self, Handler};
 use request::List;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
@@ -35,24 +47,6 @@ use std::io;
 use std::iter::FromIterator;
 use std::process;
 use std::time::{Duration, SystemTime};
-
-use bitcoin::{hashes::hex::ToHex, secp256k1::PublicKey, secp256k1::SecretKey};
-use internet2::{addr::InetSocketAddr, addr::NodeAddr, TypedEnum};
-use microservices::esb::{self, Handler};
-
-use farcaster_core::{
-    blockchain::{Blockchain, Network},
-    swap::SwapId,
-};
-
-use crate::farcasterd::Opts;
-use crate::rpc::request::{Failure, FailureCode, GetKeys, Msg, NodeInfo};
-use crate::rpc::{request, Request, ServiceBus};
-use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-
-use farcaster_core::{role::TradeRole, swap::btcxmr::PublicOffer};
-
-use std::str::FromStr;
 
 use super::syncer_state_machine::SyncerStateMachine;
 use super::trade_state_machine::TradeStateMachine;
@@ -267,7 +261,6 @@ impl Runtime {
                 trace!("Hello farcasterd from {}", source);
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
-
             _ => {
                 self.process_request_with_state_machines(request, source, endpoints)?;
             }
@@ -879,27 +872,8 @@ impl Runtime {
             (Request::RestoreCheckpoint(..), _) => Ok(Some(TradeStateMachine::StartRestore)),
             (Request::MakeOffer(..), _) => Ok(Some(TradeStateMachine::StartMaker)),
             (Request::TakeOffer(..), _) => Ok(Some(TradeStateMachine::StartTaker)),
-            (
-                Request::Protocol(Msg::TakerCommit(request::TakeCommit {
-                    public_offer: public_offer_string,
-                    ..
-                })),
-                _,
-            ) => {
-                let public_offer = PublicOffer::from_str(&public_offer_string)?;
-                Ok(self
-                    .trade_state_machines
-                    .iter()
-                    .position(|tsm| {
-                        if let Some(pub_offer) = tsm.open_offer() {
-                            pub_offer == public_offer
-                        } else {
-                            false
-                        }
-                    })
-                    .map(|pos| self.trade_state_machines.remove(pos)))
-            }
-            (Request::RevokeOffer(public_offer), _) => Ok(self
+            (Request::Protocol(Msg::TakerCommit(request::TakeCommit { public_offer, .. })), _)
+            | (Request::RevokeOffer(public_offer), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {

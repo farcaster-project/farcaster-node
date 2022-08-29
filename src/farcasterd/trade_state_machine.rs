@@ -626,13 +626,13 @@ fn attempt_transition_to_taker_commited(
     match (event.request.clone(), event.source.clone()) {
         (
             Request::Protocol(Msg::TakerCommit(TakeCommit {
-                public_offer: ref commited_public_offer,
+                public_offer: commited_public_offer,
                 swap_id,
                 ..
             })),
             ServiceId::Peer(..),
         ) => {
-            if public_offer == PublicOffer::from_str(commited_public_offer)? {
+            if public_offer == commited_public_offer {
                 let source = event.source.clone();
                 let btc_addr_req = Request::BitcoinAddress(BitcoinAddress(swap_id, arb_addr));
                 event.send_msg_service(ServiceId::Wallet, btc_addr_req)?;
