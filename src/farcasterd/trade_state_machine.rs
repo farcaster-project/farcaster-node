@@ -320,7 +320,6 @@ fn transition_to_make_offer(
                         })?;
                 } else {
                     // no need for the keys, because peerd already knows them
-                    runtime.listens.insert(bind_addr);
                     let msg = format!("Already listening on {}", &bind_addr);
                     debug!("{}", &msg);
                 }

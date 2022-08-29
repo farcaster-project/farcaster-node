@@ -111,7 +111,7 @@ pub struct Runtime {
     pub started: SystemTime,                     // Set on Runtime instantiation
     pub node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
     pub node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
-    pub listens: HashSet<InetSocketAddr>,   // The socket address of the binding peerd listeners
+    pub listens: HashSet<InetSocketAddr>, // Set by MakeOffer, contains unique socket addresses of the binding peerd listeners.
     pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
     pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
     pub public_offers: HashSet<PublicOffer>, // The set of all known public offers. Includes open, consumed and ended offers includes open, consumed and ended offers
