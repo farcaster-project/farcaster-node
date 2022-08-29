@@ -98,6 +98,37 @@ async fn swap_bob_funds_incorrect_amount() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
+async fn swap_bob_maker_manual_bitcoin_sweep() {
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (_, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_clients().await;
+
+    let (_, _, swap_id) = make_and_take_offer(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    run_swap_bob_maker_manual_bitcoin_sweep(
+        swap_id,
+        data_dir_maker,
+        Arc::clone(&bitcoin_rpc),
+        farcasterd_maker,
+        farcasterd_taker,
+    )
+    .await;
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
 async fn swap_bob_maker_manual_monero_sweep() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -2178,6 +2209,55 @@ async fn run_user_funds_incorrect_swap(
 }
 
 #[allow(clippy::too_many_arguments)]
+async fn run_swap_bob_maker_manual_bitcoin_sweep(
+    swap_id: SwapId,
+    data_dir_bob: Vec<String>,
+    bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
+    farcasterd_maker: process::Child,
+    farcasterd_taker: process::Child,
+) {
+    let cli_bob_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
+
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
+
+    // run until bob has the btc funding address
+    let (address, amount) =
+        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
+            .await;
+
+    cleanup_processes(vec![farcasterd_taker]);
+
+    // fund the bitcoin address
+    bitcoin_rpc
+        .send_to_address(&address, amount, None, None, None, None, None, None)
+        .unwrap();
+
+    cleanup_processes(vec![farcasterd_maker]);
+
+    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
+
+    let before_balance = bitcoin_rpc.get_balance(None, None).unwrap();
+    let dest_bitcoin_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    // Sleep here to allow the services to warm up
+    tokio::time::sleep(time::Duration::from_secs(2)).await;
+
+    // attempt sweeping the monero wallet
+    sweep_bitcoin(data_dir_bob.clone(), address, dest_bitcoin_address);
+
+    tokio::time::sleep(time::Duration::from_secs(5)).await;
+
+    bitcoin_rpc.generate_to_address(1, &reusable_btc_address()).unwrap();
+
+    let after_balance = bitcoin_rpc.get_balance(None, None).unwrap();
+    let delta_balance = after_balance - before_balance;
+    assert!(delta_balance > bitcoin::Amount::from_sat(10000000));
+    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_swap_bob_maker_manual_monero_sweep(
     swap_id: SwapId,
     data_dir_alice: Vec<String>,
@@ -2610,6 +2690,21 @@ fn progress_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
         .collect()
 }
 
+fn sweep_bitcoin_args(
+    data_dir: Vec<String>,
+    source_addr: bitcoin::Address,
+    dest_addr: bitcoin::Address,
+) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(vec![
+            "sweep-bitcoin-address".to_string(),
+            format!("{}", source_addr),
+            format!("{}", dest_addr),
+        ])
+        .collect()
+}
+
 fn sweep_monero_args(
     data_dir: Vec<String>,
     source_addr: monero::Address,
@@ -2675,6 +2770,14 @@ async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
 fn get_info(args: Vec<String>) -> NodeInfo {
     let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
     cli_output_to_node_info(stdout)
+}
+
+fn sweep_bitcoin(data_dir: Vec<String>, source_addr: bitcoin::Address, dest_addr: bitcoin::Address) {
+    let res = run(
+        "../swap-cli",
+        sweep_bitcoin_args(data_dir, source_addr, dest_addr),
+    );
+    println!("res: {:?}", res);
 }
 
 fn sweep_monero(data_dir: Vec<String>, source_addr: monero::Address, dest_addr: monero::Address) {

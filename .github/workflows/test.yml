@@ -64,6 +64,7 @@ jobs:
           swap_bob_funds_incorrect_amount,
           swap_bob_maker_kill_peerd,
           swap_bob_maker_manual_monero_sweep,
+          swap_bob_maker_manual_bitcoin_sweep,
           swap_bob_maker_normal,
           swap_bob_maker_punish_kill_bob,
           swap_bob_maker_refund,
