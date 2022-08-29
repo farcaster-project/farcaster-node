@@ -481,7 +481,6 @@ impl Runtime {
                 })),
                 ServiceId::Peer(_),
             ) => {
-                let public_offer = PublicOffer::from_str(public_offer)?;
                 // public offer gets removed on LaunchSwap
                 if !self.public_offers.contains(&public_offer) {
                     warn!(

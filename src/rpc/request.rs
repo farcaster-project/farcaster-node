@@ -223,7 +223,7 @@ pub struct LaunchSwap {
 #[display("{swap_id}, ..")]
 pub struct TakeCommit {
     pub commit: Commit,
-    pub public_offer: String, // TODO: replace by public offer id
+    pub public_offer: PublicOffer, // TODO: replace by public offer id
     pub swap_id: SwapId,
 }
 
