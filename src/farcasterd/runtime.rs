@@ -13,10 +13,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::event::{Event, StateMachine};
+use crate::event::StateMachineExecutor;
 use crate::farcasterd::runtime::request::{
     CheckpointEntry, OfferStatusSelector, ProgressEvent, SwapProgress,
 };
+use crate::farcasterd::syncer_state_machine::SyncerStateMachineExecutor;
+use crate::farcasterd::trade_state_machine::TradeStateMachineExecutor;
 use crate::farcasterd::Opts;
 use crate::rpc::request::{Failure, FailureCode, GetKeys, Msg, NodeInfo};
 use crate::rpc::{request, Request, ServiceBus};
@@ -349,7 +351,8 @@ impl Runtime {
                     .drain(..)
                     .collect::<Vec<TradeStateMachine>>();
                 for tsm in moved_trade_state_machines.drain(..) {
-                    if let Some(new_tsm) = self.execute_trade_state_machine(
+                    if let Some(new_tsm) = TradeStateMachineExecutor::execute(
+                        self,
                         endpoints,
                         source.clone(),
                         request.clone(),
@@ -363,7 +366,8 @@ impl Runtime {
                     .drain()
                     .collect::<Vec<(TaskId, SyncerStateMachine)>>();
                 for (task_id, ssm) in moved_syncer_state_machines.drain(..) {
-                    if let Some(new_ssm) = self.execute_syncer_state_machine(
+                    if let Some(new_ssm) = SyncerStateMachineExecutor::execute(
+                        self,
                         endpoints,
                         source.clone(),
                         request.clone(),
@@ -921,7 +925,7 @@ impl Runtime {
             self.match_request_to_trade_state_machine(request.clone(), source.clone())?
         {
             if let Some(new_tsm) =
-                self.execute_trade_state_machine(endpoints, source, request, tsm)?
+                TradeStateMachineExecutor::execute(self, endpoints, source, request, tsm)?
             {
                 self.trade_state_machines.push(new_tsm);
             }
@@ -930,7 +934,7 @@ impl Runtime {
             self.match_request_to_syncer_state_machine(request.clone(), source.clone())?
         {
             if let Some(new_ssm) =
-                self.execute_syncer_state_machine(endpoints, source, request, ssm)?
+                SyncerStateMachineExecutor::execute(self, endpoints, source, request, ssm)?
             {
                 if let Some(task_id) = new_ssm.task_id() {
                     self.syncer_state_machines.insert(task_id, new_ssm);
@@ -942,76 +946,6 @@ impl Runtime {
         } else {
             warn!("Received request {}, but did not process it", request);
             Ok(())
-        }
-    }
-
-    fn execute_syncer_state_machine(
-        &mut self,
-        endpoints: &mut Endpoints,
-        source: ServiceId,
-        request: Request,
-        ssm: SyncerStateMachine,
-    ) -> Result<Option<SyncerStateMachine>, Error> {
-        let event = Event::with(endpoints, self.identity(), source, request);
-        let ssm_display = ssm.to_string();
-        if let Some(new_ssm) = ssm.next(event, self)? {
-            let new_ssm_display = new_ssm.to_string();
-            // relegate state transitions staying the same to debug
-            if new_ssm_display == ssm_display {
-                debug!(
-                    "Syncer state self transition {}",
-                    new_ssm.bright_green_bold()
-                );
-            } else {
-                info!(
-                    "Syncer state transition {} -> {}",
-                    ssm_display.red_bold(),
-                    new_ssm.bright_green_bold()
-                );
-            }
-            Ok(Some(new_ssm))
-        } else {
-            info!(
-                "Syncer state machine ended {} -> {}",
-                ssm_display.red_bold(),
-                "End".to_string().bright_green_bold()
-            );
-            Ok(None)
-        }
-    }
-
-    fn execute_trade_state_machine(
-        &mut self,
-        endpoints: &mut Endpoints,
-        source: ServiceId,
-        request: Request,
-        tsm: TradeStateMachine,
-    ) -> Result<Option<TradeStateMachine>, Error> {
-        let event = Event::with(endpoints, self.identity(), source, request);
-        let tsm_display = tsm.to_string();
-        if let Some(new_tsm) = tsm.next(event, self)? {
-            let new_tsm_display = new_tsm.to_string();
-            // relegate state transitions staying the same to debug
-            if new_tsm_display == tsm_display {
-                debug!(
-                    "Trade state self transition {}",
-                    new_tsm.bright_green_bold()
-                );
-            } else {
-                info!(
-                    "Trade state transition {} -> {}",
-                    tsm_display.red_bold(),
-                    new_tsm.bright_green_bold()
-                );
-            }
-            Ok(Some(new_tsm))
-        } else {
-            info!(
-                "Trade state machine ended {} -> {}",
-                tsm_display.red_bold(),
-                "End".to_string().bright_green_bold()
-            );
-            Ok(None)
         }
     }
 

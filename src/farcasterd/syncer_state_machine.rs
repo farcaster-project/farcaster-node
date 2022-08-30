@@ -3,7 +3,7 @@ use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
     error::Error,
-    event::{Event, StateMachine},
+    event::{Event, StateMachine, StateMachineExecutor},
     rpc::Request,
     syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
     ServiceId,
@@ -75,7 +75,14 @@ impl StateMachine<Runtime, Error> for SyncerStateMachine {
             }
         }
     }
+
+    fn name(&self) -> String {
+        "Syncer".to_string()
+    }
 }
+
+pub struct SyncerStateMachineExecutor {}
+impl StateMachineExecutor<Runtime, Error, SyncerStateMachine> for SyncerStateMachineExecutor {}
 
 impl SyncerStateMachine {
     pub fn task_id(&self) -> Option<TaskId> {

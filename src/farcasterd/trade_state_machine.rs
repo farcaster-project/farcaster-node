@@ -1,3 +1,4 @@
+use crate::event::StateMachineExecutor;
 use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
 use crate::rpc::request::{
     BitcoinAddress, BitcoinFundingInfo, CheckpointEntry, FundingInfo, InitSwap, LaunchSwap,
@@ -186,7 +187,14 @@ impl StateMachine<Runtime, Error> for TradeStateMachine {
             }
         }
     }
+
+    fn name(&self) -> String {
+        "Syncer".to_string()
+    }
 }
+
+pub struct TradeStateMachineExecutor {}
+impl StateMachineExecutor<Runtime, Error, TradeStateMachine> for TradeStateMachineExecutor {}
 
 impl TradeStateMachine {
     pub fn open_offer(&self) -> Option<PublicOffer> {
