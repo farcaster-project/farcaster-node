@@ -137,6 +137,7 @@ pub struct RestoringSwapd {
     arbitrating_syncer_up: Option<ServiceId>,
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
+    trade_role: TradeRole,
 }
 
 pub struct SwapdRunning {
@@ -519,7 +520,11 @@ fn attempt_transition_to_restoring_swapd(
 ) -> Result<Option<TradeStateMachine>, Error> {
     // check if databased and walletd are running
     match event.request.clone() {
-        Request::RestoreCheckpoint(swap_id) => {
+        Request::RestoreCheckpoint(CheckpointEntry {
+            swap_id,
+            public_offer,
+            trade_role,
+        }) => {
             if let Err(err) = runtime.services_ready() {
                 event.send_ctl_service(
                     event.source.clone(),
@@ -543,25 +548,6 @@ fn attempt_transition_to_restoring_swapd(
                 return Ok(None);
             }
 
-            let CheckpointEntry {
-                public_offer,
-                trade_role,
-                ..
-            } = match runtime
-                .checkpointed_pub_offers
-                .iter()
-                .find(|entry| entry.swap_id == swap_id)
-            {
-                Some(ce) => ce,
-                None => {
-                    event.complete_ctl(Request::Failure(Failure {
-                        code: FailureCode::Unknown,
-                        info: "No checkpoint found with given swap id, aborting restore."
-                            .to_string(),
-                    }))?;
-                    return Ok(None);
-                }
-            };
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
@@ -594,6 +580,7 @@ fn attempt_transition_to_restoring_swapd(
                 arbitrating_syncer_up,
                 accordant_syncer_up,
                 swapd_up: false,
+                trade_role,
             })))
         }
         req => {
@@ -903,6 +890,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut arbitrating_syncer_up,
         mut accordant_syncer_up,
         mut swapd_up,
+        trade_role,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
         (Request::Hello, source)
@@ -927,7 +915,14 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
     ) {
         info!("Restoring swap {}", swap_id.bright_blue_italic());
         runtime.stats.incr_initiated();
-        event.complete_ctl_service(ServiceId::Database, Request::RestoreCheckpoint(swap_id))?;
+        event.complete_ctl_service(
+            ServiceId::Database,
+            Request::RestoreCheckpoint(CheckpointEntry {
+                swap_id,
+                public_offer: public_offer.clone(),
+                trade_role,
+            }),
+        )?;
 
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
             peerd: ServiceId::Loopback, // TODO: Move this from the dummy value to the actual peerd once we handle reconnect
@@ -946,6 +941,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             arbitrating_syncer_up,
             accordant_syncer_up,
             swapd_up,
+            trade_role,
         })))
     }
 }

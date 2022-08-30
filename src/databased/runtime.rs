@@ -19,7 +19,7 @@ use crate::rpc::{
 };
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::TypedEnum;
-use microservices::esb;
+use microservices::esb::{self, Handler};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
@@ -121,7 +121,7 @@ impl Runtime {
                 debug!("checkpoint set");
             }
 
-            Request::RestoreCheckpoint(swap_id) => {
+            Request::RestoreCheckpoint(CheckpointEntry { swap_id, .. }) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -227,10 +227,57 @@ impl Runtime {
                     .collect();
                 endpoints.send_to(
                     ServiceBus::Ctl,
+                    self.identity(),
                     source,
-                    ServiceId::Farcasterd,
                     Request::CheckpointList(checkpointed_pub_offers),
                 )?;
+            }
+
+            Request::GetCheckpointEntry(swap_id) => {
+                let entry = match self.database.get_checkpoint_state(&CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                }) {
+                    Ok(raw_state) => {
+                        match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
+                            Ok(CheckpointState::CheckpointWallet(CheckpointWallet {
+                                wallet,
+                                ..
+                            })) => match wallet {
+                                Wallet::Bob(wallet) => Some(CheckpointEntry {
+                                    swap_id,
+                                    public_offer: wallet.pub_offer,
+                                    trade_role: wallet.local_trade_role,
+                                }),
+                                Wallet::Alice(wallet) => Some(CheckpointEntry {
+                                    swap_id,
+                                    public_offer: wallet.pub_offer,
+                                    trade_role: wallet.local_trade_role,
+                                }),
+                            },
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(entry) = entry {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        Request::CheckpointEntry(entry),
+                    )?;
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        Request::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: format!("Could not retrieve checkpoint entry for {}", swap_id),
+                        }),
+                    )?;
+                }
             }
 
             Request::RemoveCheckpoint(swap_id) => {

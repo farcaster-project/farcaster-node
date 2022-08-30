@@ -605,7 +605,7 @@ pub enum Request {
 
     #[api(type = 1309)]
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
-    RestoreCheckpoint(SwapId),
+    RestoreCheckpoint(CheckpointEntry),
 
     #[api(type = 1310)]
     #[display("task({0})", alt = "{0:#}")]
@@ -647,6 +647,14 @@ pub enum Request {
     #[api(type = 1319)]
     #[display("address_secret_key")]
     AddressSecretKey(AddressSecretKey),
+
+    #[api(type = 1320)]
+    #[display("get_checkpoint_entry({0})")]
+    GetCheckpointEntry(SwapId),
+
+    #[api(type = 1321)]
+    #[display("checkpoint_entry({0})")]
+    CheckpointEntry(CheckpointEntry),
 }
 
 /// Information about server-side failure returned through RPC API
