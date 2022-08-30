@@ -20,7 +20,7 @@ pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Ve
     let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
 
     // If we are in CI we use .ci.toml files, otherwise .toml
-    let ctx = env::var("CI").unwrap_or("false".into());
+    let ctx = env::var("CI").unwrap_or_else(|_| "false".into());
     let ext = if ctx == "false" { ".toml" } else { ".ci.toml" };
 
     let farcasterd_maker_args = farcasterd_args(
@@ -163,7 +163,7 @@ pub fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
 }
 
-pub fn cli<'de, T: DeserializeOwned>(
+pub fn cli<T: DeserializeOwned>(
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> Result<T, String> {
     match run_cli(args) {
@@ -230,7 +230,7 @@ pub fn run(
 }
 
 pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    use bitcoincore_rpc::{Client, RpcApi};
+    use bitcoincore_rpc::{json::LoadWalletResult, Client, RpcApi};
 
     let conf = config::TestConfig::parse();
     let bitcoin_rpc =
@@ -239,22 +239,22 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
     // make sure a wallet is created and loaded
     // error may be returned because wallet exists, so we try to load the wallet
     if bitcoin_rpc
-        .call::<bitcoincore_rpc::json::LoadWalletResult>(
+        .call::<LoadWalletResult>(
             "createwallet",
             &[
-                serde_json::to_value("wallet").unwrap(),
-                false.into(),
-                false.into(),
-                serde_json::to_value("").unwrap(),
-                false.into(),
-                false.into(), // descriptor false
+                serde_json::to_value("wallet").unwrap(), // wallet_name
+                false.into(),                            // disable_private_keys
+                false.into(),                            // blank
+                serde_json::to_value("").unwrap(),       // passphrase
+                false.into(),                            // avoid_reuse
+                false.into(),                            // descriptor
             ],
         )
         .is_err()
     {
         // cannot expect on this error as the wallet is sometimes already loaded from previous
-        // tests so even loading fails, just ignore this error the test fails later if a wallet
-        // problem occures
+        // tests; so even if loading fails, just ignore this error;
+        // also, the test fails later if a wallet  problem occurs
         let _ = bitcoin_rpc.load_wallet("wallet");
     }
 

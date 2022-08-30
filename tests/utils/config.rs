@@ -35,7 +35,7 @@ impl TestConfig {
         let conf: FullConfig =
             serde_yaml::from_str(&s).expect("Invalid configuration format used!");
 
-        let ctx = env::var("CI").unwrap_or("false".into());
+        let ctx = env::var("CI").unwrap_or_else(|_| "false".into());
         if ctx == "true" {
             info!("configuration used(CI): {:#?}", conf.ci);
             conf.ci
@@ -91,13 +91,11 @@ impl BitcoinAuthConfig {
     /// provided the Cookie method is prefered.
     pub fn get_auth(&self) -> Auth {
         if let Some(cookie) = &self.cookie {
-            let path = PathBuf::from_str(&cookie).expect("Invalid path given!");
+            let path = PathBuf::from_str(cookie).expect("Invalid path given!");
             return Auth::CookieFile(path);
-        } else {
-            if let Some(user) = &self.user {
-                if let Some(pass) = &self.pass {
-                    return Auth::UserPass(user.to_string(), pass.to_string());
-                }
+        } else if let Some(user) = &self.user {
+            if let Some(pass) = &self.pass {
+                return Auth::UserPass(user.to_string(), pass.to_string());
             }
         }
         panic!("No authentification method provided!");
