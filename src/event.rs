@@ -19,7 +19,7 @@ where
 }
 
 /// Event changing state machine state, consisting of a certain P2P or RPC `request` sent from some
-/// serivce `source` to the current `service`.
+/// service `source` to the current `service`.
 pub struct Event<'esb> {
     /// ESB API provided by a controller
     pub endpoints: &'esb mut Endpoints,

@@ -56,9 +56,9 @@ pub struct AwaitingSyncer {
 }
 
 pub struct AwaitingSyncerRequest {
-    syncer_task_id: TaskId,
     source: ServiceId,
     syncer: ServiceId,
+    syncer_task_id: TaskId,
 }
 
 impl StateMachine<Runtime, Error> for SyncerStateMachine {
