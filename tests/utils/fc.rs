@@ -230,7 +230,7 @@ pub fn run(
 }
 
 pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
-    use bitcoincore_rpc::{Client, RpcApi};
+    use bitcoincore_rpc::{json::LoadWalletResult, Client, RpcApi};
 
     let conf = config::TestConfig::parse();
     let bitcoin_rpc =
@@ -239,7 +239,7 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
     // make sure a wallet is created and loaded
     // error may be returned because wallet exists, so we try to load the wallet
     if bitcoin_rpc
-        .call::<bitcoincore_rpc::json::LoadWalletResult>(
+        .call::<LoadWalletResult>(
             "createwallet",
             &[
                 serde_json::to_value("wallet").unwrap(),
