@@ -21,15 +21,15 @@ ci:
       port: 18081
       protocol: "http"
     wallets:
-    - host: "monero-wallet-rpc-1"
-      port: 18083
-      protocol: "http"
-    - host: "monero-wallet-rpc-2"
-      port: 18083
-      protocol: "http"
-    - host: "monero-wallet-rpc-3"
-      port: 18083
-      protocol: "http"
+      - host: "monero-wallet-rpc-1"
+        port: 18083
+        protocol: "http"
+      - host: "monero-wallet-rpc-2"
+        port: 18083
+        protocol: "http"
+      - host: "monero-wallet-rpc-3"
+        port: 18083
+        protocol: "http"
     lws:
       host: "monero-lws"
       port: 38884
@@ -58,15 +58,15 @@ compose:
       port: 18081
       protocol: "http"
     wallets:
-    - host: "localhost"
-      port: 18083
-      protocol: "http"
-    - host: "localhost"
-      port: 18084
-      protocol: "http"
-    - host: "localhost"
-      port: 18085
-      protocol: "http"
+      - host: "localhost"
+        port: 18083
+        protocol: "http"
+      - host: "localhost"
+        port: 18084
+        protocol: "http"
+      - host: "localhost"
+        port: 18085
+        protocol: "http"
     lws:
       host: "localhost"
       port: 38884
