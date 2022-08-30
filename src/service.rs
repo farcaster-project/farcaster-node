@@ -123,7 +123,6 @@ pub enum ServiceId {
 
     #[display("swap<{0}>")]
     #[from]
-    // #[from(TempSwapId)]
     Swap(SwapId),
 
     #[display("client<{0}>")]
