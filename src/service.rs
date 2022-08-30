@@ -18,6 +18,7 @@ use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
+use colored::Colorize;
 use internet2::{
     addr::{NodeAddr, ServiceAddr},
     zeromq,
@@ -91,11 +92,17 @@ impl FromStr for ClientName {
 
 #[derive(Debug, Clone, Hash)]
 pub struct ServiceConfig {
-    /// ZMQ socket for lightning peer network message bus
+    /// ZMQ socket for peer-to-peer network message bus
     pub msg_endpoint: ServiceAddr,
 
     /// ZMQ socket for internal service control bus
     pub ctl_endpoint: ServiceAddr,
+
+    /// ZMQ socket for remote procedure call bus
+    pub rpc_endpoint: ServiceAddr,
+
+    /// ZMQ socket for syncer events bus
+    pub sync_endpoint: ServiceAddr,
 }
 
 #[cfg(feature = "shell")]
@@ -104,6 +111,8 @@ impl From<Opts> for ServiceConfig {
         ServiceConfig {
             msg_endpoint: opts.msg_socket,
             ctl_endpoint: opts.ctl_socket,
+            rpc_endpoint: opts.rpc_socket,
+            sync_endpoint: opts.sync_socket,
         }
     }
 }
@@ -123,7 +132,6 @@ pub enum ServiceId {
 
     #[display("swap<{0}>")]
     #[from]
-    // #[from(TempSwapId)]
     Swap(SwapId),
 
     #[display("client<{0}>")]
@@ -222,6 +230,16 @@ where
             ),
             ServiceBus::Ctl => esb::BusConfig::with_addr(
                 config.ctl_endpoint,
+                api_type,
+                router.clone()
+            ),
+            ServiceBus::Rpc => esb::BusConfig::with_addr(
+                config.rpc_endpoint,
+                api_type,
+                router.clone()
+            ),
+            ServiceBus::Sync => esb::BusConfig::with_addr(
+                config.sync_endpoint,
                 api_type,
                 router
             )
@@ -418,9 +436,6 @@ where
         Ok(())
     }
 }
-
-// TODO: Move to LNP/BP Services library
-use colored::Colorize;
 
 pub trait LogStyle: ToString {
     fn bright_blue_bold(&self) -> colored::ColoredString {

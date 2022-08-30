@@ -317,9 +317,14 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
+            // Peer-to-peer message bus
+            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+            // Control bus for issuing internal commands
+            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
+            // User RPC issued commands
+            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
             ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
+            _ => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -334,7 +339,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl Runtime {
     /// send messages over the bridge
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
         _source: ServiceId,
@@ -377,7 +382,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc_ctl(
+    fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
@@ -422,6 +427,16 @@ impl Runtime {
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        _endpoints: &mut Endpoints,
+        _source: ServiceId,
+        _request: Request,
+    ) -> Result<(), Error> {
+        // TODO
         Ok(())
     }
 

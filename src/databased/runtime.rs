@@ -55,9 +55,12 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
-            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
+            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+            // Control bus for database command
+            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
+            // RPC client bus for issuing user command
+            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
+            _ => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -70,7 +73,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         _endpoints: &mut Endpoints,
         _source: ServiceId,
@@ -91,7 +94,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc_ctl(
+    fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
@@ -353,6 +356,16 @@ impl Runtime {
                 error!("Request {} is not supported by the CTL interface", request);
             }
         }
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        _endpoints: &mut Endpoints,
+        _source: ServiceId,
+        _request: Request,
+    ) -> Result<(), Error> {
+        // TODO
         Ok(())
     }
 }

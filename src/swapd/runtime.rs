@@ -188,33 +188,34 @@ impl PendingRequestsT for PendingRequests {
     ) -> bool {
         let success = if let Some(pending_reqs) = runtime.pending_requests.remove(&key) {
             let len0 = pending_reqs.len();
-            let remaining_pending_reqs: Vec<_> = pending_reqs
-                .into_iter()
-                .filter_map(|r| {
-                    if predicate(&r) {
-                        if let Ok(_) = match &r.bus_id {
-                            ServiceBus::Ctl if &r.dest == &runtime.identity => runtime
-                                .handle_rpc_ctl(endpoints, r.source.clone(), r.request.clone()),
-                            ServiceBus::Msg if &r.dest == &runtime.identity => runtime
-                                .handle_rpc_msg(endpoints, r.source.clone(), r.request.clone()),
-                            _ => endpoints
-                                .send_to(
-                                    r.bus_id.clone(),
-                                    r.source.clone(),
-                                    r.dest.clone(),
-                                    r.request.clone(),
-                                )
-                                .map_err(Into::into),
-                        } {
-                            None
+            let remaining_pending_reqs: Vec<_> =
+                pending_reqs
+                    .into_iter()
+                    .filter_map(|r| {
+                        if predicate(&r) {
+                            if let Ok(_) = match &r.bus_id {
+                                ServiceBus::Ctl if &r.dest == &runtime.identity => runtime
+                                    .handle_ctl(endpoints, r.source.clone(), r.request.clone()),
+                                ServiceBus::Msg if &r.dest == &runtime.identity => runtime
+                                    .handle_msg(endpoints, r.source.clone(), r.request.clone()),
+                                _ => endpoints
+                                    .send_to(
+                                        r.bus_id.clone(),
+                                        r.source.clone(),
+                                        r.dest.clone(),
+                                        r.request.clone(),
+                                    )
+                                    .map_err(Into::into),
+                            } {
+                                None
+                            } else {
+                                Some(r)
+                            }
                         } else {
                             Some(r)
                         }
-                    } else {
-                        Some(r)
-                    }
-                })
-                .collect();
+                    })
+                    .collect();
             let len1 = remaining_pending_reqs.len();
             runtime.pending_requests.insert(key, remaining_pending_reqs);
             if len0 - len1 > 1 {
@@ -432,9 +433,15 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: Request,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
-            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
+            // Peer-to-peer message bus
+            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+            // Control bus for internal command
+            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
+            // User issued command
+            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
+            // Syncer event bus
+            ServiceBus::Sync => self.handle_sync(endpoints, source, request),
+            _ => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -518,7 +525,7 @@ impl Runtime {
         )?)
     }
 
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
@@ -818,7 +825,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc_ctl(
+    fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
@@ -1414,7 +1421,7 @@ impl Runtime {
                                         msg,
                                     )?;
                                     // FIXME: syncer shall not have permission to AbortSwap, replace source by identity?
-                                    self.handle_rpc_ctl(endpoints, source, Request::AbortSwap)?;
+                                    self.handle_ctl(endpoints, source, Request::AbortSwap)?;
                                     return Ok(());
                                 }
 
@@ -2104,13 +2111,13 @@ impl Runtime {
                 match transaction {
                     Tx::Cancel(_) | Tx::Buy(_) => {
                         if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
-                            self.handle_rpc_ctl(endpoints, source, lock_tx_confs_req)?;
+                            self.handle_ctl(endpoints, source, lock_tx_confs_req)?;
                         }
                     }
                     Tx::Refund(_) | Tx::Punish(_) => {
                         if let Some(cancel_tx_confs_req) = self.syncer_state.cancel_tx_confs.clone()
                         {
-                            self.handle_rpc_ctl(endpoints, source, cancel_tx_confs_req)?;
+                            self.handle_ctl(endpoints, source, cancel_tx_confs_req)?;
                         }
                     }
                     _ => {}
@@ -2422,11 +2429,7 @@ impl Runtime {
                     let msg = format!("Restored swap at state {}", self.state);
                     let _ = self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg);
 
-                    self.handle_rpc_ctl(
-                        endpoints,
-                        ServiceId::Database,
-                        Request::Protocol(last_msg),
-                    )?;
+                    self.handle_ctl(endpoints, ServiceId::Database, Request::Protocol(last_msg))?;
                 }
                 s => {
                     error!("Checkpoint {} not supported in swapd", s);
@@ -2438,6 +2441,26 @@ impl Runtime {
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
         }
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        _endpoints: &mut Endpoints,
+        _source: ServiceId,
+        _request: Request,
+    ) -> Result<(), Error> {
+        // TODO
+        Ok(())
+    }
+
+    fn handle_sync(
+        &mut self,
+        _endpoints: &mut Endpoints,
+        _source: ServiceId,
+        _request: Request,
+    ) -> Result<(), Error> {
+        // TODO
         Ok(())
     }
 }

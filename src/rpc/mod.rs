@@ -30,6 +30,10 @@ pub enum ServiceBus {
     Msg,
     #[display("CTL")]
     Ctl,
+    #[display("RPC")]
+    Rpc,
+    #[display("SYNC")]
+    Sync,
     #[display("BRIDGE")]
     Bridge,
 }
