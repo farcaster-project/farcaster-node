@@ -21,11 +21,8 @@ use crate::walletd::runtime::CheckpointWallet;
 use amplify::{ToYamlString, Wrapper};
 use internet2::{CreateUnmarshaller, Unmarshaller};
 use lazy_static::lazy_static;
-#[cfg(feature = "serde")]
-use serde_with::{DisplayFromStr, DurationSeconds};
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
-use std::time::Duration;
 use std::{iter::FromIterator, str::FromStr};
 use uuid::Uuid;
 
@@ -38,12 +35,7 @@ use bitcoin::{
 };
 use farcaster_core::{
     blockchain::Blockchain,
-    protocol::message::Abort,
     role::TradeRole,
-    swap::btcxmr::message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures, RevealAliceParameters, RevealBobParameters, RevealProof,
-    },
     swap::btcxmr::{Offer, Parameters, PublicOffer},
     swap::SwapId,
 };
@@ -52,102 +44,9 @@ use internet2::Api;
 use microservices::rpc;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
-#[api(encoding = "strict")]
-#[display(inner)]
-pub enum Msg {
-    #[api(type = 28)]
-    #[display("maker_commit({0})")]
-    MakerCommit(Commit),
-
-    #[api(type = 21)]
-    #[display("taker_commit({0})")]
-    TakerCommit(TakeCommit),
-
-    #[api(type = 22)]
-    #[display("reveal({0})")]
-    Reveal(Reveal),
-
-    #[api(type = 25)]
-    #[display("refund_procedure_signatures(..)")]
-    RefundProcedureSignatures(RefundProcedureSignatures),
-
-    #[api(type = 27)]
-    #[display("abort(..)")]
-    Abort(Abort),
-
-    #[api(type = 24)]
-    #[display("core_arbitrating_setup(..)")]
-    CoreArbitratingSetup(CoreArbitratingSetup),
-
-    #[api(type = 26)]
-    #[display("buy_procedure_signature(..)")]
-    BuyProcedureSignature(BuyProcedureSignature),
-
-    #[api(type = 29)]
-    #[display("ping({0})")]
-    Ping(u16),
-
-    #[api(type = 31)]
-    #[display("pong(..)")]
-    Pong(Vec<u8>),
-
-    #[api(type = 33)]
-    #[display("ping_peer()")]
-    PingPeer,
-
-    #[api(type = 34)]
-    #[display("error_shutdown()")]
-    PeerReceiverRuntimeShutdown,
-
-    #[api(type = 35)]
-    #[display("identity(..)")]
-    Identity(internet2::addr::NodeId),
-}
-
-impl Msg {
-    pub fn swap_id(&self) -> SwapId {
-        match self {
-            Msg::MakerCommit(m) => match m {
-                Commit::AliceParameters(n) => n.swap_id,
-                Commit::BobParameters(n) => n.swap_id,
-            },
-            Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
-            Msg::Reveal(m) => match m {
-                Reveal::AliceParameters(n) => n.swap_id,
-                Reveal::BobParameters(n) => n.swap_id,
-                Reveal::Proof(n) => n.swap_id,
-            },
-            Msg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => *swap_id,
-            Msg::Abort(Abort { swap_id, .. }) => *swap_id,
-            Msg::CoreArbitratingSetup(CoreArbitratingSetup { swap_id, .. }) => *swap_id,
-            Msg::BuyProcedureSignature(BuyProcedureSignature { swap_id, .. }) => *swap_id,
-            Msg::Ping(_)
-            | Msg::Pong(_)
-            | Msg::PingPeer
-            | Msg::PeerReceiverRuntimeShutdown
-            | Msg::Identity(_) => {
-                unreachable!(
-                    "Ping, Pong, PingPeer, PeerdShutdown and Identity do not contain swapid"
-                )
-            }
-        }
-    }
-
-    pub fn on_receiver_whitelist(&self) -> bool {
-        matches!(
-            self,
-            Msg::MakerCommit(_)
-                | Msg::TakerCommit(_)
-                | Msg::Reveal(_)
-                | Msg::RefundProcedureSignatures(_)
-                | Msg::CoreArbitratingSetup(_)
-                | Msg::BuyProcedureSignature(_)
-                | Msg::Ping(_)
-                | Msg::Pong(_)
-        )
-    }
-}
+use crate::rpc::ctl::Ctl;
+use crate::rpc::msg::{Commit, Msg, Reveal};
+use crate::rpc::rpc::Rpc;
 
 lazy_static! {
     pub static ref UNMARSHALLER: Unmarshaller<Msg> = Msg::create_unmarshaller();
@@ -163,14 +62,6 @@ impl RequestId {
         thread_rng().fill_bytes(&mut id);
         RequestId(u64::from_be_bytes(id))
     }
-}
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-pub enum Commit {
-    #[display("alice(..)")]
-    AliceParameters(CommitAliceParameters),
-    #[display("bob(..)")]
-    BobParameters(CommitBobParameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -219,14 +110,6 @@ pub struct LaunchSwap {
     pub funding_address: Option<bitcoin::Address>,
 }
 
-#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]
-#[display("{swap_id}, ..")]
-pub struct TakeCommit {
-    pub commit: Commit,
-    pub public_offer: PublicOffer, // TODO: replace by public offer id
-    pub swap_id: SwapId,
-}
-
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
 #[display(format_keys)]
 pub struct Keys(
@@ -236,16 +119,6 @@ pub struct Keys(
 
 fn format_keys(keys: &Keys) -> String {
     format!("sk: {}, pk: {}", keys.0.display_secret(), keys.1,)
-}
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-pub enum Reveal {
-    #[display("alice(..)")]
-    AliceParameters(RevealAliceParameters),
-    #[display("bob(..)")]
-    BobParameters(RevealBobParameters),
-    #[display("proof(..)")]
-    Proof(RevealProof), // FIXME should be Msg::RevealProof(..)
 }
 
 // #[cfg_attr(feature = "serde", serde_as)]
@@ -318,6 +191,14 @@ pub enum Request {
     #[display("protocol_message({0})")]
     Protocol(Msg),
 
+    #[api(type = 55)]
+    #[display("ctl({0})")]
+    Control(Ctl),
+
+    #[api(type = 66)]
+    #[display("rpc({0})")]
+    Rpc(Rpc),
+
     #[api(type = 6)]
     #[display("peerd_unreachable({0})")]
     PeerdUnreachable(ServiceId),
@@ -357,10 +238,6 @@ pub enum Request {
     #[api(type = 46)]
     #[display("swap_outcome({0})")]
     SwapOutcome(Outcome),
-
-    #[api(type = 100)]
-    #[display("get_info()")]
-    GetInfo,
 
     #[api(type = 101)]
     #[display("list_peers()")]
@@ -486,26 +363,6 @@ pub enum Request {
     #[api(type = 1098)]
     #[display("public_offer_hex({0})")]
     PublicOfferHex(String),
-
-    #[api(type = 1099)]
-    #[display("syncer_info(..)")]
-    #[from]
-    SyncerInfo(SyncerInfo),
-
-    #[api(type = 1100)]
-    #[display("node_info(..)")]
-    #[from]
-    NodeInfo(NodeInfo),
-
-    #[api(type = 1101)]
-    #[display("node_info(..)")]
-    #[from]
-    PeerInfo(PeerInfo),
-
-    #[api(type = 1102)]
-    #[display("channel_info(..)")]
-    #[from]
-    SwapInfo(SwapInfo),
 
     #[api(type = 1103)]
     #[display(inner)]
@@ -932,27 +789,6 @@ pub enum Progress {
     StateTransition(String),
 }
 
-#[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(NodeInfo::to_yaml_string)]
-pub struct NodeInfo {
-    pub node_ids: Vec<internet2::addr::NodeId>,
-    pub listens: Vec<InetSocketAddr>,
-    #[serde_as(as = "DurationSeconds")]
-    pub uptime: Duration,
-    pub since: u64,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub peers: Vec<NodeAddr>,
-    pub swaps: Vec<SwapId>,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub offers: Vec<PublicOffer>,
-}
-
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("{1}")]
 pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
@@ -1056,74 +892,8 @@ pub enum ProgressEvent {
     Failure(Failure),
 }
 
-#[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(SyncerInfo::to_yaml_string)]
-pub struct SyncerInfo {
-    #[serde_as(as = "DurationSeconds")]
-    pub uptime: Duration,
-    pub since: u64,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub tasks: Vec<u64>,
-}
-
-#[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(PeerInfo::to_yaml_string)]
-pub struct PeerInfo {
-    pub local_id: internet2::addr::NodeId,
-    pub remote_id: Vec<internet2::addr::NodeId>,
-    #[serde_as(as = "Option<DisplayFromStr>")]
-    pub local_socket: Option<InetSocketAddr>,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub remote_socket: Vec<InetSocketAddr>,
-    #[serde_as(as = "DurationSeconds")]
-    pub uptime: Duration,
-    pub since: u64,
-    pub messages_sent: usize,
-    pub messages_received: usize,
-    pub forked_from_listener: bool,
-    pub awaits_pong: bool,
-}
 pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
-#[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(SwapInfo::to_yaml_string)]
-pub struct SwapInfo {
-    #[serde_as(as = "Option<DisplayFromStr>")]
-    pub swap_id: Option<SwapId>,
-    // pub state: crate::swapd::State,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub maker_peer: Vec<NodeAddr>,
-    #[serde_as(as = "DurationSeconds")]
-    pub uptime: Duration,
-    pub since: u64,
-    pub public_offer: PublicOffer,
-}
 
-#[cfg(feature = "serde")]
-impl ToYamlString for NodeInfo {}
-#[cfg(feature = "serde")]
-impl ToYamlString for PeerInfo {}
-#[cfg(feature = "serde")]
-impl ToYamlString for SwapInfo {}
-#[cfg(feature = "serde")]
-impl ToYamlString for SyncerInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for MadeOffer {}
 #[cfg(feature = "serde")]

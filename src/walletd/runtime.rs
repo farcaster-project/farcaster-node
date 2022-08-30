@@ -9,9 +9,10 @@ use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::{
     rpc::{
+        msg::*,
         request::{
-            self, AddressSecretKey, BitcoinAddress, Commit, Keys, MoneroAddress, Msg, Params,
-            Reveal, Token, Tx,
+            self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Params, PubOffer, Token,
+            Tx,
         },
         Request, ServiceBus,
     },
@@ -390,7 +391,7 @@ impl Runtime {
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
-            Request::Protocol(Msg::TakerCommit(request::TakeCommit {
+            Request::Protocol(Msg::TakerCommit(TakeCommit {
                 commit: remote_commit,
                 public_offer,
                 swap_id,
@@ -434,9 +435,7 @@ impl Runtime {
                                 "Wallet::Bob".bright_yellow()
                             );
                             let local_trade_role = TradeRole::Maker;
-                            if let request::Commit::AliceParameters(remote_commit) =
-                                remote_commit.clone()
-                            {
+                            if let Commit::AliceParameters(remote_commit) = remote_commit.clone() {
                                 let bob_wallet = BobState::new(
                                     bob,
                                     local_trade_role,
@@ -487,9 +486,7 @@ impl Runtime {
                                 swap_id.bright_blue_italic(),
                                 "Wallet::Alice".bright_yellow()
                             );
-                            if let request::Commit::BobParameters(bob_commit) =
-                                remote_commit.clone()
-                            {
+                            if let Commit::BobParameters(bob_commit) = remote_commit.clone() {
                                 let local_trade_role = TradeRole::Maker;
                                 let alice_state = AliceState::new(
                                     alice,
@@ -1272,7 +1269,7 @@ impl Runtime {
                     debug!("Received Hello from {}", source);
                 }
             },
-            Request::TakeOffer(request::PubOffer {
+            Request::TakeOffer(PubOffer {
                 public_offer,
                 external_address,
                 internal_address,

@@ -28,6 +28,7 @@ use clap_complete::shells::*;
 use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
 
 use super::Command;
+use crate::rpc::rpc::Rpc;
 use crate::rpc::{request, Client, Request};
 use crate::{Error, LogStyle, ServiceId};
 
@@ -41,26 +42,27 @@ impl Exec for Command {
             Command::Info { subject } => {
                 if let Some(subj) = subject {
                     if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                        runtime.request(ServiceId::Peer(node_addr), Request::GetInfo)?;
+                        runtime.request(ServiceId::Peer(node_addr), Request::Rpc(Rpc::GetInfo))?;
                     } else if let Ok(swap_id) = SwapId::from_str(&subj) {
-                        runtime.request(ServiceId::Swap(swap_id), Request::GetInfo)?;
+                        runtime.request(ServiceId::Swap(swap_id), Request::Rpc(Rpc::GetInfo))?;
                     } else {
                         let err = format!(
                             "{}",
                             "Subject parameter must be either remote node \
-                            address or channel id represented by a hex string"
+                            address or swap id"
                                 .err()
                         );
                         return Err(Error::Other(err));
                     }
                 } else {
                     // subject is none
-                    runtime.request(ServiceId::Farcasterd, Request::GetInfo)?;
+                    runtime.request(ServiceId::Farcasterd, Request::Rpc(Rpc::GetInfo))?;
                 }
                 match runtime.response()? {
-                    Request::NodeInfo(info) => println!("{}", info),
-                    Request::PeerInfo(info) => println!("{}", info),
-                    Request::SwapInfo(info) => println!("{}", info),
+                    Request::Rpc(Rpc::NodeInfo(info)) => println!("{}", info),
+                    Request::Rpc(Rpc::PeerInfo(info)) => println!("{}", info),
+                    Request::Rpc(Rpc::SwapInfo(info)) => println!("{}", info),
+                    // TODO add syncer info
                     _ => {
                         return Err(Error::Other(
                             "Server returned unrecognizable response".to_string(),

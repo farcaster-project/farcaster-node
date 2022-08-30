@@ -35,13 +35,13 @@ impl Client {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
         let bus_config = esb::BusConfig::with_addr(
-            config.ctl_endpoint,
+            config.rpc_endpoint,
             ZmqSocketType::RouterConnect,
             Some(ServiceId::router()),
         );
         let esb = esb::Controller::with(
             map! {
-                ServiceBus::Ctl => bus_config
+                ServiceBus::Rpc => bus_config
             },
             Handler {
                 identity: identity.clone(),
@@ -62,9 +62,10 @@ impl Client {
         self.identity.clone()
     }
 
+    // TODO wrap the request as Request::Rpc(req) where req: Rpc
     pub fn request(&mut self, daemon: ServiceId, req: Request) -> Result<(), Error> {
         debug!("Executing {}", req);
-        self.esb.send_to(ServiceBus::Ctl, daemon, req)?;
+        self.esb.send_to(ServiceBus::Rpc, daemon, req)?;
         Ok(())
     }
 

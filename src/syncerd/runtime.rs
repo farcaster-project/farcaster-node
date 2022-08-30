@@ -17,6 +17,7 @@ use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::request::Progress;
+use crate::CtlServer;
 use farcaster_core::blockchain::{Blockchain, Network};
 use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
@@ -28,7 +29,8 @@ use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
 
 use crate::rpc::{
-    request::{self, SyncerInfo},
+    request,
+    rpc::{Rpc, SyncerInfo},
     Request, ServiceBus,
 };
 use crate::syncerd::*;
@@ -91,6 +93,8 @@ pub struct Runtime {
     tx: Sender<SyncerdTask>,
 }
 
+impl CtlServer for Runtime {}
+
 impl esb::Handler<ServiceBus> for Runtime {
     type Request = Request;
     type Error = Error;
@@ -106,14 +110,16 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+        match (bus, request) {
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for internal command
-            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
+            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            // User issued command RPC bus, only accept Request::Rpc
+            (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             // Syncer event bus
-            ServiceBus::Sync => self.handle_sync(endpoints, source, request),
-            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
-            _ => Err(Error::NotSupported(bus, request.get_type())),
+            (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
+            (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
+            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -170,24 +176,6 @@ impl Runtime {
                     Err(e) => error!("Failed to send task with error: {}", e.to_string()),
                 };
             }
-            (Request::GetInfo, _) => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source,
-                    Request::SyncerInfo(SyncerInfo {
-                        uptime: SystemTime::now()
-                            .duration_since(self.started)
-                            .unwrap_or_else(|_| Duration::from_secs(0)),
-                        since: self
-                            .started
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap_or_else(|_| Duration::from_secs(0))
-                            .as_secs(),
-                        tasks: self.tasks.iter().cloned().collect(),
-                    }),
-                )?;
-            }
 
             (Request::ListTasks, ServiceId::Client(_)) => {
                 endpoints.send_to(
@@ -221,6 +209,38 @@ impl Runtime {
             endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
         }
 
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        match request {
+            Rpc::GetInfo => {
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::SyncerInfo(SyncerInfo {
+                        uptime: SystemTime::now()
+                            .duration_since(self.started)
+                            .unwrap_or_else(|_| Duration::from_secs(0)),
+                        since: self
+                            .started
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap_or_else(|_| Duration::from_secs(0))
+                            .as_secs(),
+                        tasks: self.tasks.iter().cloned().collect(),
+                    }),
+                )?;
+            }
+
+            req => {
+                warn!("Ignoring request: {}", req.err());
+            }
+        }
         Ok(())
     }
 

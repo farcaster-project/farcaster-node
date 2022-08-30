@@ -33,10 +33,7 @@ use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 use microservices::ZMQ_CONTEXT;
 
-use crate::rpc::{
-    request::{Msg, PeerInfo},
-    Request, ServiceBus,
-};
+use crate::rpc::{msg::Msg, rpc::PeerInfo, rpc::Rpc, Request, ServiceBus};
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]
@@ -316,15 +313,15 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
-        match bus {
+        match (bus, request) {
             // Peer-to-peer message bus
-            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for issuing internal commands
-            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
-            // User RPC issued commands
-            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
-            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
-            _ => Err(Error::NotSupported(bus, request.get_type())),
+            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            // User issued command RPC bus, only accept Request::Rpc
+            (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
+            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -384,7 +381,7 @@ impl Runtime {
 
     fn handle_ctl(
         &mut self,
-        endpoints: &mut Endpoints,
+        _endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
@@ -394,7 +391,21 @@ impl Runtime {
                 std::process::exit(0);
             }
 
-            Request::GetInfo => {
+            _ => {
+                error!("Request is not supported by the CTL interface");
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
+            }
+        }
+    }
+
+    fn handle_rpc(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        match request {
+            Rpc::GetInfo => {
                 let info = PeerInfo {
                     local_id: self.local_node.node_id(),
                     remote_id: self
@@ -419,24 +430,13 @@ impl Runtime {
                     forked_from_listener: self.forked_from_listener,
                     awaits_pong: self.awaited_pong.is_some(),
                 };
-                self.send_ctl(endpoints, source, Request::PeerInfo(info))?;
+                self.send_client_rpc(endpoints, source, Rpc::PeerInfo(info))?;
             }
 
-            _ => {
-                error!("Request is not supported by the CTL interface");
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
+            req => {
+                warn!("Ignoring request: {}", req.err());
             }
         }
-        Ok(())
-    }
-
-    fn handle_rpc(
-        &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: Request,
-    ) -> Result<(), Error> {
-        // TODO
         Ok(())
     }
 

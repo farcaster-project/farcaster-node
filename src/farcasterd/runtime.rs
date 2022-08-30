@@ -30,7 +30,7 @@ use crate::{
 };
 use bitcoin::hashes::Hash as BitcoinHash;
 use clap::IntoApp;
-use request::{Commit, List, Params};
+use request::{List, Params};
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
@@ -57,7 +57,9 @@ use farcaster_core::{
 };
 
 use crate::farcasterd::Opts;
-use crate::rpc::request::{Failure, FailureCode, GetKeys, Msg, NodeInfo};
+use crate::rpc::msg::*;
+use crate::rpc::request::{Failure, FailureCode, GetKeys};
+use crate::rpc::rpc::{NodeInfo, Rpc};
 use crate::rpc::{request, Request, ServiceBus};
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
@@ -280,12 +282,12 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
-            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
-            ServiceBus::Sync => self.handle_sync(endpoints, source, request),
-            _ => Err(Error::NotSupported(bus, request.get_type())),
+        match (bus, request) {
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
+            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -477,7 +479,7 @@ impl Runtime {
             // handled by farcasterd, receiving taker commit because we are
             // maker
             (
-                Request::Protocol(Msg::TakerCommit(request::TakeCommit {
+                Request::Protocol(Msg::TakerCommit(TakeCommit {
                     commit: _,
                     public_offer,
                     swap_id,
@@ -882,29 +884,6 @@ impl Runtime {
                 debug!("received peerd keys {}", sk.display_secret());
                 self.node_secret_key = Some(sk);
                 self.node_public_key = Some(pk);
-            }
-
-            Request::GetInfo => {
-                debug!("farcasterd received GetInfo request");
-                self.send_client_ctl(
-                    endpoints,
-                    source,
-                    Request::NodeInfo(NodeInfo {
-                        node_ids: self.node_ids(),
-                        listens: self.listens.values().into_iter().cloned().collect(),
-                        uptime: SystemTime::now()
-                            .duration_since(self.started)
-                            .unwrap_or_else(|_| Duration::from_secs(0)),
-                        since: self
-                            .started
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap_or_else(|_| Duration::from_secs(0))
-                            .as_secs(),
-                        peers: self.connections.iter().cloned().collect(),
-                        swaps: self.running_swaps.iter().cloned().collect(),
-                        offers: self.public_offers.iter().cloned().collect(),
-                    }),
-                )?;
             }
 
             Request::ListPeers => {
@@ -1912,11 +1891,38 @@ impl Runtime {
 
     fn handle_rpc(
         &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: Request,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
     ) -> Result<(), Error> {
-        // TODO
+        match request {
+            Rpc::GetInfo => {
+                debug!("farcasterd received GetInfo request");
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::NodeInfo(NodeInfo {
+                        node_ids: self.node_ids(),
+                        listens: self.listens.values().into_iter().cloned().collect(),
+                        uptime: SystemTime::now()
+                            .duration_since(self.started)
+                            .unwrap_or_else(|_| Duration::from_secs(0)),
+                        since: self
+                            .started
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap_or_else(|_| Duration::from_secs(0))
+                            .as_secs(),
+                        peers: self.connections.iter().cloned().collect(),
+                        swaps: self.running_swaps.iter().cloned().collect(),
+                        offers: self.public_offers.iter().cloned().collect(),
+                    }),
+                )?;
+            }
+
+            req => {
+                warn!("Ignoring request: {}", req.err());
+            }
+        }
         Ok(())
     }
 

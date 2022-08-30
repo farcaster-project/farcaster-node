@@ -37,7 +37,9 @@ use super::{
     temporal_safety::TemporalSafety,
 };
 use crate::rpc::{
-    request::{self, Failure, FailureCode, Msg},
+    msg::*,
+    request::{self, Failure, FailureCode},
+    rpc::{Rpc, SwapInfo},
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -56,7 +58,7 @@ use farcaster_core::{
 };
 use internet2::{addr::NodeAddr, CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller};
 use microservices::esb::{self, Handler};
-use request::{CheckpointState, Commit, InitSwap, Params, Reveal, TakeCommit, Tx};
+use request::{CheckpointState, InitSwap, Params, Tx};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(
@@ -167,7 +169,7 @@ pub struct Runtime {
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
     pending_requests: PendingRequests,
-    pending_peer_request: Vec<request::Msg>, // Peer requests that failed and are waiting for reconnection
+    pending_peer_request: Vec<Msg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     public_offer: PublicOffer,
 }
@@ -432,16 +434,16 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
-        match bus {
+        match (bus, request) {
             // Peer-to-peer message bus
-            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for internal command
-            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
-            // User issued command
-            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
+            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            // User issued command RPC bus, only accept Request::Rpc
+            (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             // Syncer event bus
-            ServiceBus::Sync => self.handle_sync(endpoints, source, request),
-            _ => Err(Error::NotSupported(bus, request.get_type())),
+            (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
+            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -454,7 +456,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: request::Msg) -> Result<(), Error> {
+    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: Msg) -> Result<(), Error> {
         trace!("sending peer message {}", msg.bright_yellow_bold());
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
@@ -849,7 +851,6 @@ impl Runtime {
                 | ServiceId::Database
             ) => {}
             (Request::AbortSwap, ServiceId::Client(_)) => {}
-            (Request::GetInfo, ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
@@ -2311,29 +2312,6 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::GetInfo => {
-                let swap_id = if self.swap_id() == zero!() {
-                    None
-                } else {
-                    Some(self.swap_id())
-                };
-                let info = request::SwapInfo {
-                    swap_id,
-                    // state: self.state, // FIXME serde missing
-                    maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
-                    uptime: SystemTime::now()
-                        .duration_since(self.started)
-                        .unwrap_or_else(|_| Duration::from_secs(0)),
-                    since: self
-                        .started
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or_else(|_| Duration::from_secs(0))
-                        .as_secs(),
-                    public_offer: self.public_offer.clone(),
-                };
-                self.send_ctl(endpoints, source, Request::SwapInfo(info))?;
-            }
-
             Request::PeerdReconnected(service_id) => {
                 // set the reconnected service id, if it is not set yet. This
                 // can happen if this is a maker launched swap after restoration
@@ -2446,11 +2424,39 @@ impl Runtime {
 
     fn handle_rpc(
         &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: Request,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
     ) -> Result<(), Error> {
-        // TODO
+        match request {
+            Rpc::GetInfo => {
+                let swap_id = if self.swap_id() == zero!() {
+                    None
+                } else {
+                    Some(self.swap_id())
+                };
+                let info = SwapInfo {
+                    swap_id,
+                    // state: self.state, // FIXME serde missing
+                    maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
+                    uptime: SystemTime::now()
+                        .duration_since(self.started)
+                        .unwrap_or_else(|_| Duration::from_secs(0)),
+                    since: self
+                        .started
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or_else(|_| Duration::from_secs(0))
+                        .as_secs(),
+                    public_offer: self.public_offer.clone(),
+                };
+                self.send_client_rpc(endpoints, source, Rpc::SwapInfo(info))?;
+            }
+
+            req => {
+                warn!("Ignoring request: {}", req.err());
+            }
+        }
+
         Ok(())
     }
 
@@ -2502,7 +2508,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         params: Params,
-    ) -> Result<request::Commit, Error> {
+    ) -> Result<Commit, Error> {
         info!(
             "{} | {} to Maker remote peer",
             self.swap_id().bright_blue_italic(),
@@ -2521,10 +2527,10 @@ impl Runtime {
         let engine = CommitmentEngine;
         let commitment = match params {
             Params::Bob(params) => {
-                request::Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
+                Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
             }
             Params::Alice(params) => {
-                request::Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
+                Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
             }
         };
 
@@ -2537,7 +2543,7 @@ impl Runtime {
         peerd: &ServiceId,
         swap_id: SwapId,
         params: &Params,
-    ) -> Result<request::Commit, Error> {
+    ) -> Result<Commit, Error> {
         info!(
             "{} | {} as Maker from Taker through peerd {}",
             swap_id.bright_blue_italic(),
@@ -2557,10 +2563,10 @@ impl Runtime {
         let engine = CommitmentEngine;
         let commitment = match params.clone() {
             Params::Bob(params) => {
-                request::Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
+                Commit::BobParameters(params.commit_bob(self.swap_id(), &engine))
             }
             Params::Alice(params) => {
-                request::Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
+                Commit::AliceParameters(params.commit_alice(self.swap_id(), &engine))
             }
         };
 

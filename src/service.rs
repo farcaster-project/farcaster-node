@@ -13,6 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::rpc::request::{Failure, Progress, Request};
+use crate::rpc::rpc::Rpc;
 use crate::rpc::ServiceBus;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -432,6 +433,21 @@ where
             senders.send_to(bus, dest, ServiceId::Grpcd, request)?;
         } else {
             senders.send_to(bus, self.identity(), dest, request)?;
+        }
+        Ok(())
+    }
+
+    fn send_client_rpc(
+        &mut self,
+        senders: &mut Endpoints,
+        dest: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        let bus = ServiceBus::Rpc;
+        if let ServiceId::GrpcdClient(_) = dest {
+            senders.send_to(bus, dest, ServiceId::Grpcd, Request::Rpc(request))?;
+        } else {
+            senders.send_to(bus, self.identity(), dest, Request::Rpc(request))?;
         }
         Ok(())
     }

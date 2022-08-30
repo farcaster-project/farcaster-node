@@ -12,8 +12,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-mod client;
+pub mod client;
+pub mod ctl;
+pub mod msg;
 pub mod request;
+pub mod rpc;
+pub mod sync;
 
 use crate::ServiceId;
 pub use client::Client;
