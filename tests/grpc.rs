@@ -16,7 +16,7 @@ pub mod farcaster {
 #[tokio::test]
 #[ignore]
 async fn grpc_server_functional_test() {
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
+    let (_, _, _, _) = launch_farcasterd_instances().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;

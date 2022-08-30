@@ -13,8 +13,12 @@ use sysinfo::{ProcessExt, System, SystemExt};
 
 use super::config;
 
-// TODO: rename this function, this launches fcd, not 'clients'
-pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
+pub async fn launch_farcasterd_instances() -> (
+    FarcasterdProcess,
+    Vec<String>,
+    FarcasterdProcess,
+    Vec<String>,
+) {
     // data directories
     let data_dir_maker = vec!["-d".to_string(), "tests/fc1".to_string()];
     let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
