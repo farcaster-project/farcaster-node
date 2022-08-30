@@ -91,7 +91,7 @@ pub enum Command {
     #[clap(aliases = &["lc"])]
     ListCheckpoints,
 
-    /// Restore saved checkpoint of a swap
+    /// Restores saved checkpoint of a swap
     #[clap(aliases = &["r"])]
     RestoreCheckpoint {
         // The swap id of the swap to be restored.
