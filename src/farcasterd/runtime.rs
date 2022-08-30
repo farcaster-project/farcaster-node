@@ -988,14 +988,6 @@ impl Runtime {
                 }
             }
 
-            // Request::ListOfferIds => {
-            //     endpoints.send_to(
-            //         ServiceBus::Ctl,
-            //         ServiceId::Farcasterd, // source
-            //         source,                // destination
-            //         Request::OfferIdList(self.public_offers.iter().map(|public_offer| public_offer.id()).collect()),
-            //     )?;
-            // }
             Request::ListListens => {
                 let listen_url: List<String> = List::from_iter(
                     self.listens

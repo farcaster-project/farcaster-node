@@ -100,10 +100,6 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            // Command::ListOfferIds => {
-            //     runtime.request(ServiceId::Farcasterd, Request::ListOfferIds)?;
-            //     runtime.report_response_or_fail()?;
-            // }
             Command::Make {
                 network,
                 arbitrating_blockchain,
