@@ -111,11 +111,11 @@ pub struct MoneroConfig {
 }
 
 impl MoneroConfig {
-    /// Utility function to directly retreive a type of wallet, panic if the wallet is not found in
+    /// Utility function to directly retrieve a type of wallet, panic if the wallet is not found in
     /// the configuration.
     ///
     /// ## SAFETY
-    /// This function is intended to be used in tests context, if the node config is not found in
+    /// This function is intended to be used in a tests context; if the node config is not found in
     /// the list the function will panic, failing the test.
     pub fn get_wallet(&self, idx: WalletIndex) -> &NodeConfig {
         self.wallets

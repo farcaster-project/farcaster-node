@@ -24,7 +24,7 @@
     missing_docs
 )]
 
-//! Main executable for databased: farcaster node databaseing microservice.
+//! Main executable for databased: farcaster node databasing microservice.
 
 #[macro_use]
 extern crate log;
