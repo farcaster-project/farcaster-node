@@ -3052,13 +3052,12 @@ async fn monero_setup() -> (
     ));
     let wallet = client.wallet();
 
+    // error happens when wallet does not exist
     if wallet.open_wallet("test".to_string(), None).await.is_err() {
-        // TODO: investigate this error in monero-rpc-rs
-        if wallet
+        wallet
             .create_wallet("test".to_string(), None, "English".to_string())
             .await
-            .is_err()
-        {};
+            .unwrap();
         wallet.open_wallet("test".to_string(), None).await.unwrap();
     }
 
@@ -3086,12 +3085,10 @@ async fn monero_new_dest_address(
 
     let wallet_lock = wallet.lock().await;
 
-    // TODO: investigate this error in monero-rpc-rs
-    if wallet_lock
+    wallet_lock
         .create_wallet(wallet_name.clone(), None, "English".to_string())
         .await
-        .is_err()
-    {};
+        .unwrap();
     wallet_lock
         .open_wallet(wallet_name.clone(), None)
         .await
