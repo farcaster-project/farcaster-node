@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     paths-ignore:
       - 'diagrams/**'
-      - 'doc/**'
+      - 'docs/**'
       - '.*'
       - '**.md'
       - '*.nix'
@@ -16,7 +16,7 @@ on:
     branches: [ main ]
     paths-ignore:
       - 'diagrams/**'
-      - 'doc/**'
+      - 'docs/**'
       - '.*'
       - '**.md'
       - '*.nix'
