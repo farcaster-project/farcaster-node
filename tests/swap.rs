@@ -14,7 +14,6 @@ use sysinfo::{ProcessExt, System, SystemExt};
 use tokio::sync::Mutex;
 
 use std::collections::HashMap;
-use std::process;
 use std::str::FromStr;
 
 use ntest::timeout;
@@ -670,8 +669,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
-    farcasterd_maker: std::process::Child,
-    farcasterd_taker: std::process::Child,
+    farcasterd_maker: FarcasterdProcess,
+    farcasterd_taker: FarcasterdProcess,
 ) {
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
@@ -747,6 +746,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // kill all the daemons,  and start them again
+    drop(farcasterd_maker);
+    drop(farcasterd_taker);
     let (_, _, _, _) = launch_farcasterd_instances().await;
 
     // wait a bit for all the daemons to start
@@ -841,8 +842,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
-    farcasterd_maker: std::process::Child,
-    farcasterd_taker: std::process::Child,
+    farcasterd_maker: FarcasterdProcess,
+    farcasterd_taker: FarcasterdProcess,
 ) {
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
@@ -889,6 +890,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     tokio::time::sleep(time::Duration::from_secs(1)).await;
 
     // kill all the daemons and start them again
+    drop(farcasterd_maker);
+    drop(farcasterd_taker);
     let (_, _, _, _) = launch_farcasterd_instances().await;
 
     // wait a bit for all the daemons to start
@@ -1349,7 +1352,7 @@ async fn run_refund_swap_kill_alice_after_funding(
     funding_btc_address: bitcoin::Address,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     execution_mutex: Arc<Mutex<u8>>,
-    alice_farcasterd: std::process::Child,
+    alice_farcasterd: FarcasterdProcess,
 ) {
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
@@ -1404,6 +1407,7 @@ async fn run_refund_swap_kill_alice_after_funding(
     send_monero(Arc::clone(&monero_wallet), monero_address, monero_amount).await;
 
     // kill alice
+    drop(alice_farcasterd);
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
@@ -1571,7 +1575,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     execution_mutex: Arc<Mutex<u8>>,
-    bob_farcasterd: std::process::Child,
+    bob_farcasterd: FarcasterdProcess,
 ) {
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
@@ -1627,6 +1631,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
     // kill bob
+    drop(bob_farcasterd);
 
     // run until alice has the monero funding address
     let (monero_address, monero_amount) =
@@ -2157,8 +2162,8 @@ async fn run_swap_bob_maker_manual_bitcoin_sweep(
     swap_id: SwapId,
     data_dir_bob: Vec<String>,
     bitcoin_rpc: Arc<bitcoincore_rpc::Client>,
-    farcasterd_maker: process::Child,
-    farcasterd_taker: process::Child,
+    farcasterd_maker: FarcasterdProcess,
+    farcasterd_taker: FarcasterdProcess,
 ) {
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
@@ -2213,8 +2218,8 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
-    farcasterd_maker: process::Child,
-    farcasterd_taker: process::Child,
+    farcasterd_maker: FarcasterdProcess,
+    farcasterd_taker: FarcasterdProcess,
 ) {
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
@@ -2331,6 +2336,8 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
     // kill the processes
+    drop(farcasterd_maker);
+    drop(farcasterd_taker);
     let (_, _, _, _) = launch_farcasterd_instances().await;
 
     // generate some blocks on monero's side
