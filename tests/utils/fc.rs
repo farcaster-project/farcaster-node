@@ -242,12 +242,12 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
         .call::<LoadWalletResult>(
             "createwallet",
             &[
-                serde_json::to_value("wallet").unwrap(),
-                false.into(),
-                false.into(),
-                serde_json::to_value("").unwrap(),
-                false.into(),
-                false.into(), // descriptor false
+                serde_json::to_value("wallet").unwrap(), // wallet_name
+                false.into(),                            // disable_private_keys
+                false.into(),                            // blank
+                serde_json::to_value("").unwrap(),       // passphrase
+                false.into(),                            // avoid_reuse
+                false.into(),                            // descriptor
             ],
         )
         .is_err()
