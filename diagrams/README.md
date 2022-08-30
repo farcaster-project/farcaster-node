@@ -22,6 +22,6 @@ This diagram presents the state recovery mechanism. During a swap checkpoints ar
 
 ## [State machine](./swap_state_machine.txt)
 
-This diagram shows the states and transition messages of swapd state.
+This diagram shows the states and transition messages of swapd state and can be edited with [edotor.net](https://edotor.net/).
 
 ![State machine](./swap_state_machine.svg)
