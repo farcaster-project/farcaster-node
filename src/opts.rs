@@ -105,7 +105,7 @@ pub struct Opts {
     /// Internal interface for client RPC protocol communications. Defaults
     /// to `rpc.rpc` file inside `--data-dir` directory.
     #[clap(
-        short = 'c',
+        short = 'R',
         long,
         global = true,
         env = "FARCASTER_RPC_SOCKET",
