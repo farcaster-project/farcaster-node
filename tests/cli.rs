@@ -48,7 +48,4 @@ async fn cli_make_offer() {
 
     let res: MadeOffer = cli(args).unwrap();
     println!("{:?}", res);
-
-    // clean up processes
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
 }
