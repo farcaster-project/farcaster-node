@@ -20,5 +20,4 @@ mod trade_state_machine;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;
-pub use runtime::launch;
 pub use runtime::run;

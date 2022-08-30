@@ -1,5 +1,4 @@
-use super::launch;
-use crate::farcasterd::runtime::{launch_swapd, syncer_up, Runtime};
+use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
 use crate::rpc::request::{
     BitcoinAddress, BitcoinFundingInfo, CheckpointEntry, FundingInfo, InitSwap, LaunchSwap,
     MadeOffer, MoneroAddress, MoneroFundingInfo, Msg, OfferInfo, OfferStatus, OfferStatusPair,
