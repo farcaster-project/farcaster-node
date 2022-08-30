@@ -1742,6 +1742,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     drop(lock);
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn make_and_take_offer_parallel(
     data_dir_maker: Vec<String>,
     data_dir_taker: Vec<String>,
@@ -2010,7 +2011,7 @@ async fn run_swaps_parallel(
     ) in swap_info.iter()
     {
         let balance = bitcoin_rpc
-            .get_received_by_address(&destination_btc_address, None)
+            .get_received_by_address(destination_btc_address, None)
             .unwrap();
         assert!(balance.as_sat() > 90000000);
     }
