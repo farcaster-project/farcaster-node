@@ -20,7 +20,7 @@ pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Ve
     let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
 
     // If we are in CI we use .ci.toml files, otherwise .toml
-    let ctx = env::var("CI").unwrap_or("false".into());
+    let ctx = env::var("CI").unwrap_or_else(|_| "false".into());
     let ext = if ctx == "false" { ".toml" } else { ".ci.toml" };
 
     let farcasterd_maker_args = farcasterd_args(
@@ -163,7 +163,7 @@ pub fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
         .for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
 }
 
-pub fn cli<'de, T: DeserializeOwned>(
+pub fn cli<T: DeserializeOwned>(
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> Result<T, String> {
     match run_cli(args) {
