@@ -3,7 +3,9 @@ extern crate log;
 
 use bitcoincore_rpc::RpcApi;
 use farcaster_core::swap::SwapId;
-use farcaster_node::rpc::request::{BitcoinFundingInfo, MoneroFundingInfo, NodeInfo};
+use farcaster_node::rpc::request::{
+    BitcoinFundingInfo, CheckpointEntry, MoneroFundingInfo, NodeInfo,
+};
 use futures::future::join_all;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -2741,6 +2743,16 @@ fn abort_swap_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
         .collect()
 }
 
+fn restore_checkpoint_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String> {
+    data_dir
+        .into_iter()
+        .chain(vec![
+            "restore-checkpoint".to_string(),
+            format!("{:#?}", swap_id),
+        ])
+        .collect()
+}
+
 fn cli_output_to_node_info(stdout: Vec<String>) -> NodeInfo {
     serde_yaml::from_str(
         &stdout
@@ -2798,7 +2810,7 @@ fn revoke_offer(offer: String, data_dir: Vec<String>) {
 }
 
 fn restore_checkpoint(swap_id: SwapId, data_dir: Vec<String>) {
-    let (_stdout, _stderr) = run(
+    let (stdout, stderr) = run(
         "../swap-cli",
         data_dir
             .clone()
@@ -2807,30 +2819,23 @@ fn restore_checkpoint(swap_id: SwapId, data_dir: Vec<String>) {
             .collect::<Vec<String>>(),
     )
     .unwrap();
-    // TODO: Find out how to deserialize this object
-    // println!("stdout: {:?}, stderr: {:?}", stdout, _stderr);
-    // let checkpoint_list: Vec<CheckpointEntry> = serde_yaml::from_str(
-    //     &stdout
-    //         .iter()
-    //         .map(|line| format!("{}{}", line, "\n"))
-    //         .collect::<String>(),
-    // )
-    // .unwrap();
-    // assert!(checkpoint_list
-    //     .iter()
-    //     .any(|entry| { entry.swap_id == swap_id }));
-    let (_stdout, _stderr) = run(
-        "../swap-cli",
-        data_dir
-            .into_iter()
-            .chain(vec![
-                "restore-checkpoint".to_string(),
-                format!("{:#?}", swap_id),
-            ])
-            .collect::<Vec<String>>(),
-    )
-    .unwrap();
-    println!("stdout: {:?}, stderr: {:?}", _stdout, _stderr);
+
+    println!("stdout: {:#?}, stderr: {:#?}", stdout, stderr);
+
+    let checkpoint_list_yaml = stdout
+        .iter()
+        .map(|line| format!("{}{}", line, "\n"))
+        .collect::<String>();
+    let checkpoint_list: Vec<CheckpointEntry> =
+        serde_yaml::from_str(&checkpoint_list_yaml).unwrap();
+
+    assert!(checkpoint_list
+        .iter()
+        .any(|entry| { entry.swap_id == swap_id }));
+
+    let cli_restore_checkpoint_args = restore_checkpoint_args(data_dir, swap_id);
+    let (stdout, stderr) = run("../swap-cli", cli_restore_checkpoint_args).unwrap();
+    println!("stdout: {:?}, stderr: {:?}", stdout, stderr);
 }
 
 async fn retry_until_offer_parallel(
