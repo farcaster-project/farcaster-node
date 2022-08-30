@@ -706,9 +706,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     farcasterd_maker: std::process::Child,
     farcasterd_taker: std::process::Child,
 ) {
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -722,8 +721,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     bitcoin_rpc
@@ -747,7 +745,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // sleep a bit to ensure arb lock is broadcasted
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -764,7 +762,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
 
     // run until the funding infos are cleared again
     println!("waiting for the monero funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_alice_needs_funding_args.clone()).await;
 
     // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
@@ -882,9 +880,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     farcasterd_maker: std::process::Child,
     farcasterd_taker: std::process::Child,
 ) {
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -898,8 +895,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     bitcoin_rpc
@@ -923,7 +919,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // wait a bit to ensure the checkpoints are written
     tokio::time::sleep(time::Duration::from_secs(1)).await;
@@ -1061,9 +1057,8 @@ async fn run_refund_swap_alice_overfunds(
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
 ) {
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob, "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -1075,8 +1070,7 @@ async fn run_refund_swap_alice_overfunds(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
@@ -1101,7 +1095,7 @@ async fn run_refund_swap_alice_overfunds(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1122,7 +1116,7 @@ async fn run_refund_swap_alice_overfunds(
 
     // run until the funding infos are cleared again
     println!("waiting for the monero funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_alice_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1242,9 +1236,8 @@ async fn run_refund_swap_race_cancel(
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
 ) {
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob, "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -1256,8 +1249,7 @@ async fn run_refund_swap_race_cancel(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
@@ -1282,7 +1274,7 @@ async fn run_refund_swap_race_cancel(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1398,9 +1390,8 @@ async fn run_refund_swap_kill_alice_after_funding(
     execution_mutex: Arc<Mutex<u8>>,
     alice_farcasterd: std::process::Child,
 ) {
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob, "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -1412,8 +1403,7 @@ async fn run_refund_swap_kill_alice_after_funding(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
@@ -1438,7 +1428,7 @@ async fn run_refund_swap_kill_alice_after_funding(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1511,9 +1501,8 @@ async fn run_refund_swap_alice_does_not_fund(
     funding_btc_address: bitcoin::Address,
     execution_mutex: Arc<Mutex<u8>>,
 ) {
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob, "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -1525,8 +1514,7 @@ async fn run_refund_swap_alice_does_not_fund(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
@@ -1551,7 +1539,7 @@ async fn run_refund_swap_alice_does_not_fund(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1625,9 +1613,8 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     execution_mutex: Arc<Mutex<u8>>,
     bob_farcasterd: std::process::Child,
 ) {
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob, "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -1639,8 +1626,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     let lock = execution_mutex.lock().await;
@@ -1665,7 +1651,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1756,6 +1742,7 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
     drop(lock);
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn make_and_take_offer_parallel(
     data_dir_maker: Vec<String>,
     data_dir_taker: Vec<String>,
@@ -1910,7 +1897,7 @@ async fn run_swaps_parallel(
     // run until bob has the btc funding address
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
         let (address, amount) = retry_until_bitcoin_funding_address(
-            swap_id.clone(),
+            *swap_id,
             needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string()),
         )
         .await;
@@ -1924,7 +1911,7 @@ async fn run_swaps_parallel(
     for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
         println!("waiting for AliceState(RefundSigs");
         retry_until_finish_state_transition(
-            progress_args(data_dir_alice.clone(), swap_id.clone()),
+            progress_args(data_dir_alice.clone(), *swap_id),
             "AliceState(RefundSigs".to_string(),
         )
         .await;
@@ -1934,7 +1921,7 @@ async fn run_swaps_parallel(
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
         println!("waiting for BobState(CoreArb)");
         retry_until_finish_state_transition(
-            progress_args(data_dir_bob.clone(), swap_id.clone()),
+            progress_args(data_dir_bob.clone(), *swap_id),
             "BobState(CoreArb)".to_string(),
         )
         .await;
@@ -1944,7 +1931,7 @@ async fn run_swaps_parallel(
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
         println!("waiting for the funding info to clear");
         retry_until_funding_info_cleared(
-            swap_id.clone(),
+            *swap_id,
             needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string()),
         )
         .await;
@@ -1960,7 +1947,7 @@ async fn run_swaps_parallel(
     // run until the alice has the monero funding address
     for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
         let (monero_address, monero_amount) = retry_until_monero_funding_address(
-            swap_id.clone(),
+            *swap_id,
             needs_funding_args(data_dir_alice.clone(), "monero".to_string()),
         )
         .await;
@@ -1971,7 +1958,7 @@ async fn run_swaps_parallel(
     for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
         println!("waiting for the funding info to clear");
         retry_until_funding_info_cleared(
-            swap_id.clone(),
+            *swap_id,
             needs_funding_args(data_dir_alice.clone(), "monero".to_string()),
         )
         .await;
@@ -1987,7 +1974,7 @@ async fn run_swaps_parallel(
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
         println!("waiting for BobState(BuySig)");
         retry_until_finish_state_transition(
-            progress_args(data_dir_bob.clone(), swap_id.clone()),
+            progress_args(data_dir_bob.clone(), *swap_id),
             "BobState(BuySig)".to_string(),
         )
         .await;
@@ -2003,7 +1990,7 @@ async fn run_swaps_parallel(
     // run until the AliceState(Finish) is received
     for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
         retry_until_finish_state_transition(
-            progress_args(data_dir_alice.clone(), swap_id.clone()),
+            progress_args(data_dir_alice.clone(), *swap_id),
             "AliceState(Finish(Success(Swapped)))".to_string(),
         )
         .await;
@@ -2024,7 +2011,7 @@ async fn run_swaps_parallel(
     ) in swap_info.iter()
     {
         let balance = bitcoin_rpc
-            .get_received_by_address(&destination_btc_address, None)
+            .get_received_by_address(destination_btc_address, None)
             .unwrap();
         assert!(balance.as_sat() > 90000000);
     }
@@ -2070,7 +2057,7 @@ async fn run_swaps_parallel(
     // run until the BobState(Finish) is received
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
         retry_until_finish_state_transition(
-            progress_args(data_dir_bob.clone(), swap_id.clone()),
+            progress_args(data_dir_bob.clone(), *swap_id),
             "BobState(Finish(Success(Swapped)))".to_string(),
             // monero_regtest.clone(),
         )
@@ -2121,8 +2108,7 @@ async fn run_user_abort_swap(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // abort the swap on Alice's side
     abort_swap(swap_id, data_dir_alice);
@@ -2134,7 +2120,7 @@ async fn run_user_abort_swap(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // abort the swap on Bob's side
     abort_swap(swap_id, data_dir_bob);
@@ -2170,8 +2156,7 @@ async fn run_user_funds_incorrect_swap(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // abort the swap on Alice's side
     abort_swap(swap_id, data_dir_alice);
@@ -2192,7 +2177,7 @@ async fn run_user_funds_incorrect_swap(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // wait a bit for sweep to happen
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -2249,7 +2234,9 @@ async fn run_swap_bob_maker_manual_bitcoin_sweep(
 
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
-    bitcoin_rpc.generate_to_address(1, &reusable_btc_address()).unwrap();
+    bitcoin_rpc
+        .generate_to_address(1, &reusable_btc_address())
+        .unwrap();
 
     let after_balance = bitcoin_rpc.get_balance(None, None).unwrap();
     let delta_balance = after_balance - before_balance;
@@ -2271,9 +2258,8 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     farcasterd_maker: process::Child,
     farcasterd_taker: process::Child,
 ) {
-    let cli_alice_progress_args: Vec<String> =
-        progress_args(data_dir_alice.clone(), swap_id.clone());
-    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id.clone());
+    let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
+    let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
     let cli_bob_needs_funding_args: Vec<String> =
         needs_funding_args(data_dir_bob.clone(), "bitcoin".to_string());
     let cli_alice_needs_funding_args: Vec<String> =
@@ -2287,8 +2273,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
 
     // run until bob has the btc funding address
     let (address, amount) =
-        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-            .await;
+        retry_until_bitcoin_funding_address(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     // fund the bitcoin address
     bitcoin_rpc
@@ -2312,7 +2297,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
 
     // run until the funding infos are cleared again
     println!("waiting for the bitcoin funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_bob_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_bob_needs_funding_args.clone()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -2328,7 +2313,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
 
     // run until the funding infos are cleared again
     println!("waiting for the monero funding info to clear");
-    retry_until_funding_info_cleared(swap_id.clone(), cli_alice_needs_funding_args.clone()).await;
+    retry_until_funding_info_cleared(swap_id, cli_alice_needs_funding_args.clone()).await;
 
     // generate some monero blocks to finalize the monero acc lock tx
     monero_regtest
@@ -2768,11 +2753,15 @@ async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
 }
 
 fn get_info(args: Vec<String>) -> NodeInfo {
-    let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+    let (stdout, _stderr) = run("../swap-cli", args).unwrap();
     cli_output_to_node_info(stdout)
 }
 
-fn sweep_bitcoin(data_dir: Vec<String>, source_addr: bitcoin::Address, dest_addr: bitcoin::Address) {
+fn sweep_bitcoin(
+    data_dir: Vec<String>,
+    source_addr: bitcoin::Address,
+    dest_addr: bitcoin::Address,
+) {
     let res = run(
         "../swap-cli",
         sweep_bitcoin_args(data_dir, source_addr, dest_addr),
@@ -2860,8 +2849,8 @@ async fn retry_until_swap_id(args: Vec<String>, previous_swap_ids: HashSet<SwapI
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
         let new_swap_ids: HashSet<SwapId> =
             cli_output_to_node_info(stdout).swaps.drain(..).collect();
-        if let Some(swap_id) = new_swap_ids.difference(&previous_swap_ids).next() {
-            return swap_id.clone();
+        if let Some(&swap_id) = new_swap_ids.difference(&previous_swap_ids).next() {
+            return swap_id;
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
@@ -2882,9 +2871,9 @@ async fn retry_until_swap_id_parallel(
             .difference(&previous_swap_ids_lock.clone())
             .next()
         {
-            previous_swap_ids_lock.insert(swap_id.clone());
+            previous_swap_ids_lock.insert(*swap_id);
             drop(previous_swap_ids_lock);
-            return swap_id.clone();
+            return *swap_id;
         }
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
@@ -3063,13 +3052,12 @@ async fn monero_setup() -> (
     ));
     let wallet = client.wallet();
 
+    // error happens when wallet does not exist
     if wallet.open_wallet("test".to_string(), None).await.is_err() {
-        // TODO: investigate this error in monero-rpc-rs
-        if wallet
+        wallet
             .create_wallet("test".to_string(), None, "English".to_string())
             .await
-            .is_err()
-        {};
+            .unwrap();
         wallet.open_wallet("test".to_string(), None).await.unwrap();
     }
 
@@ -3097,12 +3085,10 @@ async fn monero_new_dest_address(
 
     let wallet_lock = wallet.lock().await;
 
-    // TODO: investigate this error in monero-rpc-rs
-    if wallet_lock
+    wallet_lock
         .create_wallet(wallet_name.clone(), None, "English".to_string())
         .await
-        .is_err()
-    {};
+        .unwrap();
     wallet_lock
         .open_wallet(wallet_name.clone(), None)
         .await
@@ -3136,7 +3122,7 @@ async fn send_monero(
         .transfer(
             [(address, amount)].iter().cloned().collect(),
             monero_rpc::TransferPriority::Default,
-            options.clone(),
+            options,
         )
         .await
         .unwrap();
