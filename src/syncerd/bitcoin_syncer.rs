@@ -210,6 +210,7 @@ impl ElectrumRpc {
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
+                    debug!("Updated tx: {}", &tx_id);
                     let history_res;
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
@@ -220,13 +221,10 @@ impl ElectrumRpc {
                                 .iter()
                                 .find(|history_entry| history_entry.tx_hash == tx_id)
                             {
-                                Some(entry) => {
-                                    trace!("Found tx: {}", &tx_id);
-                                    entry
-                                }
+                                Some(entry) => entry,
                                 None => {
                                     debug!(
-                                        "{:?} should be found in the history if we successfully queried `transaction_get` for it",
+                                        "{} should be found in the history if we successfully queried `transaction_get` for it",
                                         &tx_id
                                     );
                                     continue;
