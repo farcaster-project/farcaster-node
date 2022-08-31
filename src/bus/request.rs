@@ -169,8 +169,8 @@ pub enum Request {
     PeerdTerminated,
 
     #[api(type = 5)]
-    #[display("protocol_message({0})")]
-    Protocol(Msg),
+    #[display("msg({0})")]
+    Msg(Msg),
 
     #[api(type = 55)]
     #[display("ctl({0})")]

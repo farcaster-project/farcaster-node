@@ -896,7 +896,7 @@ impl Runtime {
             }
             (Request::Ctl(Ctl::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
             (Request::Ctl(Ctl::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
-            (Request::Protocol(Msg::TakerCommit(msg::TakeCommit { public_offer, .. })), _)
+            (Request::Msg(Msg::TakerCommit(msg::TakeCommit { public_offer, .. })), _)
             | (Request::RevokeOffer(public_offer), _) => Ok(self
                 .trade_state_machines
                 .iter()

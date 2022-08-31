@@ -626,7 +626,7 @@ fn attempt_transition_to_taker_committed(
     } = make_offer;
     match (event.request.clone(), event.source.clone()) {
         (
-            Request::Protocol(Msg::TakerCommit(TakeCommit {
+            Request::Msg(Msg::TakerCommit(TakeCommit {
                 public_offer: committed_public_offer,
                 swap_id,
                 ..

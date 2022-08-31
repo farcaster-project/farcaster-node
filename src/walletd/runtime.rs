@@ -335,20 +335,17 @@ impl Runtime {
     ) -> Result<(), Error> {
         let req_swap_id = get_swap_id(&source).ok();
         match &request {
-            Request::Protocol(msg)
-                if req_swap_id.is_some() && Some(msg.swap_id()) == req_swap_id => {}
+            Request::Msg(msg) if req_swap_id.is_some() && Some(msg.swap_id()) == req_swap_id => {}
 
             req if source == ServiceId::Farcasterd => match req {
                 // TODO enter farcasterd messages allowed
-                Request::Protocol(Msg::TakerCommit(_)) => {}
-                Request::Protocol(_) => return Ok(()),
+                Request::Msg(Msg::TakerCommit(_)) => {}
+                Request::Msg(_) => return Ok(()),
                 _ => {}
             },
 
             // errors
-            Request::Protocol(msg)
-                if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id =>
-            {
+            Request::Msg(msg) if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id => {
                 error!("Msg and source don't have same swap_id, ignoring...");
                 return Ok(());
             }
@@ -389,7 +386,7 @@ impl Runtime {
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
-            Request::Protocol(Msg::TakerCommit(TakeCommit {
+            Request::Msg(Msg::TakerCommit(TakeCommit {
                 commit: remote_commit,
                 public_offer,
                 swap_id,
@@ -519,7 +516,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::Protocol(Msg::MakerCommit(commit)) => {
+            Request::Msg(Msg::MakerCommit(commit)) => {
                 let req_swap_id = req_swap_id.expect("validated previously");
                 match commit {
                     Commit::BobParameters(CommitBobParameters { swap_id, .. }) => {
@@ -577,13 +574,13 @@ impl Runtime {
                     ServiceBus::Ctl,
                     self.identity(),
                     source,
-                    Request::Protocol(Msg::Reveal(Reveal::Proof(RevealProof {
+                    Request::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
                         swap_id: req_swap_id,
                         proof: proof.expect("local proof is always Some").clone(),
                     }))),
                 )?;
             }
-            Request::Protocol(Msg::Reveal(Reveal::Proof(proof))) => {
+            Request::Msg(Msg::Reveal(Reveal::Proof(proof))) => {
                 let swap_id = get_swap_id(&source)?;
                 let wallet = self.wallets.get_mut(&swap_id);
                 match wallet {
@@ -607,7 +604,7 @@ impl Runtime {
                     ),
                 }
             }
-            Request::Protocol(Msg::Reveal(reveal)) => {
+            Request::Msg(Msg::Reveal(reveal)) => {
                 let swap_id = get_swap_id(&source)?;
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
@@ -650,15 +647,13 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         ServiceId::Wallet,
                                         source,
-                                        Request::Protocol(Msg::Reveal(Reveal::Proof(
-                                            RevealProof {
-                                                swap_id,
-                                                proof: local_params
-                                                    .proof
-                                                    .clone()
-                                                    .expect("local proof is always Some"),
-                                            },
-                                        ))),
+                                        Request::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
+                                            swap_id,
+                                            proof: local_params
+                                                .proof
+                                                .clone()
+                                                .expect("local proof is always Some"),
+                                        }))),
                                     )?;
                                 }
                                 // nothing to do yet, waiting for Msg
@@ -720,7 +715,7 @@ impl Runtime {
                                     // TODO: (maybe) what if the message responded to is not sent
                                     // by swapd?
                                     source.clone(),
-                                    Request::Protocol(Msg::Reveal(Reveal::Proof(RevealProof {
+                                    Request::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
                                         swap_id,
                                         proof: local_params
                                             .proof
@@ -787,11 +782,7 @@ impl Runtime {
                             let core_arb_setup_msg =
                                 Msg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
 
-                            self.send_ctl(
-                                endpoints,
-                                source,
-                                Request::Protocol(core_arb_setup_msg),
-                            )?;
+                            self.send_ctl(endpoints, source, Request::Msg(core_arb_setup_msg))?;
                         } else {
                             error!("{} | only Some(Wallet::Bob)", swap_id.bright_blue_italic());
                         }
@@ -851,7 +842,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::Protocol(Msg::RefundProcedureSignatures(RefundProcedureSignatures {
+            Request::Msg(Msg::RefundProcedureSignatures(RefundProcedureSignatures {
                 swap_id: _,
                 cancel_sig: alice_cancel_sig,
                 refund_adaptor_sig,
@@ -988,7 +979,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id,
                             source, // destination swapd
-                            Request::Protocol(buy_proc_sig),
+                            Request::Msg(buy_proc_sig),
                         )?;
                     }
                 } else {
@@ -999,7 +990,7 @@ impl Runtime {
                     );
                 }
             }
-            Request::Protocol(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
+            Request::Msg(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
 
@@ -1137,7 +1128,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         my_id,
                         source,
-                        Request::Protocol(refund_proc_signatures),
+                        Request::Msg(refund_proc_signatures),
                     )?
                 } else {
                     error!(
@@ -1146,7 +1137,7 @@ impl Runtime {
                     );
                 }
             }
-            Request::Protocol(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+            Request::Msg(Msg::BuyProcedureSignature(buy_proc_sig)) => {
                 let BuyProcedureSignature { swap_id, .. } = buy_proc_sig;
                 trace!("wallet received buyproceduresignature");
                 let id = self.identity();

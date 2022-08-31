@@ -466,7 +466,7 @@ impl Runtime {
             ServiceBus::Msg,
             self.identity(),
             self.peer_service.clone(), // ServiceId::Loopback if not initiailized
-            Request::Protocol(msg.clone()),
+            Request::Msg(msg.clone()),
         ) {
             error!(
                 "could not send message {} to {} due to {}",
@@ -544,7 +544,7 @@ impl Runtime {
             )));
         }
         let msg = match &request {
-            Request::Protocol(msg) => {
+            Request::Msg(msg) => {
                 if msg.swap_id() != self.swap_id() {
                     return Err(Error::Farcaster(format!(
                         "{}: expected {}, found {}",
@@ -965,7 +965,7 @@ impl Runtime {
                 self.send_peer(endpoints, Msg::TakerCommit(take_swap))?;
                 self.state_update(endpoints, next_state)?;
             }
-            Request::Protocol(Msg::Reveal(Reveal::Proof(proof)))
+            Request::Msg(Msg::Reveal(Reveal::Proof(proof)))
                 if self.state.commit() && self.state.remote_commit().is_some() =>
             {
                 let reveal_proof = Msg::Reveal(Reveal::Proof(proof));
@@ -1043,7 +1043,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: Request::Protocol(Msg::Reveal(Reveal::Proof(_))),
+                                request: Request::Msg(Msg::Reveal(Reveal::Proof(_))),
                                 ..
                             }
                         )
@@ -1060,7 +1060,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: Request::Protocol(Msg::Reveal(Reveal::AliceParameters(_))),
+                                request: Request::Msg(Msg::Reveal(Reveal::AliceParameters(_))),
                                 ..
                             }
                         )
@@ -1262,7 +1262,7 @@ impl Runtime {
                                     r,
                                     &PendingRequest {
                                         bus_id: ServiceBus::Msg,
-                                        request: Request::Protocol(Msg::BuyProcedureSignature(_)),
+                                        request: Request::Msg(Msg::BuyProcedureSignature(_)),
                                         ..
                                     }
                                 )
@@ -1982,7 +1982,7 @@ impl Runtime {
                                         &i,
                                         &PendingRequest {
                                             bus_id: ServiceBus::Msg,
-                                            request: Request::Protocol(Msg::Reveal(
+                                            request: Request::Msg(Msg::Reveal(
                                                 Reveal::AliceParameters(..)
                                             )),
                                             dest: ServiceId::Swap(..),
@@ -2000,7 +2000,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::Protocol(Msg::CoreArbitratingSetup(core_arb_setup))
+            Request::Msg(Msg::CoreArbitratingSetup(core_arb_setup))
                 if self.state.reveal()
                     && self.state.remote_params().is_some()
                     && self.state.local_params().is_some() =>
@@ -2147,7 +2147,7 @@ impl Runtime {
                 )?;
             }
 
-            Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs))
+            Request::Msg(Msg::RefundProcedureSignatures(refund_proc_sigs))
                 if self.state.reveal()
                     && self.state.remote_params().is_some()
                     && self.state.local_params().is_some() =>
@@ -2194,7 +2194,7 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            Request::Protocol(Msg::BuyProcedureSignature(ref buy_proc_sig))
+            Request::Msg(Msg::BuyProcedureSignature(ref buy_proc_sig))
                 if self.state.b_core_arb()
                     && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
             {
@@ -2412,7 +2412,7 @@ impl Runtime {
                     let msg = format!("Restored swap at state {}", self.state);
                     let _ = self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg);
 
-                    self.handle_ctl(endpoints, ServiceId::Database, Request::Protocol(last_msg))?;
+                    self.handle_ctl(endpoints, ServiceId::Database, Request::Msg(last_msg))?;
                 }
                 s => {
                     error!("Checkpoint {} not supported in swapd", s);

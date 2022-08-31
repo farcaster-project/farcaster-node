@@ -197,7 +197,7 @@ impl PeerReceiverRuntime {
         if let Err(err) = self.bridge.send_to(
             ServiceBus::Bridge,
             self.internal_identity.clone(),
-            Request::Protocol((&*req).clone()),
+            Request::Msg((&*req).clone()),
         ) {
             error!("Error sending over bridge: {}", err);
             Err(err.into())
@@ -343,7 +343,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request.clone() {
-            Request::Protocol(message) => {
+            Request::Msg(message) => {
                 // 1. Check permissions
                 // 2. Forward to the remote peer
                 debug!("Message type: {}", message.get_type());
@@ -493,19 +493,19 @@ impl Runtime {
     ) -> Result<(), Error> {
         debug!("BRIDGE RPC request: {}", request);
 
-        if let Request::Protocol(_) = request {
+        if let Request::Msg(_) = request {
             self.messages_received += 1;
         }
 
         match &request {
-            Request::Protocol(Msg::PingPeer) => self.ping()?,
+            Request::Msg(Msg::PingPeer) => self.ping()?,
 
-            Request::Protocol(Msg::Ping(pong_size)) => {
+            Request::Msg(Msg::Ping(pong_size)) => {
                 debug!("receiving ping, ponging back");
                 self.pong(*pong_size)?
             }
 
-            Request::Protocol(Msg::Pong(noise)) => {
+            Request::Msg(Msg::Pong(noise)) => {
                 match self.awaited_pong {
                     None => error!("Unexpected pong from the remote peer"),
                     Some(len) if len as usize != noise.len() => {
@@ -516,7 +516,7 @@ impl Runtime {
                 self.awaited_pong = None;
             }
 
-            Request::Protocol(Msg::PeerReceiverRuntimeShutdown) => {
+            Request::Msg(Msg::PeerReceiverRuntimeShutdown) => {
                 warn!("Exiting peerd receiver runtime");
                 // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
                 if self.forked_from_listener {
@@ -536,7 +536,7 @@ impl Runtime {
             }
 
             // swap initiation message
-            Request::Protocol(Msg::TakerCommit(_)) => {
+            Request::Msg(Msg::TakerCommit(_)) => {
                 endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
@@ -544,7 +544,7 @@ impl Runtime {
                     request,
                 )?;
             }
-            Request::Protocol(msg) => {
+            Request::Msg(msg) => {
                 endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
