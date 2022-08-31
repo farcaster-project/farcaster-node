@@ -14,10 +14,12 @@ use crate::Endpoints;
 use bitcoin::secp256k1::SecretKey;
 
 use crate::rpc::{
+    rpc::{Rpc},
+    ctl::{Ctl},
     request::{self, Checkpoint, CheckpointEntry, CheckpointState, Failure, FailureCode, List},
     Request, ServiceBus,
 };
-use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
+use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use internet2::TypedEnum;
 use microservices::esb;
 
@@ -54,13 +56,13 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+        match (bus, request) {
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for database command
-            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
+            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
             // RPC client bus for issuing user command
-            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
-            _ => Err(Error::NotSupported(bus, request.get_type())),
+            (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
 
@@ -124,7 +126,7 @@ impl Runtime {
                 debug!("checkpoint set");
             }
 
-            Request::RestoreCheckpoint(swap_id) => {
+            Request::Ctl(Ctl::RestoreCheckpoint(swap_id)) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -189,51 +191,6 @@ impl Runtime {
                         );
                     }
                 }
-            }
-
-            Request::RetrieveAllCheckpointInfo => {
-                let pairs = self.database.get_checkpoint_key_value_pairs()?;
-                let checkpointed_pub_offers: List<CheckpointEntry> = pairs
-                    .iter()
-                    .filter_map(|(checkpoint_key, state)| {
-                        let state =
-                            CheckpointState::strict_decode(std::io::Cursor::new(state)).ok()?;
-                        match checkpoint_key.service_id {
-                            ServiceId::Wallet => match state {
-                                CheckpointState::CheckpointWallet(CheckpointWallet {
-                                    wallet,
-                                    ..
-                                }) => match wallet {
-                                    Wallet::Bob(wallet) => Some(CheckpointEntry {
-                                        swap_id: checkpoint_key.swap_id,
-                                        public_offer: wallet.pub_offer,
-                                        trade_role: wallet.local_trade_role,
-                                    }),
-                                    Wallet::Alice(wallet) => Some(CheckpointEntry {
-                                        swap_id: checkpoint_key.swap_id,
-                                        public_offer: wallet.pub_offer,
-                                        trade_role: wallet.local_trade_role,
-                                    }),
-                                },
-                                s => {
-                                    error!(
-                                        "Checkpoint {} not supported for service {}",
-                                        s,
-                                        ServiceId::Wallet
-                                    );
-                                    None
-                                }
-                            },
-                            _ => None,
-                        }
-                    })
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    source,
-                    ServiceId::Farcasterd,
-                    Request::CheckpointList(checkpointed_pub_offers),
-                )?;
             }
 
             Request::RemoveCheckpoint(swap_id) => {
@@ -342,16 +299,6 @@ impl Runtime {
                 self.database.set_offer_status(&offer, &status)?;
             }
 
-            Request::ListOffers(selector) => {
-                let offer_status_pairs = self.database.get_offers(selector)?;
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Database,
-                    source,
-                    Request::OfferStatusList(offer_status_pairs.into()),
-                )?;
-            }
-
             _ => {
                 error!("Request {} is not supported by the CTL interface", request);
             }
@@ -361,11 +308,70 @@ impl Runtime {
 
     fn handle_rpc(
         &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: Request,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
     ) -> Result<(), Error> {
-        // TODO
+        match request {
+            Rpc::ListOffers(selector) => {
+                let offer_status_pairs = self.database.get_offers(selector)?;
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::OfferStatusList(offer_status_pairs.into()),
+                )?;
+            }
+
+            Rpc::RetrieveAllCheckpointInfo => {
+                let pairs = self.database.get_checkpoint_key_value_pairs()?;
+                let checkpointed_pub_offers: List<CheckpointEntry> = pairs
+                    .iter()
+                    .filter_map(|(checkpoint_key, state)| {
+                        let state =
+                            CheckpointState::strict_decode(std::io::Cursor::new(state)).ok()?;
+                        match checkpoint_key.service_id {
+                            ServiceId::Wallet => match state {
+                                CheckpointState::CheckpointWallet(CheckpointWallet {
+                                    wallet,
+                                    ..
+                                }) => match wallet {
+                                    Wallet::Bob(wallet) => Some(CheckpointEntry {
+                                        swap_id: checkpoint_key.swap_id,
+                                        public_offer: wallet.pub_offer,
+                                        trade_role: wallet.local_trade_role,
+                                    }),
+                                    Wallet::Alice(wallet) => Some(CheckpointEntry {
+                                        swap_id: checkpoint_key.swap_id,
+                                        public_offer: wallet.pub_offer,
+                                        trade_role: wallet.local_trade_role,
+                                    }),
+                                },
+                                s => {
+                                    error!(
+                                        "Checkpoint {} not supported for service {}",
+                                        s,
+                                        ServiceId::Wallet
+                                    );
+                                    None
+                                }
+                            },
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    source,
+                    ServiceId::Farcasterd,
+                    Request::CheckpointList(checkpointed_pub_offers),
+                )?;
+            }
+
+            req => {
+                warn!("Ignoring request: {}", req.err());
+            }
+        }
+
         Ok(())
     }
 }

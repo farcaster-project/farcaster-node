@@ -16,7 +16,6 @@ use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::Opts;
-use crate::syncerd::runtime::request::Progress;
 use crate::CtlServer;
 use farcaster_core::blockchain::{Blockchain, Network};
 use std::collections::HashSet;
@@ -29,7 +28,6 @@ use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
 
 use crate::rpc::{
-    request,
     rpc::{Rpc, SyncerInfo},
     Request, ServiceBus,
 };
@@ -153,11 +151,10 @@ impl Runtime {
 
     fn handle_ctl(
         &mut self,
-        endpoints: &mut Endpoints,
+        _endpoints: &mut Endpoints,
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        let mut notify_cli = None;
         match (&request, &source) {
             (Request::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
@@ -177,17 +174,6 @@ impl Runtime {
                 };
             }
 
-            (Request::ListTasks, ServiceId::Client(_)) => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source.clone(),
-                    Request::TaskList(self.tasks.iter().cloned().collect()),
-                )?;
-                let resp = Request::Progress(Progress::Message("ListedTasks?".to_string()));
-                notify_cli = Some((Some(source), resp));
-            }
-
             (Request::Terminate, ServiceId::Farcasterd) => {
                 // terminate all runtimes
                 info!("Received terminate on {}", self.identity());
@@ -203,10 +189,6 @@ impl Runtime {
                 );
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
             }
-        }
-
-        if let Some((Some(respond_to), resp)) = notify_cli {
-            endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
         }
 
         Ok(())
@@ -237,10 +219,19 @@ impl Runtime {
                 )?;
             }
 
+            Rpc::ListTasks => {
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::TaskList(self.tasks.iter().cloned().collect()),
+                )?;
+            }
+
             req => {
                 warn!("Ignoring request: {}", req.err());
             }
         }
+
         Ok(())
     }
 

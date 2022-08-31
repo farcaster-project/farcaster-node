@@ -14,16 +14,17 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::farcasterd::runtime::request::{
-    CheckpointEntry, MadeOffer, OfferStatus, OfferStatusPair, OfferStatusSelector, ProgressEvent,
+    MadeOffer, OfferStatus, OfferStatusPair, OfferStatusSelector, ProgressEvent,
     SwapProgress, TookOffer,
 };
 use crate::syncerd::{Event, SweepAddress, SweepAddressAddendum, Task, TaskId};
 use crate::{
     clap::Parser,
     error::SyncerError,
+    rpc::ctl::{self, Ctl},
     rpc::request::{
-        BitcoinAddress, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
-        MoneroFundingInfo, OfferInfo, Outcome, PubOffer, Token,
+        BitcoinAddress,CheckpointEntry, BitcoinFundingInfo, FundingInfo, Keys, LaunchSwap, MoneroAddress,
+        MoneroFundingInfo, OfferInfo, Outcome, Token,
     },
     service::Endpoints,
     swapd::get_swap_id,
@@ -611,7 +612,7 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 ServiceId::Farcasterd,
                                 ServiceId::Database,
-                                Request::RestoreCheckpoint(*swap_id),
+                                Request::Ctl(Ctl::RestoreCheckpoint(*swap_id)),
                             )?;
                         }
                         if self.running_swaps.insert(*swap_id) {
@@ -886,66 +887,6 @@ impl Runtime {
                 self.node_public_key = Some(pk);
             }
 
-            Request::ListPeers => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::PeerList(self.connections.iter().cloned().collect()),
-                )?;
-            }
-
-            Request::ListSwaps => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::SwapList(self.running_swaps.iter().cloned().collect()),
-                )?;
-            }
-
-            Request::ListOffers(offer_status_selector) => {
-                match offer_status_selector {
-                    OfferStatusSelector::Open => {
-                        let pub_offers = self
-                            .public_offers
-                            .iter()
-                            .filter(|k| !self.consumed_offers_contains(k))
-                            .map(|offer| OfferInfo {
-                                offer: offer.to_string(),
-                                details: offer.clone(),
-                            })
-                            .collect();
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Farcasterd, // source
-                            source,                // destination
-                            Request::OfferList(pub_offers),
-                        )?;
-                    }
-                    OfferStatusSelector::InProgress => {
-                        let pub_offers = self
-                            .consumed_offers
-                            .keys()
-                            .cloned()
-                            .map(|offer| OfferInfo {
-                                offer: offer.to_string(),
-                                details: offer,
-                            })
-                            .collect();
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Farcasterd,
-                            source,
-                            Request::OfferList(pub_offers),
-                        )?;
-                    }
-                    _ => {
-                        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Database, request)?;
-                    }
-                };
-            }
-
             Request::RevokeOffer(public_offer) => {
                 debug!("attempting to revoke {}", public_offer);
                 if self.public_offers.remove(&public_offer) {
@@ -970,32 +911,17 @@ impl Runtime {
                 }
             }
 
-            Request::ListListens => {
-                let listen_url: List<String> = List::from_iter(
-                    self.listens
-                        .clone()
-                        .values()
-                        .map(|listen| listen.to_string()),
-                );
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::ListenList(listen_url),
-                )?;
-            }
-
             Request::CheckpointList(checkpointed_pub_offers) => {
                 self.checkpointed_pub_offers = checkpointed_pub_offers.clone();
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Rpc,
                     ServiceId::Farcasterd,
                     source,
                     Request::CheckpointList(checkpointed_pub_offers),
                 )?;
             }
 
-            Request::RestoreCheckpoint(swap_id) => {
+            Request::Ctl(Ctl::RestoreCheckpoint(swap_id)) => {
                 if let Err(err) = self.services_ready() {
                     endpoints.send_to(
                         ServiceBus::Ctl,
@@ -1112,13 +1038,13 @@ impl Runtime {
                 )?;
             }
 
-            Request::MakeOffer(request::ProtoPublicOffer {
+            Request::Ctl(Ctl::MakeOffer(ctl::ProtoPublicOffer {
                 offer,
                 public_addr,
                 bind_addr,
                 arbitrating_addr,
                 accordant_addr,
-            }) => {
+            })) => {
                 let res = self.services_ready().and_then(|_| {
                     let (peer_secret_key, peer_public_key) = self.peer_keys_ready()?;
                     let address_bound = self.listens.iter().any(|(_, a)| a == &bind_addr);
@@ -1202,11 +1128,11 @@ impl Runtime {
                 }
             }
 
-            Request::TakeOffer(request::PubOffer {
+            Request::Ctl(Ctl::TakeOffer(ctl::PubOffer {
                 public_offer,
                 external_address,
                 internal_address,
-            }) => {
+            })) => {
                 if self.public_offers.contains(&public_offer)
                     || self.consumed_offers_contains(&public_offer)
                 {
@@ -1264,11 +1190,11 @@ impl Runtime {
                         &public_offer.id().bright_yellow_bold()
                     );
 
-                    let request = Request::TakeOffer(PubOffer {
+                    let request = Request::Ctl(Ctl::TakeOffer(ctl::PubOffer {
                         public_offer: public_offer.clone(),
                         external_address,
                         internal_address,
-                    });
+                    }));
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -1919,10 +1845,82 @@ impl Runtime {
                 )?;
             }
 
+            Rpc::ListPeers => {
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::PeerList(self.connections.iter().cloned().collect()),
+                )?;
+            }
+
+            Rpc::ListSwaps => {
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::SwapList(self.running_swaps.iter().cloned().collect()),
+                )?;
+            }
+
+            Rpc::ListOffers(ref offer_status_selector) => {
+                match offer_status_selector {
+                    OfferStatusSelector::Open => {
+                        let pub_offers = self
+                            .public_offers
+                            .iter()
+                            .filter(|k| !self.consumed_offers_contains(k))
+                            .map(|offer| OfferInfo {
+                                offer: offer.to_string(),
+                                details: offer.clone(),
+                            })
+                            .collect();
+                        self.send_client_rpc(
+                            endpoints,
+                            source,
+                            Rpc::OfferList(pub_offers),
+                        )?;
+                    }
+                    OfferStatusSelector::InProgress => {
+                        let pub_offers = self
+                            .consumed_offers
+                            .keys()
+                            .cloned()
+                            .map(|offer| OfferInfo {
+                                offer: offer.to_string(),
+                                details: offer,
+                            })
+                            .collect();
+                        self.send_client_rpc(
+                            endpoints,
+                            source,
+                            Rpc::OfferList(pub_offers),
+                        )?;
+                    }
+                    _ => {
+                        // Forward the request to database service
+                        endpoints.send_to(ServiceBus::Rpc, source, ServiceId::Database, Request::Rpc(request))?;
+                    }
+                };
+            }
+
+            Rpc::ListListens => {
+                let listen_url: List<String> = List::from_iter(
+                    self.listens
+                        .clone()
+                        .values()
+                        .map(|listen| listen.to_string()),
+                );
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::ListenList(listen_url),
+                )?;
+            }
+
             req => {
                 warn!("Ignoring request: {}", req.err());
             }
         }
+
         Ok(())
     }
 

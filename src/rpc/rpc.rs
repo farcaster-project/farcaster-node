@@ -1,4 +1,6 @@
-use farcaster_core::{swap::btcxmr::PublicOffer, swap::SwapId};
+use farcaster_core::{
+    //role::TradeRole,
+    swap::btcxmr::PublicOffer, swap::SwapId};
 
 use amplify::ToYamlString;
 use internet2::addr::{InetSocketAddr, NodeAddr};
@@ -7,6 +9,8 @@ use internet2::Api;
 use serde_with::{DisplayFromStr, DurationSeconds};
 use std::time::Duration;
 use strict_encoding::{StrictDecode, StrictEncode};
+
+use crate::rpc::request::{List, OfferStatusSelector,OfferStatusPair, OfferInfo};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "strict")]
@@ -18,6 +22,31 @@ pub enum Rpc {
     #[api(type = 100)]
     #[display("get_info()")]
     GetInfo,
+
+    #[api(type = 101)]
+    #[display("list_peers()")]
+    ListPeers,
+
+    #[api(type = 102)]
+    #[display("list_swaps()")]
+    ListSwaps,
+
+    #[api(type = 103)]
+    #[display("list_tasks()")]
+    ListTasks,
+
+    #[api(type = 104)]
+    #[display("list_offers({0})")]
+    ListOffers(OfferStatusSelector),
+
+    #[api(type = 105)]
+    #[display("list_listens()")]
+    ListListens,
+
+    /// Respond with RetrieveAllCheckpointInfo
+    #[api(type = 1306)]
+    #[display("retrieve_all_checkpoint_info")]
+    RetrieveAllCheckpointInfo,
 
     //
     // RESPONSES
@@ -44,6 +73,45 @@ pub enum Rpc {
     #[from]
     SwapInfo(SwapInfo),
     // - End GetInfo section
+
+    // - ListPeers section
+    #[api(type = 1103)]
+    #[display(inner)]
+    #[from]
+    PeerList(List<NodeAddr>),
+    // - End ListPeers section
+
+    // - ListSwap section
+    #[api(type = 1104)]
+    #[display(inner)]
+    #[from]
+    SwapList(List<SwapId>),
+    // - End ListSwap section
+
+    // - ListTasks section
+    #[api(type = 1105)]
+    #[display(inner)]
+    #[from]
+    TaskList(List<u64>),
+    // - End ListTasks section
+
+    // - ListOffers section
+    #[api(type = 1106)]
+    #[display(inner)]
+    #[from]
+    OfferList(List<OfferInfo>),
+
+    #[api(type = 1317)]
+    #[display(inner)]
+    OfferStatusList(List<OfferStatusPair>),
+    // - End ListOffers section
+
+    // - ListListen section
+    #[api(type = 1107)]
+    #[display(inner)]
+    #[from]
+    ListenList(List<String>),
+    // - End ListListen section
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

@@ -36,7 +36,7 @@ use bitcoin::{
 use farcaster_core::{
     blockchain::Blockchain,
     role::TradeRole,
-    swap::btcxmr::{Offer, Parameters, PublicOffer},
+    swap::btcxmr::{Parameters, PublicOffer},
     swap::SwapId,
 };
 use internet2::addr::{InetSocketAddr, NodeAddr};
@@ -67,25 +67,6 @@ impl RequestId {
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 #[display(inner)]
 pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{public_offer}, ..")]
-pub struct PubOffer {
-    pub public_offer: PublicOffer,
-    pub external_address: bitcoin::Address,
-    pub internal_address: monero::Address,
-}
-
-impl From<(PublicOffer, bitcoin::Address, monero::Address)> for PubOffer {
-    fn from(x: (PublicOffer, bitcoin::Address, monero::Address)) -> Self {
-        let (public_offer, external_address, internal_address) = x;
-        PubOffer {
-            public_offer,
-            external_address,
-            internal_address,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
 #[display("{0}")]
@@ -193,11 +174,18 @@ pub enum Request {
 
     #[api(type = 55)]
     #[display("ctl({0})")]
-    Control(Ctl),
+    Ctl(Ctl),
 
     #[api(type = 66)]
-    #[display("rpc({0})")]
+    #[display(inner)]
     Rpc(Rpc),
+
+    // FIXME should go into Ctl
+    // - RetrieveAllCheckpointInfo section
+    #[api(type = 1308)]
+    #[display(inner)]
+    CheckpointList(List<CheckpointEntry>),
+    // - End RetrieveAllCheckpointInfo section
 
     #[api(type = 6)]
     #[display("peerd_unreachable({0})")]
@@ -239,26 +227,6 @@ pub enum Request {
     #[display("swap_outcome({0})")]
     SwapOutcome(Outcome),
 
-    #[api(type = 101)]
-    #[display("list_peers()")]
-    ListPeers,
-
-    #[api(type = 102)]
-    #[display("list_swaps()")]
-    ListSwaps,
-
-    #[api(type = 103)]
-    #[display("list_tasks()")]
-    ListTasks,
-
-    #[api(type = 104)]
-    #[display("list_offers({0})")]
-    ListOffers(OfferStatusSelector),
-
-    #[api(type = 105)]
-    #[display("list_listens()")]
-    ListListens,
-
     #[api(type = 200)]
     #[display("listen({0})")]
     Listen(InetSocketAddr),
@@ -278,14 +246,6 @@ pub enum Request {
     #[api(type = 204)]
     #[display("make_swap({0})")]
     MakeSwap(InitSwap),
-
-    #[api(type = 199)]
-    #[display("take_offer({0}))")]
-    TakeOffer(PubOffer),
-
-    #[api(type = 198)]
-    #[display("make_offer({0})")]
-    MakeOffer(ProtoPublicOffer),
 
     #[api(type = 197)]
     #[display("params({0})")]
@@ -364,36 +324,6 @@ pub enum Request {
     #[display("public_offer_hex({0})")]
     PublicOfferHex(String),
 
-    #[api(type = 1103)]
-    #[display(inner)]
-    #[from]
-    PeerList(List<NodeAddr>),
-
-    #[api(type = 1104)]
-    #[display(inner)]
-    #[from]
-    SwapList(List<SwapId>),
-
-    #[api(type = 1105)]
-    #[display("task_list({0})", alt = "{0:#}")]
-    #[from]
-    TaskList(List<u64>), // FIXME
-
-    // TODO: only list offers matching list of OfferIds
-    #[api(type = 1106)]
-    #[display(inner)]
-    #[from]
-    OfferList(List<OfferInfo>),
-
-    // #[api(type = 1107)]
-    // #[display("offer_list({0})", alt = "{0:#}")]
-    // #[from]
-    // OfferIdList(List<PublicOfferId>),
-    #[api(type = 1107)]
-    #[display(inner)]
-    #[from]
-    ListenList(List<String>),
-
     #[api(type = 1108)]
     #[display("funding_info({0})")]
     #[from]
@@ -448,21 +378,9 @@ pub enum Request {
     #[from]
     Checkpoint(Checkpoint),
 
-    #[api(type = 1306)]
-    #[display("retrieve_all_checkpoint_info")]
-    RetrieveAllCheckpointInfo,
-
     #[api(type = 1307)]
     #[display("remove_checkpoint")]
     RemoveCheckpoint(SwapId),
-
-    #[api(type = 1308)]
-    #[display(inner)]
-    CheckpointList(List<CheckpointEntry>),
-
-    #[api(type = 1309)]
-    #[display("restore_checkpoint({0})", alt = "{0:#}")]
-    RestoreCheckpoint(SwapId),
 
     #[api(type = 1310)]
     #[display("task({0})", alt = "{0:#}")]
@@ -496,10 +414,6 @@ pub enum Request {
     #[api(type = 1316)]
     #[display("retrieve_offers({0})")]
     RetrieveOffers(OfferStatusSelector),
-
-    #[api(type = 1317)]
-    #[display("offer_status_list({0})")]
-    OfferStatusList(List<OfferStatusPair>),
 
     #[api(type = 1319)]
     #[display("address_secret_key")]
@@ -656,20 +570,6 @@ pub enum FundingInfo {
     Monero(MoneroFundingInfo),
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{swap_id}, {public_offer}")]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(CheckpointEntry::to_yaml_string)]
-pub struct CheckpointEntry {
-    pub swap_id: SwapId,
-    pub public_offer: PublicOffer,
-    pub trade_role: TradeRole,
-}
-
 #[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
 #[display(Debug)]
 pub struct Checkpoint {
@@ -797,16 +697,6 @@ pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
 #[display("{1}")]
 pub struct MoneroAddress(pub SwapId, pub monero::Address);
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[display("..")]
-pub struct ProtoPublicOffer {
-    pub offer: Offer,
-    pub public_addr: InetSocketAddr,
-    pub bind_addr: InetSocketAddr,
-    pub arbitrating_addr: bitcoin::Address,
-    pub accordant_addr: monero::Address,
-}
-
 #[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[cfg_attr(
@@ -892,6 +782,20 @@ pub enum ProgressEvent {
     Failure(Failure),
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("{swap_id}, {public_offer}")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(CheckpointEntry::to_yaml_string)]
+pub struct CheckpointEntry {
+    pub swap_id: SwapId,
+    pub public_offer: PublicOffer,
+    pub trade_role: TradeRole,
+}
+
 pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
 
 #[cfg(feature = "serde")]
@@ -903,11 +807,11 @@ impl ToYamlString for SwapProgress {}
 #[cfg(feature = "serde")]
 impl ToYamlString for ProgressEvent {}
 #[cfg(feature = "serde")]
-impl ToYamlString for CheckpointEntry {}
-#[cfg(feature = "serde")]
 impl ToYamlString for OfferStatusPair {}
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferInfo {}
+#[cfg(feature = "serde")]
+impl ToYamlString for CheckpointEntry {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]

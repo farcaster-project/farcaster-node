@@ -28,8 +28,8 @@ use clap_complete::shells::*;
 use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
 
 use super::Command;
-use crate::rpc::rpc::Rpc;
-use crate::rpc::{request, Client, Request};
+use crate::rpc::{rpc::Rpc, ctl::{self, Ctl}};
+use crate::rpc::{Client, Request};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
@@ -42,9 +42,9 @@ impl Exec for Command {
             Command::Info { subject } => {
                 if let Some(subj) = subject {
                     if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                        runtime.request(ServiceId::Peer(node_addr), Request::Rpc(Rpc::GetInfo))?;
+                        runtime.request_rpc(ServiceId::Peer(node_addr), Rpc::GetInfo)?;
                     } else if let Ok(swap_id) = SwapId::from_str(&subj) {
-                        runtime.request(ServiceId::Swap(swap_id), Request::Rpc(Rpc::GetInfo))?;
+                        runtime.request_rpc(ServiceId::Swap(swap_id), Rpc::GetInfo)?;
                     } else {
                         let err = format!(
                             "{}",
@@ -56,7 +56,7 @@ impl Exec for Command {
                     }
                 } else {
                     // subject is none
-                    runtime.request(ServiceId::Farcasterd, Request::Rpc(Rpc::GetInfo))?;
+                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::GetInfo)?;
                 }
                 match runtime.response()? {
                     Request::Rpc(Rpc::NodeInfo(info)) => println!("{}", info),
@@ -72,33 +72,33 @@ impl Exec for Command {
             }
 
             Command::Peers => {
-                runtime.request(ServiceId::Farcasterd, Request::ListPeers)?;
+                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListPeers)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListSwaps => {
-                runtime.request(ServiceId::Farcasterd, Request::ListSwaps)?;
+                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListSwaps)?;
                 runtime.report_response_or_fail()?;
             }
 
             // TODO: only list offers matching list of OfferIds
             Command::ListOffers { select } => {
-                runtime.request(ServiceId::Farcasterd, Request::ListOffers(select.into()))?;
+                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListOffers(select.into()))?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListListens => {
-                runtime.request(ServiceId::Farcasterd, Request::ListListens)?;
+                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListListens)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListCheckpoints => {
-                runtime.request(ServiceId::Database, Request::RetrieveAllCheckpointInfo)?;
+                runtime.request_rpc(ServiceId::Database, Rpc::RetrieveAllCheckpointInfo)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::RestoreCheckpoint { swap_id } => {
-                runtime.request(ServiceId::Farcasterd, Request::RestoreCheckpoint(swap_id))?;
+                runtime.request_ctl(ServiceId::Farcasterd, Ctl::RestoreCheckpoint(swap_id))?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -172,14 +172,14 @@ impl Exec for Command {
                 };
                 let public_addr = InetSocketAddr::socket(public_ip_addr, port);
                 let bind_addr = InetSocketAddr::socket(bind_ip_addr, port);
-                let proto_offer = request::ProtoPublicOffer {
+                let proto_offer = ctl::ProtoPublicOffer {
                     offer,
                     public_addr,
                     bind_addr,
                     arbitrating_addr,
                     accordant_addr,
                 };
-                runtime.request(ServiceId::Farcasterd, Request::MakeOffer(proto_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, Ctl::MakeOffer(proto_offer))?;
                 // report success or failure of the request to cli
                 runtime.report_response_or_fail()?;
             }
@@ -267,9 +267,13 @@ impl Exec for Command {
                 }
                 if without_validation || take_offer() {
                     // pass offer to farcasterd to initiate the swap
-                    runtime.request(
+                    runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Request::TakeOffer((public_offer, bitcoin_address, monero_address).into()),
+                        Ctl::TakeOffer(ctl::PubOffer {
+                        public_offer,
+                        external_address: bitcoin_address,
+                        internal_address: monero_address,
+                    }),
                     )?;
                     // report success of failure of the request to cli
                     runtime.report_response_or_fail()?;

@@ -10,8 +10,9 @@ use crate::LogStyle;
 use crate::{
     rpc::{
         msg::*,
+        ctl::{self, Ctl},
         request::{
-            self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Params, PubOffer, Token,
+            self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Params, Token,
             Tx,
         },
         Request, ServiceBus,
@@ -1269,11 +1270,11 @@ impl Runtime {
                     debug!("Received Hello from {}", source);
                 }
             },
-            Request::TakeOffer(PubOffer {
+            Request::Ctl(Ctl::TakeOffer(ctl::PubOffer {
                 public_offer,
                 external_address,
                 internal_address,
-            }) if source == ServiceId::Farcasterd => {
+            })) if source == ServiceId::Farcasterd => {
                 let PublicOffer { offer, .. } = public_offer.clone();
 
                 let swap_id: SwapId = SwapId::random();

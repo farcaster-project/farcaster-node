@@ -19,7 +19,7 @@ use std::time::Duration;
 use internet2::ZmqSocketType;
 use microservices::esb;
 
-use crate::rpc::{Request, ServiceBus};
+use crate::rpc::{Request, ServiceBus, ctl::Ctl, rpc::Rpc};
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
 
@@ -34,14 +34,18 @@ impl Client {
     pub fn with(config: ServiceConfig) -> Result<Self, Error> {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
-        let bus_config = esb::BusConfig::with_addr(
-            config.rpc_endpoint,
-            ZmqSocketType::RouterConnect,
-            Some(ServiceId::router()),
-        );
         let esb = esb::Controller::with(
             map! {
-                ServiceBus::Rpc => bus_config
+                ServiceBus::Ctl => esb::BusConfig::with_addr(
+                    config.ctl_endpoint,
+                    ZmqSocketType::RouterConnect,
+                    Some(ServiceId::router())
+                ),
+                ServiceBus::Rpc => esb::BusConfig::with_addr(
+                    config.rpc_endpoint,
+                    ZmqSocketType::RouterConnect,
+                    Some(ServiceId::router()),
+                )
             },
             Handler {
                 identity: identity.clone(),
@@ -62,10 +66,21 @@ impl Client {
         self.identity.clone()
     }
 
-    // TODO wrap the request as Request::Rpc(req) where req: Rpc
     pub fn request(&mut self, daemon: ServiceId, req: Request) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb.send_to(ServiceBus::Rpc, daemon, req)?;
+        Ok(())
+    }
+
+    pub fn request_rpc(&mut self, daemon: ServiceId, req: Rpc) -> Result<(), Error> {
+        debug!("Executing {}", req);
+        self.esb.send_to(ServiceBus::Rpc, daemon, Request::Rpc(req))?;
+        Ok(())
+    }
+
+    pub fn request_ctl(&mut self, daemon: ServiceId, req: Ctl) -> Result<(), Error> {
+        debug!("Executing {}", req);
+        self.esb.send_to(ServiceBus::Ctl, daemon, Request::Ctl(req))?;
         Ok(())
     }
 
