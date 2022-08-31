@@ -12,9 +12,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::rpc::request::{Failure, Progress, Request};
-use crate::rpc::rpc::Rpc;
-use crate::rpc::ServiceBus;
+use crate::bus::request::{Failure, Progress, Request};
+use crate::bus::rpc::Rpc;
+use crate::bus::ServiceBus;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 

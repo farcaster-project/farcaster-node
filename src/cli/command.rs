@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::rpc::request::{Address, AddressSecretKey};
+use crate::bus::request::{Address, AddressSecretKey};
 use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
 use farcaster_core::swap::btcxmr::Offer;
 use std::io::{self, Read};
@@ -28,11 +28,11 @@ use clap_complete::shells::*;
 use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
 
 use super::Command;
-use crate::rpc::{
+use crate::bus::{
     ctl::{self, Ctl},
     rpc::Rpc,
 };
-use crate::rpc::{Client, Request};
+use crate::bus::{Client, Request};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {

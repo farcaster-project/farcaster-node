@@ -2,9 +2,9 @@ use bitcoin::hashes::{hex::ToHex, Hash};
 use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
+    bus::Request,
     error::Error,
     event::{Event, StateMachine},
-    rpc::Request,
     syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
     ServiceId,
 };

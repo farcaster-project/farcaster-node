@@ -12,7 +12,7 @@ use serde_with::{DisplayFromStr, DurationSeconds};
 use std::time::Duration;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::rpc::request::{List, OfferInfo, OfferStatusPair, OfferStatusSelector};
+use crate::bus::request::{List, OfferInfo, OfferStatusPair, OfferStatusSelector};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "strict")]

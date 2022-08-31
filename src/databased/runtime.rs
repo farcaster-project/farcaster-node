@@ -13,7 +13,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 use crate::Endpoints;
 use bitcoin::secp256k1::SecretKey;
 
-use crate::rpc::{
+use crate::bus::{
     ctl::Ctl,
     request::{self, Checkpoint, CheckpointEntry, CheckpointState, Failure, FailureCode, List},
     rpc::Rpc,

@@ -8,7 +8,7 @@ use crate::swapd::get_swap_id;
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::{
-    rpc::{
+    bus::{
         ctl::{self, Ctl},
         msg::*,
         request::{self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Params, Token, Tx},

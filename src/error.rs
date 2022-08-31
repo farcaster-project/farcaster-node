@@ -22,7 +22,7 @@ use internet2::{presentation, transport};
 use microservices::esb;
 
 #[cfg(feature = "_rpc")]
-use crate::rpc::ServiceBus;
+use crate::bus::ServiceBus;
 use crate::service::ServiceId;
 
 #[derive(Debug, Display, From, Error)]

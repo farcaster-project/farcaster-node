@@ -27,7 +27,7 @@ use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
 
-use crate::rpc::{
+use crate::bus::{
     rpc::{Rpc, SyncerInfo},
     Request, ServiceBus,
 };

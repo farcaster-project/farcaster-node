@@ -33,7 +33,7 @@ use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 use microservices::ZMQ_CONTEXT;
 
-use crate::rpc::{msg::Msg, rpc::PeerInfo, rpc::Rpc, Request, ServiceBus};
+use crate::bus::{msg::Msg, rpc::PeerInfo, rpc::Rpc, Request, ServiceBus};
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]

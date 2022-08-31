@@ -18,8 +18,8 @@ use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::{FeeEstimation, FeeEstimations};
 use crate::{
-    rpc::request::Outcome,
-    rpc::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
+    bus::request::Outcome,
+    bus::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
     syncerd::{
         Abort, HeightChanged, SweepMoneroAddress, SweepSuccess, TaskTarget, TransactionRetrieved,
         XmrAddressAddendum,
@@ -36,7 +36,7 @@ use super::{
     syncer_client::{log_tx_received, log_tx_seen, SyncerState, SyncerTasks},
     temporal_safety::TemporalSafety,
 };
-use crate::rpc::{
+use crate::bus::{
     msg::*,
     request::{self, Failure, FailureCode},
     rpc::{Rpc, SwapInfo},

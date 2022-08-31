@@ -1,6 +1,6 @@
+use crate::bus::request::SyncerdBridgeEvent;
+use crate::bus::Request;
 use crate::error::{Error, SyncerError};
-use crate::rpc::request::SyncerdBridgeEvent;
-use crate::rpc::Request;
 use crate::service::LogStyle;
 use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::SyncerdTask;

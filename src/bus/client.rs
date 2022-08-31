@@ -19,7 +19,7 @@ use std::time::Duration;
 use internet2::ZmqSocketType;
 use microservices::esb;
 
-use crate::rpc::{ctl::Ctl, rpc::Rpc, Request, ServiceBus};
+use crate::bus::{ctl::Ctl, rpc::Rpc, Request, ServiceBus};
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
 

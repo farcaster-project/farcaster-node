@@ -38,9 +38,9 @@ use clap::Parser;
 use farcaster_node::Error;
 use farcaster_node::ServiceConfig;
 use farcaster_node::{
+    bus::request::Token,
     config::parse_config,
     farcasterd::{self, Opts},
-    rpc::request::Token,
 };
 
 fn main() -> Result<(), Error> {

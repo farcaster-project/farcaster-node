@@ -1,5 +1,5 @@
 use crate::{
-    rpc::ServiceBus,
+    bus::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
@@ -14,7 +14,7 @@ use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel}
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    rpc::Request,
+    bus::Request,
     syncerd::{Task, TaskId},
     ServiceId,
 };

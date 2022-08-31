@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 
-use crate::rpc::rpc::Rpc;
-use crate::rpc::{Request, ServiceBus};
+use crate::bus::rpc::Rpc;
+use crate::bus::{Request, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
     zeromq::{Connection, ZmqSocketType},

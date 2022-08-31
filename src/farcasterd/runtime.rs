@@ -13,25 +13,24 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::bus::ctl::Ctl;
+use crate::bus::msg::{self, Msg};
+use crate::bus::request::{Failure, FailureCode, GetKeys};
+use crate::bus::rpc::NodeInfo;
+use crate::bus::{request, Request, ServiceBus};
 use crate::event::{Event, StateMachine};
 use crate::farcasterd::runtime::request::{
     CheckpointEntry, OfferStatusSelector, ProgressEvent, SwapProgress,
 };
 use crate::farcasterd::Opts;
-use crate::rpc::ctl::Ctl;
-use crate::rpc::msg::Msg;
-use crate::rpc::request::{Failure, FailureCode, GetKeys};
-use crate::rpc::rpc::NodeInfo;
-use crate::rpc::{request, Request, ServiceBus};
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
-    clap::Parser,
-    error::SyncerError,
-    rpc::msg,
-    rpc::request::{
+    bus::request::{
         BitcoinFundingInfo, Keys, LaunchSwap, MoneroFundingInfo, OfferInfo, Outcome, Token,
     },
-    rpc::rpc::Rpc,
+    bus::rpc::Rpc,
+    clap::Parser,
+    error::SyncerError,
     service::Endpoints,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};

@@ -1,4 +1,4 @@
-use crate::rpc::request::SyncerdBridgeEvent;
+use crate::bus::request::SyncerdBridgeEvent;
 use crate::syncerd::{TaskId, TaskTarget};
 use crate::Error;
 use crate::ServiceId;

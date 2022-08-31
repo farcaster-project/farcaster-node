@@ -44,9 +44,9 @@ use internet2::Api;
 use microservices::rpc;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::rpc::ctl::Ctl;
-use crate::rpc::msg::{Commit, Msg, Reveal};
-use crate::rpc::rpc::Rpc;
+use crate::bus::ctl::Ctl;
+use crate::bus::msg::{Commit, Msg, Reveal};
+use crate::bus::rpc::Rpc;
 
 lazy_static! {
     pub static ref UNMARSHALLER: Unmarshaller<Msg> = Msg::create_unmarshaller();

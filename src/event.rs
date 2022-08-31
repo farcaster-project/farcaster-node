@@ -1,7 +1,6 @@
 use microservices::esb;
 
-use crate::rpc::Request;
-use crate::rpc::ServiceBus;
+use crate::bus::{Request, ServiceBus};
 use crate::Endpoints;
 use crate::ServiceId;
 
