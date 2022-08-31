@@ -457,7 +457,11 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl Runtime {
     fn send_peer(&mut self, endpoints: &mut Endpoints, msg: Msg) -> Result<(), Error> {
-        trace!("sending peer message {}", msg.bright_yellow_bold());
+        trace!(
+            "sending peer message {} to {}",
+            msg.bright_yellow_bold(),
+            self.peer_service
+        );
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
@@ -937,6 +941,7 @@ impl Runtime {
                 let local_commit =
                     self.taker_commit(endpoints, local_params.clone())
                         .map_err(|err| {
+                            error!("{}", err);
                             self.report_failure_to(
                                 endpoints,
                                 &report_to,

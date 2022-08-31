@@ -1,6 +1,8 @@
 use farcaster_core::{
     //role::TradeRole,
-    swap::btcxmr::PublicOffer, swap::SwapId};
+    swap::btcxmr::PublicOffer,
+    swap::SwapId,
+};
 
 use amplify::ToYamlString;
 use internet2::addr::{InetSocketAddr, NodeAddr};
@@ -10,7 +12,7 @@ use serde_with::{DisplayFromStr, DurationSeconds};
 use std::time::Duration;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::rpc::request::{List, OfferStatusSelector,OfferStatusPair, OfferInfo};
+use crate::rpc::request::{List, OfferInfo, OfferStatusPair, OfferStatusSelector};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "strict")]
@@ -139,7 +141,6 @@ pub struct SyncerInfo {
 )]
 #[display(NodeInfo::to_yaml_string)]
 pub struct NodeInfo {
-    pub node_ids: Vec<internet2::addr::NodeId>,
     pub listens: Vec<InetSocketAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,

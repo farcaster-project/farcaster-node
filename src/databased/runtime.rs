@@ -14,9 +14,9 @@ use crate::Endpoints;
 use bitcoin::secp256k1::SecretKey;
 
 use crate::rpc::{
-    rpc::{Rpc},
-    ctl::{Ctl},
+    ctl::Ctl,
     request::{self, Checkpoint, CheckpointEntry, CheckpointState, Failure, FailureCode, List},
+    rpc::Rpc,
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};

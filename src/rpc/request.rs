@@ -186,7 +186,6 @@ pub enum Request {
     #[display(inner)]
     CheckpointList(List<CheckpointEntry>),
     // - End RetrieveAllCheckpointInfo section
-
     #[api(type = 6)]
     #[display("peerd_unreachable({0})")]
     PeerdUnreachable(ServiceId),

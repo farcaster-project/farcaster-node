@@ -9,12 +9,9 @@ use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::{
     rpc::{
-        msg::*,
         ctl::{self, Ctl},
-        request::{
-            self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Params, Token,
-            Tx,
-        },
+        msg::*,
+        request::{self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Params, Token, Tx},
         Request, ServiceBus,
     },
     syncerd::SweepMoneroAddress,

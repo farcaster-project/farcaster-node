@@ -3,8 +3,8 @@ use farcaster_core::{
     swap::SwapId,
 };
 
+use internet2::addr::InetSocketAddr;
 use internet2::Api;
-use internet2::addr::{InetSocketAddr};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]

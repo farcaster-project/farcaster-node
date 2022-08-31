@@ -28,7 +28,10 @@ use clap_complete::shells::*;
 use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
 
 use super::Command;
-use crate::rpc::{rpc::Rpc, ctl::{self, Ctl}};
+use crate::rpc::{
+    ctl::{self, Ctl},
+    rpc::Rpc,
+};
 use crate::rpc::{Client, Request};
 use crate::{Error, LogStyle, ServiceId};
 
@@ -270,10 +273,10 @@ impl Exec for Command {
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
                         Ctl::TakeOffer(ctl::PubOffer {
-                        public_offer,
-                        external_address: bitcoin_address,
-                        internal_address: monero_address,
-                    }),
+                            public_offer,
+                            external_address: bitcoin_address,
+                            internal_address: monero_address,
+                        }),
                     )?;
                     // report success of failure of the request to cli
                     runtime.report_response_or_fail()?;
