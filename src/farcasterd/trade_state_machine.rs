@@ -762,7 +762,7 @@ fn transition_to_swapd_launched_tsm(
 
 fn attempt_transition_from_swapd_launched_to_swapd_running(
     event: Event,
-    _runtime: &mut Runtime,
+    runtime: &mut Runtime,
     swapd_launched: SwapdLaunched,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let SwapdLaunched {
@@ -789,14 +789,18 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         {
             arbitrating_syncer_up = Some(source);
         }
+        (Request::Hello, ServiceId::Peer(..)) => {}
         _ => {
             trace!("Request {} invalid for state swapd launched", event.request);
         }
     }
-    if let (Some(accordant_syncer), Some(arbitrating_syncer), true) = (
+    let peerd_up = runtime.registered_services.contains(&peerd);
+
+    if let (Some(accordant_syncer), Some(arbitrating_syncer), true, true) = (
         accordant_syncer_up.clone(),
         arbitrating_syncer_up.clone(),
         swapd_up,
+        peerd_up,
     ) {
         // Tell swapd swap options and link it with the
         // connection daemon
