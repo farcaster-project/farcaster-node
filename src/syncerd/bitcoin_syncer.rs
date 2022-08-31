@@ -211,14 +211,30 @@ impl ElectrumRpc {
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
                     debug!("Updated tx: {}", &tx_id);
+                    let history_res;
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
-                    let history = match self.client.script_get_history(&tx.output[0].script_pubkey)
-                    {
-                        Ok(history) => history,
+                    let entry = match self.client.script_get_history(&tx.output[0].script_pubkey) {
+                        Ok(history) => {
+                            history_res = history;
+                            match history_res
+                                .iter()
+                                .find(|history_entry| history_entry.tx_hash == tx_id)
+                            {
+                                Some(entry) => entry,
+                                None => {
+                                    debug!(
+                                        "{} should be found in the history if we successfully queried `transaction_get` for it",
+                                        &tx_id
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
                         Err(err) => {
                             trace!(
-                                "error getting script history, treating as not found: {}",
+                                "error getting script history for {}, treating as not found: {}",
+                                &tx_id,
                                 err
                             );
                             let mut state_guard = state.lock().await;
@@ -234,10 +250,6 @@ impl ElectrumRpc {
                             continue;
                         }
                     };
-
-                    let entry = history.iter().find(|history_res| {
-                        history_res.tx_hash == tx_id
-                    }).expect("Should be found in the history if we successfully queried `transaction_get`");
 
                     let (conf_in_block, blockhash) = match entry.height {
                         // Transaction unconfirmed (0 or -1)
