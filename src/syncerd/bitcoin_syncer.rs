@@ -210,7 +210,6 @@ impl ElectrumRpc {
             // Get the full transaction
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
-                    debug!("Updated tx: {}: {:?}", &tx_id, tx);
                     let history_res;
                     // Look for history of the first output (maybe last is generally less likely
                     // to be used multiple times, so more efficient?!)
@@ -222,23 +221,13 @@ impl ElectrumRpc {
                                 .find(|history_entry| history_entry.tx_hash == tx_id)
                             {
                                 Some(entry) => {
-                                    debug!("Found tx: {}", &tx_id);
+                                    trace!("Found tx: {}", &tx_id);
                                     entry},
                                 None => {
-                                    warn!(
+                                    debug!(
                                         "{:?} should be found in the history if we successfully queried `transaction_get` for it",
                                         &tx_id
                                     );
-                                    // let mut state_guard = state.lock().await;
-                                    // state_guard
-                                    //     .change_transaction(
-                                    //         tx_id.to_vec(),
-                                    //         None,
-                                    //         Some(0),
-                                    //         bitcoin::consensus::serialize(&tx),
-                                    //     )
-                                    //     .await;
-                                    // drop(state_guard);
                                     continue;
                                 }
                             }},
