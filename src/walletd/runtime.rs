@@ -9,9 +9,9 @@ use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::{
     bus::{
-        ctl::{self, Ctl},
+        ctl::{self, Ctl, Token, GetKeys, LaunchSwap, Params},
         msg::*,
-        request::{self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Params, Token, Tx},
+        request::{self, AddressSecretKey, BitcoinAddress, Keys, MoneroAddress, Tx},
         Request, ServiceBus,
     },
     syncerd::SweepMoneroAddress,
@@ -46,7 +46,7 @@ use farcaster_core::{
 };
 use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
-use request::{CheckpointState, LaunchSwap};
+use request::{CheckpointState};
 
 pub fn run(
     config: ServiceConfig,
@@ -358,7 +358,7 @@ impl Runtime {
             }
         }
         match request {
-            Request::Hello => {
+            Request::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -457,7 +457,7 @@ impl Runtime {
                             self.send_ctl(
                                 endpoints,
                                 ServiceId::Farcasterd,
-                                Request::LaunchSwap(launch_swap),
+                                Request::Ctl(Ctl::LaunchSwap(launch_swap)),
                             )?;
                         } else {
                             error!("{} | Wallet already existed", swap_id.bright_blue_italic());
@@ -505,7 +505,7 @@ impl Runtime {
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Farcasterd,
-                                    Request::LaunchSwap(launch_swap),
+                                    Request::Ctl(Ctl::LaunchSwap(launch_swap)),
                                 )?;
                             } else {
                                 error!("{} | Not Commit::Bob", swap_id.bright_blue_italic());
@@ -1243,7 +1243,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => match &source {
+            Request::Ctl(Ctl::Hello) => match &source {
                 ServiceId::Swap(swap_id) => {
                     if let Some(option_req) = self.swaps.get_mut(swap_id) {
                         trace!("Known swapd, you launched it");
@@ -1327,7 +1327,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             source,
                             ServiceId::Farcasterd,
-                            Request::LaunchSwap(launch_swap),
+                            Request::Ctl(Ctl::LaunchSwap(launch_swap)),
                         )?;
                     }
                     SwapRole::Alice => {
@@ -1374,7 +1374,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             source,
                             ServiceId::Farcasterd,
-                            Request::LaunchSwap(launch_swap),
+                            Request::Ctl(Ctl::LaunchSwap(launch_swap)),
                         )?;
                     }
                 };
@@ -1598,7 +1598,7 @@ impl Runtime {
                     error!("Call to refund transaction expects an Alice wallet");
                 }
             }
-            Request::GetKeys(request::GetKeys(wallet_token)) => {
+            Request::Ctl(Ctl::GetKeys(GetKeys(wallet_token))) => {
                 if wallet_token != self.wallet_token {
                     return Err(Error::InvalidToken);
                 }

@@ -29,14 +29,12 @@ use uuid::Uuid;
 use bitcoin::{
     secp256k1::{
         rand::{thread_rng, RngCore},
-        SecretKey,
     },
     OutPoint, Transaction,
 };
 use farcaster_core::{
     blockchain::Blockchain,
-    role::TradeRole,
-    swap::btcxmr::{Parameters, PublicOffer},
+    swap::btcxmr::{PublicOffer},
     swap::SwapId,
 };
 use internet2::addr::{InetSocketAddr, NodeAddr};
@@ -45,7 +43,7 @@ use microservices::rpc;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::ctl::Ctl;
-use crate::bus::msg::{Commit, Msg, Reveal};
+use crate::bus::msg::Msg;
 use crate::bus::rpc::Rpc;
 
 lazy_static! {
@@ -64,33 +62,6 @@ impl RequestId {
     }
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display(inner)]
-pub struct NodeId(pub bitcoin::secp256k1::PublicKey);
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
-#[display("{0}")]
-pub struct Token(pub String);
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("token({0})")]
-pub struct GetKeys(pub Token);
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{0}, ..")]
-pub struct ReconnectPeer(pub NodeAddr, pub Option<SecretKey>);
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{public_offer}, ..")]
-pub struct LaunchSwap {
-    pub local_trade_role: TradeRole,
-    pub public_offer: PublicOffer,
-    pub local_params: Params,
-    pub swap_id: SwapId,
-    pub remote_commit: Option<Commit>,
-    pub funding_address: Option<bitcoin::Address>,
-}
-
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
 #[display(format_keys)]
 pub struct Keys(
@@ -100,20 +71,6 @@ pub struct Keys(
 
 fn format_keys(keys: &Keys) -> String {
     format!("sk: {}, pk: {}", keys.0.display_secret(), keys.1,)
-}
-
-// #[cfg_attr(feature = "serde", serde_as)]
-// #[cfg_attr(
-//     feature = "serde",
-//     derive(Serialize, Deserialize),
-//     serde(crate = "serde_crate")
-// )]
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-pub enum Params {
-    #[display("alice(..)")]
-    Alice(Parameters),
-    #[display("bob(..)")]
-    Bob(Parameters),
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -139,35 +96,6 @@ use crate::{Error, ServiceId};
 #[api(encoding = "strict")]
 #[non_exhaustive]
 pub enum Request {
-    /// In order to allow for the existence of long-lived TCP connections, at
-    /// times it may be required that both ends keep alive the TCP connection
-    /// at the application level. Such messages also allow obfuscation of
-    /// traffic patterns.
-    // #[api(type = 18)]
-    // #[display(inner)]
-    // Ping(message::Ping),
-
-    /// The pong message is to be sent whenever a ping message is received. It
-    /// serves as a reply and also serves to keep the connection alive, while
-    /// explicitly notifying the other end that the receiver is still active.
-    /// Within the received ping message, the sender will specify the number of
-    /// bytes to be included within the data payload of the pong message.
-    #[api(type = 19)]
-    #[display("pong(..)")]
-    Pong(Vec<u8>),
-
-    #[api(type = 0)]
-    #[display("hello()")]
-    Hello,
-
-    #[api(type = 3)]
-    #[display("terminate()")]
-    Terminate,
-
-    #[api(type = 4)]
-    #[display("peerd_terminated()")]
-    PeerdTerminated,
-
     #[api(type = 5)]
     #[display("msg({0})")]
     Msg(Msg),
@@ -180,39 +108,9 @@ pub enum Request {
     #[display(inner)]
     Rpc(Rpc),
 
-    // FIXME should go into Ctl
-    // - RetrieveAllCheckpointInfo section
-    #[api(type = 1308)]
-    #[display(inner)]
-    CheckpointList(List<CheckpointEntry>),
-    // - End RetrieveAllCheckpointInfo section
-    #[api(type = 6)]
-    #[display("peerd_unreachable({0})")]
-    PeerdUnreachable(ServiceId),
-
-    #[api(type = 7)]
-    #[display("reconnect_peer({0})")]
-    ReconnectPeer(ReconnectPeer),
-
-    #[api(type = 8)]
-    #[display("peerd_reconnected({0})")]
-    PeerdReconnected(ServiceId),
-
-    #[api(type = 32)]
-    #[display("node_id({0})")]
-    NodeId(NodeId),
-
-    #[api(type = 30)]
-    #[display("get_keys({0})")]
-    GetKeys(GetKeys),
-
     #[api(type = 36)]
     #[display("get_sweep_bitcoin_address({0})")]
     GetSweepBitcoinAddress(bitcoin::Address),
-
-    #[api(type = 29)]
-    #[display("launch_swap({0})")]
-    LaunchSwap(LaunchSwap),
 
     #[api(type = 28)]
     #[display("keys({0})")]
@@ -238,18 +136,6 @@ pub enum Request {
     #[display("ping_peer()")]
     PingPeer,
 
-    #[api(type = 203)]
-    #[display("take_swap({0})")]
-    TakeSwap(InitSwap),
-
-    #[api(type = 204)]
-    #[display("make_swap({0})")]
-    MakeSwap(InitSwap),
-
-    #[api(type = 197)]
-    #[display("params({0})")]
-    Params(Params),
-
     #[api(type = 196)]
     #[display("transaction({0})")]
     Tx(Tx),
@@ -262,31 +148,9 @@ pub enum Request {
     #[display("monero_address({0})")]
     MoneroAddress(MoneroAddress),
 
-    #[api(type = 193)]
-    #[display("revoke_offer({0})")]
-    RevokeOffer(PublicOffer),
-
-    #[api(type = 192)]
-    #[display("abort_swap()")]
-    AbortSwap,
-
     #[api(type = 205)]
     #[display("fund_swap({0})")]
     FundSwap(OutPoint),
-
-    // Progress functionalities
-    // ----------------
-    #[api(type = 1003)]
-    #[display("read_progress({0})")]
-    ReadProgress(SwapId),
-
-    #[api(type = 1006)]
-    #[display("subscribe_progress({0})")]
-    SubscribeProgress(SwapId),
-
-    #[api(type = 1007)]
-    #[display("unsubscribe_progress({0})")]
-    UnsubscribeProgress(SwapId),
 
     // Responses to CLI
     // ----------------
@@ -301,23 +165,6 @@ pub enum Request {
     #[api(type = 207)]
     #[display(inner)]
     TookOffer(TookOffer),
-
-    #[api(type = 1002)]
-    #[display(inner)]
-    Progress(Progress),
-
-    #[api(type = 1005)]
-    #[display(inner)]
-    SwapProgress(SwapProgress),
-
-    #[api(type = 1001)]
-    #[display(inner)]
-    Success(OptionDetails),
-
-    #[api(type = 1000)]
-    #[display(inner)]
-    #[from]
-    Failure(Failure),
 
     #[api(type = 1098)]
     #[display("public_offer_hex({0})")]
@@ -418,60 +265,6 @@ pub enum Request {
     #[display("address_secret_key")]
     AddressSecretKey(AddressSecretKey),
 }
-
-/// Information about server-side failure returned through RPC API
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[derive(
-    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, StrictEncode, StrictDecode,
-)]
-#[display("{info}", alt = "Server returned failure #{code}: {info}")]
-pub struct Failure {
-    /// Failure code
-    pub code: FailureCode,
-
-    /// Detailed information about the failure
-    pub info: String,
-}
-
-#[derive(
-    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, StrictEncode, StrictDecode,
-)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(Debug)]
-pub enum FailureCode {
-    /// Catch-all: TODO: Expand
-    Unknown = 0xFFF,
-}
-
-impl From<u16> for FailureCode {
-    fn from(value: u16) -> Self {
-        match value {
-            _ => FailureCode::Unknown,
-        }
-    }
-}
-
-impl From<FailureCode> for u16 {
-    fn from(code: FailureCode) -> Self {
-        code as u16
-    }
-}
-
-impl From<FailureCode> for rpc::FailureCode<FailureCode> {
-    fn from(code: FailureCode) -> Self {
-        rpc::FailureCode::Other(code)
-    }
-}
-
-impl rpc::FailureCodeExt for FailureCode {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
 #[display("{offer}, {status}")]
@@ -670,24 +463,6 @@ pub struct SyncerdBridgeEvent {
     pub source: ServiceId,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{peerd}, {swap_id}, ..")]
-pub struct InitSwap {
-    pub peerd: ServiceId,
-    pub report_to: Option<ServiceId>,
-    pub local_params: Params,
-    pub swap_id: SwapId,
-    pub remote_commit: Option<Commit>,
-    pub funding_address: Option<bitcoin::Address>,
-}
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-#[display(inner)]
-pub enum Progress {
-    Message(String),
-    StateTransition(String),
-}
-
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
 #[display("{1}")]
 pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
@@ -751,50 +526,6 @@ impl StrictDecode for TookOffer {
     }
 }
 
-#[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, Default, StrictEncode, StrictDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(SwapProgress::to_yaml_string)]
-pub struct SwapProgress {
-    pub progress: Vec<ProgressEvent>,
-}
-#[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(ProgressEvent::to_yaml_string)]
-pub enum ProgressEvent {
-    #[serde(rename = "message")]
-    Message(String),
-    #[serde(rename = "transition")]
-    StateTransition(String),
-    #[serde(rename = "success")]
-    Success(OptionDetails),
-    #[serde(rename = "failure")]
-    Failure(Failure),
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
-#[display("{swap_id}, {public_offer}")]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(CheckpointEntry::to_yaml_string)]
-pub struct CheckpointEntry {
-    pub swap_id: SwapId,
-    pub public_offer: PublicOffer,
-    pub trade_role: TradeRole,
-}
-
 pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
 
 #[cfg(feature = "serde")]
@@ -802,15 +533,9 @@ impl ToYamlString for MadeOffer {}
 #[cfg(feature = "serde")]
 impl ToYamlString for TookOffer {}
 #[cfg(feature = "serde")]
-impl ToYamlString for SwapProgress {}
-#[cfg(feature = "serde")]
-impl ToYamlString for ProgressEvent {}
-#[cfg(feature = "serde")]
 impl ToYamlString for OfferStatusPair {}
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferInfo {}
-#[cfg(feature = "serde")]
-impl ToYamlString for CheckpointEntry {}
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
 #[wrapper(IndexRange)]
@@ -850,87 +575,5 @@ where
         S: serde::Serializer,
     {
         self.as_inner().serialize(serializer)
-    }
-}
-
-#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-pub struct OptionDetails(pub Option<String>);
-
-impl Display for OptionDetails {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.as_inner() {
-            None => Ok(()),
-            Some(msg) => f.write_str(msg),
-        }
-    }
-}
-
-impl OptionDetails {
-    pub fn with(s: impl ToString) -> Self {
-        Self(Some(s.to_string()))
-    }
-
-    pub fn new() -> Self {
-        Self(None)
-    }
-}
-
-impl From<crate::Error> for Request {
-    fn from(err: crate::Error) -> Self {
-        Request::Failure(Failure {
-            code: FailureCode::Unknown,
-            info: err.to_string(),
-        })
-    }
-}
-
-pub trait IntoProgressOrFailure {
-    fn into_progress_or_failure(self) -> Request;
-}
-pub trait IntoSuccessOrFailure {
-    fn into_success_or_failure(self) -> Request;
-}
-
-impl IntoProgressOrFailure for Result<String, crate::Error> {
-    fn into_progress_or_failure(self) -> Request {
-        match self {
-            Ok(val) => Request::Progress(Progress::Message(val)),
-            Err(err) => Request::from(err),
-        }
-    }
-}
-
-impl IntoSuccessOrFailure for Result<String, crate::Error> {
-    fn into_success_or_failure(self) -> Request {
-        match self {
-            Ok(val) => Request::Success(OptionDetails::with(val)),
-            Err(err) => Request::from(err),
-        }
-    }
-}
-
-impl IntoSuccessOrFailure for Result<(), crate::Error> {
-    fn into_success_or_failure(self) -> Request {
-        match self {
-            Ok(_) => Request::Success(OptionDetails::new()),
-            Err(err) => Request::from(err),
-        }
-    }
-}
-
-// FIXME
-impl From<(SwapId, Params)> for Reveal {
-    fn from(tuple: (SwapId, Params)) -> Self {
-        match tuple {
-            (swap_id, Params::Alice(params)) => {
-                Reveal::AliceParameters(params.reveal_alice(swap_id))
-            }
-            (swap_id, Params::Bob(params)) => Reveal::BobParameters(params.reveal_bob(swap_id)),
-        }
     }
 }

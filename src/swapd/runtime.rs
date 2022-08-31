@@ -18,6 +18,7 @@ use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::{FeeEstimation, FeeEstimations};
 use crate::{
+    bus::ctl::{Ctl, InitSwap, Params},
     bus::request::Outcome,
     bus::request::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo},
     syncerd::{
@@ -38,8 +39,8 @@ use super::{
 };
 use crate::bus::{
     msg::*,
-    request::{self, Failure, FailureCode},
-    rpc::{Rpc, SwapInfo},
+    request,
+    rpc::{Rpc, SwapInfo, Failure, FailureCode},
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -58,7 +59,7 @@ use farcaster_core::{
 };
 use internet2::{addr::NodeAddr, CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller};
 use microservices::esb::{self, Handler};
-use request::{CheckpointState, InitSwap, Params, Tx};
+use request::{CheckpointState, Tx};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(
@@ -477,7 +478,7 @@ impl Runtime {
                 ServiceBus::Ctl,
                 self.identity(),
                 ServiceId::Farcasterd,
-                Request::PeerdUnreachable(self.peer_service.clone()),
+                Request::Ctl(Ctl::PeerdUnreachable(self.peer_service.clone())),
             )?;
             self.pending_peer_request.push(msg);
         }
@@ -838,7 +839,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, _) => {
+            (Request::Ctl(Ctl::Hello), _) => {
                 info!(
                     "{} | Service {} daemon is now {}",
                     self.swap_id.bright_blue_italic(),
@@ -854,7 +855,7 @@ impl Runtime {
                 | ServiceId::Wallet
                 | ServiceId::Database
             ) => {}
-            (Request::AbortSwap, ServiceId::Client(_)) => {}
+            (Request::Ctl(Ctl::AbortSwap), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
@@ -862,7 +863,7 @@ impl Runtime {
         };
 
         match request {
-            Request::Terminate if source == ServiceId::Farcasterd => {
+            Request::Ctl(Ctl::Terminate) if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
                     self.swap_id.bright_blue_italic(),
@@ -915,14 +916,14 @@ impl Runtime {
                     PendingRequest::new(self.identity(), dest.clone(), ServiceBus::Ctl, request);
                 self.pending_requests.defer_request(dest, pending_request);
             }
-            Request::TakeSwap(InitSwap {
+            Request::Ctl(Ctl::TakeSwap(InitSwap {
                 peerd,
                 report_to,
                 local_params,
                 swap_id,
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
-            }) if self.state.start() => {
+            })) if self.state.start() => {
                 if ServiceId::Swap(swap_id) != self.identity {
                     error!(
                         "{}: {}",
@@ -976,21 +977,24 @@ impl Runtime {
                     .state
                     .local_params()
                     .expect("commit state has local_params");
-                let reveal_params: Reveal = (swap_id, local_params.clone()).into();
+                let reveal_params = match (swap_id, local_params.clone()) {
+                    (swap_id, Params::Alice(params)) => Reveal::AliceParameters(params.reveal_alice(swap_id)),
+                    (swap_id, Params::Bob(params)) => Reveal::BobParameters(params.reveal_bob(swap_id)),
+                };
                 self.send_peer(endpoints, Msg::Reveal(reveal_params))?;
                 trace!("sent reveal_proof to peerd");
                 let next_state = self.state.clone().sup_commit_to_reveal();
                 self.state_update(endpoints, next_state)?;
             }
 
-            Request::MakeSwap(InitSwap {
+            Request::Ctl(Ctl::MakeSwap(InitSwap {
                 peerd,
                 report_to,
                 local_params,
                 swap_id,
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
-            }) if self.state.start() => {
+            })) if self.state.start() => {
                 self.syncer_state.watch_fee_and_height(endpoints)?;
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
@@ -1427,7 +1431,7 @@ impl Runtime {
                                         msg,
                                     )?;
                                     // FIXME: syncer shall not have permission to AbortSwap, replace source by identity?
-                                    self.handle_ctl(endpoints, source, Request::AbortSwap)?;
+                                    self.handle_ctl(endpoints, source, Request::Ctl(Ctl::AbortSwap))?;
                                     return Ok(());
                                 }
 
@@ -2250,7 +2254,7 @@ impl Runtime {
                     .defer_request(self.syncer_state.monero_syncer(), pending_request);
             }
 
-            Request::AbortSwap
+            Request::Ctl(Ctl::AbortSwap)
                 if self.state.a_start()
                     || self.state.a_commit()
                     || self.state.a_reveal()
@@ -2267,7 +2271,7 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::AbortSwap if self.state.b_start() => {
+            Request::Ctl(Ctl::AbortSwap) if self.state.b_start() => {
                 // just cancel the swap, no additional logic required, since funding was not yet retrieved
                 self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Abort)))?;
                 self.abort_swap(endpoints)?;
@@ -2279,7 +2283,7 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::AbortSwap
+            Request::Ctl(Ctl::AbortSwap)
                 if self.state.b_commit()
                     || self.state.b_reveal()
                     || (!self.state.b_received_refund_procedure_signatures()
@@ -2302,7 +2306,7 @@ impl Runtime {
                     )?;
                 }
             }
-            Request::AbortSwap => {
+            Request::Ctl(Ctl::AbortSwap) => {
                 let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
                 warn!("{} | {}", self.swap_id, msg);
 
@@ -2310,14 +2314,14 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        Request::Failure(Failure {
+                        Request::Rpc(Rpc::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: msg,
-                        }),
+                        })),
                     )?;
                 }
             }
-            Request::PeerdReconnected(service_id) => {
+            Request::Ctl(Ctl::PeerdReconnected(service_id)) => {
                 // set the reconnected service id, if it is not set yet. This
                 // can happen if this is a maker launched swap after restoration
                 // and the taker reconnects

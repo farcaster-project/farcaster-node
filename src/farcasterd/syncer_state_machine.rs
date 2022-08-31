@@ -3,6 +3,7 @@ use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
     bus::Request,
+    bus::ctl::Ctl,
     error::Error,
     event::{Event, StateMachine},
     syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
@@ -217,7 +218,7 @@ fn transition_to_awaiting_syncer_request(
         syncer_task_id,
     } = awaiting_syncer;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, syncer_id) if syncer == syncer_id => {
+        (Request::Ctl(Ctl::Hello), syncer_id) if syncer == syncer_id => {
             event.complete_ctl_service(syncer.clone(), Request::SyncerTask(syncer_task))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                 AwaitingSyncerRequest {
@@ -228,7 +229,7 @@ fn transition_to_awaiting_syncer_request(
             )))
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!(
                     "Request {} from {} invalid for state awaiting syncer.",
                     req,
@@ -290,7 +291,7 @@ fn transition_to_end(
                         if !runtime.syncer_has_client(service) {
                             info!("Terminating {}", service);
                             event
-                                .send_ctl_service(service.clone(), Request::Terminate)
+                                .send_ctl_service(service.clone(), Request::Ctl(Ctl::Terminate))
                                 .is_err()
                         } else {
                             true
@@ -303,7 +304,7 @@ fn transition_to_end(
             Ok(None)
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!(
                     "Request {} from {} invalid for state awaiting syncer.",
                     req,

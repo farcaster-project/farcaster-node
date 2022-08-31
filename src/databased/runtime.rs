@@ -14,9 +14,9 @@ use crate::Endpoints;
 use bitcoin::secp256k1::SecretKey;
 
 use crate::bus::{
-    ctl::Ctl,
-    request::{self, Checkpoint, CheckpointEntry, CheckpointState, Failure, FailureCode, List},
-    rpc::Rpc,
+    ctl::{Ctl},
+    request::{self, Checkpoint, CheckpointState, List},
+    rpc::{Rpc, CheckpointEntry, Failure, FailureCode},
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -82,7 +82,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            Request::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -103,7 +103,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            Request::Ctl(Ctl::Hello) => {
                 debug!("Received Hello from {}", source);
             }
 
@@ -221,10 +221,10 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        Request::Failure(Failure {
+                        Request::Rpc(Rpc::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
-                        }),
+                        })),
                     )?,
                     Ok(secret_key) => {
                         endpoints.send_to(
@@ -265,10 +265,10 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        Request::Failure(Failure {
+                        Request::Rpc(Rpc::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
-                        }),
+                        })),
                     )?,
                     Ok(secret_key_pair) => {
                         endpoints.send_to(
@@ -363,7 +363,7 @@ impl Runtime {
                     ServiceBus::Ctl,
                     source,
                     ServiceId::Farcasterd,
-                    Request::CheckpointList(checkpointed_pub_offers),
+                    Request::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
                 )?;
             }
 

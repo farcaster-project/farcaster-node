@@ -1,11 +1,12 @@
-use crate::bus::ctl::Ctl;
-use crate::bus::ctl::{ProtoPublicOffer, PubOffer};
+use crate::bus::ctl::{Ctl, ProtoPublicOffer, PubOffer, LaunchSwap, InitSwap};
+use crate::bus::rpc::CheckpointEntry;
 use crate::bus::msg::{Msg, TakeCommit};
 use crate::bus::request::{
-    BitcoinAddress, BitcoinFundingInfo, CheckpointEntry, FundingInfo, InitSwap, LaunchSwap,
+    BitcoinAddress, BitcoinFundingInfo, FundingInfo,
     MadeOffer, MoneroAddress, MoneroFundingInfo, OfferInfo, OfferStatus, OfferStatusPair,
     TookOffer,
 };
+use crate::bus::rpc::Rpc;
 use crate::bus::{Failure, FailureCode};
 use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;
@@ -334,10 +335,10 @@ fn transition_to_make_offer(
             });
             match node_id {
                 Err(err) => {
-                    event.complete_ctl(Request::Failure(Failure {
+                    event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
-                    }))?;
+                    })))?;
                     Ok(None)
                 }
                 Ok(node_id) => {
@@ -372,7 +373,7 @@ fn transition_to_make_offer(
             }
         }
         req => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!(
                     "Request {} invalid for state start maker - invalidating.",
                     req
@@ -411,10 +412,10 @@ fn transition_to_take_offer(
                     &public_offer.to_string()
                 );
                 warn!("{}", msg.err());
-                event.complete_ctl(Request::Failure(Failure {
+                event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: msg,
-                }))?;
+                })))?;
                 return Ok(None);
             }
             let PublicOffer {
@@ -461,10 +462,10 @@ fn transition_to_take_offer(
             });
             match res {
                 Err(err) => {
-                    event.complete_ctl(Request::Failure(Failure {
+                    event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
-                    }))?;
+                    })))?;
                     Ok(None)
                 }
                 Ok(peer_service_id) => {
@@ -498,7 +499,7 @@ fn transition_to_take_offer(
             }
         }
         req => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!(
                     "Request {} invalid for state start restore - invalidating.",
                     req
@@ -524,23 +525,23 @@ fn transition_to_restoring_swapd(
             if let Err(err) = runtime.services_ready() {
                 event.send_ctl_service(
                     event.source.clone(),
-                    Request::Failure(Failure {
+                    Request::Rpc(Rpc::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
-                    }),
+                    })),
                 )?;
                 return Ok(None);
             }
 
             // check if swapd is not running
             if event
-                .send_ctl_service(ServiceId::Swap(swap_id), Request::Hello)
+                .send_ctl_service(ServiceId::Swap(swap_id), Request::Ctl(Ctl::Hello))
                 .is_ok()
             {
-                event.complete_ctl(Request::Failure(Failure {
+                event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: "Cannot restore a checkpoint into a running swap.".to_string(),
-                }))?;
+                })))?;
                 return Ok(None);
             }
 
@@ -555,11 +556,11 @@ fn transition_to_restoring_swapd(
             {
                 Some(ce) => ce,
                 None => {
-                    event.complete_ctl(Request::Failure(Failure {
+                    event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: "No checkpoint found with given swap id, aborting restore."
                             .to_string(),
-                    }))?;
+                    })))?;
                     return Ok(None);
                 }
             };
@@ -598,7 +599,7 @@ fn transition_to_restoring_swapd(
             })))
         }
         req => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!(
                     "Request {} invalid for state start restore - invalidating.",
                     req
@@ -664,7 +665,7 @@ fn attempt_transition_to_taker_committed(
                 })))
             }
         }
-        (Request::RevokeOffer(revoke_public_offer), _) => {
+        (Request::Ctl(Ctl::RevokeOffer(revoke_public_offer)), _) => {
             debug!("attempting to revoke {}", public_offer);
             if revoke_public_offer == public_offer {
                 info!("Revoked offer {}", public_offer);
@@ -682,7 +683,7 @@ fn attempt_transition_to_taker_committed(
             }
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!(
                     "Request {} from {} invalid for state make offer.",
                     req,
@@ -754,14 +755,14 @@ fn attempt_transition_to_swapd_launched(
     public_offer: &PublicOffer,
 ) -> Result<Option<TradeStateMachine>, Error> {
     match event.request {
-        Request::LaunchSwap(LaunchSwap {
+        Request::Ctl(Ctl::LaunchSwap(LaunchSwap {
             remote_commit,
             local_params,
             funding_address,
             local_trade_role,
             swap_id,
             ..
-        }) => {
+        })) => {
             let network = public_offer.offer.network;
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
@@ -804,7 +805,7 @@ fn attempt_transition_to_swapd_launched(
             })))
         }
         req => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!("Request {} - expected LaunchSwap request.", req);
             } else {
                 warn!("Request {} - expected LaunchSwap request.", req);
@@ -830,15 +831,15 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         local_trade_role,
     } = swapd_launched;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, source)
+        (Request::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Monero, public_offer.offer.network) == source =>
         {
             accordant_syncer_up = Some(source);
         }
-        (Request::Hello, source) if ServiceId::Swap(swap_id) == source => {
+        (Request::Ctl(Ctl::Hello), source) if ServiceId::Swap(swap_id) == source => {
             swapd_up = true;
         }
-        (Request::Hello, source)
+        (Request::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Bitcoin, public_offer.offer.network) == source =>
         {
             arbitrating_syncer_up = Some(source);
@@ -860,8 +861,8 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             swap_id, local_trade_role,
         );
         let init_swap_req = match local_trade_role {
-            TradeRole::Maker => Request::MakeSwap(init_swap),
-            TradeRole::Taker => Request::TakeSwap(init_swap),
+            TradeRole::Maker => Request::Ctl(Ctl::MakeSwap(init_swap)),
+            TradeRole::Taker => Request::Ctl(Ctl::TakeSwap(init_swap)),
         };
         event.complete_ctl_service(ServiceId::Swap(swap_id), init_swap_req)?;
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
@@ -901,15 +902,15 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut swapd_up,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, source)
+        (Request::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Monero, public_offer.offer.network) == source =>
         {
             accordant_syncer_up = Some(source);
         }
-        (Request::Hello, source) if ServiceId::Swap(swap_id) == source => {
+        (Request::Ctl(Ctl::Hello), source) if ServiceId::Swap(swap_id) == source => {
             swapd_up = true;
         }
-        (Request::Hello, source)
+        (Request::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Bitcoin, public_offer.offer.network) == source =>
         {
             arbitrating_syncer_up = Some(source);
@@ -965,10 +966,10 @@ fn attempt_transition_to_end(
         auto_funded,
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, source) if source == peerd => {
+        (Request::Ctl(Ctl::Hello), source) if source == peerd => {
             let swap_service_id = ServiceId::Swap(swap_id);
             debug!("Letting {} know of peer reconnection.", swap_service_id);
-            event.complete_ctl_service(swap_service_id, Request::PeerdReconnected(source))?;
+            event.complete_ctl_service(swap_service_id, Request::Ctl(Ctl::PeerdReconnected(source)))?;
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 public_offer,
@@ -1216,7 +1217,7 @@ fn attempt_transition_to_end(
             })))
         }
 
-        (Request::PeerdUnreachable(ServiceId::Peer(addr)), source)
+        (Request::Ctl(Ctl::PeerdUnreachable(ServiceId::Peer(addr))), source)
             if ServiceId::Swap(swap_id) == source =>
         {
             if runtime.registered_services.contains(&ServiceId::Peer(addr)) {
@@ -1226,7 +1227,7 @@ fn attempt_transition_to_end(
                     taker and the swap is still running.",
                     addr
                 );
-                event.complete_ctl_service(ServiceId::Peer(addr), Request::Terminate)?;
+                event.complete_ctl_service(ServiceId::Peer(addr), Request::Ctl(Ctl::Terminate))?;
             }
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
@@ -1269,7 +1270,7 @@ fn attempt_transition_to_end(
         }
 
         (req, source) => {
-            if let Request::Hello = req {
+            if let Request::Ctl(Ctl::Hello) = req {
                 trace!(
                     "Request {} from {} invalid for state swapd running.",
                     req,

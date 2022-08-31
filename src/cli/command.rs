@@ -284,12 +284,12 @@ impl Exec for Command {
             }
 
             Command::RevokeOffer { public_offer } => {
-                runtime.request(ServiceId::Farcasterd, Request::RevokeOffer(public_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, Ctl::RevokeOffer(public_offer))?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::AbortSwap { swap_id } => {
-                runtime.request(ServiceId::Swap(swap_id), Request::AbortSwap)?;
+                runtime.request_ctl(ServiceId::Swap(swap_id), Ctl::AbortSwap)?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -297,17 +297,17 @@ impl Exec for Command {
                 if follow {
                     // subscribe to progress event and loop until Finish event is received or user
                     // ctrl-c the cli. Expect to recieve a stream of event responses
-                    runtime.request(ServiceId::Farcasterd, Request::SubscribeProgress(swapid))?;
+                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::SubscribeProgress(swapid))?;
                     let res = runtime.report_progress();
                     // if user didn't ctrl-c before that point we can cleanly unsubscribe the
                     // client from the notification stream and then return the result from report
                     // progress
-                    runtime.request(ServiceId::Farcasterd, Request::UnsubscribeProgress(swapid))?;
+                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::UnsubscribeProgress(swapid))?;
                     return res;
                 } else {
                     // request a read progress response. Expect to recieve only one response and
                     // quit
-                    runtime.request(ServiceId::Farcasterd, Request::ReadProgress(swapid))?;
+                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::ReadProgress(swapid))?;
                     runtime.report_response_or_fail()?;
                 }
             }

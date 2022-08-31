@@ -1,18 +1,20 @@
 use farcaster_core::{
-    //role::TradeRole,
+    role::TradeRole,
     swap::btcxmr::PublicOffer,
     swap::SwapId,
 };
 
-use amplify::ToYamlString;
+use microservices::rpc;
+use amplify::{ToYamlString, Wrapper};
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds};
 use std::time::Duration;
+use std::fmt::{self, Debug, Display, Formatter};
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::bus::request::{List, OfferInfo, OfferStatusPair, OfferStatusSelector};
+use crate::bus::request::{Request, List, OfferInfo, OfferStatusPair, OfferStatusSelector};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "strict")]
@@ -45,10 +47,40 @@ pub enum Rpc {
     #[display("list_listens()")]
     ListListens,
 
-    /// Respond with RetrieveAllCheckpointInfo
     #[api(type = 1306)]
     #[display("retrieve_all_checkpoint_info")]
     RetrieveAllCheckpointInfo,
+
+    // Progress functionalities
+    // ----------------
+    #[api(type = 1003)]
+    #[display("read_progress({0})")]
+    ReadProgress(SwapId),
+
+    #[api(type = 1006)]
+    #[display("subscribe_progress({0})")]
+    SubscribeProgress(SwapId),
+
+    #[api(type = 1007)]
+    #[display("unsubscribe_progress({0})")]
+    UnsubscribeProgress(SwapId),
+
+    #[api(type = 1002)]
+    #[display(inner)]
+    Progress(Progress),
+
+    #[api(type = 1005)]
+    #[display(inner)]
+    SwapProgress(SwapProgress),
+
+    #[api(type = 1001)]
+    #[display(inner)]
+    Success(OptionDetails),
+
+    #[api(type = 1000)]
+    #[display(inner)]
+    #[from]
+    Failure(Failure),
 
     //
     // RESPONSES
@@ -114,6 +146,10 @@ pub enum Rpc {
     #[from]
     ListenList(List<String>),
     // - End ListListen section
+
+    #[api(type = 1308)]
+    #[display(inner)]
+    CheckpointList(List<CheckpointEntry>),
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -195,6 +231,186 @@ pub struct SwapInfo {
     pub public_offer: PublicOffer,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("{swap_id}, {public_offer}")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(CheckpointEntry::to_yaml_string)]
+pub struct CheckpointEntry {
+    pub swap_id: SwapId,
+    pub public_offer: PublicOffer,
+    pub trade_role: TradeRole,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display(inner)]
+pub enum Progress {
+    Message(String),
+    StateTransition(String),
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, Default, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(SwapProgress::to_yaml_string)]
+pub struct SwapProgress {
+    pub progress: Vec<ProgressEvent>,
+}
+
+#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+pub struct OptionDetails(pub Option<String>);
+
+impl Display for OptionDetails {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.as_inner() {
+            None => Ok(()),
+            Some(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl OptionDetails {
+    pub fn with(s: impl ToString) -> Self {
+        Self(Some(s.to_string()))
+    }
+
+    pub fn new() -> Self {
+        Self(None)
+    }
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(ProgressEvent::to_yaml_string)]
+pub enum ProgressEvent {
+    #[serde(rename = "message")]
+    Message(String),
+    #[serde(rename = "transition")]
+    StateTransition(String),
+    #[serde(rename = "success")]
+    Success(OptionDetails),
+    #[serde(rename = "failure")]
+    Failure(Failure),
+}
+
+/// Information about server-side failure returned through RPC API
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[derive(
+    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, StrictEncode, StrictDecode,
+)]
+#[display("{info}", alt = "Server returned failure #{code}: {info}")]
+pub struct Failure {
+    /// Failure code
+    pub code: FailureCode,
+
+    /// Detailed information about the failure
+    pub info: String,
+}
+
+#[derive(
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, StrictEncode, StrictDecode,
+)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub enum FailureCode {
+    /// Catch-all: TODO: Expand
+    Unknown = 0xFFF,
+}
+
+impl From<u16> for FailureCode {
+    fn from(value: u16) -> Self {
+        match value {
+            _ => FailureCode::Unknown,
+        }
+    }
+}
+
+impl From<FailureCode> for u16 {
+    fn from(code: FailureCode) -> Self {
+        code as u16
+    }
+}
+
+impl From<FailureCode> for rpc::FailureCode<FailureCode> {
+    fn from(code: FailureCode) -> Self {
+        rpc::FailureCode::Other(code)
+    }
+}
+
+impl rpc::FailureCodeExt for FailureCode {}
+
+impl From<crate::Error> for Request {
+    fn from(err: crate::Error) -> Self {
+        Request::Rpc(Rpc::Failure(Failure {
+            code: FailureCode::Unknown,
+            info: err.to_string(),
+        }))
+    }
+}
+
+pub trait IntoProgressOrFailure {
+    fn into_progress_or_failure(self) -> Request;
+}
+pub trait IntoSuccessOrFailure {
+    fn into_success_or_failure(self) -> Request;
+}
+
+impl IntoProgressOrFailure for Result<String, crate::Error> {
+    fn into_progress_or_failure(self) -> Request {
+        match self {
+            Ok(val) => Request::Rpc(Rpc::Progress(Progress::Message(val))),
+            Err(err) => Request::from(err),
+        }
+    }
+}
+
+impl IntoSuccessOrFailure for Result<String, crate::Error> {
+    fn into_success_or_failure(self) -> Request {
+        match self {
+            Ok(val) => Request::Rpc(Rpc::Success(OptionDetails::with(val))),
+            Err(err) => Request::from(err),
+        }
+    }
+}
+
+impl IntoSuccessOrFailure for Result<(), crate::Error> {
+    fn into_success_or_failure(self) -> Request {
+        match self {
+            Ok(_) => Request::Rpc(Rpc::Success(OptionDetails::new())),
+            Err(err) => Request::from(err),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl ToYamlString for CheckpointEntry {}
+#[cfg(feature = "serde")]
+impl ToYamlString for SwapProgress {}
 #[cfg(feature = "serde")]
 impl ToYamlString for NodeInfo {}
 #[cfg(feature = "serde")]
@@ -203,3 +419,5 @@ impl ToYamlString for PeerInfo {}
 impl ToYamlString for SwapInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for SyncerInfo {}
+#[cfg(feature = "serde")]
+impl ToYamlString for ProgressEvent {}

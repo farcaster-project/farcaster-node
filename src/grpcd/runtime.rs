@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 
-use crate::bus::rpc::Rpc;
+use crate::bus::{ctl::Ctl, rpc::Rpc};
 use crate::bus::{Request, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
@@ -271,7 +271,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            Request::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
             _ => {
@@ -288,9 +288,10 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            Request::Ctl(Ctl::Hello) => {
                 debug!("Received Hello from {}", source);
             }
+
             _ => {
                 if let ServiceId::GrpcdClient(id) = source {
                     self.tx_response

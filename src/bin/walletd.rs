@@ -33,7 +33,7 @@ use clap::Parser;
 
 use farcaster_node::ServiceConfig;
 use farcaster_node::{
-    bus::request::Token,
+    bus::ctl::Token,
     walletd::{self, NodeSecrets, Opts},
 };
 

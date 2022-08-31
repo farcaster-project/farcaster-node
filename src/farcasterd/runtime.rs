@@ -13,22 +13,22 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::Ctl;
+use crate::bus::ctl::{Ctl, GetKeys};
 use crate::bus::msg::{self, Msg};
-use crate::bus::request::{Failure, FailureCode, GetKeys};
 use crate::bus::rpc::NodeInfo;
 use crate::bus::{request, Request, ServiceBus};
 use crate::event::{Event, StateMachine};
 use crate::farcasterd::runtime::request::{
-    CheckpointEntry, OfferStatusSelector, ProgressEvent, SwapProgress,
+    OfferStatusSelector,
 };
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
     bus::request::{
-        BitcoinFundingInfo, Keys, LaunchSwap, MoneroFundingInfo, OfferInfo, Outcome, Token,
+        BitcoinFundingInfo, Keys, MoneroFundingInfo, OfferInfo, Outcome,
     },
-    bus::rpc::Rpc,
+    bus::ctl::{Token, LaunchSwap},
+    bus::rpc::{Rpc, CheckpointEntry, Failure, FailureCode, Progress, ProgressEvent, SwapProgress},
     clap::Parser,
     error::SyncerError,
     service::Endpoints,
@@ -120,7 +120,7 @@ pub struct Runtime {
     pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
     pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
     pub public_offers: HashSet<PublicOffer>, // The set of all known public offers. Includes open, consumed and ended offers includes open, consumed and ended offers
-    progress: HashMap<ServiceId, VecDeque<Request>>, // A mapping from Swap ServiceId to its sent and received progress requests
+    progress: HashMap<ServiceId, VecDeque<Rpc>>, // A mapping from Swap ServiceId to its sent and received progress requests
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
     pub checkpointed_pub_offers: List<CheckpointEntry>, // A list of existing swap checkpoint entries that may be restored again
     pub stats: Stats,                                   // Some stats about offers and swaps
@@ -264,7 +264,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, _) => {
+            (Request::Ctl(Ctl::Hello), _) => {
                 trace!("Hello farcasterd from {}", source);
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
@@ -282,9 +282,8 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        let mut report_to: Vec<(Option<ServiceId>, Request)> = none!();
         match request.clone() {
-            Request::Hello => {
+            Request::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} is now {}",
@@ -309,7 +308,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             source.clone(),
-                            Request::GetKeys(wallet_token),
+                            Request::Ctl(Ctl::GetKeys(wallet_token)),
                         )?;
                     }
                     ServiceId::Peer(connection_id) => {
@@ -388,134 +387,6 @@ impl Runtime {
                 self.node_public_key = Some(pk);
             }
 
-            Request::CheckpointList(checkpointed_pub_offers) => {
-                self.checkpointed_pub_offers = checkpointed_pub_offers.clone();
-                endpoints.send_to(
-                    ServiceBus::Rpc,
-                    ServiceId::Farcasterd,
-                    source,
-                    Request::CheckpointList(checkpointed_pub_offers),
-                )?;
-            }
-
-            // Add progress in queues and forward to subscribed clients
-            Request::Progress(..) | Request::Success(..) | Request::Failure(..) => {
-                if !self.progress.contains_key(&source) {
-                    self.progress.insert(source.clone(), none!());
-                };
-                let queue = self.progress.get_mut(&source).expect("checked/added above");
-                queue.push_back(request.clone());
-                // forward the request to each subscribed clients
-                self.notify_subscribed_clients(endpoints, &source, &request);
-            }
-
-            // Returns a unique response that contains the complete progress queue
-            Request::ReadProgress(swap_id) => {
-                if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swap_id)) {
-                    let mut swap_progress = SwapProgress { progress: vec![] };
-                    for req in queue.iter() {
-                        match req {
-                            Request::Progress(request::Progress::Message(m)) => {
-                                swap_progress
-                                    .progress
-                                    .push(ProgressEvent::Message(m.clone()));
-                            }
-                            Request::Progress(request::Progress::StateTransition(t)) => {
-                                swap_progress
-                                    .progress
-                                    .push(ProgressEvent::StateTransition(t.clone()));
-                            }
-                            Request::Success(s) => {
-                                swap_progress
-                                    .progress
-                                    .push(ProgressEvent::Success(s.clone()));
-                            }
-                            Request::Failure(f) => {
-                                swap_progress
-                                    .progress
-                                    .push(ProgressEvent::Failure(f.clone()));
-                            }
-                            _ => unreachable!("not handled here"),
-                        };
-                    }
-                    report_to.push((Some(source.clone()), Request::SwapProgress(swap_progress)));
-                } else {
-                    let info = if self.running_swaps_contain(&swap_id) {
-                        s!("No progress made yet on this swap")
-                    } else {
-                        s!("Unknown swapd")
-                    };
-                    report_to.push((
-                        Some(source.clone()),
-                        Request::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info,
-                        }),
-                    ));
-                }
-            }
-
-            // Add the request's source to the subscription list for later progress notifications
-            // and send all notifications already in the queue
-            Request::SubscribeProgress(swap_id) => {
-                let service = ServiceId::Swap(swap_id);
-                // if the swap is known either in the tsm's or progress, attach the client
-                // otherwise terminate
-                if self.running_swaps_contain(&swap_id) || self.progress.contains_key(&service) {
-                    if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
-                        // ret true if not in the set, false otherwise. Double subscribe is not a
-                        // problem as we manage the list in a set.
-                        let _ = subscribed.insert(source.clone());
-                    } else {
-                        let mut subscribed = HashSet::new();
-                        subscribed.insert(source.clone());
-                        // None is returned, the key was not set as checked before
-                        let _ = self
-                            .progress_subscriptions
-                            .insert(service.clone(), subscribed);
-                    }
-                    trace!(
-                        "{} has been added to {} progress subscription",
-                        source.clone(),
-                        swap_id
-                    );
-                    // send all queued notification to the source to catch up
-                    if let Some(queue) = self.progress.get_mut(&service) {
-                        for req in queue.iter() {
-                            report_to.push((Some(source.clone()), req.clone()));
-                        }
-                    }
-                } else {
-                    // no swap service exists, terminate
-                    report_to.push((
-                        Some(source.clone()),
-                        Request::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: "Unknown swapd".to_string(),
-                        }),
-                    ));
-                }
-            }
-
-            // Remove the request's source from the subscription list of notifications
-            Request::UnsubscribeProgress(swap_id) => {
-                let service = ServiceId::Swap(swap_id);
-                if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
-                    // we don't care if the source was not in the set
-                    let _ = subscribed.remove(&source);
-                    trace!(
-                        "{} has been removed from {} progress subscription",
-                        source.clone(),
-                        swap_id
-                    );
-                    if subscribed.is_empty() {
-                        // we drop the empty set located at the swap index
-                        let _ = self.progress_subscriptions.remove(&service);
-                    }
-                }
-                // if no swap service exists no subscription need to be removed
-            }
-
             Request::NeedsFunding(Blockchain::Monero) => {
                 let funding_infos: Vec<MoneroFundingInfo> = self
                     .trade_state_machines
@@ -567,7 +438,7 @@ impl Runtime {
                 )?;
             }
 
-            Request::PeerdTerminated => {
+            Request::Ctl(Ctl::PeerdTerminated) => {
                 if let ServiceId::Peer(addr) = source {
                     if self.registered_services.remove(&source) {
                         debug!(
@@ -590,23 +461,6 @@ impl Runtime {
             }
         }
 
-        for (i, (respond_to, resp)) in report_to.clone().into_iter().enumerate() {
-            if let Some(respond_to) = respond_to {
-                // do not respond to self
-                if respond_to == self.identity() {
-                    continue;
-                }
-                trace!(
-                    "(#{}) Respond to {}: {}",
-                    i,
-                    respond_to.bright_yellow_bold(),
-                    resp.bright_blue_bold(),
-                );
-                endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
-            }
-        }
-        trace!("Processed all cli notifications");
-
         Ok(())
     }
 
@@ -616,6 +470,8 @@ impl Runtime {
         source: ServiceId,
         request: Rpc,
     ) -> Result<(), Error> {
+        let mut report_to: Vec<(Option<ServiceId>, Rpc)> = none!();
+
         match request {
             Rpc::GetInfo => {
                 self.send_client_rpc(
@@ -711,10 +567,155 @@ impl Runtime {
                 self.send_client_rpc(endpoints, source, Rpc::ListenList(listen_url))?;
             }
 
+            Rpc::CheckpointList(checkpointed_pub_offers) => {
+                self.checkpointed_pub_offers = checkpointed_pub_offers.clone();
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    ServiceId::Farcasterd,
+                    source,
+                    Request::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
+                )?;
+            }
+
+            // Add progress in queues and forward to subscribed clients
+            Rpc::Progress(..) | Rpc::Success(..) | Rpc::Failure(..) => {
+                if !self.progress.contains_key(&source) {
+                    self.progress.insert(source.clone(), none!());
+                };
+                let queue = self.progress.get_mut(&source).expect("checked/added above");
+                queue.push_back(request.clone());
+                // forward the request to each subscribed clients
+                self.notify_subscribed_clients(endpoints, &source, &request);
+            }
+
+            // Returns a unique response that contains the complete progress queue
+            Rpc::ReadProgress(swap_id) => {
+                if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swap_id)) {
+                    let mut swap_progress = SwapProgress { progress: vec![] };
+                    for req in queue.iter() {
+                        match req {
+                            Rpc::Progress(Progress::Message(m)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Message(m.clone()));
+                            }
+                            Rpc::Progress(Progress::StateTransition(t)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::StateTransition(t.clone()));
+                            }
+                            Rpc::Success(s) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Success(s.clone()));
+                            }
+                            Rpc::Failure(f) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::Failure(f.clone()));
+                            }
+                            _ => unreachable!("not handled here"),
+                        };
+                    }
+                    report_to.push((Some(source.clone()), Rpc::SwapProgress(swap_progress)));
+                } else {
+                    let info = if self.running_swaps_contain(&swap_id) {
+                        s!("No progress made yet on this swap")
+                    } else {
+                        s!("Unknown swapd")
+                    };
+                    report_to.push((
+                        Some(source.clone()),
+                        Rpc::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info,
+                        }),
+                    ));
+                }
+            }
+
+            // Add the request's source to the subscription list for later progress notifications
+            // and send all notifications already in the queue
+            Rpc::SubscribeProgress(swap_id) => {
+                let service = ServiceId::Swap(swap_id);
+                // if the swap is known either in the tsm's or progress, attach the client
+                // otherwise terminate
+                if self.running_swaps_contain(&swap_id) || self.progress.contains_key(&service) {
+                    if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
+                        // ret true if not in the set, false otherwise. Double subscribe is not a
+                        // problem as we manage the list in a set.
+                        let _ = subscribed.insert(source.clone());
+                    } else {
+                        let mut subscribed = HashSet::new();
+                        subscribed.insert(source.clone());
+                        // None is returned, the key was not set as checked before
+                        let _ = self
+                            .progress_subscriptions
+                            .insert(service.clone(), subscribed);
+                    }
+                    trace!(
+                        "{} has been added to {} progress subscription",
+                        source.clone(),
+                        swap_id
+                    );
+                    // send all queued notification to the source to catch up
+                    if let Some(queue) = self.progress.get_mut(&service) {
+                        for req in queue.iter() {
+                            report_to.push((Some(source.clone()), req.clone()));
+                        }
+                    }
+                } else {
+                    // no swap service exists, terminate
+                    report_to.push((
+                        Some(source.clone()),
+                        Rpc::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: "Unknown swapd".to_string(),
+                        }),
+                    ));
+                }
+            }
+
+            // Remove the request's source from the subscription list of notifications
+            Rpc::UnsubscribeProgress(swap_id) => {
+                let service = ServiceId::Swap(swap_id);
+                if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
+                    // we don't care if the source was not in the set
+                    let _ = subscribed.remove(&source);
+                    trace!(
+                        "{} has been removed from {} progress subscription",
+                        source.clone(),
+                        swap_id
+                    );
+                    if subscribed.is_empty() {
+                        // we drop the empty set located at the swap index
+                        let _ = self.progress_subscriptions.remove(&service);
+                    }
+                }
+                // if no swap service exists no subscription need to be removed
+            }
+
             req => {
                 warn!("Ignoring request: {}", req.err());
             }
         }
+
+        for (i, (respond_to, resp)) in report_to.clone().into_iter().enumerate() {
+            if let Some(respond_to) = respond_to {
+                // do not respond to self
+                if respond_to == self.identity() {
+                    continue;
+                }
+                trace!(
+                    "(#{}) Respond to {}: {}",
+                    i,
+                    respond_to.bright_yellow_bold(),
+                    resp.bright_blue_bold(),
+                );
+                endpoints.send_to(ServiceBus::Rpc, self.identity(), respond_to, Request::Rpc(resp))?;
+            }
+        }
+        trace!("Processed all cli notifications");
 
         Ok(())
     }
@@ -760,7 +761,7 @@ impl Runtime {
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Swap(*swap_id),
-            Request::Terminate,
+            Request::Ctl(Ctl::Terminate),
         )?;
         endpoints.send_to(
             ServiceBus::Ctl,
@@ -781,7 +782,7 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 service.clone(),
-                                Request::Terminate,
+                                Request::Ctl(Ctl::Terminate),
                             )
                             .is_err()
                     } else {
@@ -795,7 +796,7 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 service.clone(),
-                                Request::Terminate,
+                                Request::Ctl(Ctl::Terminate),
                             )
                             .is_err()
                     } else {
@@ -897,7 +898,7 @@ impl Runtime {
             (Request::Ctl(Ctl::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
             (Request::Ctl(Ctl::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
             (Request::Msg(Msg::TakerCommit(msg::TakeCommit { public_offer, .. })), _)
-            | (Request::RevokeOffer(public_offer), _) => Ok(self
+            | (Request::Ctl(Ctl::RevokeOffer(public_offer)), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -908,7 +909,7 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (Request::LaunchSwap(LaunchSwap { public_offer, .. }), _) => Ok(self
+            (Request::Ctl(Ctl::LaunchSwap(LaunchSwap { public_offer, .. })), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -919,7 +920,7 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (Request::PeerdUnreachable(..), ServiceId::Swap(swap_id))
+            (Request::Ctl(Ctl::PeerdUnreachable(..)), ServiceId::Swap(swap_id))
             | (Request::FundingInfo(..), ServiceId::Swap(swap_id))
             | (Request::FundingCanceled(..), ServiceId::Swap(swap_id))
             | (Request::FundingCompleted(..), ServiceId::Swap(swap_id))
@@ -1125,7 +1126,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: &ServiceId,
-        request: &Request,
+        request: &Rpc,
     ) {
         // if subs exists for the source (swap_id), forward the request to every subs
         if let Some(subs) = self.progress_subscriptions.get_mut(source) {
@@ -1134,10 +1135,10 @@ impl Runtime {
             subs.retain(|sub| {
                 endpoints
                     .send_to(
-                        ServiceBus::Ctl,
+                        ServiceBus::Rpc,
                         ServiceId::Farcasterd,
                         sub.clone(),
-                        request.clone(),
+                        Request::Rpc(request.clone()),
                     )
                     .is_ok()
             });

@@ -28,6 +28,7 @@ use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
 
 use crate::bus::{
+    ctl::Ctl,
     rpc::{Rpc, SyncerInfo},
     Request, ServiceBus,
 };
@@ -137,7 +138,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            Request::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -156,7 +157,7 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, _) => {
+            (Request::Ctl(Ctl::Hello), _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} daemon is now {}",
@@ -174,7 +175,7 @@ impl Runtime {
                 };
             }
 
-            (Request::Terminate, ServiceId::Farcasterd) => {
+            (Request::Ctl(Ctl::Terminate), ServiceId::Farcasterd) => {
                 // terminate all runtimes
                 info!("Received terminate on {}", self.identity());
                 std::process::exit(0);

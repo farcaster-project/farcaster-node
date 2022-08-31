@@ -12,8 +12,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::request::{Failure, Progress, Request};
-use crate::bus::rpc::Rpc;
+use crate::bus::request::{Request};
+use crate::bus::rpc::{Progress, Failure, Rpc};
+use crate::bus::ctl::Ctl;
 use crate::bus::ServiceBus;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -285,9 +286,9 @@ where
         if !self.is_broker() {
             std::thread::sleep(core::time::Duration::from_secs(1));
             self.esb
-                .send_to(ServiceBus::Ctl, ServiceId::Farcasterd, Request::Hello)?;
+                .send_to(ServiceBus::Ctl, ServiceId::Farcasterd, Request::Ctl(Ctl::Hello))?;
             self.esb
-                .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Hello)?;
+                .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Ctl(Ctl::Hello))?;
         }
 
         let identity = self.esb.handler().identity();
@@ -339,7 +340,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Success(msg.map(|m| m.to_string()).into()),
+                Request::Rpc(Rpc::Success(msg.map(|m| m.to_string()).into())),
             )?;
         }
         Ok(())
@@ -356,7 +357,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Progress(Progress::Message(msg.to_string())),
+                Request::Rpc(Rpc::Progress(Progress::Message(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -373,7 +374,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Progress(Progress::StateTransition(msg.to_string())),
+                Request::Rpc(Rpc::Progress(Progress::StateTransition(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -391,7 +392,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Failure(failure.clone()),
+                Request::Rpc(Rpc::Failure(failure.clone())),
             );
         }
         Error::Terminate(failure.to_string())
