@@ -211,31 +211,25 @@ impl ElectrumRpc {
             match self.client.transaction_get(&tx_id) {
                 Ok(tx) => {
                     debug!("Updated tx: {}", &tx_id);
-                    let history_res;
                     // Look for history of the first output (maybe last is generally less likely
-                    // to be used multiple times, so more efficient?!)
-                    let entry = match self.client.script_get_history(&tx.output[0].script_pubkey) {
-                        Ok(history) => {
-                            history_res = history;
-                            match history_res
+                    // to be used multiple times, so more efficient?!). If the history call
+                    // fails or the transaction is not found in the history it is treated as unconfirmed.
+                    let height = match self
+                        .client
+                        .script_get_history(&tx.output[0].script_pubkey)
+                        .map_err(|err| SyncerError::Electrum(err))
+                        .and_then(|mut history| {
+                            history
                                 .iter()
-                                .find(|history_entry| history_entry.tx_hash == tx_id)
-                            {
-                                Some(entry) => entry,
-                                None => {
-                                    debug!(
-                                        "{} should be found in the history if we successfully queried `transaction_get` for it",
-                                        &tx_id
-                                    );
-                                    continue;
-                                }
-                            }
-                        }
+                                .position(|history_entry| history_entry.tx_hash == tx_id)
+                                .map(|pos| history.remove(pos))
+                                .ok_or(SyncerError::TxNotInHistory)
+                        }) {
+                        Ok(entry) => entry.height,
                         Err(err) => {
-                            trace!(
-                                "error getting script history for {}, treating as not found: {}",
-                                &tx_id,
-                                err
+                            debug!(
+                                "error getting script history for {}, treating as unconfirmed: {}",
+                                &tx_id, err
                             );
                             let mut state_guard = state.lock().await;
                             state_guard
@@ -251,18 +245,18 @@ impl ElectrumRpc {
                         }
                     };
 
-                    let (conf_in_block, blockhash) = match entry.height {
+                    let (conf_in_block, blockhash) = match height {
                         // Transaction unconfirmed (0 or -1)
                         i32::MIN..=0 => (None, None),
                         // Transaction confirmed at this height
                         1.. => {
                             // SAFETY: safe cast as it strictly greater than 0
-                            let confirm_height = entry.height as usize;
+                            let confirm_height = height as usize;
                             let block = match self.client.block_header(confirm_height) {
                                 Ok(block) => block,
                                 Err(err) => {
                                     debug!(
-                                        "error getting block header, treating as not found: {}",
+                                        "error getting block header, treating as unconfirmed: {}",
                                         err
                                     );
                                     let mut state_guard = state.lock().await;
@@ -289,7 +283,7 @@ impl ElectrumRpc {
                         Ok(block) => block.height as u64,
                         Err(err) => {
                             debug!(
-                                "error getting top block header, treating as not found: {}",
+                                "error getting top block header, treating as unconfirmed: {}",
                                 err
                             );
                             let mut state_guard = state.lock().await;
