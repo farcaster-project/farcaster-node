@@ -1055,7 +1055,7 @@ impl Runtime {
         );
 
         // in case it can't connect wait for it to crash
-        std::thread::sleep(Duration::from_secs_f32(0.5));
+        std::thread::sleep(Duration::from_secs_f32(0.1));
 
         // status is Some if peerd returns because it crashed
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
@@ -1123,7 +1123,7 @@ impl Runtime {
         );
 
         // in case it can't connect wait for it to crash
-        std::thread::sleep(Duration::from_secs_f32(0.5));
+        std::thread::sleep(Duration::from_secs_f32(0.1));
 
         // status is Some if peerd returns because it crashed
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
