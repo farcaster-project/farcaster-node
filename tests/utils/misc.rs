@@ -1,6 +1,6 @@
 //! Miscellaneous helper functions.
 
-use farcaster_node::rpc::Request;
+use farcaster_node::bus::Request;
 use internet2::transport::MAX_FRAME_SIZE;
 use internet2::Decrypt;
 use internet2::PlainTranscoder;

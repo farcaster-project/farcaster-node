@@ -3,9 +3,8 @@ extern crate log;
 
 use bitcoincore_rpc::RpcApi;
 use farcaster_core::swap::SwapId;
-use farcaster_node::rpc::request::{
-    BitcoinFundingInfo, CheckpointEntry, MoneroFundingInfo, NodeInfo,
-};
+use farcaster_node::bus::ctl::{BitcoinFundingInfo, MoneroFundingInfo};
+use farcaster_node::bus::rpc::{CheckpointEntry, NodeInfo};
 use futures::future::join_all;
 use std::collections::HashSet;
 use std::sync::Arc;

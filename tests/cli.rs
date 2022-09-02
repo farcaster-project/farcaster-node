@@ -1,7 +1,7 @@
 use std::time;
 use utils::fc::*;
 
-use farcaster_node::rpc::request::MadeOffer;
+use farcaster_node::bus::rpc::MadeOffer;
 
 #[macro_use]
 extern crate log;

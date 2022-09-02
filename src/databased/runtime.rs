@@ -645,6 +645,7 @@ impl Database {
 
 #[test]
 fn test_lmdb_state() {
+    use crate::bus::ctl::Outcome;
     use std::str::FromStr;
 
     let val1 = vec![0, 1];
@@ -722,7 +723,7 @@ fn test_lmdb_state() {
     assert_eq!(offer_1, offers_retrieved[0].offer);
 
     database
-        .set_offer_status(&offer_1, &OfferStatus::Ended(request::Outcome::Buy))
+        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::Buy))
         .unwrap();
     let offers_retrieved = database.get_offers(OfferStatusSelector::Ended).unwrap();
     assert_eq!(offer_1, offers_retrieved[0].offer);
@@ -733,7 +734,7 @@ fn test_lmdb_state() {
     let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
     let status_1 = OfferStatusPair {
         offer: offer_1,
-        status: OfferStatus::Ended(request::Outcome::Buy),
+        status: OfferStatus::Ended(Outcome::Buy),
     };
     let status_2 = OfferStatusPair {
         offer: offer_2,
