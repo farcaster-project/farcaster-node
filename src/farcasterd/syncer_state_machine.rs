@@ -176,7 +176,13 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
             }
         }
 
-        _ => Ok(None),
+        req => {
+            warn!(
+                "Request {} from {} invalid for state start - invalidating.",
+                req, event.source
+            );
+            Ok(None)
+        }
     }
 }
 

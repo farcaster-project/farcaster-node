@@ -379,17 +379,10 @@ fn attempt_transition_to_make_offer(
             }
         }
         req => {
-            if let Request::Hello = req {
-                trace!(
-                    "Request {} invalid for state start maker - invalidating.",
-                    req
-                );
-            } else {
-                warn!(
-                    "Request {} invalid for state start maker - invalidating.",
-                    req
-                );
-            }
+            warn!(
+                "Request {} from {} invalid for state start maker - invalidating.",
+                req, event.source
+            );
             Ok(None)
         }
     }
@@ -505,17 +498,10 @@ fn attempt_transition_to_take_offer(
             }
         }
         req => {
-            if let Request::Hello = req {
-                trace!(
-                    "Request {} invalid for state start restore - invalidating.",
-                    req
-                );
-            } else {
-                warn!(
-                    "Request {} invalid for state start restore - invalidating.",
-                    req
-                );
-            }
+            warn!(
+                "Request {} from {} invalid for state start restore - invalidating.",
+                req, event.source,
+            );
             Ok(None)
         }
     }
@@ -605,17 +591,10 @@ fn attempt_transition_to_restoring_swapd(
             })))
         }
         req => {
-            if let Request::Hello = req {
-                trace!(
-                    "Request {} invalid for state start restore - invalidating.",
-                    req
-                );
-            } else {
-                warn!(
-                    "Request {} invalid for state start restore - invalidating.",
-                    req
-                );
-            }
+            warn!(
+                "Request {} from {} invalid for state start restore - invalidating.",
+                req, event.source,
+            );
             Ok(None)
         }
     }
