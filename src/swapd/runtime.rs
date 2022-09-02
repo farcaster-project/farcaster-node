@@ -2076,58 +2076,56 @@ impl Runtime {
                 }
             }
 
-            Request::SweepAddress(sweep_address) => {
-                match sweep_address {
-                    SweepAddressAddendum::Bitcoin(sweep_btc) => {
-                        info!(
-                            "{} | Sweeping source (funding) address: {} to destination address: {}",
-                            self.swap_id, sweep_btc.source_address, sweep_btc.destination_address
-                        );
-                        let task = self.syncer_state.sweep_btc(sweep_btc.clone(), false);
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            Request::SyncerTask(task),
-                        )?;
-                    }
-                    SweepAddressAddendum::Monero(sweep_xmr) => {
-                        let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), false);
-                        let acc_confs_needs = self.temporal_safety.sweep_monero_thr
-                            - self.temporal_safety.xmr_finality_thr;
-                        let sweep_block =
-                            self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
-                        info!(
-                            "{} | Tx {} needs {}, and has {} {}",
-                            self.swap_id.bright_blue_italic(),
-                            TxLabel::AccLock.bright_white_bold(),
-                            "10 confirmations".bright_green_bold(),
-                            (10 - acc_confs_needs).bright_green_bold(),
-                            "confirmations".bright_green_bold(),
-                        );
-                        info!(
-                            "{} | {} reaches your address {} around block {}",
-                            self.swap_id.bright_blue_italic(),
-                            Blockchain::Monero.bright_white_bold(),
-                            sweep_xmr.destination_address.bright_yellow_bold(),
-                            sweep_block.bright_blue_bold(),
-                        );
-                        warn!(
-                            "Peerd might crash, just ignore it, counterparty closed\
-                               connection but you don't need it anymore!"
-                        );
-                        let request = Request::SyncerTask(task);
-                        let dest = self.syncer_state.monero_syncer();
-                        let pending_request = PendingRequest::new(
-                            self.identity(),
-                            dest.clone(),
-                            ServiceBus::Ctl,
-                            request,
-                        );
-                        self.pending_requests.defer_request(dest, pending_request);
-                    }
+            Request::SweepAddress(sweep_address) => match sweep_address {
+                SweepAddressAddendum::Bitcoin(sweep_btc) => {
+                    info!(
+                        "{} | Sweeping source (funding) address: {} to destination address: {}",
+                        self.swap_id, sweep_btc.source_address, sweep_btc.destination_address
+                    );
+                    let task = self.syncer_state.sweep_btc(sweep_btc.clone(), false);
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        self.syncer_state.bitcoin_syncer(),
+                        Request::SyncerTask(task),
+                    )?;
                 }
-            }
+                SweepAddressAddendum::Monero(sweep_xmr) => {
+                    let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), false);
+                    let acc_confs_needs = self.temporal_safety.sweep_monero_thr
+                        - self.temporal_safety.xmr_finality_thr;
+                    let sweep_block =
+                        self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
+                    info!(
+                        "{} | Tx {} needs {}, and has {} {}",
+                        self.swap_id.bright_blue_italic(),
+                        TxLabel::AccLock.bright_white_bold(),
+                        "10 confirmations".bright_green_bold(),
+                        (10 - acc_confs_needs).bright_green_bold(),
+                        "confirmations".bright_green_bold(),
+                    );
+                    info!(
+                        "{} | {} reaches your address {} around block {}",
+                        self.swap_id.bright_blue_italic(),
+                        Blockchain::Monero.bright_white_bold(),
+                        sweep_xmr.destination_address.bright_yellow_bold(),
+                        sweep_block.bright_blue_bold(),
+                    );
+                    warn!(
+                        "Peerd might crash, just ignore it, counterparty closed\
+                               connection but you don't need it anymore!"
+                    );
+                    let request = Request::SyncerTask(task);
+                    let dest = self.syncer_state.monero_syncer();
+                    let pending_request = PendingRequest::new(
+                        self.identity(),
+                        dest.clone(),
+                        ServiceBus::Ctl,
+                        request,
+                    );
+                    self.pending_requests.defer_request(dest, pending_request);
+                }
+            },
 
             Request::Protocol(Msg::RefundProcedureSignatures(refund_proc_sigs))
                 if self.state.reveal()

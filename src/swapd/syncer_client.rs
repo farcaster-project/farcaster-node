@@ -3,8 +3,9 @@ use crate::{
     service::{Endpoints, LogStyle},
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
-        SweepAddress, SweepAddressAddendum, TaskTarget, TransactionBroadcasted, WatchAddress,
-        WatchEstimateFee, WatchHeight, WatchTransaction, XmrAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress,
+        SweepAddress, SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress, TaskTarget,
+        TransactionBroadcasted, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
+        XmrAddressAddendum,
     },
     Error,
 };
