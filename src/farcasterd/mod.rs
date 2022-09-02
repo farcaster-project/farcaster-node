@@ -15,8 +15,9 @@
 #[cfg(feature = "shell")]
 mod opts;
 mod runtime;
+mod syncer_state_machine;
+mod trade_state_machine;
 
 #[cfg(feature = "shell")]
 pub use opts::Opts;
-pub use runtime::launch;
 pub use runtime::run;

@@ -47,6 +47,7 @@ pub mod cli;
 #[cfg(feature = "_rpc")]
 pub mod config;
 pub mod error;
+pub mod event;
 #[cfg(feature = "shell")]
 pub mod opts;
 #[cfg(feature = "_rpc")]

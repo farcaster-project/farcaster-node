@@ -941,7 +941,6 @@ pub enum Progress {
 )]
 #[display(NodeInfo::to_yaml_string)]
 pub struct NodeInfo {
-    pub node_ids: Vec<internet2::addr::NodeId>,
     pub listens: Vec<InetSocketAddr>,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
