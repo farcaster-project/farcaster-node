@@ -153,9 +153,11 @@ pub struct SwapdRunning {
 impl StateMachine<Runtime, Error> for TradeStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
         match self {
-            TradeStateMachine::StartTaker => transition_to_take_offer(event, runtime),
-            TradeStateMachine::StartMaker => transition_to_make_offer(event, runtime),
-            TradeStateMachine::StartRestore => transition_to_restoring_swapd(event, runtime),
+            TradeStateMachine::StartTaker => attempt_transition_to_take_offer(event, runtime),
+            TradeStateMachine::StartMaker => attempt_transition_to_make_offer(event, runtime),
+            TradeStateMachine::StartRestore => {
+                attempt_transition_to_restoring_swapd(event, runtime)
+            }
             TradeStateMachine::MakeOffer(make_offer) => {
                 attempt_transition_to_taker_committed(event, runtime, make_offer)
             }
@@ -287,7 +289,7 @@ impl TradeStateMachine {
     }
 }
 
-fn transition_to_make_offer(
+fn attempt_transition_to_make_offer(
     mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -385,7 +387,7 @@ fn transition_to_make_offer(
     }
 }
 
-fn transition_to_take_offer(
+fn attempt_transition_to_take_offer(
     mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -511,7 +513,7 @@ fn transition_to_take_offer(
     }
 }
 
-fn transition_to_restoring_swapd(
+fn attempt_transition_to_restoring_swapd(
     mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
