@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::request::{Address, AddressSecretKey};
+use crate::bus::rpc::{Address, AddressSecretKey};
 use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
 use farcaster_core::swap::btcxmr::Offer;
 use std::io::{self, Read};
@@ -313,7 +313,7 @@ impl Exec for Command {
             }
 
             Command::NeedsFunding { blockchain } => {
-                runtime.request(ServiceId::Farcasterd, Request::NeedsFunding(blockchain))?;
+                runtime.request_rpc(ServiceId::Farcasterd, Rpc::NeedsFunding(blockchain))?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -321,16 +321,18 @@ impl Exec for Command {
                 source_address,
                 destination_address,
             } => {
-                runtime.request(
+                runtime.request_rpc(
                     ServiceId::Database,
-                    Request::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
+                    Rpc::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
-                if let Request::AddressSecretKey(AddressSecretKey::Bitcoin { secret_key, .. }) =
-                    runtime.report_failure()?
+                if let Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                    secret_key,
+                    ..
+                })) = runtime.report_failure()?
                 {
-                    runtime.request(
+                    runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Request::SweepBitcoinAddress(SweepBitcoinAddress {
+                        Ctl::SweepBitcoinAddress(SweepBitcoinAddress {
                             source_address,
                             source_secret_key: secret_key,
                             destination_address,
@@ -346,16 +348,19 @@ impl Exec for Command {
                 source_address,
                 destination_address,
             } => {
-                runtime.request(
+                runtime.request_rpc(
                     ServiceId::Database,
-                    Request::GetAddressSecretKey(Address::Monero(source_address)),
+                    Rpc::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
-                if let Request::AddressSecretKey(AddressSecretKey::Monero { view, spend, .. }) =
-                    runtime.report_failure()?
+                if let Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                    view,
+                    spend,
+                    ..
+                })) = runtime.report_failure()?
                 {
-                    runtime.request(
+                    runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Request::SweepMoneroAddress(SweepMoneroAddress {
+                        Ctl::SweepMoneroAddress(SweepMoneroAddress {
                             source_spend_key: spend,
                             source_view_key: view,
                             destination_address,

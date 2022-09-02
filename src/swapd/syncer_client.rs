@@ -14,6 +14,7 @@ use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel}
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+    bus::sync::SyncMsg,
     bus::Request,
     syncerd::{Task, TaskId},
     ServiceId,
@@ -417,25 +418,25 @@ impl SyncerState {
         let identity = ServiceId::Swap(self.swap_id.clone());
         let task = self.estimate_fee_btc();
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::SyncerTask(task),
+            Request::Sync(SyncMsg::Task(task)),
         )?;
         let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::SyncerTask(watch_height_btc_task),
+            Request::Sync(SyncMsg::Task(watch_height_btc_task)),
         )?;
         // assumes xmr syncer will be up as well at this point
         let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity,
             self.monero_syncer(),
-            Request::SyncerTask(watch_height_xmr_task),
+            Request::Sync(SyncMsg::Task(watch_height_xmr_task)),
         )?;
         Ok(())
     }

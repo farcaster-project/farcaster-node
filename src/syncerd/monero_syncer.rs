@@ -1,4 +1,4 @@
-use crate::bus::request::SyncerdBridgeEvent;
+use crate::bus::sync::{BridgeEvent, SyncMsg};
 use crate::bus::Request;
 use crate::error::{Error, SyncerError};
 use crate::service::LogStyle;
@@ -380,7 +380,7 @@ impl MoneroSyncer {
 async fn run_syncerd_task_receiver(
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
-    tx_event: TokioSender<SyncerdBridgeEvent>,
+    tx_event: TokioSender<BridgeEvent>,
 ) {
     tokio::spawn(async move {
         loop {
@@ -422,7 +422,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::BroadcastTransaction(task) => {
                             error!("broadcast transaction not available for Monero");
-                            tx_event.send(SyncerdBridgeEvent{
+                            tx_event.send(BridgeEvent{
                                 event: Event::TransactionBroadcasted(TransactionBroadcasted {
                                     id: task.id,
                                     tx: task.tx,
@@ -728,7 +728,7 @@ fn unseen_transaction_polling(
 
 async fn run_syncerd_bridge_event_sender(
     tx: zmq::Socket,
-    mut event_rx: TokioReceiver<SyncerdBridgeEvent>,
+    mut event_rx: TokioReceiver<BridgeEvent>,
     syncer_address: Vec<u8>,
 ) {
     tokio::spawn(async move {
@@ -737,7 +737,7 @@ async fn run_syncerd_bridge_event_sender(
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
 
-            let request = Request::SyncerdBridgeEvent(event);
+            let request = Request::Sync(SyncMsg::BridgeEvent(event));
             trace!("sending request over syncerd bridge: {:?}", request);
             writer
                 .send_routed(
@@ -797,8 +797,8 @@ impl Synclet for MoneroSyncer {
                                 .wallet(),
                         ));
                         let (event_tx, event_rx): (
-                            TokioSender<SyncerdBridgeEvent>,
-                            TokioReceiver<SyncerdBridgeEvent>,
+                            TokioSender<BridgeEvent>,
+                            TokioReceiver<BridgeEvent>,
                         ) = tokio::sync::mpsc::channel(120);
                         let state = Arc::new(Mutex::new(SyncerState::new(
                             event_tx.clone(),

@@ -13,22 +13,20 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::{Ctl, GetKeys};
+use crate::bus::ctl::{BitcoinFundingInfo, Ctl, GetKeys, MoneroFundingInfo};
 use crate::bus::msg::{self, Msg};
 use crate::bus::rpc::NodeInfo;
+use crate::bus::sync::SyncMsg;
 use crate::bus::{request, Request, ServiceBus};
 use crate::event::{Event, StateMachine};
-use crate::farcasterd::runtime::request::{
-    OfferStatusSelector,
-};
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
-    bus::request::{
-        BitcoinFundingInfo, Keys, MoneroFundingInfo, OfferInfo, Outcome,
+    bus::ctl::{Keys, LaunchSwap, Outcome, Token},
+    bus::rpc::{
+        CheckpointEntry, Failure, FailureCode, OfferInfo, OfferStatusSelector, Progress,
+        ProgressEvent, Rpc, SwapProgress,
     },
-    bus::ctl::{Token, LaunchSwap},
-    bus::rpc::{Rpc, CheckpointEntry, Failure, FailureCode, Progress, ProgressEvent, SwapProgress},
     clap::Parser,
     error::SyncerError,
     service::Endpoints,
@@ -111,9 +109,9 @@ pub fn run(
 }
 
 pub struct Runtime {
-    identity: ServiceId,                             // Set on Runtime instantiation
-    wallet_token: Token,                             // Set on Runtime instantiation
-    started: SystemTime,                             // Set on Runtime instantiation
+    identity: ServiceId,                         // Set on Runtime instantiation
+    wallet_token: Token,                         // Set on Runtime instantiation
+    started: SystemTime,                         // Set on Runtime instantiation
     node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
     node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
     pub listens: HashSet<InetSocketAddr>, // Set by MakeOffer, contains unique socket addresses of the binding peerd listeners.
@@ -282,7 +280,7 @@ impl Runtime {
         source: ServiceId,
         request: Request,
     ) -> Result<(), Error> {
-        match request.clone() {
+        match request {
             Request::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
@@ -381,61 +379,10 @@ impl Runtime {
                 }
             }
 
-            Request::Keys(Keys(sk, pk)) => {
+            Request::Ctl(Ctl::Keys(Keys(sk, pk))) => {
                 debug!("received peerd keys {}", sk.display_secret());
                 self.node_secret_key = Some(sk);
                 self.node_public_key = Some(pk);
-            }
-
-            Request::NeedsFunding(Blockchain::Monero) => {
-                let funding_infos: Vec<MoneroFundingInfo> = self
-                    .trade_state_machines
-                    .iter()
-                    .filter_map(|tsm| tsm.needs_funding_monero())
-                    .collect();
-                let len = funding_infos.len();
-                let res = funding_infos
-                    .iter()
-                    .enumerate()
-                    .map(|(i, funding_info)| {
-                        let mut res = format!("{}", funding_info);
-                        if i < len - 1 {
-                            res.push('\n');
-                        }
-                        res
-                    })
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source,
-                    Request::String(res),
-                )?;
-            }
-            Request::NeedsFunding(Blockchain::Bitcoin) => {
-                let funding_infos: Vec<BitcoinFundingInfo> = self
-                    .trade_state_machines
-                    .iter()
-                    .filter_map(|tsm| tsm.needs_funding_bitcoin())
-                    .collect();
-                let len = funding_infos.len();
-                let res = funding_infos
-                    .iter()
-                    .enumerate()
-                    .map(|(i, funding_info)| {
-                        let mut res = format!("{}", funding_info);
-                        if i < len - 1 {
-                            res.push('\n');
-                        }
-                        res
-                    })
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source,
-                    Request::String(res),
-                )?;
             }
 
             Request::Ctl(Ctl::PeerdTerminated) => {
@@ -456,8 +403,8 @@ impl Runtime {
                 }
             }
 
-            _ => {
-                self.process_request_with_state_machines(request, source, endpoints)?;
+            req => {
+                self.process_request_with_state_machines(req, source, endpoints)?;
             }
         }
 
@@ -695,6 +642,58 @@ impl Runtime {
                 // if no swap service exists no subscription need to be removed
             }
 
+            Rpc::NeedsFunding(Blockchain::Monero) => {
+                let funding_infos: Vec<MoneroFundingInfo> = self
+                    .trade_state_machines
+                    .iter()
+                    .filter_map(|tsm| tsm.needs_funding_monero())
+                    .collect();
+                let len = funding_infos.len();
+                let res = funding_infos
+                    .iter()
+                    .enumerate()
+                    .map(|(i, funding_info)| {
+                        let mut res = format!("{}", funding_info);
+                        if i < len - 1 {
+                            res.push('\n');
+                        }
+                        res
+                    })
+                    .collect();
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    self.identity(),
+                    source,
+                    Request::Rpc(Rpc::String(res)),
+                )?;
+            }
+
+            Rpc::NeedsFunding(Blockchain::Bitcoin) => {
+                let funding_infos: Vec<BitcoinFundingInfo> = self
+                    .trade_state_machines
+                    .iter()
+                    .filter_map(|tsm| tsm.needs_funding_bitcoin())
+                    .collect();
+                let len = funding_infos.len();
+                let res = funding_infos
+                    .iter()
+                    .enumerate()
+                    .map(|(i, funding_info)| {
+                        let mut res = format!("{}", funding_info);
+                        if i < len - 1 {
+                            res.push('\n');
+                        }
+                        res
+                    })
+                    .collect();
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    self.identity(),
+                    source,
+                    Request::Rpc(Rpc::String(res)),
+                )?;
+            }
+
             req => {
                 warn!("Ignoring request: {}", req.err());
             }
@@ -712,7 +711,12 @@ impl Runtime {
                     respond_to.bright_yellow_bold(),
                     resp.bright_blue_bold(),
                 );
-                endpoints.send_to(ServiceBus::Rpc, self.identity(), respond_to, Request::Rpc(resp))?;
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    self.identity(),
+                    respond_to,
+                    Request::Rpc(resp),
+                )?;
             }
         }
         trace!("Processed all cli notifications");
@@ -767,7 +771,7 @@ impl Runtime {
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Database,
-            Request::RemoveCheckpoint(*swap_id),
+            Request::Ctl(Ctl::RemoveCheckpoint(*swap_id)),
         )?;
 
         self.registered_services = self
@@ -876,12 +880,16 @@ impl Runtime {
         source: ServiceId,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
-            (Request::SweepMoneroAddress(..), _) | (Request::SweepBitcoinAddress(..), _) => {
+            (Request::Ctl(Ctl::SweepMoneroAddress(..)), _)
+            | (Request::Ctl(Ctl::SweepBitcoinAddress(..)), _) => {
                 Ok(Some(SyncerStateMachine::Start))
             }
-            (Request::SyncerEvent(SyncerEvent::SweepSuccess(SweepSuccess { id, .. })), _) => {
-                Ok(self.syncer_state_machines.remove(&id))
-            }
+            (
+                Request::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
+                    id, ..
+                }))),
+                _,
+            ) => Ok(self.syncer_state_machines.remove(&id)),
             _ => Ok(None),
         }
     }
@@ -921,10 +929,10 @@ impl Runtime {
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
             (Request::Ctl(Ctl::PeerdUnreachable(..)), ServiceId::Swap(swap_id))
-            | (Request::FundingInfo(..), ServiceId::Swap(swap_id))
-            | (Request::FundingCanceled(..), ServiceId::Swap(swap_id))
-            | (Request::FundingCompleted(..), ServiceId::Swap(swap_id))
-            | (Request::SwapOutcome(..), ServiceId::Swap(swap_id)) => Ok(self
+            | (Request::Ctl(Ctl::FundingInfo(..)), ServiceId::Swap(swap_id))
+            | (Request::Ctl(Ctl::FundingCanceled(..)), ServiceId::Swap(swap_id))
+            | (Request::Ctl(Ctl::FundingCompleted(..)), ServiceId::Swap(swap_id))
+            | (Request::Ctl(Ctl::SwapOutcome(..)), ServiceId::Swap(swap_id)) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -1270,6 +1278,14 @@ pub fn launch(
 
     if let Some(x) = &matches.value_of("ctl-socket") {
         cmd.args(&["-x", x]);
+    }
+
+    if let Some(y) = &matches.value_of("rpc-socket") {
+        cmd.args(&["-R", y]);
+    }
+
+    if let Some(s) = &matches.value_of("sync-socket") {
+        cmd.args(&["-S", s]);
     }
 
     // Forward tor proxy argument

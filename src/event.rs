@@ -52,6 +52,12 @@ impl<'esb> Event<'esb> {
             .send_to(ServiceBus::Ctl, self.service, self.source, request)
     }
 
+    /// Finalizes event processing by sending reply request via RPC message bus
+    pub fn complete_rpc(self, request: Request) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints
+            .send_to(ServiceBus::Rpc, self.service, self.source, request)
+    }
+
     /// Finalizes event processing by sending reply request via CTL message bus to a specific
     /// service (different from the event originating service).
     pub fn complete_ctl_service(

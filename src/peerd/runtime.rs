@@ -315,12 +315,13 @@ impl esb::Handler<ServiceBus> for Runtime {
     ) -> Result<(), Self::Error> {
         match (bus, request) {
             // Peer-to-peer message bus
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            (ServiceBus::Msg, Request::Msg(req)) => self.handle_msg(endpoints, source, req),
             // Control bus for issuing internal commands
-            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            (ServiceBus::Ctl, Request::Ctl(req)) => self.handle_ctl(endpoints, source, req),
             // User issued command RPC bus, only accept Request::Rpc
             (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
+            // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
@@ -340,42 +341,35 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        message: Msg,
     ) -> Result<(), Error> {
-        match request.clone() {
-            Request::Msg(message) => {
-                // 1. Check permissions
-                // 2. Forward to the remote peer
-                debug!("Message type: {}", message.get_type());
-                debug!(
-                    "Forwarding peer message to the remote peer, request: {}",
-                    &request.get_type()
-                );
-                self.messages_sent += 1;
-                while let Err(err) = self.peer_sender.send_message(message.clone()) {
-                    debug!("Error sending to remote peer in peerd runtime: {}", err);
-                    // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
-                    if self.forked_from_listener {
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            Request::Ctl(Ctl::PeerdTerminated),
-                        )?;
-                        warn!("Exiting peerd");
-                        std::process::exit(0);
-                    }
-
-                    while let Err(err) = self.reconnect_peer() {
-                        warn!("error during reconnection attempt: {}", err);
-                    }
-                }
+        // 1. Check permissions
+        // 2. Forward to the remote peer
+        debug!("Message type: {}", message.get_type());
+        debug!(
+            "Forwarding peer message to the remote peer, request: {}",
+            &message.get_type()
+        );
+        self.messages_sent += 1;
+        while let Err(err) = self.peer_sender.send_message(message.clone()) {
+            debug!("Error sending to remote peer in peerd runtime: {}", err);
+            // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
+            if self.forked_from_listener {
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    Request::Ctl(Ctl::PeerdTerminated),
+                )?;
+                warn!("Exiting peerd");
+                std::process::exit(0);
             }
-            _ => {
-                error!("MSG RPC can be only used for forwarding Protocol Messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
+
+            while let Err(err) = self.reconnect_peer() {
+                warn!("error during reconnection attempt: {}", err);
             }
         }
+
         Ok(())
     }
 
@@ -383,10 +377,10 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: Ctl,
     ) -> Result<(), Error> {
         match request {
-            Request::Ctl(Ctl::Terminate) if source == ServiceId::Farcasterd => {
+            Ctl::Terminate if source == ServiceId::Farcasterd => {
                 info!("Terminating {}", self.identity().bright_white_bold());
                 std::process::exit(0);
             }
@@ -437,6 +431,7 @@ impl Runtime {
                 warn!("Ignoring request: {}", req.err());
             }
         }
+
         Ok(())
     }
 

@@ -1,16 +1,26 @@
-use crate::{ServiceId};
-use crate::bus::msg::{Commit};
+use std::fmt::{self, Debug};
+use std::str::FromStr;
 
 use farcaster_core::{
+    blockchain::Blockchain,
     role::TradeRole,
-    swap::btcxmr::{Parameters, Offer, PublicOffer},
+    swap::btcxmr::{Offer, Parameters, PublicOffer},
     swap::SwapId,
 };
 
-use bitcoin::{ secp256k1::{ SecretKey,}};
+use amplify::ToYamlString;
+use bitcoin::secp256k1::SecretKey;
+use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
 use strict_encoding::{StrictDecode, StrictEncode};
+
+use crate::bus::msg::Commit;
+use crate::bus::rpc::{AddressSecretKey, OfferStatus};
+use crate::swapd::CheckpointSwapd;
+use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
+use crate::walletd::runtime::CheckpointWallet;
+use crate::{Error, ServiceId};
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "strict")]
@@ -39,14 +49,6 @@ pub enum Ctl {
     #[api(type = 197)]
     #[display("params({0})")]
     Params(Params),
-
-    //#[api(type = 7)]
-    //#[display("reconnect_peer({0})")]
-    //ReconnectPeer(ReconnectPeer),
-
-    //#[api(type = 32)]
-    //#[display("node_id({0})")]
-    //NodeId(NodeId),
 
     #[api(type = 6)]
     #[display("peerd_unreachable({0})")]
@@ -83,6 +85,75 @@ pub enum Ctl {
     #[api(type = 192)]
     #[display("abort_swap()")]
     AbortSwap,
+
+    #[api(type = 36)]
+    #[display("get_sweep_bitcoin_address({0})")]
+    GetSweepBitcoinAddress(bitcoin::Address),
+
+    #[api(type = 1310)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SweepBitcoinAddress(SweepBitcoinAddress),
+
+    #[api(type = 1303)]
+    #[display("task({0})", alt = "{0:#}")]
+    #[from]
+    SweepMoneroAddress(SweepMoneroAddress),
+
+    #[api(type = 1314)]
+    #[display("set_address_secret_key")]
+    SetAddressSecretKey(AddressSecretKey),
+
+    #[api(type = 45)]
+    #[display("funding_updated()")]
+    FundingUpdated,
+
+    /// Communicates the result of a swap to services like farcasterd and walletd
+    #[api(type = 46)]
+    #[display("swap_outcome({0})")]
+    SwapOutcome(Outcome),
+
+    #[api(type = 1304)]
+    #[display("checkpoint({0})", alt = "{0:#}")]
+    #[from]
+    Checkpoint(Checkpoint),
+
+    #[api(type = 1307)]
+    #[display("remove_checkpoint")]
+    RemoveCheckpoint(SwapId),
+
+    #[api(type = 1315)]
+    #[display("set_offer_history({0})")]
+    SetOfferStatus(OfferStatusPair),
+
+    #[api(type = 28)]
+    #[display("keys({0})")]
+    Keys(Keys),
+
+    #[api(type = 1108)]
+    #[display("funding_info({0})")]
+    #[from]
+    FundingInfo(FundingInfo),
+
+    #[api(type = 195)]
+    #[display("bitcoin_address({0})")]
+    BitcoinAddress(BitcoinAddress),
+
+    #[api(type = 194)]
+    #[display("monero_address({0})")]
+    MoneroAddress(MoneroAddress),
+
+    #[api(type = 1111)]
+    #[display("funding_completed({0})")]
+    FundingCompleted(Blockchain),
+
+    #[api(type = 1112)]
+    #[display("funding_canceled({0})")]
+    FundingCanceled(Blockchain),
+
+    #[api(type = 196)]
+    #[display("transaction({0})")]
+    Tx(Tx),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
@@ -143,4 +214,159 @@ pub struct InitSwap {
     pub swap_id: SwapId,
     pub remote_commit: Option<Commit>,
     pub funding_address: Option<bitcoin::Address>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+pub enum Outcome {
+    #[display("Success(Swapped)")]
+    Buy,
+    #[display("Failure(Refunded)")]
+    Refund,
+    #[display("Failure(Punished)")]
+    Punish,
+    #[display("Failure(Aborted)")]
+    Abort,
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display(Debug)]
+pub struct Checkpoint {
+    pub swap_id: SwapId,
+    pub state: CheckpointState,
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+pub enum CheckpointState {
+    #[display("Checkpoint Wallet")]
+    CheckpointWallet(CheckpointWallet),
+    #[display("Checkpoint Swap")]
+    CheckpointSwapd(CheckpointSwapd),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
+#[display(format_keys)]
+pub struct Keys(
+    pub bitcoin::secp256k1::SecretKey,
+    pub bitcoin::secp256k1::PublicKey,
+);
+
+fn format_keys(keys: &Keys) -> String {
+    format!("sk: {}, pk: {}", keys.0.display_secret(), keys.1,)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[display("{offer}, {status}")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(OfferStatusPair::to_yaml_string)]
+pub struct OfferStatusPair {
+    pub offer: PublicOffer,
+    pub status: OfferStatus,
+}
+
+#[cfg(feature = "serde")]
+impl ToYamlString for OfferStatusPair {}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+pub enum FundingInfo {
+    #[display("bitcoin(..)")]
+    Bitcoin(BitcoinFundingInfo),
+    #[display("monero(..)")]
+    Monero(MoneroFundingInfo),
+}
+
+#[derive(Clone, Debug, StrictDecode, StrictEncode)]
+pub struct BitcoinFundingInfo {
+    pub swap_id: SwapId,
+    pub address: bitcoin::Address,
+    pub amount: bitcoin::Amount,
+}
+
+impl FromStr for BitcoinFundingInfo {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Error> {
+        let content: Vec<&str> = s.split(' ').collect();
+
+        Ok(BitcoinFundingInfo {
+            swap_id: SwapId::from_str(content[0])?,
+            amount: bitcoin::Amount::from_str(&format!("{} {}", content[2], content[3]))?,
+            address: bitcoin::Address::from_str(content[5])?,
+        })
+    }
+}
+
+impl fmt::Display for BitcoinFundingInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:#?} needs {} to {}",
+            self.swap_id, self.amount, self.address
+        )
+    }
+}
+
+#[derive(Clone, Debug, StrictEncode, StrictDecode)]
+pub struct MoneroFundingInfo {
+    pub swap_id: SwapId,
+    pub amount: monero::Amount,
+    pub address: monero::Address,
+}
+
+impl FromStr for MoneroFundingInfo {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Error> {
+        let content: Vec<&str> = s.split(' ').collect();
+        Ok(MoneroFundingInfo {
+            swap_id: SwapId::from_str(content[0])?,
+            amount: monero::Amount::from_str_with_denomination(&format!(
+                "{} {}",
+                content[2], content[3]
+            ))?,
+
+            address: monero::Address::from_str(content[5])?,
+        })
+    }
+}
+
+impl fmt::Display for MoneroFundingInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:#?} needs {} to {}",
+            self.swap_id, self.amount, self.address
+        )
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("{1}")]
+pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[display("{1}")]
+pub struct MoneroAddress(pub SwapId, pub monero::Address);
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display(inner)]
+pub enum Tx {
+    #[display("lock(..)")]
+    Lock(Transaction),
+    #[display("buy(..)")]
+    Buy(Transaction),
+    #[display("funding(..)")]
+    Funding(Transaction),
+    #[display("cancel(..)")]
+    Cancel(Transaction),
+    #[display("refund(..)")]
+    Refund(Transaction),
+    #[display("punish(..)")]
+    Punish(Transaction),
 }

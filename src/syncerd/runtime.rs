@@ -12,28 +12,29 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::bus::{
+    ctl::Ctl,
+    rpc::{Rpc, SyncerInfo},
+    sync::SyncMsg,
+    Request, ServiceBus,
+};
 use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::Opts;
+use crate::syncerd::*;
 use crate::CtlServer;
-use farcaster_core::blockchain::{Blockchain, Network};
+use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
+
 use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, SystemTime};
 
+use farcaster_core::blockchain::{Blockchain, Network};
 use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
-
-use crate::bus::{
-    ctl::Ctl,
-    rpc::{Rpc, SyncerInfo},
-    Request, ServiceBus,
-};
-use crate::syncerd::*;
-use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 pub trait Synclet {
     fn run(
@@ -112,12 +113,12 @@ impl esb::Handler<ServiceBus> for Runtime {
         match (bus, request) {
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for internal command
-            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            (ServiceBus::Ctl, Request::Ctl(req)) => self.handle_ctl(endpoints, source, req),
             // User issued command RPC bus, only accept Request::Rpc
             (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             // Syncer event bus
-            (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
-            (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
+            (ServiceBus::Sync, Request::Sync(req)) => self.handle_sync(endpoints, source, req),
+            (ServiceBus::Bridge, Request::Sync(req)) => self.handle_bridge(endpoints, source, req),
             (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
@@ -154,10 +155,10 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: Ctl,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Ctl(Ctl::Hello), _) => {
+            (Ctl::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} daemon is now {}",
@@ -165,17 +166,8 @@ impl Runtime {
                     "connected".bright_green_bold()
                 );
             }
-            (Request::SyncerTask(task), _) => {
-                match self.tx.send(SyncerdTask {
-                    task: task.clone(),
-                    source,
-                }) {
-                    Ok(()) => trace!("Task successfully sent to syncer runtime"),
-                    Err(e) => error!("Failed to send task with error: {}", e.to_string()),
-                };
-            }
 
-            (Request::Ctl(Ctl::Terminate), ServiceId::Farcasterd) => {
+            (Ctl::Terminate, ServiceId::Farcasterd) => {
                 // terminate all runtimes
                 info!("Received terminate on {}", self.identity());
                 std::process::exit(0);
@@ -239,10 +231,25 @@ impl Runtime {
     fn handle_sync(
         &mut self,
         _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: Request,
+        source: ServiceId,
+        request: SyncMsg,
     ) -> Result<(), Error> {
-        // TODO
+        match request {
+            SyncMsg::Task(task) => {
+                match self.tx.send(SyncerdTask {
+                    task: task.clone(),
+                    source,
+                }) {
+                    Ok(()) => trace!("Task successfully sent to syncer runtime"),
+                    Err(e) => error!("Failed to send task with error: {}", e.to_string()),
+                };
+            }
+
+            req => {
+                warn!("Ignoring request: {}", req.err());
+            }
+        }
+
         Ok(())
     }
 
@@ -250,16 +257,16 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: SyncMsg,
     ) -> Result<(), Error> {
         debug!("Syncerd BRIDGE RPC request: {}", request);
         match request {
-            Request::SyncerdBridgeEvent(syncerd_bridge_event) => {
+            SyncMsg::BridgeEvent(syncerd_bridge_event) => {
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
                     syncerd_bridge_event.source,
-                    Request::SyncerEvent(syncerd_bridge_event.event),
+                    Request::Sync(SyncMsg::Event(syncerd_bridge_event.event)),
                 )?;
             }
 

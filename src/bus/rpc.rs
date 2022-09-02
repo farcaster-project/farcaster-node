@@ -1,20 +1,23 @@
+use std::fmt::{self, Debug, Display, Formatter};
+use std::str::FromStr;
+use std::time::Duration;
+
 use farcaster_core::{
-    role::TradeRole,
-    swap::btcxmr::PublicOffer,
-    swap::SwapId,
+    blockchain::Blockchain, role::TradeRole, swap::btcxmr::PublicOffer, swap::SwapId,
 };
 
-use microservices::rpc;
 use amplify::{ToYamlString, Wrapper};
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
+use microservices::rpc;
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds};
-use std::time::Duration;
-use std::fmt::{self, Debug, Display, Formatter};
 use strict_encoding::{StrictDecode, StrictEncode};
+use uuid::Uuid;
 
-use crate::bus::request::{Request, List, OfferInfo, OfferStatusPair, OfferStatusSelector};
+use crate::bus::ctl::{OfferStatusPair, Outcome};
+use crate::bus::request::{List, Request};
+use crate::cli::OfferSelector;
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
 #[api(encoding = "strict")]
@@ -51,6 +54,18 @@ pub enum Rpc {
     #[display("retrieve_all_checkpoint_info")]
     RetrieveAllCheckpointInfo,
 
+    #[api(type = 1311)]
+    #[display("get_address_secret_key({0})")]
+    GetAddressSecretKey(Address),
+
+    #[api(type = 1312)]
+    #[display("get_addresses({0})")]
+    GetAddresses(Blockchain),
+
+    #[api(type = 1109)]
+    #[display("needs_funding({0})")]
+    NeedsFunding(Blockchain),
+
     // Progress functionalities
     // ----------------
     #[api(type = 1003)]
@@ -85,6 +100,17 @@ pub enum Rpc {
     //
     // RESPONSES
     //
+    #[api(type = 1004)]
+    #[display(inner)]
+    String(String),
+
+    #[api(type = 206)]
+    #[display(inner)]
+    MadeOffer(MadeOffer),
+
+    #[api(type = 207)]
+    #[display(inner)]
+    TookOffer(TookOffer),
 
     // - GetInfo section
     #[api(type = 1099)]
@@ -146,10 +172,67 @@ pub enum Rpc {
     #[from]
     ListenList(List<String>),
     // - End ListListen section
-
     #[api(type = 1308)]
     #[display(inner)]
     CheckpointList(List<CheckpointEntry>),
+
+    // - GetAddressSecretKey section
+    #[api(type = 1319)]
+    #[display("address_secret_key")]
+    AddressSecretKey(AddressSecretKey),
+    // - End GetAddressSecretKey section
+
+    // - GetAddresses section
+    #[api(type = 1313)]
+    #[display("bitcoin_address_list({0})")]
+    BitcoinAddressList(List<bitcoin::Address>),
+
+    #[api(type = 1318)]
+    #[display("monero_address_list({0})")]
+    MoneroAddressList(List<String>),
+    // - End GetAddresses section
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(MadeOffer::to_yaml_string)]
+pub struct MadeOffer {
+    pub message: String,
+    pub offer_info: OfferInfo,
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(TookOffer::to_yaml_string)]
+pub struct TookOffer {
+    pub offerid: Uuid,
+    pub message: String,
+}
+
+impl StrictEncode for TookOffer {
+    fn strict_encode<W: std::io::Write>(&self, mut w: W) -> Result<usize, strict_encoding::Error> {
+        let mut len = self.offerid.to_bytes_le().strict_encode(&mut w)?;
+        len += self.message.strict_encode(&mut w)?;
+        Ok(len)
+    }
+}
+
+impl StrictDecode for TookOffer {
+    fn strict_decode<R: std::io::Read>(mut r: R) -> Result<Self, strict_encoding::Error> {
+        let offerid = Uuid::from_bytes_le(<[u8; 16]>::strict_decode(&mut r)?);
+        let message = String::strict_decode(&mut r)?;
+        Ok(TookOffer { offerid, message })
+    }
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -310,6 +393,78 @@ pub enum ProgressEvent {
     Failure(Failure),
 }
 
+#[derive(Eq, PartialEq, Clone, Debug, Display, StrictDecode, StrictEncode)]
+pub enum Address {
+    #[display("{0}")]
+    Bitcoin(bitcoin::Address),
+    #[display("{0}")]
+    Monero(monero::Address),
+}
+
+#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[display("address_secret_key")]
+pub enum AddressSecretKey {
+    Bitcoin {
+        address: bitcoin::Address,
+        secret_key: bitcoin::secp256k1::SecretKey,
+    },
+    Monero {
+        address: monero::Address,
+        view: monero::PrivateKey,
+        spend: monero::PrivateKey,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+pub enum OfferStatusSelector {
+    #[display("Open")]
+    Open,
+    #[display("In Progress")]
+    InProgress,
+    #[display("Ended")]
+    Ended,
+    #[display("All")]
+    All,
+}
+
+impl From<OfferSelector> for OfferStatusSelector {
+    fn from(offer_selector: OfferSelector) -> OfferStatusSelector {
+        match offer_selector {
+            OfferSelector::Open => OfferStatusSelector::Open,
+            OfferSelector::InProgress => OfferStatusSelector::InProgress,
+            OfferSelector::Ended => OfferStatusSelector::Ended,
+            OfferSelector::All => OfferStatusSelector::All,
+        }
+    }
+}
+
+impl FromStr for OfferStatusSelector {
+    type Err = ();
+    fn from_str(input: &str) -> Result<OfferStatusSelector, Self::Err> {
+        match input {
+            "open" | "Open" => Ok(OfferStatusSelector::Open),
+            "in_progress" | "inprogress" => Ok(OfferStatusSelector::Open),
+            "ended" | "Ended" => Ok(OfferStatusSelector::Ended),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+pub enum OfferStatus {
+    #[display("Open")]
+    Open,
+    #[display("In Progress")]
+    InProgress,
+    #[display("Ended({0})")]
+    Ended(Outcome),
+}
+
 /// Information about server-side failure returned through RPC API
 #[cfg_attr(
     feature = "serde",
@@ -407,6 +562,25 @@ impl IntoSuccessOrFailure for Result<(), crate::Error> {
     }
 }
 
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(OfferInfo::to_yaml_string)]
+pub struct OfferInfo {
+    pub offer: String,
+    pub details: PublicOffer,
+}
+
+#[cfg(feature = "serde")]
+impl ToYamlString for OfferInfo {}
+#[cfg(feature = "serde")]
+impl ToYamlString for MadeOffer {}
+#[cfg(feature = "serde")]
+impl ToYamlString for TookOffer {}
 #[cfg(feature = "serde")]
 impl ToYamlString for CheckpointEntry {}
 #[cfg(feature = "serde")]

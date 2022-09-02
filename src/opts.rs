@@ -119,7 +119,7 @@ pub struct Opts {
     /// Internal interface for syncer events protocol communications. Defaults
     /// to `sync.rpc` file inside `--data-dir` directory.
     #[clap(
-        short = 'y',
+        short = 'S',
         long,
         global = true,
         env = "FARCASTER_SYNC_SOCKET",

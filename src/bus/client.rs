@@ -12,7 +12,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::service::Endpoints;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -20,6 +19,7 @@ use internet2::ZmqSocketType;
 use microservices::esb;
 
 use crate::bus::{ctl::Ctl, rpc::Rpc, Request, ServiceBus};
+use crate::service::Endpoints;
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
 

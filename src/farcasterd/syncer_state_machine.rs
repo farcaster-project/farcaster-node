@@ -2,8 +2,10 @@ use bitcoin::hashes::{hex::ToHex, Hash};
 use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
-    bus::Request,
     bus::ctl::Ctl,
+    bus::rpc::Rpc,
+    bus::sync::SyncMsg,
+    bus::Request,
     error::Error,
     event::{Event, StateMachine},
     syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
@@ -111,7 +113,7 @@ fn transition_to_awaiting_syncer_or_awaiting_syncer_request(
 ) -> Result<Option<SyncerStateMachine>, Error> {
     let source = event.source.clone();
     match event.request.clone() {
-        Request::SweepMoneroAddress(sweep_monero_address) => {
+        Request::Ctl(Ctl::SweepMoneroAddress(sweep_monero_address)) => {
             let blockchain = Blockchain::Monero;
             let mut network = sweep_monero_address.destination_address.network.into();
 
@@ -144,7 +146,8 @@ fn transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 network,
                 &runtime.config,
             )? {
-                event.complete_ctl_service(service_id, Request::SyncerTask(syncer_task))?;
+                event
+                    .complete_ctl_service(service_id, Request::Sync(SyncMsg::Task(syncer_task)))?;
                 Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                     AwaitingSyncerRequest {
                         source,
@@ -162,7 +165,7 @@ fn transition_to_awaiting_syncer_or_awaiting_syncer_request(
             }
         }
 
-        Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
+        Request::Ctl(Ctl::SweepBitcoinAddress(sweep_bitcoin_address)) => {
             let blockchain = Blockchain::Bitcoin;
             let network = sweep_bitcoin_address.source_address.network.into();
 
@@ -184,7 +187,8 @@ fn transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 network,
                 &runtime.config,
             )? {
-                event.complete_ctl_service(service_id, Request::SyncerTask(syncer_task))?;
+                event
+                    .complete_ctl_service(service_id, Request::Sync(SyncMsg::Task(syncer_task)))?;
                 Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                     AwaitingSyncerRequest {
                         source,
@@ -219,7 +223,8 @@ fn transition_to_awaiting_syncer_request(
     } = awaiting_syncer;
     match (event.request.clone(), event.source.clone()) {
         (Request::Ctl(Ctl::Hello), syncer_id) if syncer == syncer_id => {
-            event.complete_ctl_service(syncer.clone(), Request::SyncerTask(syncer_task))?;
+            event
+                .complete_ctl_service(syncer.clone(), Request::Sync(SyncMsg::Task(syncer_task)))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                 AwaitingSyncerRequest {
                     source,
@@ -262,7 +267,7 @@ fn transition_to_end(
         syncer,
     } = awaiting_syncer_request;
     match (event.request.clone(), event.source.clone()) {
-        (Request::SyncerEvent(SyncerEvent::SweepSuccess(success)), syncer_id)
+        (Request::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(success))), syncer_id)
             if syncer == syncer_id && success.id == syncer_task_id =>
         {
             if let Some(Some(txid)) = success
@@ -273,13 +278,16 @@ fn transition_to_end(
             {
                 event.send_ctl_service(
                     source,
-                    Request::String(format!(
+                    Request::Rpc(Rpc::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
                         txid.to_hex()
-                    )),
+                    ))),
                 )?;
             } else {
-                event.send_ctl_service(source, Request::String("Nothing to sweep.".to_string()))?;
+                event.send_ctl_service(
+                    source,
+                    Request::Rpc(Rpc::String("Nothing to sweep.".to_string())),
+                )?;
             }
 
             runtime.registered_services = runtime

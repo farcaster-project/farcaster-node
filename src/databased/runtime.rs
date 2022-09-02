@@ -1,6 +1,3 @@
-use crate::databased::runtime::request::{
-    Address, OfferStatus, OfferStatusPair, OfferStatusSelector,
-};
 use crate::walletd::runtime::{CheckpointWallet, Wallet};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
@@ -14,9 +11,12 @@ use crate::Endpoints;
 use bitcoin::secp256k1::SecretKey;
 
 use crate::bus::{
-    ctl::{Ctl},
-    request::{self, Checkpoint, CheckpointState, List},
-    rpc::{Rpc, CheckpointEntry, Failure, FailureCode},
+    ctl::{Checkpoint, CheckpointState, Ctl, OfferStatusPair},
+    request::List,
+    rpc::{
+        Address, AddressSecretKey, CheckpointEntry, Failure, FailureCode, OfferStatus,
+        OfferStatusSelector, Rpc,
+    },
     Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -107,7 +107,7 @@ impl Runtime {
                 debug!("Received Hello from {}", source);
             }
 
-            Request::Checkpoint(Checkpoint { swap_id, state }) => {
+            Request::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
                 match state {
                     CheckpointState::CheckpointWallet(_) => {
                         debug!("setting wallet checkpoint");
@@ -193,7 +193,7 @@ impl Runtime {
                 }
             }
 
-            Request::RemoveCheckpoint(swap_id) => {
+            Request::Ctl(Ctl::RemoveCheckpoint(swap_id)) => {
                 if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -208,94 +208,23 @@ impl Runtime {
                 }
             }
 
-            Request::SetAddressSecretKey(request::AddressSecretKey::Bitcoin {
+            Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                 address,
                 secret_key,
-            }) => {
+            })) => {
                 self.database.set_bitcoin_address(&address, &secret_key)?;
             }
 
-            Request::GetAddressSecretKey(Address::Bitcoin(address)) => {
-                match self.database.get_bitcoin_address_secret_key(&address) {
-                    Err(_) => endpoints.send_to(
-                        ServiceBus::Ctl,
-                        ServiceId::Database,
-                        source,
-                        Request::Rpc(Rpc::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: format!("Could not retrieve secret key for address {}", address),
-                        })),
-                    )?,
-                    Ok(secret_key) => {
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Database,
-                            source,
-                            Request::AddressSecretKey(request::AddressSecretKey::Bitcoin {
-                                address,
-                                secret_key,
-                            }),
-                        )?;
-                    }
-                }
-            }
-
-            Request::GetAddresses(Blockchain::Bitcoin) => {
-                let addresses = self.database.get_all_bitcoin_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Database,
-                    source,
-                    Request::BitcoinAddressList(addresses.into()),
-                )?;
-            }
-
-            Request::SetAddressSecretKey(request::AddressSecretKey::Monero {
+            Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
                 address,
                 view,
                 spend,
-            }) => {
+            })) => {
                 self.database
                     .set_monero_address(&address, &monero::KeyPair { view, spend })?;
             }
 
-            Request::GetAddressSecretKey(Address::Monero(address)) => {
-                match self.database.get_monero_address_secret_key(&address) {
-                    Err(_) => endpoints.send_to(
-                        ServiceBus::Ctl,
-                        ServiceId::Database,
-                        source,
-                        Request::Rpc(Rpc::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: format!("Could not retrieve secret key for address {}", address),
-                        })),
-                    )?,
-                    Ok(secret_key_pair) => {
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Database,
-                            source,
-                            Request::AddressSecretKey(request::AddressSecretKey::Monero {
-                                address,
-                                view: secret_key_pair.view.as_bytes().try_into().unwrap(),
-                                spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
-                            }),
-                        )?;
-                    }
-                }
-            }
-
-            Request::GetAddresses(Blockchain::Monero) => {
-                let addresses = self.database.get_all_monero_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Database,
-                    source,
-                    Request::MoneroAddressList(addresses.into()),
-                )?;
-            }
-
-            Request::SetOfferStatus(OfferStatusPair { offer, status }) => {
+            Request::Ctl(Ctl::SetOfferStatus(OfferStatusPair { offer, status })) => {
                 self.database.set_offer_status(&offer, &status)?;
             }
 
@@ -303,6 +232,7 @@ impl Runtime {
                 error!("Request {} is not supported by the CTL interface", request);
             }
         }
+
         Ok(())
     }
 
@@ -360,10 +290,81 @@ impl Runtime {
                     })
                     .collect();
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Rpc,
                     source,
                     ServiceId::Farcasterd,
                     Request::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
+                )?;
+            }
+
+            Rpc::GetAddressSecretKey(Address::Monero(address)) => {
+                match self.database.get_monero_address_secret_key(&address) {
+                    Err(_) => endpoints.send_to(
+                        ServiceBus::Rpc,
+                        ServiceId::Database,
+                        source,
+                        Request::Rpc(Rpc::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: format!("Could not retrieve secret key for address {}", address),
+                        })),
+                    )?,
+                    Ok(secret_key_pair) => {
+                        endpoints.send_to(
+                            ServiceBus::Rpc,
+                            ServiceId::Database,
+                            source,
+                            Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                                address,
+                                view: secret_key_pair.view.as_bytes().try_into().unwrap(),
+                                spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
+                            })),
+                        )?;
+                    }
+                }
+            }
+
+            Rpc::GetAddressSecretKey(Address::Bitcoin(address)) => {
+                match self.database.get_bitcoin_address_secret_key(&address) {
+                    Err(_) => endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Database,
+                        source,
+                        Request::Rpc(Rpc::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: format!("Could not retrieve secret key for address {}", address),
+                        })),
+                    )?,
+                    Ok(secret_key) => {
+                        endpoints.send_to(
+                            ServiceBus::Rpc,
+                            ServiceId::Database,
+                            source,
+                            Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                                address,
+                                secret_key,
+                            })),
+                        )?;
+                    }
+                }
+            }
+
+            Rpc::GetAddresses(Blockchain::Bitcoin) => {
+                let addresses = self.database.get_all_bitcoin_addresses()?;
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    ServiceId::Database,
+                    source,
+                    Request::Rpc(Rpc::BitcoinAddressList(addresses.into())),
+                )?;
+            }
+
+            Rpc::GetAddresses(Blockchain::Monero) => {
+                let addresses = self.database.get_all_monero_addresses()?;
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    ServiceId::Database,
+                    source,
+                    Request::Rpc(Rpc::MoneroAddressList(addresses.into())),
                 )?;
             }
 
@@ -387,7 +388,7 @@ pub fn checkpoint_send(
         ServiceBus::Ctl,
         source,
         destination,
-        Request::Checkpoint(Checkpoint { swap_id, state }),
+        Request::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })),
     )?;
     Ok(())
 }

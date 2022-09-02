@@ -12,9 +12,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::request::{Request};
-use crate::bus::rpc::{Progress, Failure, Rpc};
 use crate::bus::ctl::Ctl;
+use crate::bus::request::Request;
+use crate::bus::rpc::{Failure, Progress, Rpc};
 use crate::bus::ServiceBus;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -285,10 +285,16 @@ where
     pub fn run_loop(mut self) -> Result<(), Error> {
         if !self.is_broker() {
             std::thread::sleep(core::time::Duration::from_secs(1));
-            self.esb
-                .send_to(ServiceBus::Ctl, ServiceId::Farcasterd, Request::Ctl(Ctl::Hello))?;
-            self.esb
-                .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Ctl(Ctl::Hello))?;
+            self.esb.send_to(
+                ServiceBus::Ctl,
+                ServiceId::Farcasterd,
+                Request::Ctl(Ctl::Hello),
+            )?;
+            self.esb.send_to(
+                ServiceBus::Msg,
+                ServiceId::Farcasterd,
+                Request::Ctl(Ctl::Hello),
+            )?;
         }
 
         let identity = self.esb.handler().identity();

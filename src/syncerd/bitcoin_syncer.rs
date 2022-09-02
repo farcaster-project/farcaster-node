@@ -1,4 +1,4 @@
-use crate::bus::request::SyncerdBridgeEvent;
+use crate::bus::sync::{BridgeEvent, SyncMsg};
 use crate::bus::Request;
 use crate::error::SyncerError;
 use crate::syncerd::opts::Opts;
@@ -487,7 +487,7 @@ fn sweep_address(
 
 async fn run_syncerd_bridge_event_sender(
     tx: zmq::Socket,
-    mut event_rx: TokioReceiver<SyncerdBridgeEvent>,
+    mut event_rx: TokioReceiver<BridgeEvent>,
     syncer_address: Vec<u8>,
 ) {
     tokio::spawn(async move {
@@ -496,7 +496,7 @@ async fn run_syncerd_bridge_event_sender(
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
 
-            let request = Request::SyncerdBridgeEvent(event);
+            let request = Request::Sync(SyncMsg::BridgeEvent(event));
             trace!("sending request over syncerd bridge: {:?}", request);
             writer
                 .send_routed(
@@ -805,7 +805,7 @@ fn transaction_broadcasting(
     electrum_server: String,
     proxy_address: Option<String>,
     mut transaction_broadcast_rx: TokioReceiver<(BroadcastTransaction, ServiceId)>,
-    tx_event: TokioSender<SyncerdBridgeEvent>,
+    tx_event: TokioSender<BridgeEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         while let Some((broadcast_transaction, source)) = transaction_broadcast_rx.recv().await {
@@ -817,7 +817,7 @@ fn transaction_broadcasting(
             ) {
                 Ok(txid) => {
                     tx_event
-                        .send(SyncerdBridgeEvent {
+                        .send(BridgeEvent {
                             event: Event::TransactionBroadcasted(TransactionBroadcasted {
                                 id: broadcast_transaction.id,
                                 tx: broadcast_transaction.tx,
@@ -831,7 +831,7 @@ fn transaction_broadcasting(
                 }
                 Err(e) => {
                     tx_event
-                        .send(SyncerdBridgeEvent {
+                        .send(BridgeEvent {
                             event: Event::TransactionBroadcasted(TransactionBroadcasted {
                                 id: broadcast_transaction.id,
                                 tx: broadcast_transaction.tx,
@@ -984,7 +984,7 @@ fn transaction_fetcher(
     electrum_server: String,
     proxy_address: Option<String>,
     mut transaction_get_rx: TokioReceiver<(GetTx, ServiceId)>,
-    tx_event: TokioSender<SyncerdBridgeEvent>,
+    tx_event: TokioSender<BridgeEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         while let Some((get_transaction, source)) = transaction_get_rx.recv().await {
@@ -999,7 +999,7 @@ fn transaction_fetcher(
             ) {
                 Ok(tx) => {
                     tx_event
-                        .send(SyncerdBridgeEvent {
+                        .send(BridgeEvent {
                             event: Event::TransactionRetrieved(TransactionRetrieved {
                                 id: get_transaction.id,
                                 tx: Some(tx),
@@ -1015,7 +1015,7 @@ fn transaction_fetcher(
                 }
                 Err(e) => {
                     tx_event
-                        .send(SyncerdBridgeEvent {
+                        .send(BridgeEvent {
                             event: Event::TransactionRetrieved(TransactionRetrieved {
                                 id: get_transaction.id,
                                 tx: None,
@@ -1067,8 +1067,8 @@ impl Synclet for BitcoinSyncer {
                 trace!("completed tokio syncer runtime");
                 rt.block_on(async {
                     let (event_tx, event_rx): (
-                        TokioSender<SyncerdBridgeEvent>,
-                        TokioReceiver<SyncerdBridgeEvent>,
+                        TokioSender<BridgeEvent>,
+                        TokioReceiver<BridgeEvent>,
                     ) = tokio::sync::mpsc::channel(200);
                     let (transaction_broadcast_tx, transaction_broadcast_rx): (
                         TokioSender<(BroadcastTransaction, ServiceId)>,
