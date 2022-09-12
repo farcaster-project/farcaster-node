@@ -1,10 +1,10 @@
 use std::str::FromStr;
 use std::time::Duration;
 
+use amplify::ToYamlString;
 use farcaster_core::{
     blockchain::Blockchain, role::TradeRole, swap::btcxmr::PublicOffer, swap::SwapId,
 };
-use amplify::{ToYamlString};
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
 #[cfg(feature = "serde")]
@@ -12,8 +12,8 @@ use serde_with::{DisplayFromStr, DurationSeconds};
 use strict_encoding::{StrictDecode, StrictEncode};
 use uuid::Uuid;
 
-use crate::bus::ctl::{OfferStatusPair, Progress, Outcome, Failure, OptionDetails};
-use crate::bus::request::{List};
+use crate::bus::ctl::{Failure, OfferStatusPair, OptionDetails, Outcome, Progress};
+use crate::bus::request::List;
 use crate::cli::OfferSelector;
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]

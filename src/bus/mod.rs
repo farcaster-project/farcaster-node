@@ -21,9 +21,9 @@ pub mod sync;
 
 use crate::ServiceId;
 pub use client::Client;
+pub use ctl::{Failure, FailureCode};
 #[cfg(feature = "shell")]
 pub use request::Request;
-pub use ctl::{Failure, FailureCode};
 
 use microservices::esb::BusId;
 use strict_encoding::{StrictDecode, StrictEncode};

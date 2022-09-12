@@ -198,8 +198,11 @@ impl PendingRequestsT for PendingRequests {
                                     .handle_ctl(endpoints, r.source.clone(), r.request.clone()),
                                 (ServiceBus::Msg, _) if &r.dest == &runtime.identity => runtime
                                     .handle_msg(endpoints, r.source.clone(), r.request.clone()),
-                                (ServiceBus::Sync, Request::Sync(sync)) if &r.dest == &runtime.identity => runtime
-                                    .handle_sync(endpoints, r.source.clone(), sync.clone()),
+                                (ServiceBus::Sync, Request::Sync(sync))
+                                    if &r.dest == &runtime.identity =>
+                                {
+                                    runtime.handle_sync(endpoints, r.source.clone(), sync.clone())
+                                }
                                 (_, _) => endpoints
                                     .send_to(
                                         r.bus_id.clone(),
@@ -1547,9 +1550,7 @@ impl Runtime {
         request: SyncMsg,
     ) -> Result<(), Error> {
         match request {
-            SyncMsg::Event(ref event)
-                if source == self.syncer_state.monero_syncer =>
-            {
+            SyncMsg::Event(ref event) if source == self.syncer_state.monero_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -1870,9 +1871,7 @@ impl Runtime {
                 }
             }
 
-            SyncMsg::Event(ref event)
-                if source == self.syncer_state.bitcoin_syncer =>
-            {
+            SyncMsg::Event(ref event) if source == self.syncer_state.bitcoin_syncer => {
                 match &event {
                     Event::HeightChanged(HeightChanged { height, .. }) => {
                         self.syncer_state
@@ -2509,7 +2508,6 @@ impl Runtime {
             _ => {
                 warn!("Request is not handled by the SYNC interface {}", request);
             }
-
         }
 
         Ok(())

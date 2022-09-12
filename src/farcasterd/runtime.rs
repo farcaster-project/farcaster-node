@@ -22,11 +22,8 @@ use crate::event::{Event, StateMachine};
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
-    bus::ctl::{Keys, ProgressStack, LaunchSwap, Outcome, Token, Progress},
-    bus::rpc::{
-        CheckpointEntry, OfferInfo, OfferStatusSelector,
-        ProgressEvent, Rpc, SwapProgress,
-    },
+    bus::ctl::{Keys, LaunchSwap, Outcome, Progress, ProgressStack, Token},
+    bus::rpc::{CheckpointEntry, OfferInfo, OfferStatusSelector, ProgressEvent, Rpc, SwapProgress},
     bus::{Failure, FailureCode},
     clap::Parser,
     error::SyncerError,
@@ -405,7 +402,9 @@ impl Runtime {
             }
 
             // Add progress in queues and forward to subscribed clients
-            Request::Ctl(Ctl::Progress(..)) | Request::Ctl(Ctl::Success(..)) | Request::Ctl(Ctl::Failure(..)) => {
+            Request::Ctl(Ctl::Progress(..))
+            | Request::Ctl(Ctl::Success(..))
+            | Request::Ctl(Ctl::Failure(..)) => {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
                 };
@@ -415,7 +414,8 @@ impl Runtime {
                     Request::Ctl(Ctl::Success(s)) => Some(ProgressStack::Success(s)),
                     Request::Ctl(Ctl::Failure(f)) => Some(ProgressStack::Failure(f)),
                     _ => None,
-                }.expect("checked above");
+                }
+                .expect("checked above");
                 queue.push_back(prog);
                 // forward the request to each subscribed clients
                 self.notify_subscribed_clients(endpoints, &source, &request);
@@ -614,11 +614,14 @@ impl Runtime {
                     // send all queued notification to the source to catch up
                     if let Some(queue) = self.progress.get_mut(&service) {
                         for req in queue.iter() {
-                            report_to.push((Some(source.clone()), match req.clone() {
-                                ProgressStack::Progress(p) => Rpc::Progress(p),
-                                ProgressStack::Success(s) => Rpc::Success(s),
-                                ProgressStack::Failure(f) => Rpc::Failure(f),
-                            }));
+                            report_to.push((
+                                Some(source.clone()),
+                                match req.clone() {
+                                    ProgressStack::Progress(p) => Rpc::Progress(p),
+                                    ProgressStack::Success(s) => Rpc::Success(s),
+                                    ProgressStack::Failure(f) => Rpc::Failure(f),
+                                },
+                            ));
                         }
                     }
                 } else {
@@ -900,9 +903,12 @@ impl Runtime {
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
             (Request::Ctl(Ctl::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
-            (Request::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess { id, .. }))), _) => {
-                Ok(self.syncer_state_machines.remove(&id))
-            }
+            (
+                Request::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
+                    id, ..
+                }))),
+                _,
+            ) => Ok(self.syncer_state_machines.remove(&id)),
             _ => Ok(None),
         }
     }

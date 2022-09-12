@@ -1636,11 +1636,13 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
-                            source_secret_key,
-                            source_address,
-                            destination_address,
-                        }))),
+                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Bitcoin(
+                            SweepBitcoinAddress {
+                                source_secret_key,
+                                source_address,
+                                destination_address,
+                            },
+                        ))),
                     )?;
                 } else {
                     error!("get funding key requires a bob wallet")

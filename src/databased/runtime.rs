@@ -13,11 +13,8 @@ use bitcoin::secp256k1::SecretKey;
 use crate::bus::{
     ctl::{Checkpoint, CheckpointState, Ctl, OfferStatusPair},
     request::List,
-    rpc::{
-        Address, AddressSecretKey, CheckpointEntry, OfferStatus,
-        OfferStatusSelector, Rpc,
-    },
-    Request, ServiceBus, Failure, FailureCode
+    rpc::{Address, AddressSecretKey, CheckpointEntry, OfferStatus, OfferStatusSelector, Rpc},
+    Failure, FailureCode, Request, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use internet2::TypedEnum;

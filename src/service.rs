@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::{Progress, Ctl};
+use crate::bus::ctl::{Ctl, Progress};
 use crate::bus::request::Request;
 use crate::bus::rpc::Rpc;
 use crate::bus::{Failure, ServiceBus};

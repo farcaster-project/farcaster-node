@@ -10,17 +10,17 @@ use farcaster_core::{
 
 use amplify::{ToYamlString, Wrapper};
 use bitcoin::secp256k1::SecretKey;
-use microservices::rpc;
 use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
+use microservices::rpc;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::msg::Commit;
 use crate::bus::rpc::{AddressSecretKey, OfferStatus};
 use crate::bus::Request;
 use crate::swapd::CheckpointSwapd;
-use crate::syncerd::{SweepAddressAddendum};
+use crate::syncerd::SweepAddressAddendum;
 use crate::walletd::runtime::CheckpointWallet;
 use crate::{Error, ServiceId};
 
