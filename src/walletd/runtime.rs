@@ -10,7 +10,7 @@ use crate::bus::{
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use crate::swapd::get_swap_id;
-use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
+use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
@@ -1499,7 +1499,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Ctl(Ctl::SweepMoneroAddress(sweep_keys)),
+                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Monero(sweep_keys))),
                     )?;
                 }
             }
@@ -1595,7 +1595,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Ctl(Ctl::SweepMoneroAddress(sweep_keys)),
+                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Monero(sweep_keys))),
                     )?;
                 } else {
                     error!("Call to refund transaction expects an Alice wallet");
@@ -1636,11 +1636,11 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Ctl(Ctl::SweepBitcoinAddress(SweepBitcoinAddress {
+                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                             source_secret_key,
                             source_address,
                             destination_address,
-                        })),
+                        }))),
                     )?;
                 } else {
                     error!("get funding key requires a bob wallet")

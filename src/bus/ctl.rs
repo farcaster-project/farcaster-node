@@ -20,7 +20,7 @@ use crate::bus::msg::Commit;
 use crate::bus::rpc::{AddressSecretKey, OfferStatus};
 use crate::bus::Request;
 use crate::swapd::CheckpointSwapd;
-use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
+use crate::syncerd::{SweepAddressAddendum};
 use crate::walletd::runtime::CheckpointWallet;
 use crate::{Error, ServiceId};
 
@@ -108,12 +108,7 @@ pub enum Ctl {
     #[api(type = 1310)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
-    SweepBitcoinAddress(SweepBitcoinAddress),
-
-    #[api(type = 1303)]
-    #[display("task({0})", alt = "{0:#}")]
-    #[from]
-    SweepMoneroAddress(SweepMoneroAddress),
+    SweepAddress(SweepAddressAddendum),
 
     #[api(type = 1314)]
     #[display("set_address_secret_key")]

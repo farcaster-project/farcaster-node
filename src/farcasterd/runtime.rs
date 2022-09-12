@@ -899,16 +899,10 @@ impl Runtime {
         source: ServiceId,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
-            (Request::Ctl(Ctl::SweepMoneroAddress(..)), _)
-            | (Request::Ctl(Ctl::SweepBitcoinAddress(..)), _) => {
-                Ok(Some(SyncerStateMachine::Start))
+            (Request::Ctl(Ctl::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
+            (Request::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess { id, .. }))), _) => {
+                Ok(self.syncer_state_machines.remove(&id))
             }
-            (
-                Request::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
-                    id, ..
-                }))),
-                _,
-            ) => Ok(self.syncer_state_machines.remove(&id)),
             _ => Ok(None),
         }
     }
