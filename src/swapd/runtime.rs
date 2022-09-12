@@ -29,9 +29,9 @@ use crate::{
         MoneroFundingInfo, Outcome, Params, Tx,
     },
     bus::msg::{Commit, Msg, Reveal, TakeCommit},
-    bus::rpc::{Failure, FailureCode, Rpc, SwapInfo},
+    bus::rpc::{Rpc, SwapInfo},
     bus::sync::SyncMsg,
-    bus::{Request, ServiceBus},
+    bus::{Failure, FailureCode, Request, ServiceBus},
     syncerd::{
         Abort, HeightChanged, SweepMoneroAddress, SweepSuccess, TaskTarget, TransactionRetrieved,
         XmrAddressAddendum,

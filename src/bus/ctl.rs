@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::str::FromStr;
 
 use farcaster_core::{
@@ -8,8 +8,9 @@ use farcaster_core::{
     swap::SwapId,
 };
 
-use amplify::ToYamlString;
+use amplify::{ToYamlString, Wrapper};
 use bitcoin::secp256k1::SecretKey;
+use microservices::rpc;
 use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use internet2::Api;
@@ -17,6 +18,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::msg::Commit;
 use crate::bus::rpc::{AddressSecretKey, OfferStatus};
+use crate::bus::Request;
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::{SweepBitcoinAddress, SweepMoneroAddress};
 use crate::walletd::runtime::CheckpointWallet;
@@ -33,6 +35,19 @@ pub enum Ctl {
     #[api(type = 3)]
     #[display("terminate()")]
     Terminate,
+
+    #[api(type = 1001)]
+    #[display(inner)]
+    Success(OptionDetails),
+
+    #[api(type = 1000)]
+    #[display(inner)]
+    #[from]
+    Failure(Failure),
+
+    #[api(type = 1002)]
+    #[display(inner)]
+    Progress(Progress),
 
     #[api(type = 204)]
     #[display("make_swap({0})")]
@@ -154,6 +169,48 @@ pub enum Ctl {
     #[api(type = 196)]
     #[display("transaction({0})")]
     Tx(Tx),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display(inner)]
+pub enum ProgressStack {
+    Progress(Progress),
+    Success(OptionDetails),
+    Failure(Failure),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display(inner)]
+pub enum Progress {
+    Message(String),
+    StateTransition(String),
+}
+
+#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+pub struct OptionDetails(pub Option<String>);
+
+impl Display for OptionDetails {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.as_inner() {
+            None => Ok(()),
+            Some(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl OptionDetails {
+    pub fn with(s: impl ToString) -> Self {
+        Self(Some(s.to_string()))
+    }
+
+    pub fn new() -> Self {
+        Self(None)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
@@ -369,4 +426,101 @@ pub enum Tx {
     Refund(Transaction),
     #[display("punish(..)")]
     Punish(Transaction),
+}
+
+/// Information about server-side failure returned through RPC API
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[derive(
+    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, StrictEncode, StrictDecode,
+)]
+#[display("{info}", alt = "Server returned failure #{code}: {info}")]
+pub struct Failure {
+    /// Failure code
+    pub code: FailureCode,
+
+    /// Detailed information about the failure
+    pub info: String,
+}
+
+#[derive(
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, StrictEncode, StrictDecode,
+)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub enum FailureCode {
+    /// Catch-all: TODO: Expand
+    Unknown = 0xFFF,
+}
+
+impl From<u16> for FailureCode {
+    fn from(value: u16) -> Self {
+        match value {
+            _ => FailureCode::Unknown,
+        }
+    }
+}
+
+impl From<FailureCode> for u16 {
+    fn from(code: FailureCode) -> Self {
+        code as u16
+    }
+}
+
+impl From<FailureCode> for rpc::FailureCode<FailureCode> {
+    fn from(code: FailureCode) -> Self {
+        rpc::FailureCode::Other(code)
+    }
+}
+
+impl rpc::FailureCodeExt for FailureCode {}
+
+impl From<crate::Error> for Request {
+    fn from(err: crate::Error) -> Self {
+        Request::Ctl(Ctl::Failure(Failure {
+            code: FailureCode::Unknown,
+            info: err.to_string(),
+        }))
+    }
+}
+
+pub trait IntoProgressOrFailure {
+    fn into_progress_or_failure(self) -> Request;
+}
+pub trait IntoSuccessOrFailure {
+    fn into_success_or_failure(self) -> Request;
+}
+
+impl IntoProgressOrFailure for Result<String, crate::Error> {
+    fn into_progress_or_failure(self) -> Request {
+        match self {
+            Ok(val) => Request::Ctl(Ctl::Progress(Progress::Message(val))),
+            Err(err) => Request::from(err),
+        }
+    }
+}
+
+impl IntoSuccessOrFailure for Result<String, crate::Error> {
+    fn into_success_or_failure(self) -> Request {
+        match self {
+            Ok(val) => Request::Ctl(Ctl::Success(OptionDetails::with(val))),
+            Err(err) => Request::from(err),
+        }
+    }
+}
+
+impl IntoSuccessOrFailure for Result<(), crate::Error> {
+    fn into_success_or_failure(self) -> Request {
+        match self {
+            Ok(_) => Request::Ctl(Ctl::Success(OptionDetails::new())),
+            Err(err) => Request::from(err),
+        }
+    }
 }

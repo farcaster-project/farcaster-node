@@ -22,11 +22,12 @@ use crate::event::{Event, StateMachine};
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
-    bus::ctl::{Keys, LaunchSwap, Outcome, Token},
+    bus::ctl::{Keys, ProgressStack, LaunchSwap, Outcome, Token, Progress},
     bus::rpc::{
-        CheckpointEntry, Failure, FailureCode, OfferInfo, OfferStatusSelector, Progress,
+        CheckpointEntry, OfferInfo, OfferStatusSelector,
         ProgressEvent, Rpc, SwapProgress,
     },
+    bus::{Failure, FailureCode},
     clap::Parser,
     error::SyncerError,
     service::Endpoints,
@@ -118,7 +119,7 @@ pub struct Runtime {
     pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
     pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
     pub public_offers: HashSet<PublicOffer>, // The set of all known public offers. Includes open, consumed and ended offers includes open, consumed and ended offers
-    progress: HashMap<ServiceId, VecDeque<Rpc>>, // A mapping from Swap ServiceId to its sent and received progress requests
+    progress: HashMap<ServiceId, VecDeque<ProgressStack>>, // A mapping from Swap ServiceId to its sent and received progress messages (Progress, Success, Failure)
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
     pub checkpointed_pub_offers: List<CheckpointEntry>, // A list of existing swap checkpoint entries that may be restored again
     pub stats: Stats,                                   // Some stats about offers and swaps
@@ -403,6 +404,23 @@ impl Runtime {
                 }
             }
 
+            // Add progress in queues and forward to subscribed clients
+            Request::Ctl(Ctl::Progress(..)) | Request::Ctl(Ctl::Success(..)) | Request::Ctl(Ctl::Failure(..)) => {
+                if !self.progress.contains_key(&source) {
+                    self.progress.insert(source.clone(), none!());
+                };
+                let queue = self.progress.get_mut(&source).expect("checked/added above");
+                let prog = match request.clone() {
+                    Request::Ctl(Ctl::Progress(p)) => Some(ProgressStack::Progress(p)),
+                    Request::Ctl(Ctl::Success(s)) => Some(ProgressStack::Success(s)),
+                    Request::Ctl(Ctl::Failure(f)) => Some(ProgressStack::Failure(f)),
+                    _ => None,
+                }.expect("checked above");
+                queue.push_back(prog);
+                // forward the request to each subscribed clients
+                self.notify_subscribed_clients(endpoints, &source, &request);
+            }
+
             req => {
                 self.process_request_with_state_machines(req, source, endpoints)?;
             }
@@ -524,44 +542,32 @@ impl Runtime {
                 )?;
             }
 
-            // Add progress in queues and forward to subscribed clients
-            Rpc::Progress(..) | Rpc::Success(..) | Rpc::Failure(..) => {
-                if !self.progress.contains_key(&source) {
-                    self.progress.insert(source.clone(), none!());
-                };
-                let queue = self.progress.get_mut(&source).expect("checked/added above");
-                queue.push_back(request.clone());
-                // forward the request to each subscribed clients
-                self.notify_subscribed_clients(endpoints, &source, &request);
-            }
-
             // Returns a unique response that contains the complete progress queue
             Rpc::ReadProgress(swap_id) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swap_id)) {
                     let mut swap_progress = SwapProgress { progress: vec![] };
                     for req in queue.iter() {
                         match req {
-                            Rpc::Progress(Progress::Message(m)) => {
+                            ProgressStack::Progress(Progress::Message(m)) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::Message(m.clone()));
                             }
-                            Rpc::Progress(Progress::StateTransition(t)) => {
+                            ProgressStack::Progress(Progress::StateTransition(t)) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::StateTransition(t.clone()));
                             }
-                            Rpc::Success(s) => {
+                            ProgressStack::Success(s) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::Success(s.clone()));
                             }
-                            Rpc::Failure(f) => {
+                            ProgressStack::Failure(f) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::Failure(f.clone()));
                             }
-                            _ => unreachable!("not handled here"),
                         };
                     }
                     report_to.push((Some(source.clone()), Rpc::SwapProgress(swap_progress)));
@@ -608,7 +614,11 @@ impl Runtime {
                     // send all queued notification to the source to catch up
                     if let Some(queue) = self.progress.get_mut(&service) {
                         for req in queue.iter() {
-                            report_to.push((Some(source.clone()), req.clone()));
+                            report_to.push((Some(source.clone()), match req.clone() {
+                                ProgressStack::Progress(p) => Rpc::Progress(p),
+                                ProgressStack::Success(s) => Rpc::Success(s),
+                                ProgressStack::Failure(f) => Rpc::Failure(f),
+                            }));
                         }
                     }
                 } else {
@@ -1134,7 +1144,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: &ServiceId,
-        request: &Rpc,
+        request: &Request,
     ) {
         // if subs exists for the source (swap_id), forward the request to every subs
         if let Some(subs) = self.progress_subscriptions.get_mut(source) {
@@ -1146,7 +1156,7 @@ impl Runtime {
                         ServiceBus::Rpc,
                         ServiceId::Farcasterd,
                         sub.clone(),
-                        Request::Rpc(request.clone()),
+                        request.clone(),
                     )
                     .is_ok()
             });

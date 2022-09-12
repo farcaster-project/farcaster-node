@@ -100,7 +100,7 @@ impl Client {
 
     pub fn report_failure(&mut self) -> Result<Request, Error> {
         match self.response()? {
-            Request::Rpc(Rpc::Failure(fail)) => Err(Error::Farcaster(fail.info)),
+            Request::Ctl(Ctl::Failure(fail)) => Err(Error::Farcaster(fail.info)),
             resp => Ok(resp),
         }
     }
@@ -124,7 +124,7 @@ impl Client {
                 {
                     break Err(e)
                 }
-                Ok(Request::Rpc(Rpc::Success(s))) => {
+                Ok(Request::Ctl(Ctl::Success(s))) => {
                     println!("{}", s.bright_green_bold());
                     // terminate on success
                     break Ok(());

@@ -14,10 +14,10 @@ use crate::bus::{
     ctl::{Checkpoint, CheckpointState, Ctl, OfferStatusPair},
     request::List,
     rpc::{
-        Address, AddressSecretKey, CheckpointEntry, Failure, FailureCode, OfferStatus,
+        Address, AddressSecretKey, CheckpointEntry, OfferStatus,
         OfferStatusSelector, Rpc,
     },
-    Request, ServiceBus,
+    Request, ServiceBus, Failure, FailureCode
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use internet2::TypedEnum;
@@ -300,10 +300,10 @@ impl Runtime {
             Rpc::GetAddressSecretKey(Address::Monero(address)) => {
                 match self.database.get_monero_address_secret_key(&address) {
                     Err(_) => endpoints.send_to(
-                        ServiceBus::Rpc,
+                        ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        Request::Rpc(Rpc::Failure(Failure {
+                        Request::Ctl(Ctl::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         })),
@@ -329,7 +329,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        Request::Rpc(Rpc::Failure(Failure {
+                        Request::Ctl(Ctl::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         })),

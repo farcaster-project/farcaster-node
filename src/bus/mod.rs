@@ -23,7 +23,7 @@ use crate::ServiceId;
 pub use client::Client;
 #[cfg(feature = "shell")]
 pub use request::Request;
-pub use rpc::{Failure, FailureCode};
+pub use ctl::{Failure, FailureCode};
 
 use microservices::esb::BusId;
 use strict_encoding::{StrictDecode, StrictEncode};

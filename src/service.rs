@@ -12,10 +12,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::Ctl;
+use crate::bus::ctl::{Progress, Ctl};
 use crate::bus::request::Request;
-use crate::bus::rpc::{Failure, Progress, Rpc};
-use crate::bus::ServiceBus;
+use crate::bus::rpc::Rpc;
+use crate::bus::{Failure, ServiceBus};
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
@@ -346,7 +346,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Rpc(Rpc::Success(msg.map(|m| m.to_string()).into())),
+                Request::Ctl(Ctl::Success(msg.map(|m| m.to_string()).into())),
             )?;
         }
         Ok(())
@@ -363,7 +363,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Rpc(Rpc::Progress(Progress::Message(msg.to_string()))),
+                Request::Ctl(Ctl::Progress(Progress::Message(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -380,7 +380,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Rpc(Rpc::Progress(Progress::StateTransition(msg.to_string()))),
+                Request::Ctl(Ctl::Progress(Progress::StateTransition(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -398,7 +398,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Rpc(Rpc::Failure(failure.clone())),
+                Request::Ctl(Ctl::Failure(failure.clone())),
             );
         }
         Error::Terminate(failure.to_string())

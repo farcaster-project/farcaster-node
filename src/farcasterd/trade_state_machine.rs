@@ -333,7 +333,7 @@ fn transition_to_make_offer(
             });
             match node_id {
                 Err(err) => {
-                    event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
+                    event.complete_ctl(Request::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
                     })))?;
@@ -410,7 +410,7 @@ fn transition_to_take_offer(
                     &public_offer.to_string()
                 );
                 warn!("{}", msg.err());
-                event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
+                event.complete_ctl(Request::Ctl(Ctl::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: msg,
                 })))?;
@@ -460,7 +460,7 @@ fn transition_to_take_offer(
             });
             match res {
                 Err(err) => {
-                    event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
+                    event.complete_ctl(Request::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
                     })))?;
@@ -523,7 +523,7 @@ fn transition_to_restoring_swapd(
             if let Err(err) = runtime.services_ready() {
                 event.send_ctl_service(
                     event.source.clone(),
-                    Request::Rpc(Rpc::Failure(Failure {
+                    Request::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
                     })),
@@ -536,7 +536,7 @@ fn transition_to_restoring_swapd(
                 .send_ctl_service(ServiceId::Swap(swap_id), Request::Ctl(Ctl::Hello))
                 .is_ok()
             {
-                event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
+                event.complete_ctl(Request::Ctl(Ctl::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: "Cannot restore a checkpoint into a running swap.".to_string(),
                 })))?;
@@ -554,7 +554,7 @@ fn transition_to_restoring_swapd(
             {
                 Some(ce) => ce,
                 None => {
-                    event.complete_ctl(Request::Rpc(Rpc::Failure(Failure {
+                    event.complete_ctl(Request::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: "No checkpoint found with given swap id, aborting restore."
                             .to_string(),
