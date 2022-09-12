@@ -153,6 +153,7 @@ client = [
   "clap",
   "_rpc",
 ]
+
 # Required for all apps that can be launched from command-line shell as binaries
 # (i.e. both servers and cli)
 shell = [
@@ -165,7 +166,6 @@ shell = [
   "shellexpand",
   "colored",
 ]
-
 # Internally used features for convenience
 _config = ["serde_yaml", "toml"]
 _rpc = []

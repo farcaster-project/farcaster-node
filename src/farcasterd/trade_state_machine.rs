@@ -155,9 +155,11 @@ pub struct SwapdRunning {
 impl StateMachine<Runtime, Error> for TradeStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
         match self {
-            TradeStateMachine::StartTaker => transition_to_take_offer(event, runtime),
-            TradeStateMachine::StartMaker => transition_to_make_offer(event, runtime),
-            TradeStateMachine::StartRestore => transition_to_restoring_swapd(event, runtime),
+            TradeStateMachine::StartTaker => attempt_transition_to_take_offer(event, runtime),
+            TradeStateMachine::StartMaker => attempt_transition_to_make_offer(event, runtime),
+            TradeStateMachine::StartRestore => {
+                attempt_transition_to_restoring_swapd(event, runtime)
+            }
             TradeStateMachine::MakeOffer(make_offer) => {
                 attempt_transition_to_taker_committed(event, runtime, make_offer)
             }
@@ -289,7 +291,7 @@ impl TradeStateMachine {
     }
 }
 
-fn transition_to_make_offer(
+fn attempt_transition_to_make_offer(
     mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -387,7 +389,7 @@ fn transition_to_make_offer(
     }
 }
 
-fn transition_to_take_offer(
+fn attempt_transition_to_take_offer(
     mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -513,7 +515,7 @@ fn transition_to_take_offer(
     }
 }
 
-fn transition_to_restoring_swapd(
+fn attempt_transition_to_restoring_swapd(
     mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -719,14 +721,22 @@ fn attempt_transition_from_taker_commit_to_swapd_launched(
         peerd,
         public_offer,
     } = taker_commit;
-    if let Some(tsm) = attempt_transition_to_swapd_launched(event, runtime, &peerd, &public_offer)?
-    {
-        Ok(Some(tsm))
-    } else {
-        Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
-            peerd,
-            public_offer,
-        })))
+    match event.request {
+        Request::Ctl(Ctl::LaunchSwap(launch_swap)) => {
+            let tsm = transition_to_swapd_launched_tsm(runtime, launch_swap, peerd, public_offer)?;
+            Ok(Some(tsm))
+        }
+        req => {
+            if let Request::Ctl(Ctl::Hello) = req {
+                trace!("Request {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
+            } else {
+                warn!("Request {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
+            }
+            Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
+                peerd,
+                public_offer,
+            })))
+        }
     }
 }
 
@@ -741,84 +751,81 @@ fn attempt_transition_from_take_offer_to_swapd_launched(
         acc_addr,
         peerd,
     } = take_offer;
-    if let Some(tsm) = attempt_transition_to_swapd_launched(event, runtime, &peerd, &public_offer)?
-    {
-        Ok(Some(tsm))
-    } else {
-        Ok(Some(TradeStateMachine::TakeOffer(TakeOffer {
-            public_offer,
-            arb_addr,
-            acc_addr,
-            peerd,
-        })))
-    }
-}
-
-fn attempt_transition_to_swapd_launched(
-    event: Event,
-    runtime: &mut Runtime,
-    peerd: &ServiceId,
-    public_offer: &PublicOffer,
-) -> Result<Option<TradeStateMachine>, Error> {
     match event.request {
-        Request::Ctl(Ctl::LaunchSwap(LaunchSwap {
-            remote_commit,
-            local_params,
-            funding_address,
-            local_trade_role,
-            swap_id,
-            ..
-        })) => {
-            let network = public_offer.offer.network;
-            let arbitrating_syncer_up = syncer_up(
-                &mut runtime.spawning_services,
-                &mut runtime.registered_services,
-                Blockchain::Bitcoin,
-                network,
-                &runtime.config,
-            )?;
-            let accordant_syncer_up = syncer_up(
-                &mut runtime.spawning_services,
-                &mut runtime.registered_services,
-                Blockchain::Monero,
-                network,
-                &runtime.config,
-            )?;
-            trace!(
-                "launching swapd with swap_id: {}",
-                swap_id.bright_yellow_bold()
-            );
-
-            runtime.stats.incr_initiated();
-            launch_swapd(local_trade_role, public_offer.clone(), swap_id)?;
-
-            Ok(Some(TradeStateMachine::SwapdLaunched(SwapdLaunched {
-                peerd: peerd.clone(),
-                swap_id,
-                public_offer: public_offer.clone(),
-                arbitrating_syncer_up,
-                accordant_syncer_up,
-                swapd_up: false,
-                init_swap: InitSwap {
-                    peerd: peerd.clone(),
-                    report_to: Some(runtime.identity()),
-                    local_params,
-                    swap_id,
-                    remote_commit,
-                    funding_address,
-                },
-                local_trade_role,
-            })))
+        Request::Ctl(Ctl::LaunchSwap(launch_swap)) => {
+            let tsm = transition_to_swapd_launched_tsm(runtime, launch_swap, peerd, public_offer)?;
+            Ok(Some(tsm))
         }
         req => {
             if let Request::Ctl(Ctl::Hello) = req {
-                trace!("Request {} - expected LaunchSwap request.", req);
+                trace!("Request {} from {} invalid for state Take Offer - expected LaunchSwap request.", req, event.source);
             } else {
-                warn!("Request {} - expected LaunchSwap request.", req);
+                warn!("Request {} from {} invalid for state Take Offer - expected LaunchSwap request.", req, event.source);
             }
-            Ok(None)
+            Ok(Some(TradeStateMachine::TakeOffer(TakeOffer {
+                public_offer,
+                arb_addr,
+                acc_addr,
+                peerd,
+            })))
         }
     }
+}
+
+fn transition_to_swapd_launched_tsm(
+    runtime: &mut Runtime,
+    launch_swap: LaunchSwap,
+    peerd: ServiceId,
+    public_offer: PublicOffer,
+) -> Result<TradeStateMachine, Error> {
+    let LaunchSwap {
+        remote_commit,
+        local_params,
+        funding_address,
+        local_trade_role,
+        swap_id,
+        ..
+    } = launch_swap;
+    let network = public_offer.offer.network;
+    let arbitrating_syncer_up = syncer_up(
+        &mut runtime.spawning_services,
+        &mut runtime.registered_services,
+        Blockchain::Bitcoin,
+        network,
+        &runtime.config,
+    )?;
+    let accordant_syncer_up = syncer_up(
+        &mut runtime.spawning_services,
+        &mut runtime.registered_services,
+        Blockchain::Monero,
+        network,
+        &runtime.config,
+    )?;
+    trace!(
+        "launching swapd with swap_id: {}",
+        swap_id.bright_yellow_bold()
+    );
+
+    runtime.stats.incr_initiated();
+    launch_swapd(local_trade_role, public_offer.clone(), swap_id)?;
+
+    Ok(TradeStateMachine::SwapdLaunched(SwapdLaunched {
+        peerd: peerd.clone(),
+        swap_id,
+        public_offer: public_offer.clone(),
+        arbitrating_syncer_up,
+        accordant_syncer_up,
+        swapd_up: false,
+        init_swap: InitSwap {
+            peerd: peerd.clone(),
+            report_to: Some(runtime.identity()),
+            local_params,
+            swap_id,
+            remote_commit,
+            funding_address,
+        },
+        local_trade_role,
+    }))
 }
 
 fn attempt_transition_from_swapd_launched_to_swapd_running(

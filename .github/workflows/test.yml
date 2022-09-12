@@ -4,7 +4,8 @@ on:
   push:
     branches: [ main ]
     paths-ignore:
-      - 'doc/**'
+      - 'diagrams/**'
+      - 'docs/**'
       - '.*'
       - '**.md'
       - '*.nix'
@@ -14,7 +15,8 @@ on:
   pull_request:
     branches: [ main ]
     paths-ignore:
-      - 'doc/**'
+      - 'diagrams/**'
+      - 'docs/**'
       - '.*'
       - '**.md'
       - '*.nix'

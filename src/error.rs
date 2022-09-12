@@ -127,6 +127,8 @@ pub enum SyncerError {
     NoIncrementToHeight,
     #[display("could not construct psbt")]
     InvalidPsbt,
+    #[display("Transaction should be found in the history if we successfully queried `transaction_get` for it")]
+    TxNotInHistory,
 }
 
 impl microservices::error::Error for Error {}

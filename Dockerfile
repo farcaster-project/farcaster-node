@@ -15,7 +15,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 
 WORKDIR "$SRC_DIR"
 
-COPY doc ${SRC_DIR}/doc
 COPY src ${SRC_DIR}/src
 COPY build.rs Cargo.lock Cargo.toml LICENSE README.md ${SRC_DIR}/
 

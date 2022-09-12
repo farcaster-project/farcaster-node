@@ -68,13 +68,13 @@ impl StateMachine<Runtime, Error> for SyncerStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
         match self {
             SyncerStateMachine::Start => {
-                transition_to_awaiting_syncer_or_awaiting_syncer_request(event, runtime)
+                attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(event, runtime)
             }
             SyncerStateMachine::AwaitingSyncer(awaiting_syncer) => {
-                transition_to_awaiting_syncer_request(event, runtime, awaiting_syncer)
+                attempt_transition_to_awaiting_syncer_request(event, runtime, awaiting_syncer)
             }
             SyncerStateMachine::AwaitingSyncerRequest(awaiting_syncer_request) => {
-                transition_to_end(event, runtime, awaiting_syncer_request)
+                attempt_transition_to_end(event, runtime, awaiting_syncer_request)
             }
         }
     }
@@ -107,7 +107,7 @@ impl SyncerStateMachine {
     }
 }
 
-fn transition_to_awaiting_syncer_or_awaiting_syncer_request(
+fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
     event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SyncerStateMachine>, Error> {
@@ -210,7 +210,7 @@ fn transition_to_awaiting_syncer_or_awaiting_syncer_request(
     }
 }
 
-fn transition_to_awaiting_syncer_request(
+fn attempt_transition_to_awaiting_syncer_request(
     event: Event,
     _runtime: &mut Runtime,
     awaiting_syncer: AwaitingSyncer,
@@ -256,7 +256,7 @@ fn transition_to_awaiting_syncer_request(
     }
 }
 
-fn transition_to_end(
+fn attempt_transition_to_end(
     mut event: Event,
     runtime: &mut Runtime,
     awaiting_syncer_request: AwaitingSyncerRequest,
