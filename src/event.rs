@@ -80,6 +80,17 @@ impl<'esb> Event<'esb> {
             .send_to(ServiceBus::Ctl, self.service.clone(), service, request)
     }
 
+    /// Sends reply request via RPC message bus to a specific service (different from the event
+    /// originating service).
+    pub fn send_rpc_service(
+        &mut self,
+        service: ServiceId,
+        request: Request,
+    ) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints
+            .send_to(ServiceBus::Rpc, self.service.clone(), service, request)
+    }
+
     /// Send reply request via MSG message bus to a specific service (different from the event originating service)
     pub fn send_msg_service(
         &mut self,

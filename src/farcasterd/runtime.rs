@@ -736,11 +736,20 @@ impl Runtime {
 
     fn handle_sync(
         &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: Request,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Request,
     ) -> Result<(), Error> {
-        // TODO
+        match (&request, &source) {
+            (Request::Ctl(Ctl::Hello), _) => {
+                trace!("Hello farcasterd from {}", source);
+                // Ignoring; this is used to set remote identity at ZMQ level
+            }
+            _ => {
+                self.process_request_with_state_machines(request, source, endpoints)?;
+            }
+        }
+
         Ok(())
     }
 

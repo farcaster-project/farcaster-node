@@ -263,7 +263,7 @@ impl Runtime {
         match request {
             SyncMsg::BridgeEvent(syncerd_bridge_event) => {
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Sync,
                     self.identity(),
                     syncerd_bridge_event.source,
                     Request::Sync(SyncMsg::Event(syncerd_bridge_event.event)),

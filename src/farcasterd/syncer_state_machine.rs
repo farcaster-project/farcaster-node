@@ -276,7 +276,7 @@ fn attempt_transition_to_end(
                 .pop()
                 .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
             {
-                event.send_ctl_service(
+                event.send_rpc_service(
                     source,
                     Request::Rpc(Rpc::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
@@ -284,7 +284,7 @@ fn attempt_transition_to_end(
                     ))),
                 )?;
             } else {
-                event.send_ctl_service(
+                event.send_rpc_service(
                     source,
                     Request::Rpc(Rpc::String("Nothing to sweep.".to_string())),
                 )?;
