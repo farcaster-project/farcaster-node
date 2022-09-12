@@ -193,12 +193,14 @@ impl PendingRequestsT for PendingRequests {
                     .into_iter()
                     .filter_map(|r| {
                         if predicate(&r) {
-                            if let Ok(_) = match &r.bus_id {
-                                ServiceBus::Ctl if &r.dest == &runtime.identity => runtime
+                            if let Ok(_) = match (&r.bus_id, &r.request) {
+                                (ServiceBus::Ctl, _) if &r.dest == &runtime.identity => runtime
                                     .handle_ctl(endpoints, r.source.clone(), r.request.clone()),
-                                ServiceBus::Msg if &r.dest == &runtime.identity => runtime
+                                (ServiceBus::Msg, _) if &r.dest == &runtime.identity => runtime
                                     .handle_msg(endpoints, r.source.clone(), r.request.clone()),
-                                _ => endpoints
+                                (ServiceBus::Sync, Request::Sync(sync)) if &r.dest == &runtime.identity => runtime
+                                    .handle_sync(endpoints, r.source.clone(), sync.clone()),
+                                (_, _) => endpoints
                                     .send_to(
                                         r.bus_id.clone(),
                                         r.source.clone(),
