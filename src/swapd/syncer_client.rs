@@ -254,35 +254,6 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
-    pub fn sweep_xmr(
-        &mut self,
-        source_view_key: monero::PrivateKey,
-        source_spend_key: monero::PrivateKey,
-        destination_address: monero::Address,
-        from_height: Option<u64>,
-        minimum_balance: monero::Amount,
-        retry: bool,
-    ) -> Task {
-        let id = self.tasks.new_taskid();
-        self.tasks.sweeping_addr = Some(id);
-        let lifetime = self.task_lifetime(Blockchain::Monero);
-        let addendum = SweepAddressAddendum::Monero(SweepMoneroAddress {
-            source_view_key,
-            source_spend_key,
-            destination_address,
-            minimum_balance,
-        });
-        let sweep_task = SweepAddress {
-            id,
-            lifetime,
-            addendum,
-            retry,
-            from_height,
-        };
-        let task = Task::SweepAddress(sweep_task);
-        self.tasks.tasks.insert(id, task.clone());
-        task
-    }
 
     pub fn watch_height(&mut self, blockchain: Blockchain) -> Task {
         let id = self.tasks.new_taskid();
@@ -294,15 +265,15 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
-    pub fn sweep_btc(&mut self, sweep_bitcoin_address: SweepBitcoinAddress, retry: bool) -> Task {
+
+    pub fn sweep_btc(&mut self, addendum: SweepBitcoinAddress, retry: bool) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
         let lifetime = self.task_lifetime(Blockchain::Bitcoin);
-        let addendum = SweepAddressAddendum::Bitcoin(sweep_bitcoin_address);
         let sweep_task = SweepAddress {
             id,
             lifetime,
-            addendum,
+            addendum: SweepAddressAddendum::Bitcoin(addendum),
             retry,
             from_height: None,
         };
@@ -310,6 +281,23 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
+
+    pub fn sweep_xmr(&mut self, addendum: SweepMoneroAddress, retry: bool) -> Task {
+        let id = self.tasks.new_taskid();
+        self.tasks.sweeping_addr = Some(id);
+        let lifetime = self.task_lifetime(Blockchain::Monero);
+        let sweep_task = SweepAddress {
+            id,
+            lifetime,
+            addendum: SweepAddressAddendum::Monero(addendum),
+            retry,
+            from_height: None,
+        };
+        let task = Task::SweepAddress(sweep_task);
+        self.tasks.tasks.insert(id, task.clone());
+        task
+    }
+
     pub fn broadcast(&mut self, tx: bitcoin::Transaction) -> Task {
         let id = self.tasks.new_taskid();
         let task = Task::BroadcastTransaction(BroadcastTransaction {

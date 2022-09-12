@@ -16,7 +16,7 @@
 
 use crate::cli::OfferSelector;
 use crate::swapd::CheckpointSwapd;
-use crate::syncerd::{Event, SweepBitcoinAddress, SweepMoneroAddress, Task};
+use crate::syncerd::{Event, SweepAddressAddendum, Task};
 use crate::walletd::runtime::CheckpointWallet;
 use amplify::{ToYamlString, Wrapper};
 use internet2::{CreateUnmarshaller, Unmarshaller};
@@ -581,11 +581,6 @@ pub enum Request {
     #[from]
     SyncerdBridgeEvent(SyncerdBridgeEvent),
 
-    #[api(type = 1303)]
-    #[display("task({0})", alt = "{0:#}")]
-    #[from]
-    SweepMoneroAddress(SweepMoneroAddress),
-
     #[api(type = 1304)]
     #[display("checkpoint({0})", alt = "{0:#}")]
     #[from]
@@ -610,7 +605,7 @@ pub enum Request {
     #[api(type = 1310)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
-    SweepBitcoinAddress(SweepBitcoinAddress),
+    SweepAddress(SweepAddressAddendum),
 
     #[api(type = 1311)]
     #[display("get_address_secret_key({0})")]

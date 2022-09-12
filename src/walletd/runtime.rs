@@ -1,6 +1,6 @@
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
-use crate::syncerd::SweepBitcoinAddress;
+use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 use std::{collections::HashMap, convert::TryInto, io};
 
@@ -1506,7 +1506,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::SweepMoneroAddress(sweep_keys),
+                        Request::SweepAddress(SweepAddressAddendum::Monero(sweep_keys)),
                     )?;
                 }
             }
@@ -1602,7 +1602,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::SweepMoneroAddress(sweep_keys),
+                        Request::SweepAddress(SweepAddressAddendum::Monero(sweep_keys)),
                     )?;
                 } else {
                     error!("Call to refund transaction expects an Alice wallet");
@@ -1641,11 +1641,11 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::SweepBitcoinAddress(SweepBitcoinAddress {
+                        Request::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                             source_secret_key,
                             source_address,
                             destination_address,
-                        }),
+                        })),
                     )?;
                 } else {
                     error!("get funding key requires a bob wallet")

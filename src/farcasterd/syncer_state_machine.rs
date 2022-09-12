@@ -110,19 +110,27 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
 ) -> Result<Option<SyncerStateMachine>, Error> {
     let source = event.source.clone();
     match event.request.clone() {
-        Request::SweepMoneroAddress(sweep_monero_address) => {
-            let blockchain = Blockchain::Monero;
-            let mut network = sweep_monero_address.destination_address.network.into();
+        Request::SweepAddress(sweep_address) => {
+            let (blockchain, network) = match sweep_address.clone() {
+                SweepAddressAddendum::Monero(addendum) => {
+                    let blockchain = Blockchain::Monero;
+                    let mut network = addendum.destination_address.network.into();
 
-            // Switch the network to local if the mainnet configuration does
-            // not exist and the local network exists
-            network = if network == Network::Mainnet
-                && runtime.config.get_syncer_servers(network).is_none()
-                && runtime.config.get_syncer_servers(Network::Local).is_some()
-            {
-                Network::Local
-            } else {
-                network
+                    // Switch the network to local if the mainnet configuration does
+                    // not exist and the local network exists
+                    network = if network == Network::Mainnet
+                        && runtime.config.get_syncer_servers(network).is_none()
+                        && runtime.config.get_syncer_servers(Network::Local).is_some()
+                    {
+                        Network::Local
+                    } else {
+                        network
+                    };
+                    (blockchain, network)
+                }
+                SweepAddressAddendum::Bitcoin(addendum) => {
+                    (Blockchain::Bitcoin, addendum.source_address.network.into())
+                }
             };
 
             let syncer_task_id = TaskId(runtime.syncer_task_counter);
@@ -130,52 +138,12 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 id: syncer_task_id.clone(),
                 retry: false,
                 lifetime: u64::MAX,
-                addendum: SweepAddressAddendum::Monero(sweep_monero_address),
+                addendum: sweep_address,
                 from_height: None,
             });
             runtime.syncer_task_counter += 1;
 
             // check if a monero syncer is up
-            if let Some(service_id) = syncer_up(
-                &mut runtime.spawning_services,
-                &mut runtime.registered_services,
-                blockchain,
-                network,
-                &runtime.config,
-            )? {
-                event.complete_ctl_service(service_id, Request::SyncerTask(syncer_task))?;
-                Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
-                    AwaitingSyncerRequest {
-                        source,
-                        syncer_task_id,
-                        syncer: ServiceId::Syncer(blockchain, network),
-                    },
-                )))
-            } else {
-                Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
-                    source,
-                    syncer: ServiceId::Syncer(blockchain, network),
-                    syncer_task: syncer_task,
-                    syncer_task_id,
-                })))
-            }
-        }
-
-        Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
-            let blockchain = Blockchain::Bitcoin;
-            let network = sweep_bitcoin_address.source_address.network.into();
-
-            let syncer_task_id = TaskId(runtime.syncer_task_counter);
-            let syncer_task = Task::SweepAddress(SweepAddress {
-                id: syncer_task_id.clone(),
-                retry: false,
-                lifetime: u64::MAX,
-                addendum: SweepAddressAddendum::Bitcoin(sweep_bitcoin_address),
-                from_height: None,
-            });
-            runtime.syncer_task_counter += 1;
-
-            // check if a bitcoin syncer is up
             if let Some(service_id) = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
