@@ -155,7 +155,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 &runtime.config,
             )? {
                 event
-                    .complete_ctl_service(service_id, Request::Sync(SyncMsg::Task(syncer_task)))?;
+                    .complete_sync_service(service_id, Request::Sync(SyncMsg::Task(syncer_task)))?;
                 Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                     AwaitingSyncerRequest {
                         source,
@@ -191,7 +191,7 @@ fn attempt_transition_to_awaiting_syncer_request(
     match (event.request.clone(), event.source.clone()) {
         (Request::Ctl(Ctl::Hello), syncer_id) if syncer == syncer_id => {
             event
-                .complete_ctl_service(syncer.clone(), Request::Sync(SyncMsg::Task(syncer_task)))?;
+                .complete_sync_service(syncer.clone(), Request::Sync(SyncMsg::Task(syncer_task)))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                 AwaitingSyncerRequest {
                     source,

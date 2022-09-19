@@ -28,6 +28,32 @@ const ALLOWED_RETRIES: u32 = 180;
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
+async fn swap_test_kill() {
+    let execution_mutex = Arc::new(Mutex::new(0));
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
+        setup_clients().await;
+
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&bitcoin_rpc),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    cleanup_processes2(vec![farcasterd_maker, farcasterd_taker]);
+    //assert!(false)
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
 async fn swap_bob_maker_normal() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -2375,6 +2401,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
 
     // kill the processes
     cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
     let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
 
     // generate some blocks on monero's side

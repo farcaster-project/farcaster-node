@@ -9,16 +9,20 @@ use crate::ServiceId;
 #[non_exhaustive]
 pub enum SyncMsg {
     #[api(type = 1300)]
+    #[display("hello()")]
+    Hello,
+
+    #[api(type = 1301)]
     #[display("syncer_task({0})", alt = "{0:#}")]
     #[from]
     Task(Task),
 
-    #[api(type = 1301)]
+    #[api(type = 1302)]
     #[display("syncer_event({0})", alt = "{0:#}")]
     #[from]
     Event(Event),
 
-    #[api(type = 1302)]
+    #[api(type = 1303)]
     #[display("syncer_bridge_ev({0})", alt = "{0:#}")]
     #[from]
     BridgeEvent(BridgeEvent),

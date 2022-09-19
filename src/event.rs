@@ -69,6 +69,17 @@ impl<'esb> Event<'esb> {
             .send_to(ServiceBus::Ctl, self.service, service, request)
     }
 
+    /// Finalizes event processing by sending reply request via SYNC message bus to a specific
+    /// service (different from the event originating service).
+    pub fn complete_sync_service(
+        self,
+        service: ServiceId,
+        request: Request,
+    ) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints
+            .send_to(ServiceBus::Sync, self.service, service, request)
+    }
+
     /// Sends reply request via CTL message bus to a specific service (different from the event
     /// originating service).
     pub fn send_ctl_service(
