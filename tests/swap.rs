@@ -477,7 +477,7 @@ async fn swap_bob_maker_punish_kill_bob() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]

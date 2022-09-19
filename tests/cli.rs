@@ -49,5 +49,5 @@ async fn cli_make_offer() {
     println!("{:?}", res);
 
     // clean up processes
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
