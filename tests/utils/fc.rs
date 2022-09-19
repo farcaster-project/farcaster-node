@@ -116,7 +116,15 @@ pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
 pub fn kill_all() {
     let sys = System::new_all();
     // kill all process matching the following names
-    for bin in ["farcasterd", "swapd", "peerd", "walletd", "grpcd", "databased", "syncerd"] {
+    for bin in [
+        "farcasterd",
+        "swapd",
+        "peerd",
+        "walletd",
+        "grpcd",
+        "databased",
+        "syncerd",
+    ] {
         for proc in sys.get_process_by_name(bin) {
             proc.kill(sysinfo::Signal::Kill);
         }

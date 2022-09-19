@@ -339,8 +339,18 @@ impl Runtime {
     ) -> Result<(), Error> {
         debug!("GRPCD BRIDGE RPC request: {}, {}", request, source);
         match request {
-            Request::Ctl(req) => endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Farcasterd, Request::Ctl(req))?,
-            Request::Rpc(req) => endpoints.send_to(ServiceBus::Rpc, source, ServiceId::Farcasterd, Request::Rpc(req))?,
+            Request::Ctl(req) => endpoints.send_to(
+                ServiceBus::Ctl,
+                source,
+                ServiceId::Farcasterd,
+                Request::Ctl(req),
+            )?,
+            Request::Rpc(req) => endpoints.send_to(
+                ServiceBus::Rpc,
+                source,
+                ServiceId::Farcasterd,
+                Request::Rpc(req),
+            )?,
             _ => error!("Could not send this type of request over the bridge"),
         }
 
