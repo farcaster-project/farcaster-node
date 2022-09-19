@@ -28,32 +28,6 @@ const ALLOWED_RETRIES: u32 = 180;
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_test_kill() {
-    let execution_mutex = Arc::new(Mutex::new(0));
-    let bitcoin_rpc = Arc::new(bitcoin_setup());
-    let (monero_regtest, monero_wallet) = monero_setup().await;
-
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
-
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
-        data_dir_maker.clone(),
-        data_dir_taker.clone(),
-        "Bob".to_string(),
-        Arc::clone(&bitcoin_rpc),
-        Arc::clone(&monero_wallet),
-        bitcoin::Amount::from_str("1 BTC").unwrap(),
-        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
-    )
-    .await;
-
-    cleanup_processes2(vec![farcasterd_maker, farcasterd_taker]);
-    //assert!(false)
-}
-
-#[tokio::test]
-#[timeout(600000)]
-#[ignore]
 async fn swap_bob_maker_normal() {
     let execution_mutex = Arc::new(Mutex::new(0));
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -86,7 +60,7 @@ async fn swap_bob_maker_normal() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -119,7 +93,7 @@ async fn swap_bob_funds_incorrect_amount() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -221,7 +195,7 @@ async fn swap_bob_maker_user_abort_sweep_btc() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 pub mod farcaster {
@@ -267,7 +241,7 @@ async fn swap_bob_maker_kill_peerd_before_funding_should_reconnect_success() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -317,7 +291,7 @@ async fn swap_revoke_offer_bob_maker_normal() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -355,7 +329,7 @@ async fn swap_bob_maker_refund_alice_overfunds() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -393,7 +367,7 @@ async fn swap_bob_maker_refund_race_cancel() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -430,7 +404,7 @@ async fn swap_bob_maker_refund_kill_alice_after_funding() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -465,7 +439,7 @@ async fn swap_bob_maker_refund_alice_does_not_fund() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[tokio::test]
@@ -617,7 +591,7 @@ async fn swap_alice_maker() {
     )
     .await;
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[derive(Debug, Clone)]
@@ -716,7 +690,8 @@ async fn swap_parallel_execution() {
         Arc::clone(&execution_mutex),
     )
     .await;
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+
+    kill_all();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -807,7 +782,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
     // kill all the daemons,  and start them again
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
     let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
 
     // wait a bit for all the daemons to start
@@ -890,7 +865,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     let delta_balance = after_balance.balance - before_balance.balance;
     assert!(delta_balance > monero::Amount::from_pico(998000000000));
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -952,7 +927,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     tokio::time::sleep(time::Duration::from_secs(1)).await;
 
     // kill all the daemons and start them again
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
     let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
 
     // wait a bit for all the daemons to start
@@ -1069,7 +1044,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     assert!(delta_balance > monero::Amount::from_pico(998000000000));
     drop(lock);
 
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2268,7 +2243,7 @@ async fn run_swap_bob_maker_manual_bitcoin_sweep(
     let after_balance = bitcoin_rpc.get_balance(None, None).unwrap();
     let delta_balance = after_balance - before_balance;
     assert!(delta_balance > bitcoin::Amount::from_sat(10000000));
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2400,7 +2375,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
     // kill the processes
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
     tokio::time::sleep(time::Duration::from_secs(20)).await;
     let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
 
@@ -2432,7 +2407,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     drop(lock);
     let delta_balance = after_balance.balance - before_balance.balance;
     assert!(delta_balance > monero::Amount::from_pico(998000000000));
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }
 
 #[allow(clippy::too_many_arguments)]

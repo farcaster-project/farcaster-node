@@ -81,7 +81,7 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
     })
 }
 
-pub fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
+pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
     // function that list process by name and add matches that are children of parent pids given in
     // parameters
     fn get_children_proc(name: &str, sys: &System, ppids: &mut Vec<u32>) {
@@ -108,6 +108,16 @@ pub fn cleanup_processes(mut farcasterds: Vec<process::Child>) {
 
     for pid in root_pids {
         if let Some(proc) = sys.get_process(pid as i32) {
+            proc.kill(sysinfo::Signal::Kill);
+        }
+    }
+}
+
+pub fn kill_all() {
+    let sys = System::new_all();
+    // kill all process matching the following names
+    for bin in ["farcasterd", "swapd", "peerd", "walletd", "grpcd", "databased", "syncerd"] {
+        for proc in sys.get_process_by_name(bin) {
             proc.kill(sysinfo::Signal::Kill);
         }
     }
