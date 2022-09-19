@@ -302,16 +302,32 @@ impl Runtime {
                 }
             }
         }
+
         Ok(())
     }
 
     fn handle_rpc(
         &mut self,
         _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: Request,
+        source: ServiceId,
+        request: Request,
     ) -> Result<(), Error> {
-        // TODO
+        match request {
+            Request::Ctl(Ctl::Hello) => {
+                debug!("Received Hello from {}", source);
+            }
+
+            _ => {
+                if let ServiceId::GrpcdClient(id) = source {
+                    self.tx_response
+                        .send((id, request))
+                        .expect("could not send response from grpc runtime to server");
+                } else {
+                    error!("Grpcd server can only handle messages addressed to a grpcd client");
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -322,7 +338,12 @@ impl Runtime {
         request: Request,
     ) -> Result<(), Error> {
         debug!("GRPCD BRIDGE RPC request: {}, {}", request, source);
-        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Farcasterd, request)?;
+        match request {
+            Request::Ctl(req) => endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Farcasterd, Request::Ctl(req))?,
+            Request::Rpc(req) => endpoints.send_to(ServiceBus::Rpc, source, ServiceId::Farcasterd, Request::Rpc(req))?,
+            _ => error!("Could not send this type of request over the bridge"),
+        }
+
         Ok(())
     }
 }
