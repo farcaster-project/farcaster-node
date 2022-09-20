@@ -86,6 +86,8 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
 pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
     for child in farcasterds {
         let sid = getsid(Some(Pid::from_raw(child.id() as i32))).expect("Fail to get session id");
+        info!("Killing {:?}", child);
+        info!("sid: {:?}", sid);
         nix::sys::signal::killpg(sid, nix::sys::signal::Signal::SIGKILL);
     }
 }
@@ -103,6 +105,7 @@ pub fn kill_all() {
         "syncerd",
     ] {
         for proc in sys.get_process_by_name(bin) {
+            info!("Killing process {:?}", proc);
             proc.kill(sysinfo::Signal::Kill);
         }
     }
