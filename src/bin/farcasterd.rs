@@ -63,6 +63,8 @@ fn main() -> Result<(), Error> {
     thread_rng().fill_bytes(&mut dest);
     let token = Token(dest.to_hex());
 
+    nix::unistd::setsid().expect("Failed to set new session id");
+
     debug!("Starting runtime ...");
     farcasterd::run(service_config, config, opts, token).expect("Error running farcasterd runtime");
 

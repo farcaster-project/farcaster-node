@@ -8,6 +8,8 @@ use std::str;
 use std::thread::sleep;
 use std::time::Duration;
 
+use nix::unistd::getsid;
+use nix::unistd::Pid;
 use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
 
@@ -82,34 +84,9 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
 }
 
 pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
-    // function that list process by name and add matches that are children of parent pids given in
-    // parameters
-    fn get_children_proc(name: &str, sys: &System, ppids: &mut Vec<u32>) {
-        let mut procs = sys.get_process_by_name(name);
-        // sort by pid to be sure parents come first
-        procs.sort_by(|a, b| a.pid().cmp(&b.pid()));
-
-        // if matched process parent is in ppids and it to ppids
-        procs.iter().for_each(|proc| {
-            if let Some(ppid) = proc.parent() {
-                if ppids.contains(&(ppid as u32)) {
-                    ppids.push(proc.pid() as u32);
-                }
-            }
-        });
-    }
-
-    let sys = System::new_all();
-    let mut root_pids: Vec<u32> = farcasterds.iter().map(|p| p.id()).collect();
-
-    for bin in ["swapd", "peerd", "walletd", "grpcd", "databased", "syncerd"] {
-        get_children_proc(bin, &sys, &mut root_pids);
-    }
-
-    for pid in root_pids {
-        if let Some(proc) = sys.get_process(pid as i32) {
-            proc.kill(sysinfo::Signal::Kill);
-        }
+    for child in farcasterds {
+        let sid = getsid(Some(Pid::from_raw(child.id() as i32))).expect("Fail to get session id");
+        nix::sys::signal::killpg(sid, nix::sys::signal::Signal::SIGKILL);
     }
 }
 
@@ -129,88 +106,6 @@ pub fn kill_all() {
             proc.kill(sysinfo::Signal::Kill);
         }
     }
-}
-
-pub fn cleanup_processes2(mut farcasterds: Vec<process::Child>) {
-    // clean up processes
-    let sys = System::new_all();
-    let procs: Vec<_> = sys
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["farcasterd"].contains(&process.name())
-                && farcasterds
-                    .iter()
-                    .map(|daemon| daemon.id())
-                    .collect::<Vec<_>>()
-                    .contains(&(process.parent().unwrap() as u32))
-        })
-        .collect();
-
-    let procs_peerd: Vec<_> = sys
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["peerd"].contains(&process.name())
-                && procs
-                    .iter()
-                    .map(|proc| proc.0)
-                    .collect::<Vec<_>>()
-                    .contains(&&(process.parent().unwrap()))
-        })
-        .collect();
-
-    let _procs: Vec<_> = sys
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["peerd"].contains(&process.name())
-                && procs_peerd
-                    .iter()
-                    .map(|proc| proc.0)
-                    .collect::<Vec<_>>()
-                    .contains(&&(process.parent().unwrap()))
-        })
-        .map(|(pid, _process)| {
-            nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(*pid as i32),
-                nix::sys::signal::Signal::SIGINT,
-            )
-            .expect("Sending CTRL-C failed")
-        })
-        .collect();
-
-    let _procs: Vec<_> = sys
-        .get_processes()
-        .iter()
-        .filter(|(_pid, process)| {
-            ["swapd", "grpcd", "databased", "walletd", "syncerd", "peerd"].contains(&process.name())
-                && procs
-                    .iter()
-                    .map(|proc| proc.0)
-                    .collect::<Vec<_>>()
-                    .contains(&&(process.parent().unwrap()))
-        })
-        .map(|(pid, _process)| {
-            nix::sys::signal::kill(
-                nix::unistd::Pid::from_raw(*pid as i32),
-                nix::sys::signal::Signal::SIGINT,
-            )
-            .expect("Sending CTRL-C failed")
-        })
-        .collect();
-
-    procs.iter().for_each(|daemon| {
-        nix::sys::signal::kill(
-            nix::unistd::Pid::from_raw(*daemon.0),
-            nix::sys::signal::Signal::SIGINT,
-        )
-        .expect("Sending CTRL-C failed")
-    });
-
-    farcasterds
-        .iter_mut()
-        .for_each(|daemon| daemon.kill().expect("Couldn't kill farcasterd"));
 }
 
 pub fn cli<T: DeserializeOwned>(
