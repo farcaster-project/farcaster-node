@@ -67,6 +67,9 @@ fn main() -> Result<(), Error> {
     info!("session id of farcasterd before setting: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));
     nix::unistd::setsid().expect("Failed to set new session id");
     info!("session id of farcasterd after setting: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));
+    let pid = nix::unistd::getpid();
+    info!("pid of farcasterd after setting: {:?}", pid);
+    info!("pgid of farcasterd after setting: {:?}", nix::unistd::getpgid(Some(pid)));
 
     debug!("Starting runtime ...");
     farcasterd::run(service_config, config, opts, token).expect("Error running farcasterd runtime");
