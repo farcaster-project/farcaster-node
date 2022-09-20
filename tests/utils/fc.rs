@@ -93,6 +93,7 @@ pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
 }
 
 pub fn kill_all() {
+    info!("Killing all farcasterd processes");
     let sys = System::new_all();
     // kill all process matching the following names
     for bin in [
@@ -109,6 +110,7 @@ pub fn kill_all() {
             proc.kill(sysinfo::Signal::Kill);
         }
     }
+    info!("Signal sent for all farcasterd processes...");
 }
 
 pub fn cli<T: DeserializeOwned>(
