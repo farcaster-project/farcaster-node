@@ -84,6 +84,10 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
 }
 
 pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
+    let pid = nix::unistd::getpid();
+    let current_sid = getsid(Some(pid)).expect("Fail to get session id");
+    info!("current sid: {:?}", current_sid);
+
     for child in farcasterds {
         let sid = getsid(Some(Pid::from_raw(child.id() as i32))).expect("Fail to get session id");
         info!("Killing child id: {:?}, ", child.id());
