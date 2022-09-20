@@ -54,6 +54,9 @@ fn main() {
         .unwrap_or_exit();
      */
 
+    let pid = nix::unistd::getpid();
+    info!("session id of swapd: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));
+
     debug!("Starting runtime ...");
     swapd::run(
         service_config,
