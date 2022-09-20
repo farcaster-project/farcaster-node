@@ -19,8 +19,8 @@ use std::str::FromStr;
 use ntest::timeout;
 
 use utils::config;
-use utils::setup_logging;
 use utils::fc::*;
+use utils::setup_logging;
 
 mod utils;
 
