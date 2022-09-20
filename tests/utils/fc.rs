@@ -92,7 +92,7 @@ pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
         let sid = getsid(Some(Pid::from_raw(child.id() as i32))).expect("Fail to get session id");
         info!("Killing child id: {:?}, ", child.id());
         info!("sid: {:?}", sid);
-        nix::sys::signal::killpg(sid, nix::sys::signal::Signal::SIGKILL);
+        nix::sys::signal::killpg(sid, nix::sys::signal::Signal::SIGKILL).expect("Failed to kill process group");
     }
 }
 
