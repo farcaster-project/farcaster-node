@@ -73,9 +73,11 @@ fn main() -> Result<(), Error> {
     info!("pid of farcasterd after setting: {:?}", pid);
     info!("pgid of farcasterd after setting: {:?}", nix::unistd::getpgid(Some(pid)));
 
-    nix::unistd::setegid(nix::unistd::Gid::from_raw(pid.as_raw() as u32)).expect("Failed to set effective group id");
+    let gid = nix::unistd::Gid::from_raw(pid.as_raw() as u32);
     nix::unistd::seteuid(nix::unistd::Uid::from_raw(pid.as_raw() as u32)).expect("Failed to set effective user id");
     nix::unistd::setpgid(pid, pid).expect("Failed to set process group id");
+
+    nix::unistd::setresgid(gid, gid, gid).expect("Failed to set real, effective and saved group id");
 
     // log the process tree
     let mut system = System::new();
