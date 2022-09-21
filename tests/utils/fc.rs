@@ -76,17 +76,21 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
         .arg(format!("{} {}", bin_path.to_string_lossy(), cmdargs));
 
     println!("Executing `{:?}`", shell);
-    let child = shell.spawn().map_err(|err| {
+    shell.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err
-    });
+    })
+    // let child = shell.spawn().map_err(|err| {
+    //     error!("Error launching {}: {}", name, err);
+    //     err
+    // });
 
-    // create shell process and set it as a group leader
-    let pid = Pid::from_raw(child.as_ref().unwrap().id() as i32);
-    nix::unistd::setpgid(pid, pid).unwrap();
-    info!("pgid of farcasterd after setting: {:?}", nix::unistd::getpgid(Some(pid)));
+    // // create shell process and set it as a group leader
+    // let pid = Pid::from_raw(child.as_ref().unwrap().id() as i32);
+    // nix::unistd::setpgid(pid, pid).unwrap();
+    // info!("pgid of farcasterd after setting: {:?}", nix::unistd::getpgid(Some(pid)));
 
-    child
+    // child
 }
 
 pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
