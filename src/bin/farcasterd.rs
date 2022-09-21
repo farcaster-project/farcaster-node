@@ -66,6 +66,7 @@ fn main() -> Result<(), Error> {
     let token = Token(dest.to_hex());
 
     let pid = nix::unistd::getpid();
+    info!("pid of farcasterd before setting: {:?}", pid);
     info!("session id of farcasterd before setting: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));
     nix::unistd::setsid().expect("Failed to set new session id");
     info!("session id of farcasterd after setting: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));

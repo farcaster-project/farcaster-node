@@ -76,10 +76,13 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
         .arg(format!("{} {}", bin_path.to_string_lossy(), cmdargs));
 
     println!("Executing `{:?}`", shell);
-    shell.spawn().map_err(|err| {
+    let child = shell.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err
-    })
+    })?;
+    let pid = Pid::from_raw(child.id() as i32);
+    info!("pid got at launch: {:?}", pid);
+    Ok(child)
     // let child = shell.spawn().map_err(|err| {
     //     error!("Error launching {}: {}", name, err);
     //     err
