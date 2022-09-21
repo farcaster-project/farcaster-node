@@ -70,10 +70,9 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
     let cmdargs = args.into_iter().collect::<Vec<String>>().join(" ");
     println!("Command arguments: \"{}\"", cmdargs);
 
-    let mut shell = process::Command::new("sh");
+    let mut shell = process::Command::new(bin_path.to_string_lossy().to_string());
     shell
-        .arg("-c")
-        .arg(format!("{} {}", bin_path.to_string_lossy(), cmdargs));
+        .arg(format!("{}", cmdargs));
 
     println!("Executing `{:?}`", shell);
     let child = shell.spawn().map_err(|err| {
