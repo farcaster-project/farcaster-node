@@ -53,7 +53,7 @@ fn farcasterd_args(data_dir: Vec<String>, server_args: Vec<&str>, extra: Vec<&st
         .collect()
 }
 
-fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<process::Child> {
+fn launch(name: &str, args: impl IntoIterator<Item = String> + Clone) -> io::Result<process::Child> {
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
         err
@@ -67,32 +67,20 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
         bin_path.to_string_lossy()
     );
 
-    let cmdargs = args.into_iter().collect::<Vec<String>>().join(" ");
+    let cmdargs = args.clone().into_iter().collect::<Vec<String>>().join(" ");
     info!("Command arguments: \"{}\"", cmdargs);
 
-    let mut shell = process::Command::new(bin_path.to_string_lossy().to_string());
-    shell
-        .arg(format!("{}", cmdargs));
+    let mut cmd = process::Command::new(bin_path.to_string_lossy().to_string());
+    cmd.args(args);
 
-    info!("Executing `{:?}`", shell);
-    let child = shell.spawn().map_err(|err| {
+    info!("Executing `{:?}`", cmd);
+    let child = cmd.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err
     })?;
     let pid = Pid::from_raw(child.id() as i32);
     info!("pid got at launch: {:?}", pid);
     Ok(child)
-    // let child = shell.spawn().map_err(|err| {
-    //     error!("Error launching {}: {}", name, err);
-    //     err
-    // });
-
-    // // create shell process and set it as a group leader
-    // let pid = Pid::from_raw(child.as_ref().unwrap().id() as i32);
-    // nix::unistd::setpgid(pid, pid).unwrap();
-    // info!("pgid of farcasterd after setting: {:?}", nix::unistd::getpgid(Some(pid)));
-
-    // child
 }
 
 pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
