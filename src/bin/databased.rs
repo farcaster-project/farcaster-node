@@ -45,9 +45,6 @@ fn main() {
     debug!("MSG RPC socket {}", &service_config.msg_endpoint);
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    let pid = nix::unistd::getpid();
-    info!("session id of databased: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));
-
     debug!("Starting runtime ...");
     databased::run(service_config, opts.absolute_data_dir_path())
         .expect("Error running databased runtime");

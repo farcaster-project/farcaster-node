@@ -8,7 +8,7 @@ use std::str;
 use std::thread::sleep;
 use std::time::Duration;
 
-use nix::unistd::{getsid, getpgid, Pid};
+use nix::unistd::{getpgid, getsid, Pid};
 use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
 
@@ -53,7 +53,10 @@ fn farcasterd_args(data_dir: Vec<String>, server_args: Vec<&str>, extra: Vec<&st
         .collect()
 }
 
-fn launch(name: &str, args: impl IntoIterator<Item = String> + Clone) -> io::Result<process::Child> {
+fn launch(
+    name: &str,
+    args: impl IntoIterator<Item = String> + Clone,
+) -> io::Result<process::Child> {
     let mut bin_path = std::env::current_exe().map_err(|err| {
         error!("Unable to detect binary directory: {}", err);
         err
@@ -61,58 +64,65 @@ fn launch(name: &str, args: impl IntoIterator<Item = String> + Clone) -> io::Res
     bin_path.pop();
     bin_path.push(name);
 
-    info!(
+    debug!(
         "Launching {} as a separate process using `{}` as binary",
         name,
         bin_path.to_string_lossy()
     );
 
     let cmdargs = args.clone().into_iter().collect::<Vec<String>>().join(" ");
-    info!("Command arguments: \"{}\"", cmdargs);
+    debug!("Command arguments: \"{}\"", cmdargs);
 
     let mut cmd = process::Command::new(bin_path.to_string_lossy().to_string());
     cmd.args(args);
 
-    info!("Executing `{:?}`", cmd);
+    trace!("Executing `{:?}`", cmd);
     let child = cmd.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err
     })?;
     let pid = Pid::from_raw(child.id() as i32);
-    info!("pid got at launch: {:?}", pid);
+    trace!("pid got at launch: {:?}", pid);
     Ok(child)
 }
 
 pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
     let pid = nix::unistd::getpid();
     let current_sid = getsid(Some(pid)).expect("Fail to get session id");
-    info!("current sid: {:?}", current_sid);
+    trace!("current sid: {:?}", current_sid);
 
     for child in farcasterds {
         let sid = getsid(Some(Pid::from_raw(child.id() as i32))).expect("Fail to get session id");
         let gid = nix::unistd::getpgid(Some(Pid::from_raw(child.id() as i32)))
             .expect("Fail to get process group id");
-        info!("Killing child id: {:?}, ", child.id());
-        info!("sid: {:?}", sid);
-        info!("pgid: {:?}", gid);
+        trace!("Killing child id: {:?}, ", child.id());
+        trace!("sid: {:?}", sid);
+        trace!("pgid: {:?}", gid);
 
-        info!("egid: {:?}", nix::unistd::getegid());
-        info!("euid: {:?}", nix::unistd::geteuid());
+        trace!("egid: {:?}", nix::unistd::getegid());
+        trace!("euid: {:?}", nix::unistd::geteuid());
 
         // log the process tree
         let mut system = System::new();
         system.refresh_all();
         for (pid_i32, process) in system.get_processes() {
             let pid = Pid::from_raw(*pid_i32);
-            info!("pid: {:?}, name: {:?}, pgid: {:?}, sid: {:?}", pid, process.name(), getpgid(Some(pid)), getsid(Some(pid)));
+            trace!(
+                "pid: {:?}, name: {:?}, pgid: {:?}, sid: {:?}",
+                pid,
+                process.name(),
+                getpgid(Some(pid)),
+                getsid(Some(pid))
+            );
         }
 
-        nix::sys::signal::killpg(sid, nix::sys::signal::Signal::SIGKILL).expect("Failed to kill process group");
+        nix::sys::signal::killpg(sid, nix::sys::signal::Signal::SIGKILL)
+            .expect("Failed to kill process group");
     }
 }
 
 pub fn kill_all() {
-    info!("Killing all farcasterd processes");
+    debug!("Killing all farcasterd processes");
     let sys = System::new_all();
     // kill all process matching the following names
     for bin in [
@@ -125,11 +135,11 @@ pub fn kill_all() {
         "syncerd",
     ] {
         for proc in sys.get_process_by_name(bin) {
-            info!("Killing process {:?}", proc);
+            trace!("Killing process {:?}", proc);
             proc.kill(sysinfo::Signal::Kill);
         }
     }
-    info!("Signal sent for all farcasterd processes...");
+    debug!("Signal sent for all farcasterd processes...");
 }
 
 pub fn cli<T: DeserializeOwned>(

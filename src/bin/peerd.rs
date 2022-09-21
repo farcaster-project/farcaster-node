@@ -230,9 +230,6 @@ fn main() {
         }
     };
 
-    let pid = nix::unistd::getpid();
-    info!("session id of peerd: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));
-
     debug!("Starting runtime ...");
 
     /* A maker / listener passes the following content

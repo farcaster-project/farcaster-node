@@ -45,9 +45,6 @@ fn main() {
     debug!("MSG RPC socket {}", &service_config.msg_endpoint);
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    let pid = nix::unistd::getpid();
-    info!("session id of syncerd: {:?}", nix::unistd::getsid(Some(pid)).expect("Unable to get session id"));
-
     debug!("Starting runtime ...");
     syncerd::run(service_config, opts).expect("Error running syncerd runtime");
     unreachable!()
