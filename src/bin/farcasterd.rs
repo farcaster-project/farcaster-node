@@ -77,7 +77,7 @@ fn main() -> Result<(), Error> {
     nix::unistd::seteuid(nix::unistd::Uid::from_raw(pid.as_raw() as u32)).expect("Failed to set effective user id");
     // nix::unistd::setpgid(pid, pid).expect("Failed to set process group id");
 
-    nix::unistd::setresgid(gid, gid, gid).expect("Failed to set real, effective and saved group id");
+    // nix::unistd::setresgid(gid, gid, gid).expect("Failed to set real, effective and saved group id");
 
     // log the process tree
     let mut system = System::new();
