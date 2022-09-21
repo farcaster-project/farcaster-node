@@ -61,20 +61,20 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
     bin_path.pop();
     bin_path.push(name);
 
-    println!(
+    info!(
         "Launching {} as a separate process using `{}` as binary",
         name,
         bin_path.to_string_lossy()
     );
 
     let cmdargs = args.into_iter().collect::<Vec<String>>().join(" ");
-    println!("Command arguments: \"{}\"", cmdargs);
+    info!("Command arguments: \"{}\"", cmdargs);
 
     let mut shell = process::Command::new(bin_path.to_string_lossy().to_string());
     shell
         .arg(format!("{}", cmdargs));
 
-    println!("Executing `{:?}`", shell);
+    info!("Executing `{:?}`", shell);
     let child = shell.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err
