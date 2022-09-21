@@ -8,8 +8,7 @@ use std::str;
 use std::thread::sleep;
 use std::time::Duration;
 
-use nix::unistd::getsid;
-use nix::unistd::Pid;
+use nix::unistd::{getsid, getpgid, Pid};
 use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
 
@@ -77,10 +76,17 @@ fn launch(name: &str, args: impl IntoIterator<Item = String>) -> io::Result<proc
         .arg(format!("{} {}", bin_path.to_string_lossy(), cmdargs));
 
     println!("Executing `{:?}`", shell);
-    shell.spawn().map_err(|err| {
+    let child = shell.spawn().map_err(|err| {
         error!("Error launching {}: {}", name, err);
         err
-    })
+    });
+
+    // create shell process and set it as a group leader
+    let pid = Pid::from_raw(child.as_ref().unwrap().id() as i32);
+    nix::unistd::setpgid(pid, pid).unwrap();
+    info!("pgid of farcasterd after setting: {:?}", nix::unistd::getpgid(Some(pid)));
+
+    child
 }
 
 pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
@@ -95,6 +101,18 @@ pub fn cleanup_processes(farcasterds: Vec<process::Child>) {
         info!("Killing child id: {:?}, ", child.id());
         info!("sid: {:?}", sid);
         info!("pgid: {:?}", gid);
+
+        info!("egid: {:?}", nix::unistd::getegid());
+        info!("euid: {:?}", nix::unistd::geteuid());
+
+        // log the process tree
+        let mut system = System::new();
+        system.refresh_all();
+        for (pid_i32, process) in system.get_processes() {
+            let pid = Pid::from_raw(*pid_i32);
+            info!("pid: {:?}, name: {:?}, pgid: {:?}, sid: {:?}", pid, process.name(), getpgid(Some(pid)), getsid(Some(pid)));
+        }
+
         nix::sys::signal::killpg(sid, nix::sys::signal::Signal::SIGKILL).expect("Failed to kill process group");
     }
 }

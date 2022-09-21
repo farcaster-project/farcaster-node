@@ -42,6 +42,8 @@ use farcaster_node::{
     config::parse_config,
     farcasterd::{self, Opts},
 };
+use nix::unistd::{getsid, getpgid, Pid};
+use sysinfo::{ProcessExt, System, SystemExt};
 
 fn main() -> Result<(), Error> {
     let mut opts = Opts::parse();
@@ -70,6 +72,18 @@ fn main() -> Result<(), Error> {
     let pid = nix::unistd::getpid();
     info!("pid of farcasterd after setting: {:?}", pid);
     info!("pgid of farcasterd after setting: {:?}", nix::unistd::getpgid(Some(pid)));
+
+    nix::unistd::setegid(nix::unistd::Gid::from_raw(pid.as_raw() as u32)).expect("Failed to set effective group id");
+    nix::unistd::seteuid(nix::unistd::Uid::from_raw(pid.as_raw() as u32)).expect("Failed to set effective user id");
+    nix::unistd::setpgid(pid, pid).expect("Failed to set process group id");
+
+    // log the process tree
+    let mut system = System::new();
+    system.refresh_all();
+    for (pid_i32, process) in system.get_processes() {
+        let pid = Pid::from_raw(*pid_i32);
+        info!("pid: {:?}, name: {:?}, pgid: {:?}, sid: {:?}", pid, process.name(), getpgid(Some(pid)), getsid(Some(pid)));
+    }
 
     debug!("Starting runtime ...");
     farcasterd::run(service_config, config, opts, token).expect("Error running farcasterd runtime");
