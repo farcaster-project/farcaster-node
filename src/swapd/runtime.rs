@@ -1894,18 +1894,13 @@ impl Runtime {
                             {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
                                 self.syncer_state.awaiting_funding = false;
-                                endpoints.send_to(
-                                    ServiceBus::Ctl,
-                                    self.identity(),
-                                    ServiceId::Farcasterd,
-                                    Request::Ctl(Ctl::FundingCompleted(Blockchain::Bitcoin)),
-                                )?;
                                 // If the bitcoin amount does not match the expected funding amount, abort the swap
                                 let amount = bitcoin::Amount::from_sat(*amount);
                                 let required_funding_amount =
                                     self.state.b_required_funding_amount().unwrap();
 
                                 if amount != required_funding_amount {
+                                    // incorrect funding, start aborting procedure
                                     let msg = format!("Incorrect amount funded. Required: {}, Funded: {}. Do not fund this swap anymore, will abort and atttempt to sweep the Bitcoin to the provided address.", amount, required_funding_amount);
                                     error!("{}", msg);
                                     self.report_progress_message_to(
@@ -1920,8 +1915,17 @@ impl Runtime {
                                         Request::Ctl(Ctl::AbortSwap),
                                     )?;
                                     return Ok(());
+                                } else {
+                                    // funding completed, amount is correct
+                                    endpoints.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        ServiceId::Farcasterd,
+                                        Request::Ctl(Ctl::FundingCompleted(Blockchain::Bitcoin)),
+                                    )?;
                                 }
 
+                                // forward tx to wallet
                                 let req = Request::Ctl(Ctl::Tx(Tx::Funding(tx)));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?;
                             }
