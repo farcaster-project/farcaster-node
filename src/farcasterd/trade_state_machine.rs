@@ -1004,7 +1004,9 @@ fn attempt_transition_to_end(
                 ref address,
                 amount,
             }) => {
-                runtime.stats.incr_awaiting_funding(&Blockchain::Bitcoin);
+                runtime
+                    .stats
+                    .incr_awaiting_funding(&Blockchain::Bitcoin, swap_id);
                 let network = address.network.into();
                 if let Some(auto_fund_config) = runtime.config.get_auto_funding_config(network) {
                     info!(
@@ -1102,7 +1104,9 @@ fn attempt_transition_to_end(
                 address,
                 amount,
             }) => {
-                runtime.stats.incr_awaiting_funding(&Blockchain::Monero);
+                runtime
+                    .stats
+                    .incr_awaiting_funding(&Blockchain::Monero, swap_id);
                 let network = address.network.into();
                 if let Some(auto_fund_config) = runtime.config.get_auto_funding_config(network) {
                     info!(
@@ -1184,7 +1188,7 @@ fn attempt_transition_to_end(
         },
 
         (Request::Ctl(Ctl::FundingCompleted(blockchain)), _) => {
-            runtime.stats.incr_funded(&blockchain);
+            runtime.stats.incr_funded(&blockchain, &swap_id);
             info!(
                 "{} | Your {} funding completed",
                 swap_id.bright_blue_italic(),
@@ -1203,24 +1207,12 @@ fn attempt_transition_to_end(
         }
 
         (Request::Ctl(Ctl::FundingCanceled(blockchain)), _) => {
-            match blockchain {
-                Blockchain::Bitcoin => {
-                    runtime.stats.incr_funding_bitcoin_canceled();
-                    info!(
-                        "{} | Your {} funding was canceled.",
-                        swap_id.bright_blue_italic(),
-                        blockchain.bright_green_bold()
-                    );
-                }
-                Blockchain::Monero => {
-                    runtime.stats.incr_funding_monero_canceled();
-                    info!(
-                        "{} | Your {} funding was canceled.",
-                        swap_id.bright_blue_italic(),
-                        blockchain.bright_green_bold()
-                    );
-                }
-            };
+            runtime.stats.incr_funding_canceled(&blockchain, &swap_id);
+            info!(
+                "{} | Your {} funding was canceled.",
+                swap_id.bright_blue_italic(),
+                blockchain.bright_green_bold()
+            );
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 public_offer,

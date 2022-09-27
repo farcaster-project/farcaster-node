@@ -135,8 +135,8 @@ pub struct Stats {
     punish: u64,
     abort: u64,
     initialized: u64,
-    awaiting_funding_btc: u64,
-    awaiting_funding_xmr: u64,
+    awaiting_funding_btc: HashSet<SwapId>,
+    awaiting_funding_xmr: HashSet<SwapId>,
     funded_xmr: u64,
     funded_btc: u64,
     funding_canceled_xmr: u64,
@@ -152,35 +152,44 @@ impl Stats {
             Outcome::Abort => self.abort += 1,
         };
     }
+
     pub fn incr_initiated(&mut self) {
         self.initialized += 1;
     }
-    pub fn incr_awaiting_funding(&mut self, blockchain: &Blockchain) {
+
+    pub fn incr_awaiting_funding(&mut self, blockchain: &Blockchain, swapid: SwapId) {
         match blockchain {
-            Blockchain::Monero => self.awaiting_funding_xmr += 1,
-            Blockchain::Bitcoin => self.awaiting_funding_btc += 1,
-        }
+            Blockchain::Monero => self.awaiting_funding_xmr.insert(swapid),
+            Blockchain::Bitcoin => self.awaiting_funding_btc.insert(swapid),
+        };
     }
-    pub fn incr_funded(&mut self, blockchain: &Blockchain) {
+
+    pub fn incr_funded(&mut self, blockchain: &Blockchain, swapid: &SwapId) {
         match blockchain {
             Blockchain::Monero => {
                 self.funded_xmr += 1;
-                self.awaiting_funding_xmr -= 1;
+                self.awaiting_funding_xmr.remove(swapid);
             }
             Blockchain::Bitcoin => {
                 self.funded_btc += 1;
-                self.awaiting_funding_btc -= 1;
+                self.awaiting_funding_btc.remove(swapid);
             }
         }
     }
-    pub fn incr_funding_monero_canceled(&mut self) {
-        self.awaiting_funding_xmr -= 1;
-        self.funding_canceled_xmr += 1;
+
+    pub fn incr_funding_canceled(&mut self, blockchain: &Blockchain, swapid: &SwapId) {
+        match blockchain {
+            Blockchain::Monero => {
+                self.awaiting_funding_xmr.remove(swapid);
+                self.funding_canceled_xmr += 1;
+            }
+            Blockchain::Bitcoin => {
+                self.awaiting_funding_btc.remove(swapid);
+                self.funding_canceled_btc += 1;
+            }
+        }
     }
-    pub fn incr_funding_bitcoin_canceled(&mut self) {
-        self.awaiting_funding_btc -= 1;
-        self.funding_canceled_btc += 1;
-    }
+
     pub fn success_rate(&self) -> f64 {
         let Stats {
             success,
@@ -204,8 +213,8 @@ impl Stats {
             punish.bright_white_bold(),
             abort.bright_white_bold(),
             initialized,
-            awaiting_funding_xmr.bright_white_bold(),
-            awaiting_funding_btc.bright_white_bold(),
+            awaiting_funding_xmr.len().bright_white_bold(),
+            awaiting_funding_btc.len().bright_white_bold(),
             funded_xmr.bright_white_bold(),
             funded_btc.bright_white_bold(),
             funding_canceled_xmr.bright_white_bold(),
