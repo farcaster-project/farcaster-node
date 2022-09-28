@@ -12,14 +12,12 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-pub mod client;
 pub mod ctl;
 pub mod msg;
 pub mod request;
 pub mod rpc;
 pub mod sync;
 
-pub use client::Client;
 pub use ctl::{Failure, FailureCode};
 
 use crate::bus::ctl::Ctl;

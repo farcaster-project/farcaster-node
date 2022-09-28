@@ -46,6 +46,7 @@ extern crate serde_with;
 pub mod bus;
 #[cfg(feature = "cli")]
 pub mod cli;
+pub mod client;
 #[cfg(feature = "_rpc")]
 pub mod config;
 pub mod error;

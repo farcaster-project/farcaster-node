@@ -28,11 +28,12 @@ use clap_complete::shells::*;
 use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
 
 use super::Command;
+use crate::bus::BusMsg;
 use crate::bus::{
     ctl::{self, Ctl},
     rpc::Rpc,
 };
-use crate::bus::{BusMsg, Client};
+use crate::client::Client;
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {

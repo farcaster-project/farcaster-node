@@ -19,8 +19,8 @@ extern crate log;
 
 use clap::Parser;
 
-use farcaster_node::bus::Client;
 use farcaster_node::cli::Opts;
+use farcaster_node::client::Client;
 use farcaster_node::LogStyle;
 use farcaster_node::ServiceConfig;
 use microservices::shell::Exec;
