@@ -246,7 +246,7 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
     bitcoin_rpc.generate_to_address(200, &address).unwrap();
 
     // We mined 200 blocks, allow things to happen, like the electrum server catching up
-    sleep(Duration::from_secs(3));
+    sleep(Duration::from_secs(5));
 
     bitcoin_rpc
 }
