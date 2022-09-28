@@ -5,7 +5,7 @@ use crate::bus::{
     },
     msg::{Commit, Msg, Reveal, TakeCommit},
     rpc::AddressSecretKey,
-    Request, ServiceBus,
+    BusMsg, ServiceBus,
 };
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
@@ -72,7 +72,7 @@ pub struct Runtime {
     wallet_token: Token,
     node_secrets: NodeSecrets,
     wallets: HashMap<SwapId, Wallet>,
-    swaps: HashMap<SwapId, Option<Request>>,
+    swaps: HashMap<SwapId, Option<BusMsg>>,
     btc_addrs: HashMap<SwapId, bitcoin::Address>,
     xmr_addrs: HashMap<SwapId, monero::Address>,
 }
@@ -278,7 +278,7 @@ impl_strict_encoding!(BobState);
 impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -290,7 +290,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
         match bus {
             // Peer-to-peer message bus
@@ -313,7 +313,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_farcasterd(&self, endpoints: &mut Endpoints, message: Request) -> Result<(), Error> {
+    fn send_farcasterd(&self, endpoints: &mut Endpoints, message: BusMsg) -> Result<(), Error> {
         endpoints.send_to(
             ServiceBus::Ctl,
             self.identity(),
@@ -327,21 +327,21 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         let req_swap_id = get_swap_id(&source).ok();
         match &request {
-            Request::Msg(msg) if req_swap_id.is_some() && Some(msg.swap_id()) == req_swap_id => {}
+            BusMsg::Msg(msg) if req_swap_id.is_some() && Some(msg.swap_id()) == req_swap_id => {}
 
             req if source == ServiceId::Farcasterd => match req {
                 // TODO enter farcasterd messages allowed
-                Request::Msg(Msg::TakerCommit(_)) => {}
-                Request::Msg(_) => return Ok(()),
+                BusMsg::Msg(Msg::TakerCommit(_)) => {}
+                BusMsg::Msg(_) => return Ok(()),
                 _ => {}
             },
 
             // errors
-            Request::Msg(msg) if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id => {
+            BusMsg::Msg(msg) if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id => {
                 error!("Msg and source don't have same swap_id, ignoring...");
                 return Ok(());
             }
@@ -354,7 +354,7 @@ impl Runtime {
             }
         }
         match request {
-            Request::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -363,7 +363,7 @@ impl Runtime {
             // through the msg bus, and always arrive in the correct order. BitcoinAddress arriving
             // after TakerCommit, blocks TakerCommit, as `self.btc_addrs.contains_key(&swap_id) ==
             // false`
-            Request::Ctl(Ctl::BitcoinAddress(BitcoinAddress(swapid, btc_addr))) => {
+            BusMsg::Ctl(Ctl::BitcoinAddress(BitcoinAddress(swapid, btc_addr))) => {
                 if self.btc_addrs.insert(swapid, btc_addr).is_some() {
                     error!("btc_addrs rm accidentally")
                 };
@@ -374,7 +374,7 @@ impl Runtime {
             // through the msg bus, and always arrive in the correct order. MoneroAddress arriving
             // after TakerCommit, blocks TakerCommit, as `self.xmr_addrs.contains_key(&swap_id) ==
             // false`
-            Request::Ctl(Ctl::MoneroAddress(MoneroAddress(swapid, xmr_addr))) => {
+            BusMsg::Ctl(Ctl::MoneroAddress(MoneroAddress(swapid, xmr_addr))) => {
                 if self.xmr_addrs.insert(swapid, xmr_addr).is_some() {
                     error!("xmr_addrs rm accidentally")
                 };
@@ -382,7 +382,7 @@ impl Runtime {
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
-            Request::Msg(Msg::TakerCommit(TakeCommit {
+            BusMsg::Msg(Msg::TakerCommit(TakeCommit {
                 commit: remote_commit,
                 public_offer,
                 swap_id,
@@ -414,7 +414,7 @@ impl Runtime {
                             self.send_ctl(
                                 endpoints,
                                 ServiceId::Database,
-                                Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+                                BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                                     address: funding_addr.clone(),
                                     secret_key: key_manager
                                         .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
@@ -453,7 +453,7 @@ impl Runtime {
                             self.send_ctl(
                                 endpoints,
                                 ServiceId::Farcasterd,
-                                Request::Ctl(Ctl::LaunchSwap(launch_swap)),
+                                BusMsg::Ctl(Ctl::LaunchSwap(launch_swap)),
                             )?;
                         } else {
                             error!("{} | Wallet already existed", swap_id.bright_blue_italic());
@@ -501,7 +501,7 @@ impl Runtime {
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Farcasterd,
-                                    Request::Ctl(Ctl::LaunchSwap(launch_swap)),
+                                    BusMsg::Ctl(Ctl::LaunchSwap(launch_swap)),
                                 )?;
                             } else {
                                 error!("{} | Not Commit::Bob", swap_id.bright_blue_italic());
@@ -512,7 +512,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::Msg(Msg::MakerCommit(commit)) => {
+            BusMsg::Msg(Msg::MakerCommit(commit)) => {
                 let req_swap_id = req_swap_id.expect("validated previously");
                 match commit {
                     Commit::BobParameters(CommitBobParameters { swap_id, .. }) => {
@@ -570,13 +570,13 @@ impl Runtime {
                     ServiceBus::Ctl,
                     self.identity(),
                     source,
-                    Request::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
+                    BusMsg::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
                         swap_id: req_swap_id,
                         proof: proof.expect("local proof is always Some").clone(),
                     }))),
                 )?;
             }
-            Request::Msg(Msg::Reveal(Reveal::Proof(proof))) => {
+            BusMsg::Msg(Msg::Reveal(Reveal::Proof(proof))) => {
                 let swap_id = get_swap_id(&source)?;
                 let wallet = self.wallets.get_mut(&swap_id);
                 match wallet {
@@ -600,7 +600,7 @@ impl Runtime {
                     ),
                 }
             }
-            Request::Msg(Msg::Reveal(reveal)) => {
+            BusMsg::Msg(Msg::Reveal(reveal)) => {
                 let swap_id = get_swap_id(&source)?;
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
@@ -643,7 +643,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         ServiceId::Wallet,
                                         source,
-                                        Request::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
+                                        BusMsg::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
                                             swap_id,
                                             proof: local_params
                                                 .proof
@@ -711,7 +711,7 @@ impl Runtime {
                                     // TODO: (maybe) what if the message responded to is not sent
                                     // by swapd?
                                     source.clone(),
-                                    Request::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
+                                    BusMsg::Msg(Msg::Reveal(Reveal::Proof(RevealProof {
                                         swap_id,
                                         proof: local_params
                                             .proof
@@ -778,7 +778,7 @@ impl Runtime {
                             let core_arb_setup_msg =
                                 Msg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
 
-                            self.send_ctl(endpoints, source, Request::Msg(core_arb_setup_msg))?;
+                            self.send_ctl(endpoints, source, BusMsg::Msg(core_arb_setup_msg))?;
                         } else {
                             error!("{} | only Some(Wallet::Bob)", swap_id.bright_blue_italic());
                         }
@@ -838,7 +838,7 @@ impl Runtime {
                     }
                 }
             }
-            Request::Msg(Msg::RefundProcedureSignatures(RefundProcedureSignatures {
+            BusMsg::Msg(Msg::RefundProcedureSignatures(RefundProcedureSignatures {
                 swap_id: _,
                 cancel_sig: alice_cancel_sig,
                 refund_adaptor_sig,
@@ -926,7 +926,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
-                            Request::Ctl(Ctl::Tx(Tx::Lock(finalized_lock_tx))),
+                            BusMsg::Ctl(Ctl::Tx(Tx::Lock(finalized_lock_tx))),
                         )?;
                     }
 
@@ -944,7 +944,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
-                            Request::Ctl(Ctl::Tx(Tx::Cancel(finalized_cancel_tx))),
+                            BusMsg::Ctl(Ctl::Tx(Tx::Cancel(finalized_cancel_tx))),
                         )?;
                     }
 
@@ -965,7 +965,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
-                            Request::Ctl(Ctl::Tx(Tx::Refund(final_refund_tx))),
+                            BusMsg::Ctl(Ctl::Tx(Tx::Refund(final_refund_tx))),
                         )?;
                     }
 
@@ -975,7 +975,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id,
                             source, // destination swapd
-                            Request::Msg(buy_proc_sig),
+                            BusMsg::Msg(buy_proc_sig),
                         )?;
                     }
                 } else {
@@ -986,7 +986,7 @@ impl Runtime {
                     );
                 }
             }
-            Request::Msg(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
+            BusMsg::Msg(Msg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
 
@@ -1088,7 +1088,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(), // destination swapd
-                            Request::Ctl(Ctl::Tx(Tx::Cancel(finalized_cancel_tx))),
+                            BusMsg::Ctl(Ctl::Tx(Tx::Cancel(finalized_cancel_tx))),
                         )?;
                     }
                     // NOTE: if this is the right spot for the Ctl message, it should also be replayed upon state recovery
@@ -1113,7 +1113,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             my_id.clone(),
                             source.clone(),
-                            Request::Ctl(Ctl::Tx(Tx::Punish(tx))),
+                            BusMsg::Ctl(Ctl::Tx(Tx::Punish(tx))),
                         )?;
                     }
 
@@ -1124,7 +1124,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         my_id,
                         source,
-                        Request::Msg(refund_proc_signatures),
+                        BusMsg::Msg(refund_proc_signatures),
                     )?
                 } else {
                     error!(
@@ -1133,7 +1133,7 @@ impl Runtime {
                     );
                 }
             }
-            Request::Msg(Msg::BuyProcedureSignature(buy_proc_sig)) => {
+            BusMsg::Msg(Msg::BuyProcedureSignature(buy_proc_sig)) => {
                 let BuyProcedureSignature { swap_id, .. } = buy_proc_sig;
                 trace!("wallet received buyproceduresignature");
                 let id = self.identity();
@@ -1186,7 +1186,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         id.clone(),
                         source.clone(), // destination swapd
-                        Request::Ctl(Ctl::Tx(Tx::Cancel(finalized_cancel_tx))),
+                        BusMsg::Ctl(Ctl::Tx(Tx::Cancel(finalized_cancel_tx))),
                     )?;
 
                     // buy
@@ -1216,7 +1216,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         id,
                         source,
-                        Request::Ctl(Ctl::Tx(Tx::Buy(tx))),
+                        BusMsg::Ctl(Ctl::Tx(Tx::Buy(tx))),
                     )?;
 
                     // buy_adaptor_sig
@@ -1241,10 +1241,10 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Ctl(Ctl::Hello) => match &source {
+            BusMsg::Ctl(Ctl::Hello) => match &source {
                 ServiceId::Swap(swap_id) => {
                     if let Some(option_req) = self.swaps.get_mut(swap_id) {
                         trace!("Known swapd, you launched it");
@@ -1260,7 +1260,7 @@ impl Runtime {
                 }
             },
 
-            Request::Ctl(Ctl::TakeOffer(ctl::PubOffer {
+            BusMsg::Ctl(Ctl::TakeOffer(ctl::PubOffer {
                 public_offer,
                 external_address,
                 internal_address,
@@ -1290,7 +1290,7 @@ impl Runtime {
                         self.send_ctl(
                             endpoints,
                             ServiceId::Database,
-                            Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+                            BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                                 address: funding_addr.clone(),
                                 secret_key: key_manager
                                     .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
@@ -1329,7 +1329,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             source,
                             ServiceId::Farcasterd,
-                            Request::Ctl(Ctl::LaunchSwap(launch_swap)),
+                            BusMsg::Ctl(Ctl::LaunchSwap(launch_swap)),
                         )?;
                     }
                     SwapRole::Alice => {
@@ -1376,13 +1376,13 @@ impl Runtime {
                             ServiceBus::Ctl,
                             source,
                             ServiceId::Farcasterd,
-                            Request::Ctl(Ctl::LaunchSwap(launch_swap)),
+                            BusMsg::Ctl(Ctl::LaunchSwap(launch_swap)),
                         )?;
                     }
                 };
             }
 
-            Request::Ctl(Ctl::Tx(Tx::Funding(tx))) => {
+            BusMsg::Ctl(Ctl::Tx(Tx::Funding(tx))) => {
                 let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState {
                     funding_tx: Some(funding),
@@ -1406,11 +1406,11 @@ impl Runtime {
                         ServiceId::Wallet,
                         // TODO: (maybe) what if this message responded to is not sent by swapd?
                         source,
-                        Request::Ctl(Ctl::FundingUpdated),
+                        BusMsg::Ctl(Ctl::FundingUpdated),
                     )?;
                 }
             }
-            Request::Ctl(Ctl::Tx(Tx::Buy(buy_tx))) => {
+            BusMsg::Ctl(Ctl::Tx(Tx::Buy(buy_tx))) => {
                 let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState {
                     bob,
@@ -1482,7 +1482,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
                         ServiceId::Database,
-                        Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
+                        BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
                             address: corresponding_address,
                             spend: keypair.spend.as_bytes().try_into().unwrap(),
                             view: keypair.view.as_bytes().try_into().unwrap(),
@@ -1499,11 +1499,11 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Monero(sweep_keys))),
+                        BusMsg::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Monero(sweep_keys))),
                     )?;
                 }
             }
-            Request::Ctl(Ctl::Tx(Tx::Refund(refund_tx))) => {
+            BusMsg::Ctl(Ctl::Tx(Tx::Refund(refund_tx))) => {
                 let swap_id = get_swap_id(&source)?;
 
                 if let Some(Wallet::Alice(AliceState {
@@ -1578,7 +1578,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
                         ServiceId::Database,
-                        Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
+                        BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
                             address: corresponding_address,
                             spend: keypair.spend.as_bytes().try_into().unwrap(),
                             view: keypair.view.as_bytes().try_into().unwrap(),
@@ -1595,14 +1595,14 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Monero(sweep_keys))),
+                        BusMsg::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Monero(sweep_keys))),
                     )?;
                 } else {
                     error!("Call to refund transaction expects an Alice wallet");
                 }
             }
 
-            Request::Ctl(Ctl::GetKeys(GetKeys(wallet_token))) => {
+            BusMsg::Ctl(Ctl::GetKeys(GetKeys(wallet_token))) => {
                 if wallet_token != self.wallet_token {
                     return Err(Error::InvalidToken);
                 }
@@ -1610,17 +1610,17 @@ impl Runtime {
                 // let mut rng = thread_rng();
                 // let sk = SecretKey::new(&mut rng);
                 // let pk = PublicKey::from_secret_key(&Secp256k1::new(), &sk);
-                // self.send_farcasterd(endpoints, Request::Keys(Keys(sk, pk, request_id)))?
+                // self.send_farcasterd(endpoints, BusMsg::Keys(Keys(sk, pk, request_id)))?
                 self.send_farcasterd(
                     endpoints,
-                    Request::Ctl(Ctl::Keys(Keys(
+                    BusMsg::Ctl(Ctl::Keys(Keys(
                         self.node_secrets.peerd_secret_key,
                         self.node_secrets.node_id(),
                     ))),
                 )?
             }
 
-            Request::Ctl(Ctl::GetSweepBitcoinAddress(source_address)) => {
+            BusMsg::Ctl(Ctl::GetSweepBitcoinAddress(source_address)) => {
                 let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState { key_manager, .. })) =
                     self.wallets.get_mut(&swap_id)
@@ -1636,7 +1636,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Bitcoin(
+                        BusMsg::Ctl(Ctl::SweepAddress(SweepAddressAddendum::Bitcoin(
                             SweepBitcoinAddress {
                                 source_secret_key,
                                 source_address,
@@ -1649,7 +1649,7 @@ impl Runtime {
                 }
             }
 
-            Request::Ctl(Ctl::SwapOutcome(success)) => {
+            BusMsg::Ctl(Ctl::SwapOutcome(success)) => {
                 let swap_id = get_swap_id(&source)?;
                 let success = match success {
                     Outcome::Buy => success.bright_green_bold(),
@@ -1664,7 +1664,7 @@ impl Runtime {
                 self.clean_up_after_swap(&swap_id);
             }
 
-            Request::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
+            BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
                 match state {
                     CheckpointState::CheckpointWallet(CheckpointWallet { wallet, xmr_addr }) => {
                         info!("Restoring wallet for swap {}", swap_id);
@@ -1682,10 +1682,7 @@ impl Runtime {
             }
 
             _ => {
-                error!(
-                    "Request {:?} is not supported by the CTL interface",
-                    request
-                );
+                error!("BusMsg {:?} is not supported by the CTL interface", request);
             }
         }
 
@@ -1696,7 +1693,7 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         _source: ServiceId,
-        _request: Request,
+        _request: BusMsg,
     ) -> Result<(), Error> {
         // TODO
         Ok(())

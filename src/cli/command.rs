@@ -32,7 +32,7 @@ use crate::bus::{
     ctl::{self, Ctl},
     rpc::Rpc,
 };
-use crate::bus::{Client, Request};
+use crate::bus::{BusMsg, Client};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
@@ -62,9 +62,9 @@ impl Exec for Command {
                     runtime.request_rpc(ServiceId::Farcasterd, Rpc::GetInfo)?;
                 }
                 match runtime.response()? {
-                    Request::Rpc(Rpc::NodeInfo(info)) => println!("{}", info),
-                    Request::Rpc(Rpc::PeerInfo(info)) => println!("{}", info),
-                    Request::Rpc(Rpc::SwapInfo(info)) => println!("{}", info),
+                    BusMsg::Rpc(Rpc::NodeInfo(info)) => println!("{}", info),
+                    BusMsg::Rpc(Rpc::PeerInfo(info)) => println!("{}", info),
+                    BusMsg::Rpc(Rpc::SwapInfo(info)) => println!("{}", info),
                     // TODO add syncer info
                     _ => {
                         return Err(Error::Other(
@@ -325,7 +325,7 @@ impl Exec for Command {
                     ServiceId::Database,
                     Rpc::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
-                if let Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                if let BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
                     secret_key,
                     ..
                 })) = runtime.report_failure()?
@@ -352,7 +352,7 @@ impl Exec for Command {
                     ServiceId::Database,
                     Rpc::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
-                if let Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                if let BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
                     view,
                     spend,
                     ..

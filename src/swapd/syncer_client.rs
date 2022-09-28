@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     bus::sync::SyncMsg,
-    bus::Request,
+    bus::BusMsg,
     syncerd::{Task, TaskId},
     ServiceId,
 };
@@ -409,14 +409,14 @@ impl SyncerState {
             ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::Sync(SyncMsg::Task(task)),
+            BusMsg::Sync(SyncMsg::Task(task)),
         )?;
         let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
         endpoints.send_to(
             ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::Sync(SyncMsg::Task(watch_height_btc_task)),
+            BusMsg::Sync(SyncMsg::Task(watch_height_btc_task)),
         )?;
         // assumes xmr syncer will be up as well at this point
         let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
@@ -424,7 +424,7 @@ impl SyncerState {
             ServiceBus::Sync,
             identity,
             self.monero_syncer(),
-            Request::Sync(SyncMsg::Task(watch_height_xmr_task)),
+            BusMsg::Sync(SyncMsg::Task(watch_height_xmr_task)),
         )?;
         Ok(())
     }

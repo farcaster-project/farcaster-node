@@ -18,7 +18,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::msg::Commit;
 use crate::bus::rpc::{AddressSecretKey, OfferStatus};
-use crate::bus::Request;
+use crate::bus::BusMsg;
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::SweepAddressAddendum;
 use crate::walletd::runtime::CheckpointWallet;
@@ -477,9 +477,9 @@ impl From<FailureCode> for rpc::FailureCode<FailureCode> {
 
 impl rpc::FailureCodeExt for FailureCode {}
 
-impl From<crate::Error> for Request {
+impl From<crate::Error> for BusMsg {
     fn from(err: crate::Error) -> Self {
-        Request::Ctl(Ctl::Failure(Failure {
+        BusMsg::Ctl(Ctl::Failure(Failure {
             code: FailureCode::Unknown,
             info: err.to_string(),
         }))
@@ -487,35 +487,35 @@ impl From<crate::Error> for Request {
 }
 
 pub trait IntoProgressOrFailure {
-    fn into_progress_or_failure(self) -> Request;
+    fn into_progress_or_failure(self) -> BusMsg;
 }
 pub trait IntoSuccessOrFailure {
-    fn into_success_or_failure(self) -> Request;
+    fn into_success_or_failure(self) -> BusMsg;
 }
 
 impl IntoProgressOrFailure for Result<String, crate::Error> {
-    fn into_progress_or_failure(self) -> Request {
+    fn into_progress_or_failure(self) -> BusMsg {
         match self {
-            Ok(val) => Request::Ctl(Ctl::Progress(Progress::Message(val))),
-            Err(err) => Request::from(err),
+            Ok(val) => BusMsg::Ctl(Ctl::Progress(Progress::Message(val))),
+            Err(err) => BusMsg::from(err),
         }
     }
 }
 
 impl IntoSuccessOrFailure for Result<String, crate::Error> {
-    fn into_success_or_failure(self) -> Request {
+    fn into_success_or_failure(self) -> BusMsg {
         match self {
-            Ok(val) => Request::Ctl(Ctl::Success(OptionDetails::with(val))),
-            Err(err) => Request::from(err),
+            Ok(val) => BusMsg::Ctl(Ctl::Success(OptionDetails::with(val))),
+            Err(err) => BusMsg::from(err),
         }
     }
 }
 
 impl IntoSuccessOrFailure for Result<(), crate::Error> {
-    fn into_success_or_failure(self) -> Request {
+    fn into_success_or_failure(self) -> BusMsg {
         match self {
-            Ok(_) => Request::Ctl(Ctl::Success(OptionDetails::new())),
-            Err(err) => Request::from(err),
+            Ok(_) => BusMsg::Ctl(Ctl::Success(OptionDetails::new())),
+            Err(err) => BusMsg::from(err),
         }
     }
 }

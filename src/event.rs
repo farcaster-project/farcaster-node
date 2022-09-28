@@ -1,6 +1,6 @@
 use microservices::esb;
 
-use crate::bus::{Request, ServiceBus};
+use crate::bus::{BusMsg, ServiceBus};
 use crate::Endpoints;
 use crate::ServiceId;
 
@@ -26,8 +26,8 @@ pub struct Event<'esb> {
     pub service: ServiceId,
     /// Remote service id (event originator)
     pub source: ServiceId,
-    /// Request that triggered the event
-    pub request: Request,
+    /// BusMsg that triggered the event
+    pub request: BusMsg,
 }
 
 impl<'esb> Event<'esb> {
@@ -36,7 +36,7 @@ impl<'esb> Event<'esb> {
         endpoints: &'esb mut Endpoints,
         service: ServiceId,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Self {
         Event {
             endpoints,
@@ -47,13 +47,13 @@ impl<'esb> Event<'esb> {
     }
 
     /// Finalizes event processing by sending reply request via CTL message bus
-    pub fn complete_ctl(self, request: Request) -> Result<(), esb::Error<ServiceId>> {
+    pub fn complete_ctl(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Ctl, self.service, self.source, request)
     }
 
     /// Finalizes event processing by sending reply request via RPC message bus
-    pub fn complete_rpc(self, request: Request) -> Result<(), esb::Error<ServiceId>> {
+    pub fn complete_rpc(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Rpc, self.service, self.source, request)
     }
@@ -63,7 +63,7 @@ impl<'esb> Event<'esb> {
     pub fn complete_ctl_service(
         self,
         service: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Ctl, self.service, service, request)
@@ -74,7 +74,7 @@ impl<'esb> Event<'esb> {
     pub fn complete_sync_service(
         self,
         service: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Sync, self.service, service, request)
@@ -85,7 +85,7 @@ impl<'esb> Event<'esb> {
     pub fn send_ctl_service(
         &mut self,
         service: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Ctl, self.service.clone(), service, request)
@@ -96,7 +96,7 @@ impl<'esb> Event<'esb> {
     pub fn send_rpc_service(
         &mut self,
         service: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Rpc, self.service.clone(), service, request)
@@ -106,7 +106,7 @@ impl<'esb> Event<'esb> {
     pub fn send_msg_service(
         &mut self,
         service: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
             .send_to(ServiceBus::Msg, self.service.clone(), service, request)

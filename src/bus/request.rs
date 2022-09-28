@@ -21,16 +21,11 @@ use std::iter::FromIterator;
 use amplify::Wrapper;
 use bitcoin::secp256k1::rand::{thread_rng, RngCore};
 use internet2::addr::NodeAddr;
-use internet2::Api;
 use internet2::{CreateUnmarshaller, Unmarshaller};
 use lazy_static::lazy_static;
-use microservices::rpc;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::bus::ctl::Ctl;
 use crate::bus::msg::Msg;
-use crate::bus::rpc::Rpc;
-use crate::bus::sync::SyncMsg;
 
 lazy_static! {
     pub static ref UNMARSHALLER: Unmarshaller<Msg> = Msg::create_unmarshaller();
@@ -47,29 +42,6 @@ impl RequestId {
         RequestId(u64::from_be_bytes(id))
     }
 }
-
-#[derive(Clone, Debug, Display, From, Api)]
-#[api(encoding = "strict")]
-#[non_exhaustive]
-pub enum Request {
-    #[api(type = 5)]
-    #[display("msg({0})")]
-    Msg(Msg),
-
-    #[api(type = 55)]
-    #[display("ctl({0})")]
-    Ctl(Ctl),
-
-    #[api(type = 66)]
-    #[display(inner)]
-    Rpc(Rpc),
-
-    #[api(type = 67)]
-    #[display("sync({0})")]
-    Sync(SyncMsg),
-}
-
-impl rpc::Request for Request {}
 
 pub type RemotePeerMap<T> = BTreeMap<NodeAddr, T>;
 

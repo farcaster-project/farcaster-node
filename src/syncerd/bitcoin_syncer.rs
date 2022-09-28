@@ -1,5 +1,5 @@
 use crate::bus::sync::{BridgeEvent, SyncMsg};
-use crate::bus::Request;
+use crate::bus::BusMsg;
 use crate::error::SyncerError;
 use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::SyncerdTask;
@@ -502,7 +502,7 @@ async fn run_syncerd_bridge_event_sender(
             let mut transcoder = PlainTranscoder {};
             let writer = connection.as_sender();
 
-            let request = Request::Sync(SyncMsg::BridgeEvent(event));
+            let request = BusMsg::Sync(SyncMsg::BridgeEvent(event));
             trace!("sending request over syncerd bridge: {:?}", request);
             writer
                 .send_routed(

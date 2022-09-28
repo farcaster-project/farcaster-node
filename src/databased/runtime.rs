@@ -14,7 +14,7 @@ use crate::bus::{
     ctl::{Checkpoint, CheckpointState, Ctl, OfferStatusPair},
     request::List,
     rpc::{Address, AddressSecretKey, CheckpointEntry, OfferStatus, OfferStatusSelector, Rpc},
-    Failure, FailureCode, Request, ServiceBus,
+    BusMsg, Failure, FailureCode, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use internet2::TypedEnum;
@@ -39,7 +39,7 @@ impl Runtime {}
 impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -51,14 +51,14 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for database command
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
             // RPC client bus for issuing user command
-            (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
@@ -76,10 +76,10 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -97,14 +97,14 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 debug!("Received Hello from {}", source);
             }
 
-            Request::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
+            BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
                 match state {
                     CheckpointState::CheckpointWallet(_) => {
                         debug!("setting wallet checkpoint");
@@ -123,7 +123,7 @@ impl Runtime {
                 debug!("checkpoint set");
             }
 
-            Request::Ctl(Ctl::RestoreCheckpoint(swap_id)) => {
+            BusMsg::Ctl(Ctl::RestoreCheckpoint(swap_id)) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -190,7 +190,7 @@ impl Runtime {
                 }
             }
 
-            Request::Ctl(Ctl::RemoveCheckpoint(swap_id)) => {
+            BusMsg::Ctl(Ctl::RemoveCheckpoint(swap_id)) => {
                 if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -205,14 +205,14 @@ impl Runtime {
                 }
             }
 
-            Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+            BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                 address,
                 secret_key,
             })) => {
                 self.database.set_bitcoin_address(&address, &secret_key)?;
             }
 
-            Request::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
+            BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
                 address,
                 view,
                 spend,
@@ -221,12 +221,12 @@ impl Runtime {
                     .set_monero_address(&address, &monero::KeyPair { view, spend })?;
             }
 
-            Request::Ctl(Ctl::SetOfferStatus(OfferStatusPair { offer, status })) => {
+            BusMsg::Ctl(Ctl::SetOfferStatus(OfferStatusPair { offer, status })) => {
                 self.database.set_offer_status(&offer, &status)?;
             }
 
             _ => {
-                error!("Request {} is not supported by the CTL interface", request);
+                error!("BusMsg {} is not supported by the CTL interface", request);
             }
         }
 
@@ -290,7 +290,7 @@ impl Runtime {
                     ServiceBus::Rpc,
                     source,
                     ServiceId::Farcasterd,
-                    Request::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
+                    BusMsg::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
                 )?;
             }
 
@@ -300,7 +300,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        Request::Ctl(Ctl::Failure(Failure {
+                        BusMsg::Ctl(Ctl::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         })),
@@ -310,7 +310,7 @@ impl Runtime {
                             ServiceBus::Rpc,
                             ServiceId::Database,
                             source,
-                            Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                            BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
                                 address,
                                 view: secret_key_pair.view.as_bytes().try_into().unwrap(),
                                 spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
@@ -326,7 +326,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        Request::Ctl(Ctl::Failure(Failure {
+                        BusMsg::Ctl(Ctl::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         })),
@@ -336,7 +336,7 @@ impl Runtime {
                             ServiceBus::Rpc,
                             ServiceId::Database,
                             source,
-                            Request::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                            BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
                                 address,
                                 secret_key,
                             })),
@@ -351,7 +351,7 @@ impl Runtime {
                     ServiceBus::Rpc,
                     ServiceId::Database,
                     source,
-                    Request::Rpc(Rpc::BitcoinAddressList(addresses.into())),
+                    BusMsg::Rpc(Rpc::BitcoinAddressList(addresses.into())),
                 )?;
             }
 
@@ -361,7 +361,7 @@ impl Runtime {
                     ServiceBus::Rpc,
                     ServiceId::Database,
                     source,
-                    Request::Rpc(Rpc::MoneroAddressList(addresses.into())),
+                    BusMsg::Rpc(Rpc::MoneroAddressList(addresses.into())),
                 )?;
             }
 
@@ -385,7 +385,7 @@ pub fn checkpoint_send(
         ServiceBus::Ctl,
         source,
         destination,
-        Request::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })),
+        BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })),
     )?;
     Ok(())
 }

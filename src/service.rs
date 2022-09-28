@@ -13,9 +13,9 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::bus::ctl::{Ctl, Progress};
-use crate::bus::request::Request;
 use crate::bus::rpc::Rpc;
 use crate::bus::sync::SyncMsg;
+use crate::bus::BusMsg;
 use crate::bus::{Failure, ServiceBus};
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
@@ -191,16 +191,16 @@ impl From<Vec<u8>> for ServiceId {
 
 pub struct Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    Runtime: esb::Handler<ServiceBus, Request = BusMsg>,
     esb::Error<ServiceId>: From<Runtime::Error>,
 {
-    esb: esb::Controller<ServiceBus, Request, Runtime>,
+    esb: esb::Controller<ServiceBus, BusMsg, Runtime>,
     broker: bool,
 }
 
 impl<Runtime> Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    Runtime: esb::Handler<ServiceBus, Request = BusMsg>,
     esb::Error<ServiceId>: From<Runtime::Error>,
 {
     #[cfg(feature = "node")]
@@ -289,17 +289,17 @@ where
             self.esb.send_to(
                 ServiceBus::Ctl,
                 ServiceId::Farcasterd,
-                Request::Ctl(Ctl::Hello),
+                BusMsg::Ctl(Ctl::Hello),
             )?;
             self.esb.send_to(
                 ServiceBus::Msg,
                 ServiceId::Farcasterd,
-                Request::Ctl(Ctl::Hello),
+                BusMsg::Ctl(Ctl::Hello),
             )?;
             self.esb.send_to(
                 ServiceBus::Sync,
                 ServiceId::Farcasterd,
-                Request::Sync(SyncMsg::Hello),
+                BusMsg::Sync(SyncMsg::Hello),
             )?;
         }
 
@@ -352,7 +352,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Ctl(Ctl::Success(msg.map(|m| m.to_string()).into())),
+                BusMsg::Ctl(Ctl::Success(msg.map(|m| m.to_string()).into())),
             )?;
         }
         Ok(())
@@ -369,7 +369,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Ctl(Ctl::Progress(Progress::Message(msg.to_string()))),
+                BusMsg::Ctl(Ctl::Progress(Progress::Message(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -386,7 +386,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Ctl(Ctl::Progress(Progress::StateTransition(msg.to_string()))),
+                BusMsg::Ctl(Ctl::Progress(Progress::StateTransition(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -404,7 +404,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Ctl(Ctl::Failure(failure.clone())),
+                BusMsg::Ctl(Ctl::Failure(failure.clone())),
             );
         }
         Error::Terminate(failure.to_string())
@@ -414,7 +414,7 @@ where
         &mut self,
         senders: &mut Endpoints,
         dest: impl TryToServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         if let Some(dest) = dest.try_to_service_id() {
             senders.send_to(ServiceBus::Ctl, self.identity(), dest, request)?;
@@ -426,7 +426,7 @@ where
         &mut self,
         bus: ServiceBus,
         senders: &mut Endpoints,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         let source = self.identity();
         trace!("sending {} to walletd from {}", request, source);
@@ -439,7 +439,7 @@ where
         &mut self,
         senders: &mut Endpoints,
         dest: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         let bus = ServiceBus::Ctl;
         if let ServiceId::GrpcdClient(_) = dest {
@@ -458,9 +458,9 @@ where
     ) -> Result<(), Error> {
         let bus = ServiceBus::Rpc;
         if let ServiceId::GrpcdClient(_) = dest {
-            senders.send_to(bus, dest, ServiceId::Grpcd, Request::Rpc(request))?;
+            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Rpc(request))?;
         } else {
-            senders.send_to(bus, self.identity(), dest, Request::Rpc(request))?;
+            senders.send_to(bus, self.identity(), dest, BusMsg::Rpc(request))?;
         }
         Ok(())
     }

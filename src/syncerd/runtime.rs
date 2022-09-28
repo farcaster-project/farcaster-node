@@ -16,7 +16,7 @@ use crate::bus::{
     ctl::Ctl,
     rpc::{Rpc, SyncerInfo},
     sync::SyncMsg,
-    Request, ServiceBus,
+    BusMsg, ServiceBus,
 };
 use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
@@ -96,7 +96,7 @@ pub struct Runtime {
 impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -108,17 +108,17 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for internal command
-            (ServiceBus::Ctl, Request::Ctl(req)) => self.handle_ctl(endpoints, source, req),
-            // User issued command RPC bus, only accept Request::Rpc
-            (ServiceBus::Rpc, Request::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
+            // User issued command RPC bus, only accept BusMsg::Rpc
+            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             // Syncer event bus
-            (ServiceBus::Sync, Request::Sync(req)) => self.handle_sync(endpoints, source, req),
-            (ServiceBus::Bridge, Request::Sync(req)) => self.handle_bridge(endpoints, source, req),
+            (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
+            (ServiceBus::Bridge, BusMsg::Sync(req)) => self.handle_bridge(endpoints, source, req),
             (_, request) => Err(Error::NotSupported(bus, request.get_type())),
         }
     }
@@ -136,10 +136,10 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -176,7 +176,7 @@ impl Runtime {
             (req, source) => {
                 error!(
                     "{} req: {}, source: {}",
-                    "Request is not supported by the CTL interface".err(),
+                    "BusMsg is not supported by the CTL interface".err(),
                     req,
                     source
                 );
@@ -266,7 +266,7 @@ impl Runtime {
                     ServiceBus::Sync,
                     self.identity(),
                     syncerd_bridge_event.source,
-                    Request::Sync(SyncMsg::Event(syncerd_bridge_event.event)),
+                    BusMsg::Sync(SyncMsg::Event(syncerd_bridge_event.event)),
                 )?;
             }
 

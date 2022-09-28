@@ -5,7 +5,7 @@ use crate::{
     bus::ctl::Ctl,
     bus::rpc::Rpc,
     bus::sync::SyncMsg,
-    bus::Request,
+    bus::BusMsg,
     error::Error,
     event::{Event, StateMachine},
     syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
@@ -113,7 +113,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
 ) -> Result<Option<SyncerStateMachine>, Error> {
     let source = event.source.clone();
     match event.request.clone() {
-        Request::Ctl(Ctl::SweepAddress(sweep_address)) => {
+        BusMsg::Ctl(Ctl::SweepAddress(sweep_address)) => {
             let (blockchain, network) = match sweep_address.clone() {
                 SweepAddressAddendum::Monero(addendum) => {
                     let blockchain = Blockchain::Monero;
@@ -155,7 +155,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 &runtime.config,
             )? {
                 event
-                    .complete_sync_service(service_id, Request::Sync(SyncMsg::Task(syncer_task)))?;
+                    .complete_sync_service(service_id, BusMsg::Sync(SyncMsg::Task(syncer_task)))?;
                 Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                     AwaitingSyncerRequest {
                         source,
@@ -189,9 +189,9 @@ fn attempt_transition_to_awaiting_syncer_request(
         syncer_task_id,
     } = awaiting_syncer;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Ctl(Ctl::Hello), syncer_id) if syncer == syncer_id => {
+        (BusMsg::Ctl(Ctl::Hello), syncer_id) if syncer == syncer_id => {
             event
-                .complete_sync_service(syncer.clone(), Request::Sync(SyncMsg::Task(syncer_task)))?;
+                .complete_sync_service(syncer.clone(), BusMsg::Sync(SyncMsg::Task(syncer_task)))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                 AwaitingSyncerRequest {
                     source,
@@ -201,15 +201,15 @@ fn attempt_transition_to_awaiting_syncer_request(
             )))
         }
         (req, source) => {
-            if let Request::Ctl(Ctl::Hello) = req {
+            if let BusMsg::Ctl(Ctl::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req, source
                 );
             }
@@ -234,7 +234,7 @@ fn attempt_transition_to_end(
         syncer,
     } = awaiting_syncer_request;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(success))), syncer_id)
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(success))), syncer_id)
             if syncer == syncer_id && success.id == syncer_task_id =>
         {
             if let Some(Some(txid)) = success
@@ -245,7 +245,7 @@ fn attempt_transition_to_end(
             {
                 event.send_rpc_service(
                     source,
-                    Request::Rpc(Rpc::String(format!(
+                    BusMsg::Rpc(Rpc::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
                         txid.to_hex()
                     ))),
@@ -253,7 +253,7 @@ fn attempt_transition_to_end(
             } else {
                 event.send_rpc_service(
                     source,
-                    Request::Rpc(Rpc::String("Nothing to sweep.".to_string())),
+                    BusMsg::Rpc(Rpc::String("Nothing to sweep.".to_string())),
                 )?;
             }
 
@@ -266,7 +266,7 @@ fn attempt_transition_to_end(
                         if !runtime.syncer_has_client(service) {
                             info!("Terminating {}", service);
                             event
-                                .send_ctl_service(service.clone(), Request::Ctl(Ctl::Terminate))
+                                .send_ctl_service(service.clone(), BusMsg::Ctl(Ctl::Terminate))
                                 .is_err()
                         } else {
                             true
@@ -279,15 +279,15 @@ fn attempt_transition_to_end(
             Ok(None)
         }
         (req, source) => {
-            if let Request::Ctl(Ctl::Hello) = req {
+            if let BusMsg::Ctl(Ctl::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req, source
                 );
             }
