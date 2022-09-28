@@ -13,7 +13,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 use uuid::Uuid;
 
 use crate::bus::ctl::{Failure, OfferStatusPair, OptionDetails, Outcome, Progress};
-use crate::bus::request::List;
+use crate::bus::List;
 use crate::cli::OfferSelector;
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]

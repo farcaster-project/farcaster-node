@@ -17,7 +17,7 @@ use crate::bus::ctl::{BitcoinFundingInfo, Ctl, GetKeys, MoneroFundingInfo};
 use crate::bus::msg::{self, Msg};
 use crate::bus::rpc::NodeInfo;
 use crate::bus::sync::SyncMsg;
-use crate::bus::{request, BusMsg, ServiceBus};
+use crate::bus::{BusMsg, List, ServiceBus};
 use crate::event::{Event, StateMachine};
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
@@ -32,7 +32,6 @@ use crate::{
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use bitcoin::{hashes::hex::ToHex, secp256k1::PublicKey, secp256k1::SecretKey};
 use clap::IntoApp;
-use request::List;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;

@@ -14,11 +14,13 @@
 
 pub mod ctl;
 pub mod msg;
-pub mod request;
 pub mod rpc;
 pub mod sync;
 
 pub use ctl::{Failure, FailureCode};
+
+use std::fmt::{self, Debug, Display, Formatter};
+use std::iter::FromIterator;
 
 use crate::bus::ctl::Ctl;
 use crate::bus::msg::Msg;
@@ -26,6 +28,7 @@ use crate::bus::rpc::Rpc;
 use crate::bus::sync::SyncMsg;
 use crate::ServiceId;
 
+use amplify::Wrapper;
 use internet2::Api;
 use microservices::esb::BusId;
 use strict_encoding::{StrictDecode, StrictEncode};
@@ -89,3 +92,45 @@ pub enum BusMsg {
 }
 
 impl microservices::rpc::Request for BusMsg {}
+
+/// An encodable list that is serializable in yaml
+#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]
+#[wrapper(IndexRange)]
+pub struct List<T>(Vec<T>)
+where
+    T: Clone + PartialEq + Eq + Debug + Display + StrictEncode + StrictDecode;
+
+#[cfg(feature = "serde")]
+impl<T> Display for List<T>
+where
+    T: Clone + PartialEq + Eq + Debug + Display + serde::Serialize + StrictEncode + StrictDecode,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(&serde_yaml::to_string(self).expect("internal YAML serialization error"))
+    }
+}
+
+impl<T> FromIterator<T> for List<T>
+where
+    T: Clone + PartialEq + Eq + Debug + Display + serde::Serialize + StrictEncode + StrictDecode,
+{
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from_inner(iter.into_iter().collect())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for List<T>
+where
+    T: Clone + PartialEq + Eq + Debug + Display + serde::Serialize + StrictEncode + StrictDecode,
+{
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> Result<<S as serde::Serializer>::Ok, <S as serde::Serializer>::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.as_inner().serialize(serializer)
+    }
+}
