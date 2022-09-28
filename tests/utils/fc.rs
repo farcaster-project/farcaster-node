@@ -237,13 +237,13 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
         let _ = bitcoin_rpc.load_wallet("wallet");
     }
 
-    sleep(Duration::from_secs(10));
+    sleep(Duration::from_secs(1));
 
     let address = bitcoin_rpc.get_new_address(None, None).unwrap();
     bitcoin_rpc.generate_to_address(200, &address).unwrap();
 
     // We mined 200 blocks, allow things to happen, like the electrum server catching up
-    sleep(Duration::from_secs(10));
+    sleep(Duration::from_secs(3));
 
     bitcoin_rpc
 }

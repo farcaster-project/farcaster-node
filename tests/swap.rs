@@ -35,8 +35,7 @@ async fn swap_bob_maker_normal() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -73,8 +72,7 @@ async fn swap_bob_funds_incorrect_amount() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -140,8 +138,7 @@ async fn swap_bob_maker_manual_monero_sweep() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -164,8 +161,6 @@ async fn swap_bob_maker_manual_monero_sweep() {
         Arc::clone(&monero_wallet),
         xmr_dest_wallet_name,
         execution_mutex,
-        farcasterd_maker,
-        farcasterd_taker,
     )
     .await;
 }
@@ -178,8 +173,7 @@ async fn swap_bob_maker_user_abort_sweep_btc() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -217,8 +211,7 @@ async fn swap_bob_maker_kill_peerd_before_funding_should_reconnect_success() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -260,8 +253,7 @@ async fn swap_revoke_offer_bob_maker_normal() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     // first make and revoke an offer
     make_and_revoke_offer(
@@ -311,8 +303,7 @@ async fn swap_bob_maker_refund_alice_overfunds() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -350,8 +341,7 @@ async fn swap_bob_maker_refund_race_cancel() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -389,8 +379,7 @@ async fn swap_bob_maker_refund_kill_alice_after_funding() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, farcasterd_taker, data_dir_taker) = setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -427,8 +416,7 @@ async fn swap_bob_maker_refund_alice_does_not_fund() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (_monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -463,8 +451,7 @@ async fn swap_bob_maker_punish_kill_bob() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (farcasterd_maker, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (_xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -502,8 +489,7 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_lock() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -526,8 +512,6 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_lock() {
         Arc::clone(&monero_wallet),
         xmr_dest_wallet_name,
         execution_mutex,
-        farcasterd_maker,
-        farcasterd_taker,
     )
     .await;
 }
@@ -541,8 +525,7 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_buy() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -565,8 +548,6 @@ async fn swap_bob_maker_restore_checkpoint_bob_pre_buy_alice_pre_buy() {
         Arc::clone(&monero_wallet),
         xmr_dest_wallet_name,
         execution_mutex,
-        farcasterd_maker,
-        farcasterd_taker,
     )
     .await;
 }
@@ -580,8 +561,7 @@ async fn swap_alice_maker() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer(
         data_dir_maker.clone(),
@@ -627,8 +607,7 @@ async fn swap_parallel_execution() {
     let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, data_dir_taker) =
-        setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
 
     let previous_offers: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
     let previous_swap_ids: Arc<Mutex<HashSet<SwapId>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -722,8 +701,6 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
-    farcasterd_maker: std::process::Child,
-    farcasterd_taker: std::process::Child,
 ) {
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
@@ -800,7 +777,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
 
     // kill all the daemons,  and start them again
     kill_all();
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
+    let _ = setup_clients().await;
 
     // wait a bit for all the daemons to start
     tokio::time::sleep(time::Duration::from_secs(1)).await;
@@ -896,8 +873,6 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
-    farcasterd_maker: std::process::Child,
-    farcasterd_taker: std::process::Child,
 ) {
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
@@ -945,7 +920,7 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
 
     // kill all the daemons and start them again
     kill_all();
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
+    let _ = setup_clients().await;
 
     // wait a bit for all the daemons to start
     tokio::time::sleep(time::Duration::from_secs(1)).await;
@@ -2241,7 +2216,7 @@ async fn run_swap_bob_maker_manual_bitcoin_sweep(
 
     cleanup_processes(vec![farcasterd_maker]);
 
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
+    let _ = setup_clients().await;
 
     let before_balance = bitcoin_rpc.get_balance(None, None).unwrap();
     let dest_bitcoin_address = bitcoin_rpc.get_new_address(None, None).unwrap();
@@ -2274,8 +2249,6 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
     monero_dest_wallet_name: String,
     execution_mutex: Arc<Mutex<u8>>,
-    farcasterd_maker: process::Child,
-    farcasterd_taker: process::Child,
 ) {
     let cli_alice_progress_args: Vec<String> = progress_args(data_dir_alice.clone(), swap_id);
     let cli_bob_progress_args: Vec<String> = progress_args(data_dir_bob.clone(), swap_id);
@@ -2394,7 +2367,7 @@ async fn run_swap_bob_maker_manual_monero_sweep(
     // kill the processes
     kill_all();
     tokio::time::sleep(time::Duration::from_secs(20)).await;
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
+    let _ = setup_clients().await;
 
     // generate some blocks on monero's side
     monero_regtest
