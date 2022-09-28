@@ -1432,14 +1432,14 @@ impl Runtime {
                         .expect("Valid Monero Private Key");
                     info!(
                         "{} | Extracted monero key from Buy tx: {}",
-                        swap_id.bright_blue_italic(),
-                        sk_a.bright_white_italic()
+                        swap_id.swap_id(),
+                        sk_a.bright_white_bold()
                     );
                     let sk_b = key_manager.get_or_derive_monero_spend_key()?;
                     let spend = sk_a + sk_b;
                     info!(
                         "{} | Full secret monero spending key: {}",
-                        swap_id.bright_blue_italic(),
+                        swap_id.swap_id(),
                         spend.bright_green_bold()
                     );
                     let view_key_alice = *alice_params
@@ -1460,7 +1460,7 @@ impl Runtime {
                     let view = view_key_alice + view_key_bob;
                     info!(
                         "{} | Full secret monero view key: {}",
-                        swap_id.bright_blue_italic(),
+                        swap_id.swap_id(),
                         view.bright_green_bold()
                     );
                     let network = pub_offer.offer.network.into();
@@ -1468,8 +1468,8 @@ impl Runtime {
                     let corresponding_address = monero::Address::from_keypair(network, &keypair);
                     info!(
                         "{} | Corresponding address: {}",
-                        swap_id.bright_blue_italic(),
-                        corresponding_address
+                        swap_id.swap_id(),
+                        corresponding_address.addr()
                     );
                     let address = self
                         .xmr_addrs
@@ -1526,15 +1526,15 @@ impl Runtime {
                         .expect("Valid Monero Private Key");
                     info!(
                         "{} | Extracted monero key from Refund tx: {}",
-                        swap_id.bright_blue_italic(),
-                        sk_b.bright_white_italic()
+                        swap_id.swap_id(),
+                        sk_b.bright_white_bold()
                     );
 
                     let sk_a = key_manager.get_or_derive_monero_spend_key()?;
                     let spend = sk_a + sk_b;
                     info!(
                         "{} | Full secret monero spending key: {}",
-                        swap_id.bright_blue_italic(),
+                        swap_id.swap_id(),
                         spend.bright_green_bold()
                     );
 
@@ -1556,7 +1556,7 @@ impl Runtime {
                     let view = view_key_alice + view_key_bob;
                     info!(
                         "{} | Full secret monero view key: {}",
-                        swap_id.bright_blue_italic(),
+                        swap_id.swap_id(),
                         view.bright_green_bold()
                     );
                     let network = pub_offer.offer.network.into();
@@ -1564,8 +1564,8 @@ impl Runtime {
                     let corresponding_address = monero::Address::from_keypair(network, &keypair);
                     info!(
                         "{} | Corresponding address: {}",
-                        swap_id.bright_blue_italic(),
-                        corresponding_address
+                        swap_id.swap_id(),
+                        corresponding_address.addr()
                     );
                     let address = self
                         .xmr_addrs
@@ -1654,10 +1654,9 @@ impl Runtime {
                     _ => success.err(),
                 };
                 info!(
-                    "{} | {} in swap {}, cleaning up data",
-                    swap_id.bright_blue_italic(),
+                    "{} | {} in swap, cleaning up data",
+                    swap_id.swap_id(),
                     &success,
-                    &swap_id.bright_blue_italic(),
                 );
                 self.clean_up_after_swap(&swap_id);
             }
@@ -1665,7 +1664,7 @@ impl Runtime {
             BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
                 match state {
                     CheckpointState::CheckpointWallet(CheckpointWallet { wallet, xmr_addr }) => {
-                        info!("Restoring wallet for swap {}", swap_id);
+                        info!("{} | Restoring wallet for swap", swap_id.swap_id());
                         if !self.wallets.contains_key(&swap_id) {
                             self.wallets.insert(swap_id, wallet);
                         } else {

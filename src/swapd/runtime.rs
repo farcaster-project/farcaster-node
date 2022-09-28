@@ -88,11 +88,11 @@ pub fn run(
     info!(
         "{}: {}",
         "Starting swap".to_string().bright_green_bold(),
-        format!("{:#x}", swap_id).addr()
+        format!("{:#x}", swap_id).swap_id()
     );
     info!(
         "{} | Initial state: {}",
-        swap_id.bright_blue_italic(),
+        swap_id.swap_id(),
         init_state.bright_white_bold()
     );
 
@@ -504,7 +504,7 @@ impl Runtime {
     fn state_update(&mut self, endpoints: &mut Endpoints, next_state: State) -> Result<(), Error> {
         info!(
             "{} | State transition: {} -> {}",
-            self.swap_id.bright_blue_italic(),
+            self.swap_id.swap_id(),
             self.state.bright_white_bold(),
             next_state.bright_white_bold(),
         );
@@ -522,9 +522,9 @@ impl Runtime {
     ) -> Result<(), Error> {
         info!(
             "{} | Broadcasting {} tx ({})",
-            self.swap_id.bright_blue_italic(),
-            tx_label.bright_white_bold(),
-            tx.txid().bright_yellow_italic()
+            self.swap_id.swap_id(),
+            tx_label.label(),
+            tx.txid().tx_hash()
         );
         let task = self.syncer_state.broadcast(tx);
         Ok(endpoints.send_to(
@@ -847,7 +847,7 @@ impl Runtime {
             (BusMsg::Ctl(Ctl::Hello), _) => {
                 info!(
                     "{} | Service {} daemon is now {}",
-                    self.swap_id.bright_blue_italic(),
+                    self.swap_id.swap_id(),
                     source.bright_green_bold(),
                     "connected"
                 );
@@ -871,7 +871,7 @@ impl Runtime {
             BusMsg::Ctl(Ctl::Terminate) if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
-                    self.swap_id.bright_blue_italic(),
+                    self.swap_id.swap_id(),
                     format!("Terminating {}", self.identity()).bright_white_bold()
                 );
                 std::process::exit(0);
@@ -1176,7 +1176,9 @@ impl Runtime {
                 SweepAddressAddendum::Bitcoin(sweep_btc) => {
                     info!(
                         "{} | Sweeping source (funding) address: {} to destination address: {}",
-                        self.swap_id, sweep_btc.source_address, sweep_btc.destination_address
+                        self.swap_id.swap_id(),
+                        sweep_btc.source_address.addr(),
+                        sweep_btc.destination_address.addr()
                     );
                     let task = self.syncer_state.sweep_btc(sweep_btc.clone(), false);
                     endpoints.send_to(
@@ -1194,17 +1196,17 @@ impl Runtime {
                         self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
                     info!(
                         "{} | Tx {} needs {}, and has {} {}",
-                        self.swap_id.bright_blue_italic(),
-                        TxLabel::AccLock.bright_white_bold(),
+                        self.swap_id.swap_id(),
+                        TxLabel::AccLock.label(),
                         "10 confirmations".bright_green_bold(),
                         (10 - acc_confs_needs).bright_green_bold(),
                         "confirmations".bright_green_bold(),
                     );
                     info!(
                         "{} | {} reaches your address {} around block {}",
-                        self.swap_id.bright_blue_italic(),
-                        Blockchain::Monero.bright_white_bold(),
-                        sweep_xmr.destination_address.bright_yellow_bold(),
+                        self.swap_id.swap_id(),
+                        Blockchain::Monero.label(),
+                        sweep_xmr.destination_address.addr(),
                         sweep_block.bright_blue_bold(),
                     );
                     warn!(
@@ -1420,7 +1422,7 @@ impl Runtime {
                     pending_broadcasts,
                     xmr_addr_addendum,
                 }) => {
-                    info!("{} | Restoring swap", swap_id);
+                    info!("{} | Restoring swap", swap_id.swap_id());
                     self.state = state;
                     self.enquirer = enquirer;
                     self.temporal_safety = temporal_safety;
@@ -1708,7 +1710,7 @@ impl Runtime {
 
                             info!(
                                 "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
-                                self.swap_id.bright_blue_italic(),
+                                self.swap_id.swap_id(),
                                 self.syncer_state.monero_height.bright_white_bold()
                             );
                             endpoints.send_to(bus_id, self.identity(), dest, request)?;
@@ -1885,7 +1887,7 @@ impl Runtime {
                         let tx = bitcoin::Transaction::deserialize(tx)?;
                         info!(
                             "Received AddressTransaction, processing tx {}",
-                            &tx.txid().addr()
+                            &tx.txid().tx_hash()
                         );
                         let txlabel = self.syncer_state.tasks.watched_addrs.get(id).unwrap();
                         match txlabel {
@@ -2072,7 +2074,7 @@ impl Runtime {
                                     let amount = self.syncer_state.monero_amount;
                                     info!(
                                         "{} | Send {} to {}",
-                                        swap_id.bright_blue_italic(),
+                                        swap_id.swap_id(),
                                         amount.bright_green_bold(),
                                         address.addr(),
                                     );
@@ -2486,7 +2488,7 @@ impl Runtime {
                         id: _,
                     }) => {
                         // FIXME handle low priority as well
-                        info!("fee: {} sat/kvB", high_priority_sats_per_kvbyte);
+                        info!("Fee: {} sat/kvB", high_priority_sats_per_kvbyte);
                         self.syncer_state.btc_fee_estimate_sat_per_kvb =
                             Some(*high_priority_sats_per_kvbyte);
 
@@ -2547,10 +2549,10 @@ impl Runtime {
         let amount = self.syncer_state.bitcoin_amount + total_fees;
         info!(
             "{} | Send {} to {}, this includes {} for the Lock transaction network fees",
-            swap_id.bright_blue_italic(),
+            swap_id.swap_id(),
             amount.bright_green_bold(),
             address.addr(),
-            total_fees
+            total_fees.bright_white_bold(),
         );
         self.state.b_sup_required_funding_amount(amount);
         let req = BusMsg::Ctl(Ctl::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {
@@ -2572,7 +2574,7 @@ impl Runtime {
     ) -> Result<Commit, Error> {
         info!(
             "{} | {} to Maker remote peer",
-            self.swap_id().bright_blue_italic(),
+            self.swap_id().swap_id(),
             "Proposing to take swap".bright_white_bold(),
         );
 
@@ -2607,7 +2609,7 @@ impl Runtime {
     ) -> Result<Commit, Error> {
         info!(
             "{} | {} as Maker from Taker through peerd {}",
-            swap_id.bright_blue_italic(),
+            swap_id.swap_id(),
             "Accepting swap".bright_white_bold(),
             peerd.bright_blue_italic()
         );
@@ -2638,7 +2640,7 @@ impl Runtime {
         let swap_success_req = BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Abort));
         self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
         self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
-        info!("{} | Aborted swap.", self.swap_id);
+        info!("{} | Aborted swap.", self.swap_id.swap_id());
         Ok(())
     }
 }

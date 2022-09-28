@@ -313,10 +313,7 @@ async fn sweep_address(
             .iter()
             .filter_map(|hash| {
                 let hash_str = hash.to_string();
-                info!(
-                    "Sweep transaction hash: {}",
-                    hash_str.bright_yellow_italic()
-                );
+                info!("Sweep transaction hash: {}", hash_str.tx_hash());
                 hex::decode(hash_str).ok()
             })
             .collect();
@@ -355,7 +352,7 @@ async fn sweep_address(
                 warn!("No associated wallet data cleaned up after sweep. The path used for the wallet directory is probably malformed");
             }
         } else {
-            info!("{}", format!("Completed operations on Monero wallets with address {} . These wallets can now be safely deleted", source_address));
+            info!("Completed operations on Monero wallets with address {}. These wallets can now be safely deleted", source_address.addr());
         }
         Ok(tx_ids)
     } else {
@@ -784,7 +781,7 @@ impl Synclet for MoneroSyncer {
                     monero_rpc_wallet: rpc_wallet.clone(),
                     monero_lws: opts.monero_lws.clone(),
                 };
-                info!("monero syncer servers: {:?}", syncer_servers);
+                debug!("monero syncer servers: {:?}", syncer_servers);
                 let wallet_dir = opts.monero_wallet_dir_path.clone().map(PathBuf::from);
 
                 let _handle = std::thread::spawn(move || {
