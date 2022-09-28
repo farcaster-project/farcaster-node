@@ -447,7 +447,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             // Syncer event bus
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
             // All other pairs are not supported in swapd
-            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -562,7 +562,7 @@ impl Runtime {
             }
             _ => {
                 error!("MSG RPC can be only used for forwarding farcaster protocol messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Msg, request.to_string()));
             }
         };
         let msg_bus = ServiceBus::Msg;
@@ -1498,7 +1498,7 @@ impl Runtime {
 
             _ => {
                 error!("BusMsg is not supported by the CTL interface {}", request);
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
             }
         }
 

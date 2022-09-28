@@ -251,7 +251,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
             ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
             ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
-            _ => Err(Error::NotSupported(bus, request.get_type())),
+            _ => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 

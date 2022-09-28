@@ -42,7 +42,6 @@ use farcaster_core::{
     swap::SwapId,
     transaction::{Broadcastable, Fundable, Transaction, Witnessable},
 };
-use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 use strict_encoding::{StrictDecode, StrictEncode};
@@ -300,7 +299,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             // Syncer event bus
             ServiceBus::Sync => self.handle_sync(endpoints, source, request),
             // All other buses are not supported in walletd
-            _ => Err(Error::NotSupported(bus, request.get_type())),
+            _ => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -1230,7 +1229,7 @@ impl Runtime {
             req => {
                 error!(
                     "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}, {:#?}",
-                    req.get_type(), req
+                    req.to_string(), req
                 )
             }
         }

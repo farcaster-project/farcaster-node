@@ -6,91 +6,72 @@ use farcaster_core::{
     blockchain::Blockchain, role::TradeRole, swap::btcxmr::PublicOffer, swap::SwapId,
 };
 use internet2::addr::{InetSocketAddr, NodeAddr};
-use internet2::Api;
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds};
-use strict_encoding::{StrictDecode, StrictEncode};
+use strict_encoding::{NetworkDecode, NetworkEncode, StrictDecode, StrictEncode};
 use uuid::Uuid;
 
 use crate::bus::ctl::{Failure, OfferStatusPair, OptionDetails, Outcome, Progress};
 use crate::bus::List;
 use crate::cli::OfferSelector;
 
-#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
-#[api(encoding = "strict")]
+#[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
 pub enum Rpc {
     //
     // QUERIES
     //
-    #[api(type = 100)]
     #[display("get_info()")]
     GetInfo,
 
-    #[api(type = 101)]
     #[display("list_peers()")]
     ListPeers,
 
-    #[api(type = 102)]
     #[display("list_swaps()")]
     ListSwaps,
 
-    #[api(type = 103)]
     #[display("list_tasks()")]
     ListTasks,
 
-    #[api(type = 104)]
     #[display("list_offers({0})")]
     ListOffers(OfferStatusSelector),
 
-    #[api(type = 105)]
     #[display("list_listens()")]
     ListListens,
 
-    #[api(type = 1306)]
     #[display("retrieve_all_checkpoint_info")]
     RetrieveAllCheckpointInfo,
 
-    #[api(type = 1311)]
     #[display("get_address_secret_key({0})")]
     GetAddressSecretKey(Address),
 
-    #[api(type = 1312)]
     #[display("get_addresses({0})")]
     GetAddresses(Blockchain),
 
-    #[api(type = 1109)]
     #[display("needs_funding({0})")]
     NeedsFunding(Blockchain),
 
     // Progress functionalities
     // ----------------
     // Returns a SwapProgress message
-    #[api(type = 1003)]
     #[display("read_progress({0})")]
     ReadProgress(SwapId),
 
-    #[api(type = 1005)]
     #[display(inner)]
     SwapProgress(SwapProgress),
 
-    #[api(type = 1006)]
     #[display("subscribe_progress({0})")]
     SubscribeProgress(SwapId),
 
-    #[api(type = 1007)]
     #[display("unsubscribe_progress({0})")]
     UnsubscribeProgress(SwapId),
 
-    #[api(type = 1002)]
     #[display(inner)]
     Progress(Progress),
 
-    #[api(type = 1001)]
     #[display(inner)]
     Success(OptionDetails),
 
-    #[api(type = 1000)]
     #[display(inner)]
     #[from]
     Failure(Failure),
@@ -98,101 +79,84 @@ pub enum Rpc {
     //
     // RESPONSES
     //
-    #[api(type = 1004)]
     #[display(inner)]
     String(String),
 
-    #[api(type = 206)]
     #[display(inner)]
     MadeOffer(MadeOffer),
 
-    #[api(type = 207)]
     #[display(inner)]
     TookOffer(TookOffer),
 
     // - GetInfo section
-    #[api(type = 1099)]
     #[display("syncer_info(..)")]
     #[from]
     SyncerInfo(SyncerInfo),
 
-    #[api(type = 1100)]
     #[display("node_info(..)")]
     #[from]
     NodeInfo(NodeInfo),
 
-    #[api(type = 1101)]
     #[display("peer_info(..)")]
     #[from]
     PeerInfo(PeerInfo),
 
-    #[api(type = 1102)]
     #[display("swap_info(..)")]
     #[from]
     SwapInfo(SwapInfo),
     // - End GetInfo section
 
     // - ListPeers section
-    #[api(type = 1103)]
     #[display(inner)]
     #[from]
     PeerList(List<NodeAddr>),
     // - End ListPeers section
 
     // - ListSwap section
-    #[api(type = 1104)]
     #[display(inner)]
     #[from]
     SwapList(List<SwapId>),
     // - End ListSwap section
 
     // - ListTasks section
-    #[api(type = 1105)]
     #[display(inner)]
     #[from]
     TaskList(List<u64>),
     // - End ListTasks section
 
     // - ListOffers section
-    #[api(type = 1106)]
     #[display(inner)]
     #[from]
     OfferList(List<OfferInfo>),
 
-    #[api(type = 1317)]
     #[display(inner)]
     OfferStatusList(List<OfferStatusPair>),
     // - End ListOffers section
 
     // - ListListen section
-    #[api(type = 1107)]
     #[display(inner)]
     #[from]
     ListenList(List<String>),
     // - End ListListen section
-    #[api(type = 1308)]
     #[display(inner)]
     CheckpointList(List<CheckpointEntry>),
 
     // - GetAddressSecretKey section
-    #[api(type = 1319)]
     #[display("address_secret_key")]
     AddressSecretKey(AddressSecretKey),
     // - End GetAddressSecretKey section
 
     // - GetAddresses section
-    #[api(type = 1313)]
     #[display("bitcoin_address_list({0})")]
     BitcoinAddressList(List<bitcoin::Address>),
 
-    #[api(type = 1318)]
     #[display("monero_address_list({0})")]
     MoneroAddressList(List<String>),
     // - End GetAddresses section
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -234,7 +198,7 @@ impl StrictDecode for TookOffer {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -250,7 +214,7 @@ pub struct SyncerInfo {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -270,7 +234,7 @@ pub struct NodeInfo {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -294,7 +258,7 @@ pub struct PeerInfo {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode, PartialEq, Eq)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -312,7 +276,7 @@ pub struct SwapInfo {
     pub public_offer: PublicOffer,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{swap_id}, {public_offer}")]
 #[cfg_attr(
     feature = "serde",
@@ -327,7 +291,7 @@ pub struct CheckpointEntry {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, Default, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, Default, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -339,7 +303,7 @@ pub struct SwapProgress {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -357,7 +321,7 @@ pub enum ProgressEvent {
     Failure(Failure),
 }
 
-#[derive(Eq, PartialEq, Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[derive(Eq, PartialEq, Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 pub enum Address {
     #[display("{0}")]
     Bitcoin(bitcoin::Address),
@@ -365,7 +329,7 @@ pub enum Address {
     Monero(monero::Address),
 }
 
-#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 #[display("address_secret_key")]
 pub enum AddressSecretKey {
     Bitcoin {
@@ -379,7 +343,7 @@ pub enum AddressSecretKey {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
 pub enum OfferStatusSelector {
     #[display("Open")]
     Open,
@@ -414,7 +378,7 @@ impl FromStr for OfferStatusSelector {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -430,7 +394,7 @@ pub enum OfferStatus {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),

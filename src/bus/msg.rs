@@ -10,57 +10,58 @@ use farcaster_core::{
 use internet2::Api;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
+#[derive(Clone, Debug, Display, Api, StrictDecode, StrictEncode)]
 #[api(encoding = "strict")]
 #[display(inner)]
+#[non_exhaustive]
 pub enum Msg {
-    #[api(type = 28)]
+    #[api(type = 33701)]
     #[display("maker_commit({0})")]
     MakerCommit(Commit),
 
-    #[api(type = 21)]
+    #[api(type = 33702)]
     #[display("taker_commit({0})")]
     TakerCommit(TakeCommit),
 
-    #[api(type = 22)]
+    #[api(type = 33703)]
     #[display("reveal({0})")]
     Reveal(Reveal),
 
-    #[api(type = 25)]
+    #[api(type = 33720)]
     #[display("refund_procedure_signatures(..)")]
     RefundProcedureSignatures(RefundProcedureSignatures),
 
-    #[api(type = 27)]
-    #[display("abort(..)")]
-    Abort(Abort),
-
-    #[api(type = 24)]
+    #[api(type = 33710)]
     #[display("core_arbitrating_setup(..)")]
     CoreArbitratingSetup(CoreArbitratingSetup),
 
-    #[api(type = 26)]
+    #[api(type = 33730)]
     #[display("buy_procedure_signature(..)")]
     BuyProcedureSignature(BuyProcedureSignature),
 
-    #[api(type = 29)]
+    #[api(type = 18)]
     #[display("ping({0})")]
     Ping(u16),
 
-    #[api(type = 31)]
+    #[api(type = 19)]
     #[display("pong(..)")]
     Pong(Vec<u8>),
 
-    #[api(type = 33)]
+    #[api(type = 33798)]
+    #[display("identity(..)")]
+    Identity(internet2::addr::NodeId),
+
+    #[api(type = 33799)]
+    #[display("abort(..)")]
+    Abort(Abort),
+
+    #[api(type = 33800)]
     #[display("ping_peer()")]
     PingPeer,
 
-    #[api(type = 34)]
+    #[api(type = 33801)]
     #[display("error_shutdown()")]
     PeerReceiverRuntimeShutdown,
-
-    #[api(type = 35)]
-    #[display("identity(..)")]
-    Identity(internet2::addr::NodeId),
 }
 
 impl Msg {

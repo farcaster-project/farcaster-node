@@ -12,9 +12,8 @@ use amplify::{ToYamlString, Wrapper};
 use bitcoin::secp256k1::SecretKey;
 use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
-use internet2::Api;
 use microservices::rpc;
-use strict_encoding::{StrictDecode, StrictEncode};
+use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::msg::Commit;
 use crate::bus::rpc::{AddressSecretKey, OfferStatus};
@@ -24,149 +23,115 @@ use crate::syncerd::SweepAddressAddendum;
 use crate::walletd::runtime::CheckpointWallet;
 use crate::{Error, ServiceId};
 
-#[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode, Api)]
-#[api(encoding = "strict")]
+#[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
 pub enum Ctl {
-    #[api(type = 0)]
     #[display("hello()")]
     Hello,
 
-    #[api(type = 3)]
     #[display("terminate()")]
     Terminate,
 
-    #[api(type = 1001)]
     #[display(inner)]
     Success(OptionDetails),
 
-    #[api(type = 1000)]
     #[display(inner)]
     #[from]
     Failure(Failure),
 
-    #[api(type = 1002)]
     #[display(inner)]
     Progress(Progress),
 
-    #[api(type = 204)]
     #[display("make_swap({0})")]
     MakeSwap(InitSwap),
 
-    #[api(type = 203)]
     #[display("take_swap({0})")]
     TakeSwap(InitSwap),
 
-    #[api(type = 29)]
     #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
 
-    #[api(type = 197)]
     #[display("params({0})")]
     Params(Params),
 
-    #[api(type = 6)]
     #[display("peerd_unreachable({0})")]
     PeerdUnreachable(ServiceId),
 
-    #[api(type = 8)]
     #[display("peerd_reconnected({0})")]
     PeerdReconnected(ServiceId),
 
-    #[api(type = 4)]
     #[display("peerd_terminated()")]
     PeerdTerminated,
 
-    #[api(type = 1309)]
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(SwapId),
 
-    #[api(type = 198)]
     #[display("make_offer({0})")]
     MakeOffer(ProtoPublicOffer),
 
-    #[api(type = 199)]
     #[display("take_offer({0}))")]
     TakeOffer(PubOffer),
 
-    #[api(type = 30)]
     #[display("get_keys({0})")]
     GetKeys(GetKeys),
 
-    #[api(type = 193)]
     #[display("revoke_offer({0})")]
     RevokeOffer(PublicOffer),
 
-    #[api(type = 192)]
     #[display("abort_swap()")]
     AbortSwap,
 
-    #[api(type = 36)]
     #[display("get_sweep_bitcoin_address({0})")]
     GetSweepBitcoinAddress(bitcoin::Address),
 
-    #[api(type = 1310)]
     #[display("task({0})", alt = "{0:#}")]
     #[from]
     SweepAddress(SweepAddressAddendum),
 
-    #[api(type = 1314)]
     #[display("set_address_secret_key")]
     SetAddressSecretKey(AddressSecretKey),
 
-    #[api(type = 45)]
     #[display("funding_updated()")]
     FundingUpdated,
 
     /// Communicates the result of a swap to services like farcasterd and walletd
-    #[api(type = 46)]
     #[display("swap_outcome({0})")]
     SwapOutcome(Outcome),
 
-    #[api(type = 1304)]
     #[display("checkpoint({0})", alt = "{0:#}")]
     #[from]
     Checkpoint(Checkpoint),
 
-    #[api(type = 1307)]
     #[display("remove_checkpoint")]
     RemoveCheckpoint(SwapId),
 
-    #[api(type = 1315)]
     #[display("set_offer_history({0})")]
     SetOfferStatus(OfferStatusPair),
 
-    #[api(type = 28)]
     #[display("keys({0})")]
     Keys(Keys),
 
-    #[api(type = 1108)]
     #[display("funding_info({0})")]
     #[from]
     FundingInfo(FundingInfo),
 
-    #[api(type = 195)]
     #[display("bitcoin_address({0})")]
     BitcoinAddress(BitcoinAddress),
 
-    #[api(type = 194)]
     #[display("monero_address({0})")]
     MoneroAddress(MoneroAddress),
 
-    #[api(type = 1111)]
     #[display("funding_completed({0})")]
     FundingCompleted(Blockchain),
 
-    #[api(type = 1112)]
     #[display("funding_canceled({0})")]
     FundingCanceled(Blockchain),
 
-    #[api(type = 196)]
     #[display("transaction({0})")]
     Tx(Tx),
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display(inner)]
 pub enum ProgressStack {
     Progress(Progress),
@@ -174,14 +139,14 @@ pub enum ProgressStack {
     Failure(Failure),
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display(inner)]
 pub enum Progress {
     Message(String),
     StateTransition(String),
 }
 
-#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, StrictEncode, StrictDecode)]
+#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -208,7 +173,7 @@ impl OptionDetails {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("..")]
 pub struct ProtoPublicOffer {
     pub offer: Offer,
@@ -218,7 +183,7 @@ pub struct ProtoPublicOffer {
     pub accordant_addr: monero::Address,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{public_offer}, ..")]
 pub struct PubOffer {
     pub public_offer: PublicOffer,
@@ -226,19 +191,19 @@ pub struct PubOffer {
     pub internal_address: monero::Address,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{0}, ..")]
 pub struct ReconnectPeer(pub NodeAddr, pub Option<SecretKey>);
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, PartialEq, Eq)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode, PartialEq, Eq)]
 #[display("{0}")]
 pub struct Token(pub String);
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("token({0})")]
 pub struct GetKeys(pub Token);
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{public_offer}, ..")]
 pub struct LaunchSwap {
     pub local_trade_role: TradeRole,
@@ -249,7 +214,7 @@ pub struct LaunchSwap {
     pub funding_address: Option<bitcoin::Address>,
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 pub enum Params {
     #[display("alice(..)")]
     Alice(Parameters),
@@ -257,7 +222,7 @@ pub enum Params {
     Bob(Parameters),
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{peerd}, {swap_id}, ..")]
 pub struct InitSwap {
     pub peerd: ServiceId,
@@ -268,7 +233,7 @@ pub struct InitSwap {
     pub funding_address: Option<bitcoin::Address>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -285,14 +250,14 @@ pub enum Outcome {
     Abort,
 }
 
-#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 #[display(Debug)]
 pub struct Checkpoint {
     pub swap_id: SwapId,
     pub state: CheckpointState,
 }
 
-#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 pub enum CheckpointState {
     #[display("Checkpoint Wallet")]
     CheckpointWallet(CheckpointWallet),
@@ -300,7 +265,7 @@ pub enum CheckpointState {
     CheckpointSwapd(CheckpointSwapd),
 }
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode, Eq, PartialEq)]
 #[display(format_keys)]
 pub struct Keys(
     pub bitcoin::secp256k1::SecretKey,
@@ -311,7 +276,7 @@ fn format_keys(keys: &Keys) -> String {
     format!("sk: {}, pk: {}", keys.0.display_secret(), keys.1,)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
 #[display("{offer}, {status}")]
 #[cfg_attr(
     feature = "serde",
@@ -327,7 +292,7 @@ pub struct OfferStatusPair {
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferStatusPair {}
 
-#[derive(Clone, Debug, Display, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 pub enum FundingInfo {
     #[display("bitcoin(..)")]
     Bitcoin(BitcoinFundingInfo),
@@ -335,7 +300,7 @@ pub enum FundingInfo {
     Monero(MoneroFundingInfo),
 }
 
-#[derive(Clone, Debug, StrictDecode, StrictEncode)]
+#[derive(Clone, Debug, NetworkDecode, NetworkEncode)]
 pub struct BitcoinFundingInfo {
     pub swap_id: SwapId,
     pub address: bitcoin::Address,
@@ -365,7 +330,7 @@ impl fmt::Display for BitcoinFundingInfo {
     }
 }
 
-#[derive(Clone, Debug, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, NetworkEncode, NetworkDecode)]
 pub struct MoneroFundingInfo {
     pub swap_id: SwapId,
     pub amount: monero::Amount,
@@ -398,15 +363,15 @@ impl fmt::Display for MoneroFundingInfo {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{1}")]
 pub struct BitcoinAddress(pub SwapId, pub bitcoin::Address);
 
-#[derive(Clone, PartialEq, Eq, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{1}")]
 pub struct MoneroAddress(pub SwapId, pub monero::Address);
 
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display(inner)]
 pub enum Tx {
     #[display("lock(..)")]
@@ -430,7 +395,7 @@ pub enum Tx {
     serde(crate = "serde_crate")
 )]
 #[derive(
-    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, StrictEncode, StrictDecode,
+    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, NetworkEncode, NetworkDecode,
 )]
 #[display("{info}", alt = "Server returned failure #{code}: {info}")]
 pub struct Failure {
@@ -442,7 +407,7 @@ pub struct Failure {
 }
 
 #[derive(
-    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, StrictEncode, StrictDecode,
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, NetworkEncode, NetworkDecode,
 )]
 #[cfg_attr(
     feature = "serde",

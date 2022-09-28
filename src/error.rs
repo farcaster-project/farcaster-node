@@ -15,8 +15,6 @@
 use std::io;
 
 use amplify::IoError;
-#[cfg(feature = "_rpc")]
-use internet2::TypeId;
 use internet2::{presentation, transport};
 #[cfg(feature = "_rpc")]
 use microservices::esb;
@@ -63,7 +61,7 @@ pub enum Error {
 
     /// Provided RPC request is not supported for the used type of endpoint
     #[cfg(feature = "_rpc")]
-    NotSupported(ServiceBus, TypeId),
+    NotSupported(ServiceBus, String),
 
     /// Peer does not respond to ping messages
     NotResponding,

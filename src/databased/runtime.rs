@@ -16,7 +16,6 @@ use crate::bus::{
     BusMsg, Failure, FailureCode, List, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-use internet2::TypedEnum;
 use microservices::esb;
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
@@ -58,7 +57,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
             // RPC client bus for issuing user command
             (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
-            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -85,7 +84,7 @@ impl Runtime {
             req => {
                 error!(
                     "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}, {:#?}",
-                    req.get_type(), req
+                    req.to_string(), req
                 )
             }
         }

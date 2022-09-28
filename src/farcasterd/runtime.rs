@@ -48,7 +48,7 @@ use farcaster_core::{
     swap::btcxmr::PublicOffer,
     swap::SwapId,
 };
-use internet2::{addr::InetSocketAddr, addr::NodeAddr, TypedEnum};
+use internet2::{addr::InetSocketAddr, addr::NodeAddr};
 use microservices::esb::{self, Handler};
 
 pub fn run(
@@ -248,7 +248,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
             (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
-            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 

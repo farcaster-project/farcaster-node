@@ -322,7 +322,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
             (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
             // All other pairs are not supported
-            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -387,7 +387,7 @@ impl Runtime {
 
             _ => {
                 error!("BusMsg is not supported by the CTL interface");
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
             }
         }
     }
@@ -550,7 +550,7 @@ impl Runtime {
             other => {
                 error!("BusMsg is not supported by the BRIDGE interface");
                 dbg!(other);
-                return Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Bridge, request.to_string()));
             }
         }
         Ok(())

@@ -32,7 +32,6 @@ use std::sync::mpsc::Sender;
 use std::time::{Duration, SystemTime};
 
 use farcaster_core::blockchain::{Blockchain, Network};
-use internet2::TypedEnum;
 use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
 
@@ -119,7 +118,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             // Syncer event bus
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
             (ServiceBus::Bridge, BusMsg::Sync(req)) => self.handle_bridge(endpoints, source, req),
-            (_, request) => Err(Error::NotSupported(bus, request.get_type())),
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -145,7 +144,7 @@ impl Runtime {
 
             _ => {
                 error!("MSG RPC can be only used for forwarding farcaster protocol messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Msg, request.to_string()));
             }
         }
         Ok(())
@@ -180,7 +179,7 @@ impl Runtime {
                     req,
                     source
                 );
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
             }
         }
 
