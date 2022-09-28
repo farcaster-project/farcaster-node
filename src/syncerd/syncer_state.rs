@@ -403,21 +403,27 @@ impl SyncerState {
                 self.block_height = h;
                 self.block_hash = block;
                 info!(
-                    "{} incremented height {}",
-                    self.blockchain.bright_white_bold(),
+                    "{} | Incremented height {}",
+                    self.blockchain.label(),
                     &h.bright_blue_bold()
                 );
             }
             (h, b) if h == self.block_height && b != &self.block_hash => {
+                info!(
+                    "{} | New chain tip at {} ({} -> {})",
+                    self.blockchain.label(),
+                    &h.bright_blue_bold(),
+                    format!("{:x?}", &self.block_hash).tx_hash(),
+                    format!("{:x?}", &b).tx_hash(),
+                );
                 self.block_hash = block;
-                info!("{} new chain tip", self.blockchain.bright_white_bold());
             }
             (h, b) if h < self.block_height && b != &self.block_hash => {
                 self.block_height = h;
                 self.block_hash = block;
                 warn!(
-                    "{} height decreased {}, new chain tip",
-                    self.blockchain.bright_white_bold(),
+                    "{} | Height decreased {}, new chain tip",
+                    self.blockchain.label(),
                     &h.bright_blue_bold()
                 );
             }
