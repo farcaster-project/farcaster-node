@@ -1186,7 +1186,7 @@ impl Runtime {
                     )?;
                 }
                 SweepAddressAddendum::Monero(sweep_xmr) => {
-                    let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), false);
+                    let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
                     let acc_confs_needs = self.temporal_safety.sweep_monero_thr
                         - self.temporal_safety.xmr_finality_thr;
                     let sweep_block =
