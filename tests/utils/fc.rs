@@ -5,12 +5,15 @@ use std::ffi::OsStr;
 use std::io;
 use std::process;
 use std::str;
+use std::str::FromStr;
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
 use nix::unistd::{getpgid, getsid, Pid};
 use serde_crate::de::DeserializeOwned;
 use sysinfo::{ProcessExt, System, SystemExt};
+use tokio::sync::Mutex;
 
 use super::config;
 
@@ -246,4 +249,103 @@ pub fn bitcoin_setup() -> bitcoincore_rpc::Client {
     sleep(Duration::from_secs(3));
 
     bitcoin_rpc
+}
+
+pub async fn monero_setup() -> (
+    monero_rpc::RegtestDaemonJsonRpcClient,
+    Arc<Mutex<monero_rpc::WalletClient>>,
+) {
+    let conf = config::TestConfig::parse();
+    let client = monero_rpc::RpcClient::new(format!("{}", conf.monero.daemon));
+    let regtest = client.daemon().regtest();
+    let client = monero_rpc::RpcClient::new(format!(
+        "{}",
+        conf.monero.get_wallet(config::WalletIndex::Primary)
+    ));
+    let wallet = client.wallet();
+
+    // error happens when wallet does not exist
+    if wallet.open_wallet("test".to_string(), None).await.is_err() {
+        wallet
+            .create_wallet("test".to_string(), None, "English".to_string())
+            .await
+            .unwrap();
+        wallet.open_wallet("test".to_string(), None).await.unwrap();
+    }
+
+    let address = wallet.get_address(0, None).await.unwrap();
+    regtest.generate_blocks(200, address.address).await.unwrap();
+    regtest
+        .generate_blocks(200, reusable_xmr_address())
+        .await
+        .unwrap();
+
+    (regtest, Arc::new(Mutex::new(wallet)))
+}
+
+pub async fn monero_new_dest_address(
+    wallet: Arc<Mutex<monero_rpc::WalletClient>>,
+) -> (monero::Address, String) {
+    use rand::distributions::Alphanumeric;
+    use rand::{thread_rng, Rng};
+
+    let wallet_name: String = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(15)
+        .map(char::from)
+        .collect();
+
+    let wallet_lock = wallet.lock().await;
+
+    wallet_lock
+        .create_wallet(wallet_name.clone(), None, "English".to_string())
+        .await
+        .unwrap();
+    wallet_lock
+        .open_wallet(wallet_name.clone(), None)
+        .await
+        .unwrap();
+    let address = wallet_lock.get_address(0, None).await.unwrap();
+
+    (address.address, wallet_name)
+}
+
+pub async fn send_monero(
+    wallet: Arc<Mutex<monero_rpc::WalletClient>>,
+    address: monero::Address,
+    amount: monero::Amount,
+) -> Vec<u8> {
+    let options = monero_rpc::TransferOptions {
+        account_index: None,
+        subaddr_indices: None,
+        mixin: None,
+        ring_size: None,
+        unlock_time: None,
+        payment_id: None,
+        do_not_relay: None,
+    };
+    let wallet_lock = wallet.lock().await;
+    wallet_lock
+        .open_wallet("test".to_string(), None)
+        .await
+        .unwrap();
+    wallet_lock.refresh(Some(1)).await.unwrap();
+    let transaction = wallet_lock
+        .transfer(
+            [(address, amount)].iter().cloned().collect(),
+            monero_rpc::TransferPriority::Default,
+            options,
+        )
+        .await
+        .unwrap();
+    drop(wallet_lock);
+    hex::decode(transaction.tx_hash.to_string()).unwrap()
+}
+
+pub fn reusable_btc_address() -> bitcoin::Address {
+    bitcoin::Address::from_str("bcrt1q3rc4sm3w9fr6a46n08znfjt7eu2yhhel6j8rsa").unwrap()
+}
+
+pub fn reusable_xmr_address() -> monero::Address {
+    monero::Address::from_str("44CpGC77Kn6exUWYCUwfaUYmDeKn7MyRcNPikgeHBCz8M6LXUC3fGCWNMW7UACHyTL6QxzqKxvJbu5o2VESLzCaeNHNUkwv").unwrap()
 }
