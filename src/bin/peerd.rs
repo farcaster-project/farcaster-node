@@ -225,8 +225,18 @@ fn main() {
             remote_node_addr = Some(remote_node);
 
             debug!("Connecting to {}", &remote_node.addr());
-            PeerConnection::connect_brontozaur(local_node, remote_node)
-                .expect("Unable to connect to the remote peer")
+
+            let mut connection = PeerConnection::connect_brontozaur(local_node, remote_node);
+            let mut attempt = 0;
+
+            while let Err(err) = connection {
+                trace!("failed to establish tcp connection: {}", err);
+                attempt += 1;
+                warn!("connect failed attempting again in {} seconds", attempt);
+                std::thread::sleep(std::time::Duration::from_secs(attempt));
+                connection = PeerConnection::connect_brontozaur(local_node, remote_node);
+            }
+            connection.expect("Already filtered for connection errors")
         }
     };
 
