@@ -668,7 +668,10 @@ fn sweep_polling(
                     )
                     .await
                     .unwrap_or_else(|err| {
-                        warn!("error polling sweep address {:?}, retrying: {}", err, sweep_address_task.retry);
+                        warn!(
+                            "error polling sweep address {:?}, retrying: {}",
+                            err, sweep_address_task.retry
+                        );
                         vec![]
                     });
                     let mut state_guard = state.lock().await;
