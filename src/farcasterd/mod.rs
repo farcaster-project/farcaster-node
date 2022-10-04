@@ -15,6 +15,7 @@
 #[cfg(feature = "shell")]
 mod opts;
 mod runtime;
+pub mod stats;
 mod syncer_state_machine;
 mod trade_state_machine;
 

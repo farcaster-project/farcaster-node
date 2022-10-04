@@ -13,6 +13,7 @@ use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, List, OfferStatusPair, OptionDetails, Progress,
 };
 use crate::cli::OfferSelector;
+use crate::farcasterd::stats::Stats;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -238,6 +239,8 @@ pub struct NodeInfo {
     pub swaps: Vec<SwapId>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub offers: Vec<PublicOffer>,
+    #[serde(alias = "statistics")]
+    pub stats: Stats,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
