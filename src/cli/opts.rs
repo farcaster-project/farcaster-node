@@ -51,8 +51,7 @@ pub enum Command {
     /// General information about the running node
     #[display("info<{subject:?}>")]
     Info {
-        /// Remote peer address or temporary/permanent/short channel id. If
-        /// absent, returns information about the node itself
+        /// Remote peer address or swap id. If absent, returns information about the node itself
         subject: Option<String>,
     },
 
