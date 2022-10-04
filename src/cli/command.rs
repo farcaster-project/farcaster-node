@@ -104,6 +104,14 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
+            Command::ListTasks {
+                blockchain,
+                network,
+            } => {
+                runtime.request_rpc(ServiceId::Syncer(blockchain, network), Rpc::ListTasks)?;
+                runtime.report_response_or_fail()?;
+            }
+
             Command::ListListens => {
                 runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListListens)?;
                 runtime.report_response_or_fail()?;

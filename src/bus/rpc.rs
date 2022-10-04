@@ -14,6 +14,7 @@ use crate::bus::{
 };
 use crate::cli::OfferSelector;
 use crate::farcasterd::stats::Stats;
+use crate::syncerd::runtime::SyncerdTask;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -124,7 +125,7 @@ pub enum Rpc {
     // - ListTasks section
     #[display(inner)]
     #[from]
-    TaskList(List<u64>),
+    TaskList(List<SyncerdTask>),
     // - End ListTasks section
 
     // - ListOffers section
@@ -206,7 +207,7 @@ impl StrictDecode for TookOffer {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -218,8 +219,7 @@ pub struct SyncerInfo {
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub tasks: Vec<u64>,
+    pub tasks: Vec<SyncerdTask>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

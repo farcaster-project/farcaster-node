@@ -1,12 +1,24 @@
+#[cfg(feature = "serde")]
+use serde_with::DisplayFromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 #[derive(
     Clone, Copy, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Ord, PartialOrd, Hash,
 )]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct TaskId(pub u32);
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub enum AddressAddendum {
     Monero(XmrAddressAddendum),
@@ -14,6 +26,11 @@ pub enum AddressAddendum {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct BtcAddressAddendum {
     /// The blockchain height where to start the query (not inclusive).
@@ -22,16 +39,29 @@ pub struct BtcAddressAddendum {
     pub address: bitcoin::Address,
 }
 
+#[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, Debug, Display, Eq, PartialEq, Hash, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct XmrAddressAddendum {
+    #[serde_as(as = "DisplayFromStr")]
     pub spend_key: monero::PublicKey,
+    #[serde_as(as = "DisplayFromStr")]
     pub view_key: monero::PrivateKey,
     /// The blockchain height where to start the query (not inclusive).
     pub from_height: u64,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct SweepAddress {
     pub retry: bool,
@@ -42,22 +72,41 @@ pub struct SweepAddress {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub enum SweepAddressAddendum {
     Monero(SweepMoneroAddress),
     Bitcoin(SweepBitcoinAddress),
 }
 
+#[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, Debug, Display, Eq, PartialEq, Hash, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct SweepMoneroAddress {
+    #[serde_as(as = "DisplayFromStr")]
     pub source_spend_key: monero::PrivateKey,
+    #[serde_as(as = "DisplayFromStr")]
     pub source_view_key: monero::PrivateKey,
     pub destination_address: monero::Address,
+    #[serde(with = "monero::util::amount::serde::as_xmr")]
     pub minimum_balance: monero::Amount,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct SweepBitcoinAddress {
     pub source_secret_key: bitcoin::secp256k1::SecretKey,
@@ -66,6 +115,11 @@ pub struct SweepBitcoinAddress {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct Abort {
     pub task_target: TaskTarget,
@@ -73,12 +127,22 @@ pub struct Abort {
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum TaskTarget {
     TaskId(TaskId),
     AllTasks,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct WatchHeight {
     pub id: TaskId,
@@ -86,6 +150,11 @@ pub struct WatchHeight {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct WatchAddress {
     pub id: TaskId,
@@ -95,6 +164,11 @@ pub struct WatchAddress {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub enum Boolean {
     True,
@@ -111,29 +185,52 @@ impl From<Boolean> for bool {
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct WatchTransaction {
     pub id: TaskId,
     pub lifetime: u64,
+    #[serde(with = "hex")]
     pub hash: Vec<u8>,
     pub confirmation_bound: u32,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct BroadcastTransaction {
     pub id: TaskId,
+    #[serde(with = "hex")]
     pub tx: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct GetTx {
     pub id: TaskId,
+    #[serde(with = "hex")]
     pub hash: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub struct WatchEstimateFee {
     pub id: TaskId,
@@ -143,6 +240,11 @@ pub struct WatchEstimateFee {
 /// Tasks created by the daemon and handle by syncers to process a blockchain
 /// and generate [`Event`] back to the syncer.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display(Debug)]
 pub enum Task {
     Abort(Abort),

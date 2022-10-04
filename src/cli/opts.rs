@@ -87,6 +87,16 @@ pub enum Command {
     #[clap(aliases = &["ll"])]
     ListListens,
 
+    /// Lists tasks currently treated by a syncer
+    #[clap(aliases = &["lt"])]
+    ListTasks {
+        /// The blockchain for which we want to list the tasks
+        blockchain: Blockchain,
+
+        /// The network for which we want to list the tasks
+        network: Network,
+    },
+
     /// Lists saved checkpoints of the swaps
     #[clap(aliases = &["lc"])]
     ListCheckpoints,
