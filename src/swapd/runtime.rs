@@ -799,7 +799,7 @@ impl Runtime {
                 // checkpoint swap alice pre buy
                 debug!(
                     "{} | checkpointing alice pre buy swapd state",
-                    self.swap_id.bright_blue_italic()
+                    self.swap_id.swap_id()
                 );
                 if self.state.a_sup_checkpoint_pre_buy() {
                     checkpoint_send(
@@ -1384,7 +1384,7 @@ impl Runtime {
             }
             BusMsg::Ctl(Ctl::AbortSwap) => {
                 let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
-                warn!("{} | {}", self.swap_id, msg);
+                warn!("{} | {}", self.swap_id.swap_id(), msg);
 
                 if let ServiceId::Client(_) = source {
                     self.send_ctl(
@@ -2176,7 +2176,7 @@ impl Runtime {
                             {
                                 warn!(
                                     "{} | Alice, the swap may be cancelled soon. Do not fund anymore",
-                                    self.swap_id.bright_blue_italic()
+                                    self.swap_id.swap_id()
                                 );
                                 self.syncer_state.awaiting_funding = false;
                                 endpoints.send_to(
@@ -2229,7 +2229,7 @@ impl Runtime {
                             {
                                 warn!(
                                     "{} | Alice, this swap was canceled. Do not fund anymore.",
-                                    self.swap_id.bright_blue_italic()
+                                    self.swap_id.swap_id()
                                 );
                                 if self.syncer_state.awaiting_funding {
                                     endpoints.send_to(
@@ -2424,7 +2424,7 @@ impl Runtime {
                             }
                             tx_label => trace!(
                                 "{} | Tx {} with {} confirmations evokes no response in state {}",
-                                self.swap_id.bright_blue_italic(),
+                                self.swap_id.swap_id(),
                                 tx_label.bright_white_bold(),
                                 confirmations,
                                 &self.state
