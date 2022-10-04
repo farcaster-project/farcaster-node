@@ -201,6 +201,7 @@ impl Runtime {
                     endpoints,
                     source,
                     Rpc::SyncerInfo(SyncerInfo {
+                        syncer: self.identity().to_string(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or_else(|_| Duration::from_secs(0)),

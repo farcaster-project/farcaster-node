@@ -51,8 +51,9 @@ pub enum Command {
     /// General information about the running node
     #[display("info<{subject:?}>")]
     Info {
-        /// Remote peer address or swap id. If absent, returns information about the node itself
-        subject: Option<String>,
+        /// Remote peer address, swap id, or blockchain and network. If absent, returns information
+        /// about the node itself
+        subject: Vec<String>,
     },
 
     /// Lists existing peer connections

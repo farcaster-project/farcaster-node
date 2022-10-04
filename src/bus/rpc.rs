@@ -214,6 +214,7 @@ impl StrictDecode for TookOffer {
 )]
 #[display(SyncerInfo::to_yaml_string)]
 pub struct SyncerInfo {
+    pub syncer: String,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
