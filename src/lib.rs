@@ -22,13 +22,10 @@
     dead_code
 )]
 
-extern crate farcaster_core;
-
 #[macro_use]
 extern crate amplify;
 #[macro_use]
 extern crate amplify_derive;
-// #[cfg_attr(feature = "_rpc", macro_use)]
 
 #[cfg(feature = "shell")]
 #[macro_use]
@@ -45,15 +42,17 @@ extern crate serde_crate as serde;
 #[macro_use]
 extern crate serde_with;
 
+#[cfg(feature = "_rpc")]
+pub mod bus;
 #[cfg(feature = "cli")]
 pub mod cli;
+pub mod client;
 #[cfg(feature = "_rpc")]
 pub mod config;
 pub mod error;
+pub mod event;
 #[cfg(feature = "shell")]
 pub mod opts;
-#[cfg(feature = "_rpc")]
-pub mod rpc;
 
 #[cfg(feature = "node")]
 pub mod databased;

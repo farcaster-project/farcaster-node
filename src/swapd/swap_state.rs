@@ -1,7 +1,9 @@
 use farcaster_core::role::{SwapRole, TradeRole};
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::rpc::request::{Commit, Outcome, Params};
+use crate::bus::ctl::Params;
+use crate::bus::msg::Commit;
+use crate::bus::Outcome;
 
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum AliceState {

@@ -68,7 +68,6 @@ dotenv = { version = "0.15", optional = true }
 electrum-client = { git = "https://github.com/bitcoindevkit/rust-electrum-client", branch = "master" }
 env_logger = "0.7"
 farcaster_core = "0.5.1"
-uuid = { version = "1.1", features = ["v4", "serde"]}
 hex = "^0.4.3"
 internet2 = "0.8.3"
 lazy_static = "1.4"
@@ -88,9 +87,7 @@ rustc-hex = "2.1.0"
 # the `serde` crate;
 # this can be fixed once rust-version is updated to 1.60.0, which solves this
 # by adding the `dep:` prefix for features defined by dependencies
-serde_crate = { package = "serde", version = "1", features = [
-    "derive",
-], optional = true }
+serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 serde_with = { version = "1.8", optional = true }
 serde_yaml = { version = "0.8", optional = true }
@@ -102,6 +99,7 @@ sysinfo = { version = "0.18.2" }
 tokio = { version = "1.18.2", features = ["full"] }
 toml = { version = "0.5", optional = true }
 tonic = "0.7.2"
+uuid = { version = "1.1", features = ["v4", "serde"] }
 zmq = { package = "zmq2", version = "0.5.0" }
 
 [build-dependencies]
@@ -155,6 +153,7 @@ client = [
   "clap",
   "_rpc",
 ]
+
 # Required for all apps that can be launched from command-line shell as binaries
 # (i.e. both servers and cli)
 shell = [
@@ -167,7 +166,6 @@ shell = [
   "shellexpand",
   "colored",
 ]
-
 # Internally used features for convenience
 _config = ["serde_yaml", "toml"]
 _rpc = []

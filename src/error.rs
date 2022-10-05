@@ -15,14 +15,12 @@
 use std::io;
 
 use amplify::IoError;
-#[cfg(feature = "_rpc")]
-use internet2::TypeId;
 use internet2::{presentation, transport};
 #[cfg(feature = "_rpc")]
 use microservices::esb;
 
 #[cfg(feature = "_rpc")]
-use crate::rpc::ServiceBus;
+use crate::bus::ServiceBus;
 use crate::service::ServiceId;
 
 #[derive(Debug, Display, From, Error)]
@@ -63,7 +61,7 @@ pub enum Error {
 
     /// Provided RPC request is not supported for the used type of endpoint
     #[cfg(feature = "_rpc")]
-    NotSupported(ServiceBus, TypeId),
+    NotSupported(ServiceBus, String),
 
     /// Peer does not respond to ping messages
     NotResponding,
@@ -127,6 +125,8 @@ pub enum SyncerError {
     NoIncrementToHeight,
     #[display("could not construct psbt")]
     InvalidPsbt,
+    #[display("Transaction should be found in the history if we successfully queried `transaction_get` for it")]
+    TxNotInHistory,
 }
 
 impl microservices::error::Error for Error {}

@@ -12,12 +12,16 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::rpc::request::{Failure, Progress, Request};
-use crate::rpc::ServiceBus;
+use crate::bus::ctl::Ctl;
+use crate::bus::rpc::Rpc;
+use crate::bus::sync::SyncMsg;
+use crate::bus::BusMsg;
+use crate::bus::{Failure, Progress, ServiceBus};
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
+use colored::Colorize;
 use internet2::{
     addr::{NodeAddr, ServiceAddr},
     zeromq,
@@ -91,11 +95,17 @@ impl FromStr for ClientName {
 
 #[derive(Debug, Clone, Hash)]
 pub struct ServiceConfig {
-    /// ZMQ socket for lightning peer network message bus
+    /// ZMQ socket for peer-to-peer network message bus
     pub msg_endpoint: ServiceAddr,
 
     /// ZMQ socket for internal service control bus
     pub ctl_endpoint: ServiceAddr,
+
+    /// ZMQ socket for remote procedure call bus
+    pub rpc_endpoint: ServiceAddr,
+
+    /// ZMQ socket for syncer events bus
+    pub sync_endpoint: ServiceAddr,
 }
 
 #[cfg(feature = "shell")]
@@ -104,6 +114,8 @@ impl From<Opts> for ServiceConfig {
         ServiceConfig {
             msg_endpoint: opts.msg_socket,
             ctl_endpoint: opts.ctl_socket,
+            rpc_endpoint: opts.rpc_socket,
+            sync_endpoint: opts.sync_socket,
         }
     }
 }
@@ -123,7 +135,6 @@ pub enum ServiceId {
 
     #[display("swap<{0}>")]
     #[from]
-    // #[from(TempSwapId)]
     Swap(SwapId),
 
     #[display("client<{0}>")]
@@ -180,16 +191,16 @@ impl From<Vec<u8>> for ServiceId {
 
 pub struct Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    Runtime: esb::Handler<ServiceBus, Request = BusMsg>,
     esb::Error<ServiceId>: From<Runtime::Error>,
 {
-    esb: esb::Controller<ServiceBus, Request, Runtime>,
+    esb: esb::Controller<ServiceBus, BusMsg, Runtime>,
     broker: bool,
 }
 
 impl<Runtime> Service<Runtime>
 where
-    Runtime: esb::Handler<ServiceBus, Request = Request>,
+    Runtime: esb::Handler<ServiceBus, Request = BusMsg>,
     esb::Error<ServiceId>: From<Runtime::Error>,
 {
     #[cfg(feature = "node")]
@@ -222,6 +233,16 @@ where
             ),
             ServiceBus::Ctl => esb::BusConfig::with_addr(
                 config.ctl_endpoint,
+                api_type,
+                router.clone()
+            ),
+            ServiceBus::Rpc => esb::BusConfig::with_addr(
+                config.rpc_endpoint,
+                api_type,
+                router.clone()
+            ),
+            ServiceBus::Sync => esb::BusConfig::with_addr(
+                config.sync_endpoint,
                 api_type,
                 router
             )
@@ -265,10 +286,21 @@ where
     pub fn run_loop(mut self) -> Result<(), Error> {
         if !self.is_broker() {
             std::thread::sleep(core::time::Duration::from_secs(1));
-            self.esb
-                .send_to(ServiceBus::Ctl, ServiceId::Farcasterd, Request::Hello)?;
-            self.esb
-                .send_to(ServiceBus::Msg, ServiceId::Farcasterd, Request::Hello)?;
+            self.esb.send_to(
+                ServiceBus::Ctl,
+                ServiceId::Farcasterd,
+                BusMsg::Ctl(Ctl::Hello),
+            )?;
+            self.esb.send_to(
+                ServiceBus::Msg,
+                ServiceId::Farcasterd,
+                BusMsg::Ctl(Ctl::Hello),
+            )?;
+            self.esb.send_to(
+                ServiceBus::Sync,
+                ServiceId::Farcasterd,
+                BusMsg::Sync(SyncMsg::Hello),
+            )?;
         }
 
         let identity = self.esb.handler().identity();
@@ -320,7 +352,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Success(msg.map(|m| m.to_string()).into()),
+                BusMsg::Ctl(Ctl::Success(msg.map(|m| m.to_string()).into())),
             )?;
         }
         Ok(())
@@ -337,7 +369,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Progress(Progress::Message(msg.to_string())),
+                BusMsg::Ctl(Ctl::Progress(Progress::Message(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -354,7 +386,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Progress(Progress::StateTransition(msg.to_string())),
+                BusMsg::Ctl(Ctl::Progress(Progress::StateTransition(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -372,7 +404,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                Request::Failure(failure.clone()),
+                BusMsg::Ctl(Ctl::Failure(failure.clone())),
             );
         }
         Error::Terminate(failure.to_string())
@@ -382,7 +414,7 @@ where
         &mut self,
         senders: &mut Endpoints,
         dest: impl TryToServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         if let Some(dest) = dest.try_to_service_id() {
             senders.send_to(ServiceBus::Ctl, self.identity(), dest, request)?;
@@ -394,7 +426,7 @@ where
         &mut self,
         bus: ServiceBus,
         senders: &mut Endpoints,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         let source = self.identity();
         trace!("sending {} to walletd from {}", request, source);
@@ -407,7 +439,7 @@ where
         &mut self,
         senders: &mut Endpoints,
         dest: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         let bus = ServiceBus::Ctl;
         if let ServiceId::GrpcdClient(_) = dest {
@@ -417,10 +449,22 @@ where
         }
         Ok(())
     }
-}
 
-// TODO: Move to LNP/BP Services library
-use colored::Colorize;
+    fn send_client_rpc(
+        &mut self,
+        senders: &mut Endpoints,
+        dest: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        let bus = ServiceBus::Rpc;
+        if let ServiceId::GrpcdClient(_) = dest {
+            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Rpc(request))?;
+        } else {
+            senders.send_to(bus, self.identity(), dest, BusMsg::Rpc(request))?;
+        }
+        Ok(())
+    }
+}
 
 pub trait LogStyle: ToString {
     fn bright_blue_bold(&self) -> colored::ColoredString {
