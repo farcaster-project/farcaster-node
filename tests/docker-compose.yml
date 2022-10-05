@@ -1,4 +1,4 @@
-version: "3.7"
+version: "3.8"
 services:
   bitcoind:
     image: ghcr.io/farcaster-project/containers/bitcoin-core:23.0
