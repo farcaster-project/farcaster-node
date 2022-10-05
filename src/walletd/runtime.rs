@@ -1,11 +1,10 @@
 use crate::bus::{
     ctl::{
         self, BitcoinAddress, Checkpoint, CheckpointState, Ctl, GetKeys, Keys, LaunchSwap,
-        MoneroAddress, Outcome, Params, Token, Tx,
+        MoneroAddress, Params, Token, Tx,
     },
     msg::{Commit, Msg, Reveal, TakeCommit},
-    rpc::AddressSecretKey,
-    BusMsg, ServiceBus,
+    AddressSecretKey, BusMsg, Outcome, ServiceBus,
 };
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;

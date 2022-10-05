@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug};
 use std::str::FromStr;
 
 use farcaster_core::{
@@ -8,16 +8,13 @@ use farcaster_core::{
     swap::SwapId,
 };
 
-use amplify::{ToYamlString, Wrapper};
 use bitcoin::secp256k1::SecretKey;
 use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
-use microservices::rpc;
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::msg::Commit;
-use crate::bus::rpc::{AddressSecretKey, OfferStatus};
-use crate::bus::BusMsg;
+use crate::bus::{AddressSecretKey, Failure, OfferStatusPair, OptionDetails, Outcome, Progress};
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::SweepAddressAddendum;
 use crate::walletd::runtime::CheckpointWallet;
@@ -139,40 +136,6 @@ pub enum ProgressStack {
     Failure(Failure),
 }
 
-#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display(inner)]
-pub enum Progress {
-    Message(String),
-    StateTransition(String),
-}
-
-#[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, NetworkEncode, NetworkDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-pub struct OptionDetails(pub Option<String>);
-
-impl Display for OptionDetails {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.as_inner() {
-            None => Ok(()),
-            Some(msg) => f.write_str(msg),
-        }
-    }
-}
-
-impl OptionDetails {
-    pub fn with(s: impl ToString) -> Self {
-        Self(Some(s.to_string()))
-    }
-
-    pub fn new() -> Self {
-        Self(None)
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("..")]
 pub struct ProtoPublicOffer {
@@ -233,23 +196,6 @@ pub struct InitSwap {
     pub funding_address: Option<bitcoin::Address>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-pub enum Outcome {
-    #[display("Success(Swapped)")]
-    Buy,
-    #[display("Failure(Refunded)")]
-    Refund,
-    #[display("Failure(Punished)")]
-    Punish,
-    #[display("Failure(Aborted)")]
-    Abort,
-}
-
 #[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 #[display(Debug)]
 pub struct Checkpoint {
@@ -275,22 +221,6 @@ pub struct Keys(
 fn format_keys(keys: &Keys) -> String {
     format!("sk: {}, pk: {}", keys.0.display_secret(), keys.1,)
 }
-
-#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
-#[display("{offer}, {status}")]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(OfferStatusPair::to_yaml_string)]
-pub struct OfferStatusPair {
-    pub offer: PublicOffer,
-    pub status: OfferStatus,
-}
-
-#[cfg(feature = "serde")]
-impl ToYamlString for OfferStatusPair {}
 
 #[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 pub enum FundingInfo {
@@ -386,101 +316,4 @@ pub enum Tx {
     Refund(Transaction),
     #[display("punish(..)")]
     Punish(Transaction),
-}
-
-/// Information about server-side failure returned through RPC API
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[derive(
-    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, NetworkEncode, NetworkDecode,
-)]
-#[display("{info}", alt = "Server returned failure #{code}: {info}")]
-pub struct Failure {
-    /// Failure code
-    pub code: FailureCode,
-
-    /// Detailed information about the failure
-    pub info: String,
-}
-
-#[derive(
-    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, NetworkEncode, NetworkDecode,
-)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(Debug)]
-pub enum FailureCode {
-    /// Catch-all: TODO: Expand
-    Unknown = 0xFFF,
-}
-
-impl From<u16> for FailureCode {
-    fn from(value: u16) -> Self {
-        match value {
-            _ => FailureCode::Unknown,
-        }
-    }
-}
-
-impl From<FailureCode> for u16 {
-    fn from(code: FailureCode) -> Self {
-        code as u16
-    }
-}
-
-impl From<FailureCode> for rpc::FailureCode<FailureCode> {
-    fn from(code: FailureCode) -> Self {
-        rpc::FailureCode::Other(code)
-    }
-}
-
-impl rpc::FailureCodeExt for FailureCode {}
-
-impl From<crate::Error> for BusMsg {
-    fn from(err: crate::Error) -> Self {
-        BusMsg::Ctl(Ctl::Failure(Failure {
-            code: FailureCode::Unknown,
-            info: err.to_string(),
-        }))
-    }
-}
-
-pub trait IntoProgressOrFailure {
-    fn into_progress_or_failure(self) -> BusMsg;
-}
-pub trait IntoSuccessOrFailure {
-    fn into_success_or_failure(self) -> BusMsg;
-}
-
-impl IntoProgressOrFailure for Result<String, crate::Error> {
-    fn into_progress_or_failure(self) -> BusMsg {
-        match self {
-            Ok(val) => BusMsg::Ctl(Ctl::Progress(Progress::Message(val))),
-            Err(err) => BusMsg::from(err),
-        }
-    }
-}
-
-impl IntoSuccessOrFailure for Result<String, crate::Error> {
-    fn into_success_or_failure(self) -> BusMsg {
-        match self {
-            Ok(val) => BusMsg::Ctl(Ctl::Success(OptionDetails::with(val))),
-            Err(err) => BusMsg::from(err),
-        }
-    }
-}
-
-impl IntoSuccessOrFailure for Result<(), crate::Error> {
-    fn into_success_or_failure(self) -> BusMsg {
-        match self {
-            Ok(_) => BusMsg::Ctl(Ctl::Success(OptionDetails::new())),
-            Err(err) => BusMsg::from(err),
-        }
-    }
 }

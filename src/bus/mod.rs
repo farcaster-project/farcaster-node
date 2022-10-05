@@ -16,8 +16,10 @@ pub mod ctl;
 pub mod msg;
 pub mod rpc;
 pub mod sync;
+mod types;
 
-pub use ctl::{Failure, FailureCode};
+// Import all shared types
+pub use types::*;
 
 use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
@@ -92,6 +94,15 @@ pub enum BusMsg {
 }
 
 impl microservices::rpc::Request for BusMsg {}
+
+impl From<crate::Error> for BusMsg {
+    fn from(err: crate::Error) -> Self {
+        BusMsg::Ctl(Ctl::Failure(Failure {
+            code: FailureCode::Unknown,
+            info: err.to_string(),
+        }))
+    }
+}
 
 /// An encodable list that is serializable in yaml
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, StrictEncode, StrictDecode)]

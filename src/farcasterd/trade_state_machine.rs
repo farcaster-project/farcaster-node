@@ -1,15 +1,14 @@
 use crate::bus::ctl::{
     BitcoinAddress, BitcoinFundingInfo, Ctl, FundingInfo, InitSwap, LaunchSwap, MoneroAddress,
-    MoneroFundingInfo, OfferStatusPair, ProtoPublicOffer, PubOffer,
+    MoneroFundingInfo, ProtoPublicOffer, PubOffer,
 };
 use crate::bus::msg::{Msg, TakeCommit};
-use crate::bus::rpc::{CheckpointEntry, MadeOffer, OfferInfo, OfferStatus, Rpc, TookOffer};
-use crate::bus::{Failure, FailureCode};
+use crate::bus::rpc::{CheckpointEntry, MadeOffer, OfferInfo, Rpc, TookOffer};
+use crate::bus::{Failure, FailureCode, OfferStatus, OfferStatusPair};
 use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;
 use crate::{
-    bus::ctl::Outcome,
-    bus::BusMsg,
+    bus::{BusMsg, Outcome},
     error::Error,
     event::{Event, StateMachine},
     ServiceId,

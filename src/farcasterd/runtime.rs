@@ -22,9 +22,9 @@ use crate::event::{Event, StateMachine};
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
-    bus::ctl::{Keys, LaunchSwap, Outcome, Progress, ProgressStack, Token},
+    bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
     bus::rpc::{CheckpointEntry, OfferInfo, OfferStatusSelector, ProgressEvent, Rpc, SwapProgress},
-    bus::{Failure, FailureCode},
+    bus::{Failure, FailureCode, Outcome, Progress},
     clap::Parser,
     error::SyncerError,
     service::Endpoints,

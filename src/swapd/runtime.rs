@@ -26,12 +26,12 @@ use crate::syncerd::{FeeEstimation, FeeEstimations, SweepAddressAddendum};
 use crate::{
     bus::ctl::{
         BitcoinFundingInfo, Checkpoint, CheckpointState, Ctl, FundingInfo, InitSwap,
-        MoneroFundingInfo, Outcome, Params, Tx,
+        MoneroFundingInfo, Params, Tx,
     },
     bus::msg::{Commit, Msg, Reveal, TakeCommit},
     bus::rpc::{Rpc, SwapInfo},
     bus::sync::SyncMsg,
-    bus::{BusMsg, Failure, FailureCode, ServiceBus},
+    bus::{BusMsg, Failure, FailureCode, Outcome, ServiceBus},
     syncerd::{
         Abort, HeightChanged, SweepSuccess, TaskTarget, TransactionRetrieved, XmrAddressAddendum,
     },

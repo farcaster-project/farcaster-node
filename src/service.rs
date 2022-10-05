@@ -12,11 +12,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::{Ctl, Progress};
+use crate::bus::ctl::Ctl;
 use crate::bus::rpc::Rpc;
 use crate::bus::sync::SyncMsg;
 use crate::bus::BusMsg;
-use crate::bus::{Failure, ServiceBus};
+use crate::bus::{Failure, Progress, ServiceBus};
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 

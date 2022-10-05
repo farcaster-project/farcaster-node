@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::rpc::{Address, AddressSecretKey};
+use crate::bus::{rpc::Address, AddressSecretKey};
 use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use farcaster_core::swap::btcxmr::Offer;
 use std::io::{self, Read};

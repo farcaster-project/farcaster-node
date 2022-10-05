@@ -11,8 +11,7 @@ use serde_with::{DisplayFromStr, DurationSeconds};
 use strict_encoding::{NetworkDecode, NetworkEncode, StrictDecode, StrictEncode};
 use uuid::Uuid;
 
-use crate::bus::ctl::{Failure, OfferStatusPair, OptionDetails, Outcome, Progress};
-use crate::bus::List;
+use crate::bus::{AddressSecretKey, Failure, List, OfferStatusPair, OptionDetails, Progress};
 use crate::cli::OfferSelector;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
@@ -329,20 +328,6 @@ pub enum Address {
     Monero(monero::Address),
 }
 
-#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
-#[display("address_secret_key")]
-pub enum AddressSecretKey {
-    Bitcoin {
-        address: bitcoin::Address,
-        secret_key: bitcoin::secp256k1::SecretKey,
-    },
-    Monero {
-        address: monero::Address,
-        view: monero::PrivateKey,
-        spend: monero::PrivateKey,
-    },
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
 pub enum OfferStatusSelector {
     #[display("Open")]
@@ -376,21 +361,6 @@ impl FromStr for OfferStatusSelector {
             _ => Err(()),
         }
     }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-pub enum OfferStatus {
-    #[display("Open")]
-    Open,
-    #[display("In Progress")]
-    InProgress,
-    #[display("Ended({0})")]
-    Ended(Outcome),
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
