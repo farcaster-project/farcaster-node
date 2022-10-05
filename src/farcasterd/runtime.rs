@@ -157,35 +157,58 @@ impl Stats {
     }
 
     pub fn incr_awaiting_funding(&mut self, blockchain: &Blockchain, swapid: SwapId) {
-        match blockchain {
+        let newly_inserted = match blockchain {
             Blockchain::Monero => self.awaiting_funding_xmr.insert(swapid),
             Blockchain::Bitcoin => self.awaiting_funding_btc.insert(swapid),
         };
+        if !newly_inserted {
+            warn!(
+                "{} | This swap was already in awaiting {} funding",
+                swapid.bright_blue_italic(),
+                blockchain.bright_white_bold()
+            );
+        }
     }
 
     pub fn incr_funded(&mut self, blockchain: &Blockchain, swapid: &SwapId) {
-        match blockchain {
+        let present_in_set = match blockchain {
             Blockchain::Monero => {
                 self.funded_xmr += 1;
-                self.awaiting_funding_xmr.remove(swapid);
+                self.awaiting_funding_xmr.remove(swapid)
             }
             Blockchain::Bitcoin => {
                 self.funded_btc += 1;
-                self.awaiting_funding_btc.remove(swapid);
+                self.awaiting_funding_btc.remove(swapid)
             }
+        };
+        if !present_in_set {
+            warn!(
+                "{} | This swap wasn't awaiting {} funding",
+                swapid.bright_blue_italic(),
+                "Bitcoin".bright_white_bold()
+            );
         }
     }
 
     pub fn incr_funding_canceled(&mut self, blockchain: &Blockchain, swapid: &SwapId) {
-        match blockchain {
+        let present_in_set = match blockchain {
             Blockchain::Monero => {
-                self.awaiting_funding_xmr.remove(swapid);
+                let presence = self.awaiting_funding_xmr.remove(swapid);
                 self.funding_canceled_xmr += 1;
+                presence
             }
             Blockchain::Bitcoin => {
-                self.awaiting_funding_btc.remove(swapid);
+                let presence = self.awaiting_funding_btc.remove(swapid);
                 self.funding_canceled_btc += 1;
+                presence
             }
+        };
+        if !present_in_set {
+            warn!(
+                "{} | This swap wasn't awaiting {} funding",
+                swapid.bright_blue_italic(),
+                "Bitcoin".bright_white_bold()
+            );
         }
     }
 
