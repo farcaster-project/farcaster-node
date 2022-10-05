@@ -12,27 +12,28 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::bus::{
+    ctl::Ctl,
+    rpc::{Rpc, SyncerInfo},
+    sync::SyncMsg,
+    BusMsg, ServiceBus,
+};
 use crate::service::Endpoints;
 use crate::syncerd::bitcoin_syncer::BitcoinSyncer;
 use crate::syncerd::monero_syncer::MoneroSyncer;
 use crate::syncerd::opts::Opts;
-use crate::syncerd::runtime::request::Progress;
-use farcaster_core::blockchain::{Blockchain, Network};
+use crate::syncerd::*;
+use crate::CtlServer;
+use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
+
 use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, SystemTime};
 
-use internet2::TypedEnum;
+use farcaster_core::blockchain::{Blockchain, Network};
 use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
-
-use crate::rpc::{
-    request::{self, SyncerInfo},
-    Request, ServiceBus,
-};
-use crate::syncerd::*;
-use crate::{Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 pub trait Synclet {
     fn run(
@@ -91,8 +92,10 @@ pub struct Runtime {
     tx: Sender<SyncerdTask>,
 }
 
+impl CtlServer for Runtime {}
+
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -104,12 +107,21 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
-            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
+        match (bus, request) {
+            // FIXME: to be removed
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            // Control bus for issuing control commands, only accept BusMsg::Ctl
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
+            // RPC command bus, only accept BusMsg::Rpc
+            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
+            (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
+            // Internal syncer bridge for inner communication, only accept BusMsg::Sync
+            (ServiceBus::Bridge, BusMsg::Sync(req)) => self.handle_bridge(endpoints, source, req),
+            // All other pairs are not supported
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -122,33 +134,33 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         _endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
             _ => {
                 error!("MSG RPC can be only used for forwarding farcaster protocol messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Msg, request.to_string()));
             }
         }
         Ok(())
     }
-    fn handle_rpc_ctl(
+
+    fn handle_ctl(
         &mut self,
-        endpoints: &mut Endpoints,
+        _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: Ctl,
     ) -> Result<(), Error> {
-        let mut notify_cli = None;
         match (&request, &source) {
-            (Request::Hello, _) => {
+            (Ctl::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} daemon is now {}",
@@ -156,21 +168,39 @@ impl Runtime {
                     "connected".bright_green_bold()
                 );
             }
-            (Request::SyncerTask(task), _) => {
-                match self.tx.send(SyncerdTask {
-                    task: task.clone(),
-                    source,
-                }) {
-                    Ok(()) => trace!("Task successfully sent to syncer runtime"),
-                    Err(e) => error!("Failed to send task with error: {}", e.to_string()),
-                };
+
+            (Ctl::Terminate, ServiceId::Farcasterd) => {
+                // terminate all runtimes
+                info!("Received terminate on {}", self.identity());
+                std::process::exit(0);
             }
-            (Request::GetInfo, _) => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
+
+            (req, source) => {
+                error!(
+                    "{} req: {}, source: {}",
+                    "BusMsg is not supported by the CTL interface".err(),
+                    req,
+                    source
+                );
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        match request {
+            Rpc::GetInfo => {
+                self.send_client_rpc(
+                    endpoints,
                     source,
-                    Request::SyncerInfo(SyncerInfo {
+                    Rpc::SyncerInfo(SyncerInfo {
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or_else(|_| Duration::from_secs(0)),
@@ -184,54 +214,61 @@ impl Runtime {
                 )?;
             }
 
-            (Request::ListTasks, ServiceId::Client(_)) => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source.clone(),
-                    Request::TaskList(self.tasks.iter().cloned().collect()),
+            Rpc::ListTasks => {
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::TaskList(self.tasks.iter().cloned().collect()),
                 )?;
-                let resp = Request::Progress(Progress::Message("ListedTasks?".to_string()));
-                notify_cli = Some((Some(source), resp));
             }
 
-            (Request::Terminate, ServiceId::Farcasterd) => {
-                // terminate all runtimes
-                info!("Received terminate on {}", self.identity());
-                std::process::exit(0);
+            req => {
+                warn!("Ignoring request: {}", req.err());
             }
-
-            (req, source) => {
-                error!(
-                    "{} req: {}, source: {}",
-                    "Request is not supported by the CTL interface".err(),
-                    req,
-                    source
-                );
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
-            }
-        }
-
-        if let Some((Some(respond_to), resp)) = notify_cli {
-            endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
         }
 
         Ok(())
     }
+
+    fn handle_sync(
+        &mut self,
+        _endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: SyncMsg,
+    ) -> Result<(), Error> {
+        match request {
+            SyncMsg::Task(task) => {
+                match self.tx.send(SyncerdTask {
+                    task: task.clone(),
+                    source,
+                }) {
+                    Ok(()) => trace!("Task successfully sent to syncer runtime"),
+                    Err(e) => error!("Failed to send task with error: {}", e.to_string()),
+                };
+            }
+
+            req => {
+                warn!("Ignoring request: {}", req.err());
+            }
+        }
+
+        Ok(())
+    }
+
     fn handle_bridge(
         &mut self,
         endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: SyncMsg,
     ) -> Result<(), Error> {
         debug!("Syncerd BRIDGE RPC request: {}", request);
         match request {
-            Request::SyncerdBridgeEvent(syncerd_bridge_event) => {
+            SyncMsg::BridgeEvent(syncerd_bridge_event) => {
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Sync,
                     self.identity(),
                     syncerd_bridge_event.source,
-                    Request::SyncerEvent(syncerd_bridge_event.event),
+                    BusMsg::Sync(SyncMsg::Event(syncerd_bridge_event.event)),
                 )?;
             }
 
