@@ -2,9 +2,12 @@ use bitcoin::hashes::{hex::ToHex, Hash};
 use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
+    bus::ctl::Ctl,
+    bus::rpc::Rpc,
+    bus::sync::SyncMsg,
+    bus::BusMsg,
     error::Error,
     event::{Event, StateMachine},
-    rpc::Request,
     syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
     ServiceId,
 };
@@ -110,19 +113,27 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
 ) -> Result<Option<SyncerStateMachine>, Error> {
     let source = event.source.clone();
     match event.request.clone() {
-        Request::SweepMoneroAddress(sweep_monero_address) => {
-            let blockchain = Blockchain::Monero;
-            let mut network = sweep_monero_address.destination_address.network.into();
+        BusMsg::Ctl(Ctl::SweepAddress(sweep_address)) => {
+            let (blockchain, network) = match sweep_address.clone() {
+                SweepAddressAddendum::Monero(addendum) => {
+                    let blockchain = Blockchain::Monero;
+                    let mut network = addendum.destination_address.network.into();
 
-            // Switch the network to local if the mainnet configuration does
-            // not exist and the local network exists
-            network = if network == Network::Mainnet
-                && runtime.config.get_syncer_servers(network).is_none()
-                && runtime.config.get_syncer_servers(Network::Local).is_some()
-            {
-                Network::Local
-            } else {
-                network
+                    // Switch the network to local if the mainnet configuration does
+                    // not exist and the local network exists
+                    network = if network == Network::Mainnet
+                        && runtime.config.get_syncer_servers(network).is_none()
+                        && runtime.config.get_syncer_servers(Network::Local).is_some()
+                    {
+                        Network::Local
+                    } else {
+                        network
+                    };
+                    (blockchain, network)
+                }
+                SweepAddressAddendum::Bitcoin(addendum) => {
+                    (Blockchain::Bitcoin, addendum.source_address.network.into())
+                }
             };
 
             let syncer_task_id = TaskId(runtime.syncer_task_counter);
@@ -130,7 +141,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 id: syncer_task_id.clone(),
                 retry: false,
                 lifetime: u64::MAX,
-                addendum: SweepAddressAddendum::Monero(sweep_monero_address),
+                addendum: sweep_address,
                 from_height: None,
             });
             runtime.syncer_task_counter += 1;
@@ -143,47 +154,8 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 network,
                 &runtime.config,
             )? {
-                event.complete_ctl_service(service_id, Request::SyncerTask(syncer_task))?;
-                Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
-                    AwaitingSyncerRequest {
-                        source,
-                        syncer_task_id,
-                        syncer: ServiceId::Syncer(blockchain, network),
-                    },
-                )))
-            } else {
-                Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
-                    source,
-                    syncer: ServiceId::Syncer(blockchain, network),
-                    syncer_task: syncer_task,
-                    syncer_task_id,
-                })))
-            }
-        }
-
-        Request::SweepBitcoinAddress(sweep_bitcoin_address) => {
-            let blockchain = Blockchain::Bitcoin;
-            let network = sweep_bitcoin_address.source_address.network.into();
-
-            let syncer_task_id = TaskId(runtime.syncer_task_counter);
-            let syncer_task = Task::SweepAddress(SweepAddress {
-                id: syncer_task_id.clone(),
-                retry: false,
-                lifetime: u64::MAX,
-                addendum: SweepAddressAddendum::Bitcoin(sweep_bitcoin_address),
-                from_height: None,
-            });
-            runtime.syncer_task_counter += 1;
-
-            // check if a bitcoin syncer is up
-            if let Some(service_id) = syncer_up(
-                &mut runtime.spawning_services,
-                &mut runtime.registered_services,
-                blockchain,
-                network,
-                &runtime.config,
-            )? {
-                event.complete_ctl_service(service_id, Request::SyncerTask(syncer_task))?;
+                event
+                    .complete_sync_service(service_id, BusMsg::Sync(SyncMsg::Task(syncer_task)))?;
                 Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                     AwaitingSyncerRequest {
                         source,
@@ -217,8 +189,9 @@ fn attempt_transition_to_awaiting_syncer_request(
         syncer_task_id,
     } = awaiting_syncer;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, syncer_id) if syncer == syncer_id => {
-            event.complete_ctl_service(syncer.clone(), Request::SyncerTask(syncer_task))?;
+        (BusMsg::Ctl(Ctl::Hello), syncer_id) if syncer == syncer_id => {
+            event
+                .complete_sync_service(syncer.clone(), BusMsg::Sync(SyncMsg::Task(syncer_task)))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                 AwaitingSyncerRequest {
                     source,
@@ -228,15 +201,15 @@ fn attempt_transition_to_awaiting_syncer_request(
             )))
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let BusMsg::Ctl(Ctl::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req, source
                 );
             }
@@ -261,7 +234,7 @@ fn attempt_transition_to_end(
         syncer,
     } = awaiting_syncer_request;
     match (event.request.clone(), event.source.clone()) {
-        (Request::SyncerEvent(SyncerEvent::SweepSuccess(success)), syncer_id)
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(success))), syncer_id)
             if syncer == syncer_id && success.id == syncer_task_id =>
         {
             if let Some(Some(txid)) = success
@@ -270,15 +243,18 @@ fn attempt_transition_to_end(
                 .pop()
                 .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
             {
-                event.send_ctl_service(
+                event.send_rpc_service(
                     source,
-                    Request::String(format!(
+                    BusMsg::Rpc(Rpc::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
                         txid.to_hex()
-                    )),
+                    ))),
                 )?;
             } else {
-                event.send_ctl_service(source, Request::String("Nothing to sweep.".to_string()))?;
+                event.send_rpc_service(
+                    source,
+                    BusMsg::Rpc(Rpc::String("Nothing to sweep.".to_string())),
+                )?;
             }
 
             runtime.registered_services = runtime
@@ -290,7 +266,7 @@ fn attempt_transition_to_end(
                         if !runtime.syncer_has_client(service) {
                             info!("Terminating {}", service);
                             event
-                                .send_ctl_service(service.clone(), Request::Terminate)
+                                .send_ctl_service(service.clone(), BusMsg::Ctl(Ctl::Terminate))
                                 .is_err()
                         } else {
                             true
@@ -303,15 +279,15 @@ fn attempt_transition_to_end(
             Ok(None)
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let BusMsg::Ctl(Ctl::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state awaiting syncer.",
+                    "BusMsg {} from {} invalid for state awaiting syncer.",
                     req, source
                 );
             }

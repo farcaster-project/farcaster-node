@@ -1,5 +1,5 @@
 use crate::{
-    rpc::ServiceBus,
+    bus::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
@@ -14,7 +14,8 @@ use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel}
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    rpc::Request,
+    bus::sync::SyncMsg,
+    bus::BusMsg,
     syncerd::{Task, TaskId},
     ServiceId,
 };
@@ -45,8 +46,8 @@ pub struct SyncerState {
     pub bitcoin_height: u64,
     pub monero_height: u64,
     pub confirmation_bound: u32,
-    pub lock_tx_confs: Option<Request>,
-    pub cancel_tx_confs: Option<Request>,
+    pub lock_tx_confs: Option<SyncMsg>,
+    pub cancel_tx_confs: Option<SyncMsg>,
     pub network: farcaster_core::blockchain::Network,
     pub bitcoin_syncer: ServiceId,
     pub monero_syncer: ServiceId,
@@ -254,35 +255,6 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
-    pub fn sweep_xmr(
-        &mut self,
-        source_view_key: monero::PrivateKey,
-        source_spend_key: monero::PrivateKey,
-        destination_address: monero::Address,
-        from_height: Option<u64>,
-        minimum_balance: monero::Amount,
-        retry: bool,
-    ) -> Task {
-        let id = self.tasks.new_taskid();
-        self.tasks.sweeping_addr = Some(id);
-        let lifetime = self.task_lifetime(Blockchain::Monero);
-        let addendum = SweepAddressAddendum::Monero(SweepMoneroAddress {
-            source_view_key,
-            source_spend_key,
-            destination_address,
-            minimum_balance,
-        });
-        let sweep_task = SweepAddress {
-            id,
-            lifetime,
-            addendum,
-            retry,
-            from_height,
-        };
-        let task = Task::SweepAddress(sweep_task);
-        self.tasks.tasks.insert(id, task.clone());
-        task
-    }
 
     pub fn watch_height(&mut self, blockchain: Blockchain) -> Task {
         let id = self.tasks.new_taskid();
@@ -294,15 +266,15 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
-    pub fn sweep_btc(&mut self, sweep_bitcoin_address: SweepBitcoinAddress, retry: bool) -> Task {
+
+    pub fn sweep_btc(&mut self, addendum: SweepBitcoinAddress, retry: bool) -> Task {
         let id = self.tasks.new_taskid();
         self.tasks.sweeping_addr = Some(id);
         let lifetime = self.task_lifetime(Blockchain::Bitcoin);
-        let addendum = SweepAddressAddendum::Bitcoin(sweep_bitcoin_address);
         let sweep_task = SweepAddress {
             id,
             lifetime,
-            addendum,
+            addendum: SweepAddressAddendum::Bitcoin(addendum),
             retry,
             from_height: None,
         };
@@ -310,6 +282,23 @@ impl SyncerState {
         self.tasks.tasks.insert(id, task.clone());
         task
     }
+
+    pub fn sweep_xmr(&mut self, addendum: SweepMoneroAddress, retry: bool) -> Task {
+        let id = self.tasks.new_taskid();
+        self.tasks.sweeping_addr = Some(id);
+        let lifetime = self.task_lifetime(Blockchain::Monero);
+        let sweep_task = SweepAddress {
+            id,
+            lifetime,
+            addendum: SweepAddressAddendum::Monero(addendum),
+            retry,
+            from_height: None,
+        };
+        let task = Task::SweepAddress(sweep_task);
+        self.tasks.tasks.insert(id, task.clone());
+        task
+    }
+
     pub fn broadcast(&mut self, tx: bitcoin::Transaction) -> Task {
         let id = self.tasks.new_taskid();
         let task = Task::BroadcastTransaction(BroadcastTransaction {
@@ -417,25 +406,25 @@ impl SyncerState {
         let identity = ServiceId::Swap(self.swap_id.clone());
         let task = self.estimate_fee_btc();
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::SyncerTask(task),
+            BusMsg::Sync(SyncMsg::Task(task)),
         )?;
         let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::SyncerTask(watch_height_btc_task),
+            BusMsg::Sync(SyncMsg::Task(watch_height_btc_task)),
         )?;
         // assumes xmr syncer will be up as well at this point
         let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity,
             self.monero_syncer(),
-            Request::SyncerTask(watch_height_xmr_task),
+            BusMsg::Sync(SyncMsg::Task(watch_height_xmr_task)),
         )?;
         Ok(())
     }
