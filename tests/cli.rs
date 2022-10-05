@@ -1,7 +1,7 @@
 use std::time;
 use utils::fc::*;
 
-use farcaster_node::rpc::request::MadeOffer;
+use farcaster_node::bus::rpc::MadeOffer;
 
 #[macro_use]
 extern crate log;
@@ -11,7 +11,7 @@ mod utils;
 #[tokio::test]
 #[ignore]
 async fn cli_make_offer() {
-    let (farcasterd_maker, data_dir_maker, farcasterd_taker, _) = setup_clients().await;
+    let (_, data_dir_maker, _, _) = setup_clients().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -49,5 +49,5 @@ async fn cli_make_offer() {
     println!("{:?}", res);
 
     // clean up processes
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+    kill_all();
 }

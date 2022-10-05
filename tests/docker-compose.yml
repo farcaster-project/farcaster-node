@@ -41,7 +41,6 @@ services:
         --non-interactive
         --offline
         --fixed-difficulty 1
-        --rpc-ssl enabled
     ports:
       - 18081:18081
       - 18082:18082

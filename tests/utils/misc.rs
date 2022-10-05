@@ -1,15 +1,15 @@
 //! Miscellaneous helper functions.
 
-use farcaster_node::rpc::Request;
+use farcaster_node::bus::BusMsg;
 use internet2::transport::MAX_FRAME_SIZE;
 use internet2::Decrypt;
 use internet2::PlainTranscoder;
 use internet2::RoutedFrame;
 use internet2::{CreateUnmarshaller, Unmarshall};
 
-pub fn get_request_from_message(message: Vec<Vec<u8>>) -> Request {
-    // Receive a Request
-    let unmarshaller = Request::create_unmarshaller();
+pub fn get_request_from_message(message: Vec<Vec<u8>>) -> BusMsg {
+    // Receive a BusMsg
+    let unmarshaller = BusMsg::create_unmarshaller();
     let mut transcoder = PlainTranscoder {};
     let routed_message = recv_routed(message);
     let plain_message = transcoder.decrypt(routed_message.msg).unwrap();

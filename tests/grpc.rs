@@ -16,7 +16,7 @@ pub mod farcaster {
 #[tokio::test]
 #[ignore]
 async fn grpc_server_functional_test() {
-    let (farcasterd_maker, _, farcasterd_taker, _) = setup_clients().await;
+    let _ = setup_clients().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -30,5 +30,6 @@ async fn grpc_server_functional_test() {
     let request = tonic::Request::new(InfoRequest { id: 0 });
     let response = farcaster_client.info(request).await;
     assert_eq!(response.unwrap().into_inner().id, 0);
-    cleanup_processes(vec![farcasterd_maker, farcasterd_taker]);
+
+    kill_all();
 }

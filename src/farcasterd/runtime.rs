@@ -13,33 +13,25 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use crate::bus::ctl::{BitcoinFundingInfo, Ctl, GetKeys, MoneroFundingInfo};
+use crate::bus::msg::{self, Msg};
+use crate::bus::rpc::NodeInfo;
+use crate::bus::sync::SyncMsg;
+use crate::bus::{BusMsg, List, ServiceBus};
 use crate::event::{Event, StateMachine};
-use crate::farcasterd::runtime::request::{
-    CheckpointEntry, OfferStatusSelector, ProgressEvent, SwapProgress,
-};
 use crate::farcasterd::Opts;
-use crate::rpc::request::{Failure, FailureCode, GetKeys, Msg, NodeInfo};
-use crate::rpc::{request, Request, ServiceBus};
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
+    bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
+    bus::rpc::{CheckpointEntry, OfferInfo, OfferStatusSelector, ProgressEvent, Rpc, SwapProgress},
+    bus::{Failure, FailureCode, Outcome, Progress},
     clap::Parser,
     error::SyncerError,
-    rpc::request::{
-        BitcoinFundingInfo, Keys, LaunchSwap, MoneroFundingInfo, OfferInfo, Outcome, Token,
-    },
     service::Endpoints,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use bitcoin::{hashes::hex::ToHex, secp256k1::PublicKey, secp256k1::SecretKey};
 use clap::IntoApp;
-use farcaster_core::{
-    blockchain::{Blockchain, Network},
-    swap::SwapId,
-};
-use farcaster_core::{role::TradeRole, swap::btcxmr::PublicOffer};
-use internet2::{addr::InetSocketAddr, addr::NodeAddr, TypedEnum};
-use microservices::esb::{self, Handler};
-use request::List;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
@@ -50,6 +42,14 @@ use std::time::{Duration, SystemTime};
 
 use super::syncer_state_machine::SyncerStateMachine;
 use super::trade_state_machine::TradeStateMachine;
+use farcaster_core::{
+    blockchain::{Blockchain, Network},
+    role::TradeRole,
+    swap::btcxmr::PublicOffer,
+    swap::SwapId,
+};
+use internet2::{addr::InetSocketAddr, addr::NodeAddr};
+use microservices::esb::{self, Handler};
 
 pub fn run(
     service_config: ServiceConfig,
@@ -106,16 +106,16 @@ pub fn run(
 }
 
 pub struct Runtime {
-    identity: ServiceId,                             // Set on Runtime instantiation
-    wallet_token: Token,                             // Set on Runtime instantiation
-    started: SystemTime,                             // Set on Runtime instantiation
+    identity: ServiceId,                         // Set on Runtime instantiation
+    wallet_token: Token,                         // Set on Runtime instantiation
+    started: SystemTime,                         // Set on Runtime instantiation
     node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
     node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
     pub listens: HashSet<InetSocketAddr>, // Set by MakeOffer, contains unique socket addresses of the binding peerd listeners.
     pub spawning_services: HashSet<ServiceId>, // Services that have been launched, but have not replied with Hello yet
     pub registered_services: HashSet<ServiceId>, // Services that have announced themselves with Hello
     pub public_offers: HashSet<PublicOffer>, // The set of all known public offers. Includes open, consumed and ended offers includes open, consumed and ended offers
-    progress: HashMap<ServiceId, VecDeque<Request>>, // A mapping from Swap ServiceId to its sent and received progress requests
+    progress: HashMap<ServiceId, VecDeque<ProgressStack>>, // A mapping from Swap ServiceId to its sent and received progress messages (Progress, Success, Failure)
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
     pub checkpointed_pub_offers: List<CheckpointEntry>, // A list of existing swap checkpoint entries that may be restored again
     pub stats: Stats,                                   // Some stats about offers and swaps
@@ -134,8 +134,8 @@ pub struct Stats {
     punish: u64,
     abort: u64,
     initialized: u64,
-    awaiting_funding_btc: u64,
-    awaiting_funding_xmr: u64,
+    awaiting_funding_btc: HashSet<SwapId>,
+    awaiting_funding_xmr: HashSet<SwapId>,
     funded_xmr: u64,
     funded_btc: u64,
     funding_canceled_xmr: u64,
@@ -151,35 +151,67 @@ impl Stats {
             Outcome::Abort => self.abort += 1,
         };
     }
+
     pub fn incr_initiated(&mut self) {
         self.initialized += 1;
     }
-    pub fn incr_awaiting_funding(&mut self, blockchain: &Blockchain) {
-        match blockchain {
-            Blockchain::Monero => self.awaiting_funding_xmr += 1,
-            Blockchain::Bitcoin => self.awaiting_funding_btc += 1,
+
+    pub fn incr_awaiting_funding(&mut self, blockchain: &Blockchain, swapid: SwapId) {
+        let newly_inserted = match blockchain {
+            Blockchain::Monero => self.awaiting_funding_xmr.insert(swapid),
+            Blockchain::Bitcoin => self.awaiting_funding_btc.insert(swapid),
+        };
+        if !newly_inserted {
+            warn!(
+                "{} | This swap was already in awaiting {} funding",
+                swapid.bright_blue_italic(),
+                blockchain.bright_white_bold()
+            );
         }
     }
-    pub fn incr_funded(&mut self, blockchain: &Blockchain) {
-        match blockchain {
+
+    pub fn incr_funded(&mut self, blockchain: &Blockchain, swapid: &SwapId) {
+        let present_in_set = match blockchain {
             Blockchain::Monero => {
                 self.funded_xmr += 1;
-                self.awaiting_funding_xmr -= 1;
+                self.awaiting_funding_xmr.remove(swapid)
             }
             Blockchain::Bitcoin => {
                 self.funded_btc += 1;
-                self.awaiting_funding_btc -= 1;
+                self.awaiting_funding_btc.remove(swapid)
             }
+        };
+        if !present_in_set {
+            warn!(
+                "{} | This swap wasn't awaiting {} funding",
+                swapid.bright_blue_italic(),
+                "Bitcoin".bright_white_bold()
+            );
         }
     }
-    pub fn incr_funding_monero_canceled(&mut self) {
-        self.awaiting_funding_xmr -= 1;
-        self.funding_canceled_xmr += 1;
+
+    pub fn incr_funding_canceled(&mut self, blockchain: &Blockchain, swapid: &SwapId) {
+        let present_in_set = match blockchain {
+            Blockchain::Monero => {
+                let presence = self.awaiting_funding_xmr.remove(swapid);
+                self.funding_canceled_xmr += 1;
+                presence
+            }
+            Blockchain::Bitcoin => {
+                let presence = self.awaiting_funding_btc.remove(swapid);
+                self.funding_canceled_btc += 1;
+                presence
+            }
+        };
+        if !present_in_set {
+            warn!(
+                "{} | This swap wasn't awaiting {} funding",
+                swapid.bright_blue_italic(),
+                "Bitcoin".bright_white_bold()
+            );
+        }
     }
-    pub fn incr_funding_bitcoin_canceled(&mut self) {
-        self.awaiting_funding_btc -= 1;
-        self.funding_canceled_btc += 1;
-    }
+
     pub fn success_rate(&self) -> f64 {
         let Stats {
             success,
@@ -203,8 +235,8 @@ impl Stats {
             punish.bright_white_bold(),
             abort.bright_white_bold(),
             initialized,
-            awaiting_funding_xmr.bright_white_bold(),
-            awaiting_funding_btc.bright_white_bold(),
+            awaiting_funding_xmr.len().bright_white_bold(),
+            awaiting_funding_btc.len().bright_white_bold(),
             funded_xmr.bright_white_bold(),
             funded_btc.bright_white_bold(),
             funding_canceled_xmr.bright_white_bold(),
@@ -220,7 +252,7 @@ impl Stats {
 }
 
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -232,12 +264,19 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
-            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
+        match (bus, request) {
+            // Peer-to-peer message bus
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            // Control bus for issuing control commands
+            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            // RPC command bus, only accept BusMsg::Rpc
+            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // Syncer event bus for blockchain tasks and events
+            (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
+            // All other pairs are not supported
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -250,14 +289,14 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Request::Hello, _) => {
+            (BusMsg::Ctl(Ctl::Hello), _) => {
                 trace!("Hello farcasterd from {}", source);
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
@@ -265,18 +304,18 @@ impl Runtime {
                 self.process_request_with_state_machines(request, source, endpoints)?;
             }
         }
+
         Ok(())
     }
 
-    fn handle_rpc_ctl(
+    fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
-        let mut report_to: Vec<(Option<ServiceId>, Request)> = none!();
-        match request.clone() {
-            Request::Hello => {
+        match request {
+            BusMsg::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} is now {}",
@@ -301,7 +340,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             source.clone(),
-                            Request::GetKeys(wallet_token),
+                            BusMsg::Ctl(Ctl::GetKeys(wallet_token)),
                         )?;
                     }
                     ServiceId::Peer(connection_id) => {
@@ -374,18 +413,72 @@ impl Runtime {
                 }
             }
 
-            Request::Keys(Keys(sk, pk)) => {
+            BusMsg::Ctl(Ctl::Keys(Keys(sk, pk))) => {
                 debug!("received peerd keys {}", sk.display_secret());
                 self.node_secret_key = Some(sk);
                 self.node_public_key = Some(pk);
             }
 
-            Request::GetInfo => {
-                debug!("farcasterd received GetInfo request");
-                self.send_client_ctl(
+            BusMsg::Ctl(Ctl::PeerdTerminated) => {
+                if let ServiceId::Peer(addr) = source {
+                    if self.registered_services.remove(&source) {
+                        debug!(
+                            "removed connection {} from farcasterd registered connections",
+                            addr
+                        );
+
+                        // log a message if a swap running over this connection
+                        // is not completed, and thus present in consumed_offers
+                        let peerd_id = ServiceId::Peer(addr);
+                        if self.connection_has_swap_client(&peerd_id) {
+                            info!("a swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr);
+                        }
+                    }
+                }
+            }
+
+            // Add progress in queues and forward to subscribed clients
+            BusMsg::Ctl(Ctl::Progress(..))
+            | BusMsg::Ctl(Ctl::Success(..))
+            | BusMsg::Ctl(Ctl::Failure(..)) => {
+                if !self.progress.contains_key(&source) {
+                    self.progress.insert(source.clone(), none!());
+                };
+                let queue = self.progress.get_mut(&source).expect("checked/added above");
+                let prog = match request.clone() {
+                    BusMsg::Ctl(Ctl::Progress(p)) => Some(ProgressStack::Progress(p)),
+                    BusMsg::Ctl(Ctl::Success(s)) => Some(ProgressStack::Success(s)),
+                    BusMsg::Ctl(Ctl::Failure(f)) => Some(ProgressStack::Failure(f)),
+                    _ => None,
+                }
+                .expect("checked above");
+                queue.push_back(prog);
+                // forward the request to each subscribed clients
+                self.notify_subscribed_clients(endpoints, &source, &request);
+            }
+
+            req => {
+                self.process_request_with_state_machines(req, source, endpoints)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        let mut report_to: Vec<(Option<ServiceId>, Rpc)> = none!();
+
+        match request {
+            Rpc::GetInfo => {
+                self.send_client_rpc(
                     endpoints,
                     source,
-                    Request::NodeInfo(NodeInfo {
+                    Rpc::NodeInfo(NodeInfo {
                         listens: self.listens.iter().into_iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -410,21 +503,19 @@ impl Runtime {
                 )?;
             }
 
-            Request::ListPeers => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::PeerList(self.get_open_connections().into()),
+            Rpc::ListPeers => {
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::PeerList(self.get_open_connections().into()),
                 )?;
             }
 
-            Request::ListSwaps => {
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::SwapList(
+            Rpc::ListSwaps => {
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::SwapList(
                         self.trade_state_machines
                             .iter()
                             .filter_map(|tsm| tsm.swap_id())
@@ -433,7 +524,7 @@ impl Runtime {
                 )?;
             }
 
-            Request::ListOffers(offer_status_selector) => {
+            Rpc::ListOffers(ref offer_status_selector) => {
                 match offer_status_selector {
                     OfferStatusSelector::Open => {
                         let open_offers = self
@@ -445,12 +536,7 @@ impl Runtime {
                                 details: offer.clone(),
                             })
                             .collect();
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Farcasterd, // source
-                            source,                // destination
-                            Request::OfferList(open_offers),
-                        )?;
+                        self.send_client_rpc(endpoints, source, Rpc::OfferList(open_offers))?;
                     }
                     OfferStatusSelector::InProgress => {
                         let pub_offers = self
@@ -462,81 +548,65 @@ impl Runtime {
                                 details: offer.clone(),
                             })
                             .collect();
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Farcasterd,
-                            source,
-                            Request::OfferList(pub_offers),
-                        )?;
+                        self.send_client_rpc(endpoints, source, Rpc::OfferList(pub_offers))?;
                     }
                     _ => {
-                        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Database, request)?;
+                        // Forward the request to database service
+                        endpoints.send_to(
+                            ServiceBus::Rpc,
+                            source,
+                            ServiceId::Database,
+                            BusMsg::Rpc(request),
+                        )?;
                     }
                 };
             }
 
-            Request::ListListens => {
+            Rpc::ListListens => {
                 let listen_url: List<String> =
                     List::from_iter(self.listens.clone().iter().map(|listen| listen.to_string()));
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Farcasterd, // source
-                    source,                // destination
-                    Request::ListenList(listen_url),
-                )?;
+                self.send_client_rpc(endpoints, source, Rpc::ListenList(listen_url))?;
             }
 
-            Request::CheckpointList(checkpointed_pub_offers) => {
+            Rpc::CheckpointList(checkpointed_pub_offers) => {
                 self.checkpointed_pub_offers = checkpointed_pub_offers.clone();
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Rpc,
                     ServiceId::Farcasterd,
                     source,
-                    Request::CheckpointList(checkpointed_pub_offers),
+                    BusMsg::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
                 )?;
-            }
-
-            // Add progress in queues and forward to subscribed clients
-            Request::Progress(..) | Request::Success(..) | Request::Failure(..) => {
-                if !self.progress.contains_key(&source) {
-                    self.progress.insert(source.clone(), none!());
-                };
-                let queue = self.progress.get_mut(&source).expect("checked/added above");
-                queue.push_back(request.clone());
-                // forward the request to each subscribed clients
-                self.notify_subscribed_clients(endpoints, &source, &request);
             }
 
             // Returns a unique response that contains the complete progress queue
-            Request::ReadProgress(swap_id) => {
+            Rpc::ReadProgress(swap_id) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swap_id)) {
                     let mut swap_progress = SwapProgress { progress: vec![] };
                     for req in queue.iter() {
                         match req {
-                            Request::Progress(request::Progress::Message(m)) => {
+                            ProgressStack::Progress(Progress::Message(m)) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::Message(m.clone()));
                             }
-                            Request::Progress(request::Progress::StateTransition(t)) => {
+                            ProgressStack::Progress(Progress::StateTransition(t)) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::StateTransition(t.clone()));
                             }
-                            Request::Success(s) => {
+                            ProgressStack::Success(s) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::Success(s.clone()));
                             }
-                            Request::Failure(f) => {
+                            ProgressStack::Failure(f) => {
                                 swap_progress
                                     .progress
                                     .push(ProgressEvent::Failure(f.clone()));
                             }
-                            _ => unreachable!("not handled here"),
                         };
                     }
-                    report_to.push((Some(source.clone()), Request::SwapProgress(swap_progress)));
+                    report_to.push((Some(source.clone()), Rpc::SwapProgress(swap_progress)));
                 } else {
                     let info = if self.running_swaps_contain(&swap_id) {
                         s!("No progress made yet on this swap")
@@ -545,7 +615,7 @@ impl Runtime {
                     };
                     report_to.push((
                         Some(source.clone()),
-                        Request::Failure(Failure {
+                        Rpc::Failure(Failure {
                             code: FailureCode::Unknown,
                             info,
                         }),
@@ -555,7 +625,7 @@ impl Runtime {
 
             // Add the request's source to the subscription list for later progress notifications
             // and send all notifications already in the queue
-            Request::SubscribeProgress(swap_id) => {
+            Rpc::SubscribeProgress(swap_id) => {
                 let service = ServiceId::Swap(swap_id);
                 // if the swap is known either in the tsm's or progress, attach the client
                 // otherwise terminate
@@ -580,14 +650,21 @@ impl Runtime {
                     // send all queued notification to the source to catch up
                     if let Some(queue) = self.progress.get_mut(&service) {
                         for req in queue.iter() {
-                            report_to.push((Some(source.clone()), req.clone()));
+                            report_to.push((
+                                Some(source.clone()),
+                                match req.clone() {
+                                    ProgressStack::Progress(p) => Rpc::Progress(p),
+                                    ProgressStack::Success(s) => Rpc::Success(s),
+                                    ProgressStack::Failure(f) => Rpc::Failure(f),
+                                },
+                            ));
                         }
                     }
                 } else {
                     // no swap service exists, terminate
                     report_to.push((
                         Some(source.clone()),
-                        Request::Failure(Failure {
+                        Rpc::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: "Unknown swapd".to_string(),
                         }),
@@ -596,7 +673,7 @@ impl Runtime {
             }
 
             // Remove the request's source from the subscription list of notifications
-            Request::UnsubscribeProgress(swap_id) => {
+            Rpc::UnsubscribeProgress(swap_id) => {
                 let service = ServiceId::Swap(swap_id);
                 if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
                     // we don't care if the source was not in the set
@@ -614,7 +691,7 @@ impl Runtime {
                 // if no swap service exists no subscription need to be removed
             }
 
-            Request::NeedsFunding(Blockchain::Monero) => {
+            Rpc::NeedsFunding(Blockchain::Monero) => {
                 let funding_infos: Vec<MoneroFundingInfo> = self
                     .trade_state_machines
                     .iter()
@@ -633,13 +710,14 @@ impl Runtime {
                     })
                     .collect();
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Rpc,
                     self.identity(),
                     source,
-                    Request::String(res),
+                    BusMsg::Rpc(Rpc::String(res)),
                 )?;
             }
-            Request::NeedsFunding(Blockchain::Bitcoin) => {
+
+            Rpc::NeedsFunding(Blockchain::Bitcoin) => {
                 let funding_infos: Vec<BitcoinFundingInfo> = self
                     .trade_state_machines
                     .iter()
@@ -658,33 +736,15 @@ impl Runtime {
                     })
                     .collect();
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Rpc,
                     self.identity(),
                     source,
-                    Request::String(res),
+                    BusMsg::Rpc(Rpc::String(res)),
                 )?;
             }
 
-            Request::PeerdTerminated => {
-                if let ServiceId::Peer(addr) = source {
-                    if self.registered_services.remove(&source) {
-                        debug!(
-                            "removed connection {} from farcasterd registered connections",
-                            addr
-                        );
-
-                        // log a message if a swap running over this connection
-                        // is not completed, and thus present in consumed_offers
-                        let peerd_id = ServiceId::Peer(addr);
-                        if self.connection_has_swap_client(&peerd_id) {
-                            info!("a swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr);
-                        }
-                    }
-                }
-            }
-
-            _ => {
-                self.process_request_with_state_machines(request, source, endpoints)?;
+            req => {
+                warn!("Ignoring request: {}", req.err());
             }
         }
 
@@ -700,10 +760,34 @@ impl Runtime {
                     respond_to.bright_yellow_bold(),
                     resp.bright_blue_bold(),
                 );
-                endpoints.send_to(ServiceBus::Ctl, self.identity(), respond_to, resp)?;
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    self.identity(),
+                    respond_to,
+                    BusMsg::Rpc(resp),
+                )?;
             }
         }
         trace!("Processed all cli notifications");
+
+        Ok(())
+    }
+
+    fn handle_sync(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: BusMsg,
+    ) -> Result<(), Error> {
+        match (&request, &source) {
+            (BusMsg::Ctl(Ctl::Hello), _) => {
+                trace!("Hello farcasterd from {}", source);
+                // Ignoring; this is used to set remote identity at ZMQ level
+            }
+            _ => {
+                self.process_request_with_state_machines(request, source, endpoints)?;
+            }
+        }
 
         Ok(())
     }
@@ -721,6 +805,7 @@ impl Runtime {
             Ok(())
         }
     }
+
     pub fn peer_keys_ready(&self) -> Result<(SecretKey, PublicKey), Error> {
         if let (Some(sk), Some(pk)) = (self.node_secret_key, self.node_public_key) {
             Ok((sk, pk))
@@ -728,6 +813,7 @@ impl Runtime {
             Err(Error::Farcaster("Peer keys not ready yet".to_string()))
         }
     }
+
     pub fn clean_up_after_swap(
         &mut self,
         swap_id: &SwapId,
@@ -737,13 +823,13 @@ impl Runtime {
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Swap(*swap_id),
-            Request::Terminate,
+            BusMsg::Ctl(Ctl::Terminate),
         )?;
         endpoints.send_to(
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Database,
-            Request::RemoveCheckpoint(*swap_id),
+            BusMsg::Ctl(Ctl::RemoveCheckpoint(*swap_id)),
         )?;
 
         self.registered_services = self
@@ -758,7 +844,7 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 service.clone(),
-                                Request::Terminate,
+                                BusMsg::Ctl(Ctl::Terminate),
                             )
                             .is_err()
                     } else {
@@ -772,7 +858,7 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 service.clone(),
-                                Request::Terminate,
+                                BusMsg::Ctl(Ctl::Terminate),
                             )
                             .is_err()
                     } else {
@@ -848,29 +934,34 @@ impl Runtime {
 
     fn match_request_to_syncer_state_machine(
         &mut self,
-        req: Request,
+        req: BusMsg,
         source: ServiceId,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
-            (Request::SweepAddress(..), _) => Ok(Some(SyncerStateMachine::Start)),
-            (Request::SyncerEvent(SyncerEvent::SweepSuccess(SweepSuccess { id, .. })), _) => {
-                Ok(self.syncer_state_machines.remove(&id))
-            }
+            (BusMsg::Ctl(Ctl::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
+            (
+                BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
+                    id, ..
+                }))),
+                _,
+            ) => Ok(self.syncer_state_machines.remove(&id)),
             _ => Ok(None),
         }
     }
 
     fn match_request_to_trade_state_machine(
         &mut self,
-        req: Request,
+        req: BusMsg,
         source: ServiceId,
     ) -> Result<Option<TradeStateMachine>, Error> {
         match (req, source) {
-            (Request::RestoreCheckpoint(..), _) => Ok(Some(TradeStateMachine::StartRestore)),
-            (Request::MakeOffer(..), _) => Ok(Some(TradeStateMachine::StartMaker)),
-            (Request::TakeOffer(..), _) => Ok(Some(TradeStateMachine::StartTaker)),
-            (Request::Protocol(Msg::TakerCommit(request::TakeCommit { public_offer, .. })), _)
-            | (Request::RevokeOffer(public_offer), _) => Ok(self
+            (BusMsg::Ctl(Ctl::RestoreCheckpoint(..)), _) => {
+                Ok(Some(TradeStateMachine::StartRestore))
+            }
+            (BusMsg::Ctl(Ctl::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
+            (BusMsg::Ctl(Ctl::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
+            (BusMsg::Msg(Msg::TakerCommit(msg::TakeCommit { public_offer, .. })), _)
+            | (BusMsg::Ctl(Ctl::RevokeOffer(public_offer)), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -881,7 +972,7 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (Request::LaunchSwap(LaunchSwap { public_offer, .. }), _) => Ok(self
+            (BusMsg::Ctl(Ctl::LaunchSwap(LaunchSwap { public_offer, .. })), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -892,11 +983,11 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (Request::PeerdUnreachable(..), ServiceId::Swap(swap_id))
-            | (Request::FundingInfo(..), ServiceId::Swap(swap_id))
-            | (Request::FundingCanceled(..), ServiceId::Swap(swap_id))
-            | (Request::FundingCompleted(..), ServiceId::Swap(swap_id))
-            | (Request::SwapOutcome(..), ServiceId::Swap(swap_id)) => Ok(self
+            (BusMsg::Ctl(Ctl::PeerdUnreachable(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(Ctl::FundingInfo(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(Ctl::FundingCanceled(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(Ctl::FundingCompleted(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(Ctl::SwapOutcome(..)), ServiceId::Swap(swap_id)) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -913,7 +1004,7 @@ impl Runtime {
 
     fn process_request_with_state_machines(
         &mut self,
-        request: Request,
+        request: BusMsg,
         source: ServiceId,
         endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
@@ -949,7 +1040,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
         ssm: SyncerStateMachine,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         let event = Event::with(endpoints, self.identity(), source, request);
@@ -984,7 +1075,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
         tsm: TradeStateMachine,
     ) -> Result<Option<TradeStateMachine>, Error> {
         let event = Event::with(endpoints, self.identity(), source, request);
@@ -1098,7 +1189,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: &ServiceId,
-        request: &Request,
+        request: &BusMsg,
     ) {
         // if subs exists for the source (swap_id), forward the request to every subs
         if let Some(subs) = self.progress_subscriptions.get_mut(source) {
@@ -1107,7 +1198,7 @@ impl Runtime {
             subs.retain(|sub| {
                 endpoints
                     .send_to(
-                        ServiceBus::Ctl,
+                        ServiceBus::Rpc,
                         ServiceId::Farcasterd,
                         sub.clone(),
                         request.clone(),
@@ -1242,6 +1333,14 @@ pub fn launch(
 
     if let Some(x) = &matches.value_of("ctl-socket") {
         cmd.args(&["-x", x]);
+    }
+
+    if let Some(y) = &matches.value_of("rpc-socket") {
+        cmd.args(&["-R", y]);
+    }
+
+    if let Some(s) = &matches.value_of("sync-socket") {
+        cmd.args(&["-S", s]);
     }
 
     // Forward tor proxy argument

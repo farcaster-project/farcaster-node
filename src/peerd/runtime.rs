@@ -33,10 +33,7 @@ use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 use microservices::ZMQ_CONTEXT;
 
-use crate::rpc::{
-    request::{Msg, PeerInfo},
-    Request, ServiceBus,
-};
+use crate::bus::{ctl::Ctl, msg::Msg, rpc::PeerInfo, rpc::Rpc, BusMsg, ServiceBus};
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]
@@ -157,7 +154,7 @@ pub fn run(
 pub struct BridgeHandler;
 
 impl esb::Handler<ServiceBus> for BridgeHandler {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -169,7 +166,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
         _endpoints: &mut Endpoints,
         _bus: ServiceBus,
         _addr: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         // Bridge does not receive replies for now
         trace!("BridgeHandler received reply: {}", request);
@@ -185,7 +182,7 @@ impl esb::Handler<ServiceBus> for BridgeHandler {
 // PeerReceiverRuntime handles incoming messages only
 pub struct PeerReceiverRuntime {
     internal_identity: ServiceId,
-    bridge: esb::Controller<ServiceBus, Request, BridgeHandler>,
+    bridge: esb::Controller<ServiceBus, BusMsg, BridgeHandler>,
     awaiting_pong: bool,
     _thread_flag_rx: std::sync::mpsc::Receiver<()>,
 }
@@ -200,7 +197,7 @@ impl PeerReceiverRuntime {
         if let Err(err) = self.bridge.send_to(
             ServiceBus::Bridge,
             self.internal_identity.clone(),
-            Request::Protocol((&*req).clone()),
+            BusMsg::Msg((&*req).clone()),
         ) {
             error!("Error sending over bridge: {}", err);
             Err(err.into())
@@ -289,7 +286,7 @@ pub struct Runtime {
 impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -314,12 +311,19 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
-            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
+        match (bus, request) {
+            // Peer-to-peer message bus, only accept BusMsg::Msg
+            (ServiceBus::Msg, BusMsg::Msg(req)) => self.handle_msg(endpoints, source, req),
+            // Control bus for issuing control commands, only accept BusMsg::Ctl
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
+            // RPC command bus, only accept BusMsg::Rpc
+            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // Internal peerd bridge for inner communication, accept all type of request
+            (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
+            // All other pairs are not supported
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -334,62 +338,68 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl Runtime {
     /// send messages over the bridge
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        message: Msg,
     ) -> Result<(), Error> {
-        match request.clone() {
-            Request::Protocol(message) => {
-                // 1. Check permissions
-                // 2. Forward to the remote peer
-                debug!("Message type: {}", message.get_type());
-                debug!(
-                    "Forwarding peer message to the remote peer, request: {}",
-                    &request.get_type()
-                );
-                self.messages_sent += 1;
-                while let Err(err) = self.peer_sender.send_message(message.clone()) {
-                    debug!("Error sending to remote peer in peerd runtime: {}", err);
-                    // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
-                    if self.forked_from_listener {
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            self.identity(),
-                            ServiceId::Farcasterd,
-                            Request::PeerdTerminated,
-                        )?;
-                        warn!("Exiting peerd");
-                        std::process::exit(0);
-                    }
-
-                    while let Err(err) = self.reconnect_peer() {
-                        warn!("error during reconnection attempt: {}", err);
-                    }
-                }
+        // Forward to the remote peer
+        debug!("Message type: {}", message.get_type());
+        debug!(
+            "Forwarding peer message to the remote peer, request: {}",
+            &message.get_type()
+        );
+        self.messages_sent += 1;
+        while let Err(err) = self.peer_sender.send_message(message.clone()) {
+            debug!("Error sending to remote peer in peerd runtime: {}", err);
+            // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
+            if self.forked_from_listener {
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    BusMsg::Ctl(Ctl::PeerdTerminated),
+                )?;
+                warn!("Exiting peerd");
+                std::process::exit(0);
             }
-            _ => {
-                error!("MSG RPC can be only used for forwarding Protocol Messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.get_type()));
+
+            while let Err(err) = self.reconnect_peer() {
+                warn!("error during reconnection attempt: {}", err);
             }
         }
+
         Ok(())
     }
 
-    fn handle_rpc_ctl(
+    fn handle_ctl(
         &mut self,
-        endpoints: &mut Endpoints,
+        _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: Ctl,
     ) -> Result<(), Error> {
         match request {
-            Request::Terminate if source == ServiceId::Farcasterd => {
+            Ctl::Terminate if source == ServiceId::Farcasterd => {
                 info!("Terminating {}", self.identity().bright_white_bold());
                 std::process::exit(0);
             }
 
-            Request::GetInfo => {
+            _ => {
+                error!("BusMsg is not supported by the CTL interface");
+                return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
+            }
+        }
+    }
+
+    fn handle_rpc(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        match request {
+            Rpc::GetInfo => {
                 let info = PeerInfo {
                     local_id: self.local_node.node_id(),
                     remote_id: self
@@ -414,14 +424,14 @@ impl Runtime {
                     forked_from_listener: self.forked_from_listener,
                     awaits_pong: self.awaited_pong.is_some(),
                 };
-                self.send_ctl(endpoints, source, Request::PeerInfo(info))?;
+                self.send_client_rpc(endpoints, source, Rpc::PeerInfo(info))?;
             }
 
-            _ => {
-                error!("Request is not supported by the CTL interface");
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.get_type()));
+            req => {
+                warn!("Ignoring request: {}", req.err());
             }
         }
+
         Ok(())
     }
 
@@ -474,23 +484,23 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         debug!("BRIDGE RPC request: {}", request);
 
-        if let Request::Protocol(_) = request {
+        if let BusMsg::Msg(_) = request {
             self.messages_received += 1;
         }
 
         match &request {
-            Request::Protocol(Msg::PingPeer) => self.ping()?,
+            BusMsg::Msg(Msg::PingPeer) => self.ping()?,
 
-            Request::Protocol(Msg::Ping(pong_size)) => {
+            BusMsg::Msg(Msg::Ping(pong_size)) => {
                 debug!("receiving ping, ponging back");
                 self.pong(*pong_size)?
             }
 
-            Request::Protocol(Msg::Pong(noise)) => {
+            BusMsg::Msg(Msg::Pong(noise)) => {
                 match self.awaited_pong {
                     None => error!("Unexpected pong from the remote peer"),
                     Some(len) if len as usize != noise.len() => {
@@ -501,7 +511,7 @@ impl Runtime {
                 self.awaited_pong = None;
             }
 
-            Request::Protocol(Msg::PeerReceiverRuntimeShutdown) => {
+            BusMsg::Msg(Msg::PeerReceiverRuntimeShutdown) => {
                 warn!("Exiting peerd receiver runtime");
                 // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
                 if self.forked_from_listener {
@@ -509,7 +519,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         ServiceId::Farcasterd,
-                        Request::PeerdTerminated,
+                        BusMsg::Ctl(Ctl::PeerdTerminated),
                     )?;
                     warn!("Exiting peerd");
                     std::process::exit(0);
@@ -521,7 +531,7 @@ impl Runtime {
             }
 
             // swap initiation message
-            Request::Protocol(Msg::TakerCommit(_)) => {
+            BusMsg::Msg(Msg::TakerCommit(_)) => {
                 endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
@@ -529,7 +539,7 @@ impl Runtime {
                     request,
                 )?;
             }
-            Request::Protocol(msg) => {
+            BusMsg::Msg(msg) => {
                 endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
@@ -538,9 +548,9 @@ impl Runtime {
                 )?;
             }
             other => {
-                error!("Request is not supported by the BRIDGE interface");
+                error!("BusMsg is not supported by the BRIDGE interface");
                 dbg!(other);
-                return Err(Error::NotSupported(ServiceBus::Bridge, request.get_type()));
+                return Err(Error::NotSupported(ServiceBus::Bridge, request.to_string()));
             }
         }
         Ok(())
