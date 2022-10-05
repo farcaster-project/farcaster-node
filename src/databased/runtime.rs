@@ -1,6 +1,3 @@
-use crate::databased::runtime::request::{
-    Address, OfferStatus, OfferStatusPair, OfferStatusSelector,
-};
 use crate::walletd::runtime::{CheckpointWallet, Wallet};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
@@ -13,12 +10,13 @@ use strict_encoding::{StrictDecode, StrictEncode};
 use crate::Endpoints;
 use bitcoin::secp256k1::SecretKey;
 
-use crate::rpc::{
-    request::{self, Checkpoint, CheckpointEntry, CheckpointState, Failure, FailureCode, List},
-    Request, ServiceBus,
+use crate::bus::{
+    ctl::{Checkpoint, CheckpointState, Ctl},
+    rpc::{Address, OfferStatusSelector, Rpc},
+    AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
+    OfferStatusPair, ServiceBus,
 };
-use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use internet2::TypedEnum;
+use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use microservices::esb::{self, Handler};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
@@ -40,7 +38,7 @@ impl Runtime {}
 impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -52,12 +50,15 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
-            _ => Err(Error::NotSupported(ServiceBus::Bridge, request.get_type())),
+        match (bus, request) {
+            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            // Control bus for database command
+            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            // RPC client bus for issuing user command
+            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -70,39 +71,39 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         _endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
             req => {
                 error!(
                     "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}, {:#?}",
-                    req.get_type(), req
+                    req.to_string(), req
                 )
             }
         }
         Ok(())
     }
 
-    fn handle_rpc_ctl(
+    fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 debug!("Received Hello from {}", source);
             }
 
-            Request::Checkpoint(Checkpoint { swap_id, state }) => {
+            BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
                 match state {
                     CheckpointState::CheckpointWallet(_) => {
                         debug!("setting wallet checkpoint");
@@ -121,7 +122,7 @@ impl Runtime {
                 debug!("checkpoint set");
             }
 
-            Request::RestoreCheckpoint(CheckpointEntry { swap_id, .. }) => {
+            BusMsg::Ctl(Ctl::RestoreCheckpoint(CheckpointEntry { swap_id, .. })) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -188,7 +189,66 @@ impl Runtime {
                 }
             }
 
-            Request::RetrieveAllCheckpointInfo => {
+            BusMsg::Ctl(Ctl::RemoveCheckpoint(swap_id)) => {
+                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                }) {
+                    debug!("{} | Did not delete checkpoint entry: {}", swap_id, err);
+                }
+                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Swap(swap_id),
+                }) {
+                    debug!("{} | Did not delete checkpoint entry: {}", swap_id, err);
+                }
+            }
+
+            BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+                address,
+                secret_key,
+            })) => {
+                self.database.set_bitcoin_address(&address, &secret_key)?;
+            }
+
+            BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
+                address,
+                view,
+                spend,
+            })) => {
+                self.database
+                    .set_monero_address(&address, &monero::KeyPair { view, spend })?;
+            }
+
+            BusMsg::Ctl(Ctl::SetOfferStatus(OfferStatusPair { offer, status })) => {
+                self.database.set_offer_status(&offer, &status)?;
+            }
+
+            _ => {
+                error!("BusMsg {} is not supported by the CTL interface", request);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: Rpc,
+    ) -> Result<(), Error> {
+        match request {
+            Rpc::ListOffers(selector) => {
+                let offer_status_pairs = self.database.get_offers(selector)?;
+                self.send_client_rpc(
+                    endpoints,
+                    source,
+                    Rpc::OfferStatusList(offer_status_pairs.into()),
+                )?;
+            }
+
+            Rpc::RetrieveAllCheckpointInfo => {
                 let pairs = self.database.get_checkpoint_key_value_pairs()?;
                 let checkpointed_pub_offers: List<CheckpointEntry> = pairs
                     .iter()
@@ -226,14 +286,14 @@ impl Runtime {
                     })
                     .collect();
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Rpc,
                     self.identity(),
                     source,
-                    Request::CheckpointList(checkpointed_pub_offers),
+                    BusMsg::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
                 )?;
             }
 
-            Request::GetCheckpointEntry(swap_id) => {
+            Rpc::GetCheckpointEntry(swap_id) => {
                 let entry = match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -262,144 +322,100 @@ impl Runtime {
                 };
                 if let Some(entry) = entry {
                     endpoints.send_to(
-                        ServiceBus::Ctl,
+                        ServiceBus::Rpc,
                         self.identity(),
                         source,
-                        Request::CheckpointEntry(entry),
+                        BusMsg::Rpc(Rpc::CheckpointEntry(entry)),
                     )?;
                 } else {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        Request::Failure(Failure {
+                        BusMsg::Ctl(Ctl::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve checkpoint entry for {}", swap_id),
-                        }),
+                        })),
                     )?;
                 }
             }
 
-            Request::RemoveCheckpoint(swap_id) => {
-                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
-                    swap_id,
-                    service_id: ServiceId::Wallet,
-                }) {
-                    debug!("{} | Did not delete checkpoint entry: {}", swap_id, err);
-                }
-                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
-                    swap_id,
-                    service_id: ServiceId::Swap(swap_id),
-                }) {
-                    debug!("{} | Did not delete checkpoint entry: {}", swap_id, err);
-                }
-            }
-
-            Request::SetAddressSecretKey(request::AddressSecretKey::Bitcoin {
-                address,
-                secret_key,
-            }) => {
-                self.database.set_bitcoin_address(&address, &secret_key)?;
-            }
-
-            Request::GetAddressSecretKey(Address::Bitcoin(address)) => {
-                match self.database.get_bitcoin_address_secret_key(&address) {
-                    Err(_) => endpoints.send_to(
-                        ServiceBus::Ctl,
-                        ServiceId::Database,
-                        source,
-                        Request::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: format!("Could not retrieve secret key for address {}", address),
-                        }),
-                    )?,
-                    Ok(secret_key) => {
-                        endpoints.send_to(
-                            ServiceBus::Ctl,
-                            ServiceId::Database,
-                            source,
-                            Request::AddressSecretKey(request::AddressSecretKey::Bitcoin {
-                                address,
-                                secret_key,
-                            }),
-                        )?;
-                    }
-                }
-            }
-
-            Request::GetAddresses(Blockchain::Bitcoin) => {
-                let addresses = self.database.get_all_bitcoin_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Database,
-                    source,
-                    Request::BitcoinAddressList(addresses.into()),
-                )?;
-            }
-
-            Request::SetAddressSecretKey(request::AddressSecretKey::Monero {
-                address,
-                view,
-                spend,
-            }) => {
-                self.database
-                    .set_monero_address(&address, &monero::KeyPair { view, spend })?;
-            }
-
-            Request::GetAddressSecretKey(Address::Monero(address)) => {
+            Rpc::GetAddressSecretKey(Address::Monero(address)) => {
                 match self.database.get_monero_address_secret_key(&address) {
                     Err(_) => endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        Request::Failure(Failure {
+                        BusMsg::Ctl(Ctl::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
-                        }),
+                        })),
                     )?,
                     Ok(secret_key_pair) => {
                         endpoints.send_to(
-                            ServiceBus::Ctl,
+                            ServiceBus::Rpc,
                             ServiceId::Database,
                             source,
-                            Request::AddressSecretKey(request::AddressSecretKey::Monero {
+                            BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
                                 address,
                                 view: secret_key_pair.view.as_bytes().try_into().unwrap(),
                                 spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
-                            }),
+                            })),
                         )?;
                     }
                 }
             }
 
-            Request::GetAddresses(Blockchain::Monero) => {
+            Rpc::GetAddressSecretKey(Address::Bitcoin(address)) => {
+                match self.database.get_bitcoin_address_secret_key(&address) {
+                    Err(_) => endpoints.send_to(
+                        ServiceBus::Ctl,
+                        ServiceId::Database,
+                        source,
+                        BusMsg::Ctl(Ctl::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: format!("Could not retrieve secret key for address {}", address),
+                        })),
+                    )?,
+                    Ok(secret_key) => {
+                        endpoints.send_to(
+                            ServiceBus::Rpc,
+                            ServiceId::Database,
+                            source,
+                            BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                                address,
+                                secret_key,
+                            })),
+                        )?;
+                    }
+                }
+            }
+
+            Rpc::GetAddresses(Blockchain::Bitcoin) => {
+                let addresses = self.database.get_all_bitcoin_addresses()?;
+                endpoints.send_to(
+                    ServiceBus::Rpc,
+                    ServiceId::Database,
+                    source,
+                    BusMsg::Rpc(Rpc::BitcoinAddressList(addresses.into())),
+                )?;
+            }
+
+            Rpc::GetAddresses(Blockchain::Monero) => {
                 let addresses = self.database.get_all_monero_addresses()?;
                 endpoints.send_to(
-                    ServiceBus::Ctl,
+                    ServiceBus::Rpc,
                     ServiceId::Database,
                     source,
-                    Request::MoneroAddressList(addresses.into()),
+                    BusMsg::Rpc(Rpc::MoneroAddressList(addresses.into())),
                 )?;
             }
 
-            Request::SetOfferStatus(OfferStatusPair { offer, status }) => {
-                self.database.set_offer_status(&offer, &status)?;
-            }
-
-            Request::ListOffers(selector) => {
-                let offer_status_pairs = self.database.get_offers(selector)?;
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    ServiceId::Database,
-                    source,
-                    Request::OfferStatusList(offer_status_pairs.into()),
-                )?;
-            }
-
-            _ => {
-                error!("Request {} is not supported by the CTL interface", request);
+            req => {
+                warn!("Ignoring request: {}", req.err());
             }
         }
+
         Ok(())
     }
 }
@@ -415,7 +431,7 @@ pub fn checkpoint_send(
         ServiceBus::Ctl,
         source,
         destination,
-        Request::Checkpoint(Checkpoint { swap_id, state }),
+        BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })),
     )?;
     Ok(())
 }
@@ -672,6 +688,7 @@ impl Database {
 
 #[test]
 fn test_lmdb_state() {
+    use crate::bus::Outcome;
     use std::str::FromStr;
 
     let val1 = vec![0, 1];
@@ -749,7 +766,7 @@ fn test_lmdb_state() {
     assert_eq!(offer_1, offers_retrieved[0].offer);
 
     database
-        .set_offer_status(&offer_1, &OfferStatus::Ended(request::Outcome::Buy))
+        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::Buy))
         .unwrap();
     let offers_retrieved = database.get_offers(OfferStatusSelector::Ended).unwrap();
     assert_eq!(offer_1, offers_retrieved[0].offer);
@@ -760,7 +777,7 @@ fn test_lmdb_state() {
     let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
     let status_1 = OfferStatusPair {
         offer: offer_1,
-        status: OfferStatus::Ended(request::Outcome::Buy),
+        status: OfferStatus::Ended(Outcome::Buy),
     };
     let status_2 = OfferStatusPair {
         offer: offer_2,

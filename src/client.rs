@@ -12,36 +12,40 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::service::Endpoints;
 use std::thread::sleep;
 use std::time::Duration;
 
 use internet2::ZmqSocketType;
 use microservices::esb;
 
-use crate::rpc::{Request, ServiceBus};
+use crate::bus::{ctl::Ctl, rpc::Rpc, BusMsg, ServiceBus};
+use crate::service::Endpoints;
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
 
 #[repr(C)]
 pub struct Client {
     identity: ServiceId,
-    response_queue: std::collections::VecDeque<Request>,
-    esb: esb::Controller<ServiceBus, Request, Handler>,
+    response_queue: std::collections::VecDeque<BusMsg>,
+    esb: esb::Controller<ServiceBus, BusMsg, Handler>,
 }
 
 impl Client {
     pub fn with(config: ServiceConfig) -> Result<Self, Error> {
         debug!("Setting up RPC client...");
         let identity = ServiceId::client();
-        let bus_config = esb::BusConfig::with_addr(
-            config.ctl_endpoint,
-            ZmqSocketType::RouterConnect,
-            Some(ServiceId::router()),
-        );
         let esb = esb::Controller::with(
             map! {
-                ServiceBus::Ctl => bus_config
+                ServiceBus::Ctl => esb::BusConfig::with_addr(
+                    config.ctl_endpoint,
+                    ZmqSocketType::RouterConnect,
+                    Some(ServiceId::router())
+                ),
+                ServiceBus::Rpc => esb::BusConfig::with_addr(
+                    config.rpc_endpoint,
+                    ZmqSocketType::RouterConnect,
+                    Some(ServiceId::router()),
+                )
             },
             Handler {
                 identity: identity.clone(),
@@ -62,13 +66,27 @@ impl Client {
         self.identity.clone()
     }
 
-    pub fn request(&mut self, daemon: ServiceId, req: Request) -> Result<(), Error> {
+    pub fn request(&mut self, daemon: ServiceId, req: BusMsg) -> Result<(), Error> {
         debug!("Executing {}", req);
-        self.esb.send_to(ServiceBus::Ctl, daemon, req)?;
+        self.esb.send_to(ServiceBus::Rpc, daemon, req)?;
         Ok(())
     }
 
-    pub fn response(&mut self) -> Result<Request, Error> {
+    pub fn request_rpc(&mut self, daemon: ServiceId, req: Rpc) -> Result<(), Error> {
+        debug!("Executing {}", req);
+        self.esb
+            .send_to(ServiceBus::Rpc, daemon, BusMsg::Rpc(req))?;
+        Ok(())
+    }
+
+    pub fn request_ctl(&mut self, daemon: ServiceId, req: Ctl) -> Result<(), Error> {
+        debug!("Executing {}", req);
+        self.esb
+            .send_to(ServiceBus::Ctl, daemon, BusMsg::Ctl(req))?;
+        Ok(())
+    }
+
+    pub fn response(&mut self) -> Result<BusMsg, Error> {
         if self.response_queue.is_empty() {
             for rep in self.esb.recv_poll()? {
                 self.response_queue.push_back(rep.request);
@@ -80,9 +98,9 @@ impl Client {
             .expect("We always have at least one element"))
     }
 
-    pub fn report_failure(&mut self) -> Result<Request, Error> {
+    pub fn report_failure(&mut self) -> Result<BusMsg, Error> {
         match self.response()? {
-            Request::Failure(fail) => Err(Error::Farcaster(fail.info)),
+            BusMsg::Ctl(Ctl::Failure(fail)) => Err(Error::Farcaster(fail.info)),
             resp => Ok(resp),
         }
     }
@@ -97,7 +115,7 @@ impl Client {
     /// Print the stream of received requests until progress fails or succeed
     pub fn report_progress(&mut self) -> Result<(), Error> {
         // loop on all requests received until a progress termination condition is recieved
-        // report failure transform Request::Failure in error already, terminate on error or on
+        // report failure transform BusMsg::Failure in error already, terminate on error or on
         // success
         loop {
             match self.report_failure() {
@@ -106,7 +124,7 @@ impl Client {
                 {
                     break Err(e)
                 }
-                Ok(Request::Success(s)) => {
+                Ok(BusMsg::Ctl(Ctl::Success(s))) => {
                     println!("{}", s.bright_green_bold());
                     // terminate on success
                     break Ok(());
@@ -122,7 +140,7 @@ pub struct Handler {
 }
 
 impl esb::Handler<ServiceBus> for Handler {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -134,7 +152,7 @@ impl esb::Handler<ServiceBus> for Handler {
         _endpoints: &mut Endpoints,
         _bus: ServiceBus,
         _addr: ServiceId,
-        _request: Request,
+        _request: BusMsg,
     ) -> Result<(), Error> {
         // Cli does not receive replies for now
         Ok(())
