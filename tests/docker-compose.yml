@@ -31,16 +31,10 @@ services:
     command: "/usr/bin/electrs --daemon-dir /data --conf /cfg/electrs.toml"
   monerod:
     image: ghcr.io/farcaster-project/containers/monerod:0.18.0.0
-    command: >
-      /usr/bin/monerod
-        --regtest
-        --p2p-bind-ip 0.0.0.0
-        --rpc-bind-ip 0.0.0.0
-        --zmq-rpc-bind-ip 0.0.0.0
-        --confirm-external-bind
-        --non-interactive
-        --offline
-        --fixed-difficulty 1
+    environment:
+      NETWORK: regtest
+      OFFLINE: --offline
+      DIFFICULTY: 1
     ports:
       - 18081:18081
       - 18082:18082
