@@ -38,9 +38,9 @@ use clap::Parser;
 use farcaster_node::Error;
 use farcaster_node::ServiceConfig;
 use farcaster_node::{
+    bus::ctl::Token,
     config::parse_config,
     farcasterd::{self, Opts},
-    rpc::request::Token,
 };
 
 fn main() -> Result<(), Error> {
@@ -62,6 +62,13 @@ fn main() -> Result<(), Error> {
     let mut dest = [0u8; 16];
     thread_rng().fill_bytes(&mut dest);
     let token = Token(dest.to_hex());
+
+    let pid = nix::unistd::getpid();
+    trace!("Pid: {}", pid);
+    match nix::unistd::setsid() {
+        Ok(sid) => trace!("Sid: {}", sid),
+        Err(e) => warn!("Failed to set new session id: {}", e),
+    };
 
     debug!("Starting runtime ...");
     farcasterd::run(service_config, config, opts, token).expect("Error running farcasterd runtime");

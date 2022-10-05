@@ -8,7 +8,8 @@ use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 
-use crate::rpc::{Request, ServiceBus};
+use crate::bus::{ctl::Ctl, rpc::Rpc};
+use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
     zeromq::{Connection, ZmqSocketType},
@@ -38,7 +39,7 @@ impl IdCounter {
 }
 
 pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
-    let (tx_response, rx_response): (Sender<(u64, Request)>, Receiver<(u64, Request)>) =
+    let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
         std::sync::mpsc::channel();
 
     let tx_request = ZMQ_CONTEXT.socket(zmq::PAIR)?;
@@ -61,8 +62,8 @@ pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
 }
 
 pub struct FarcasterService {
-    tokio_tx_request: tokio::sync::mpsc::Sender<(u64, Request)>,
-    pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
+    tokio_tx_request: tokio::sync::mpsc::Sender<(u64, BusMsg)>,
+    pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<BusMsg>>>>,
     id_counter: Arc<Mutex<IdCounter>>,
 }
 
@@ -78,16 +79,20 @@ impl Farcaster for FarcasterService {
         let id = id_counter.increment();
         drop(id_counter);
 
-        if let Err(error) = self.tokio_tx_request.send((id, Request::GetInfo)).await {
+        if let Err(error) = self
+            .tokio_tx_request
+            .send((id, BusMsg::Rpc(Rpc::GetInfo)))
+            .await
+        {
             return Err(Status::internal(format!("{}", error)));
         }
 
-        let (oneshot_tx, oneshot_rx) = tokio::sync::oneshot::channel::<Request>();
+        let (oneshot_tx, oneshot_rx) = tokio::sync::oneshot::channel::<BusMsg>();
         let mut pending_requests = self.pending_requests.lock().await;
         pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
         match oneshot_rx.await {
-            Ok(Request::NodeInfo(info)) => {
+            Ok(BusMsg::Rpc(Rpc::NodeInfo(info))) => {
                 let reply = farcaster::InfoResponse {
                     id: request.into_inner().id,
                     listens: info
@@ -118,7 +123,7 @@ pub struct GrpcServer {
 }
 
 fn request_loop(
-    mut tokio_rx_request: tokio::sync::mpsc::Receiver<(u64, Request)>,
+    mut tokio_rx_request: tokio::sync::mpsc::Receiver<(u64, BusMsg)>,
     tx_request: zmq::Socket,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
@@ -143,8 +148,8 @@ fn request_loop(
 }
 
 fn response_loop(
-    mpsc_rx_response: Receiver<(u64, Request)>,
-    pending_requests_lock: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>>,
+    mpsc_rx_response: Receiver<(u64, BusMsg)>,
+    pending_requests_lock: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<BusMsg>>>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         loop {
@@ -178,7 +183,7 @@ fn server_loop(service: FarcasterService, addr: SocketAddr) -> tokio::task::Join
 impl GrpcServer {
     fn run(
         &mut self,
-        rx_response: Receiver<(u64, Request)>,
+        rx_response: Receiver<(u64, BusMsg)>,
         tx_request: zmq::Socket,
     ) -> Result<(), Error> {
         let addr = format!("0.0.0.0:{}", self.grpc_port)
@@ -196,7 +201,7 @@ impl GrpcServer {
                 let (tokio_tx_request, tokio_rx_request) = tokio::sync::mpsc::channel(1000);
 
                 let pending_requests: Arc<
-                    Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Request>>>,
+                    Mutex<HashMap<u64, tokio::sync::oneshot::Sender<BusMsg>>>,
                 > = Arc::new(Mutex::new(map![]));
                 let request_handle = request_loop(tokio_rx_request, tx_request);
                 let response_handle = response_loop(rx_response, Arc::clone(&pending_requests));
@@ -221,13 +226,13 @@ impl GrpcServer {
 
 pub struct Runtime {
     identity: ServiceId,
-    tx_response: Sender<(u64, Request)>,
+    tx_response: Sender<(u64, BusMsg)>,
 }
 
 impl CtlServer for Runtime {}
 
 impl esb::Handler<ServiceBus> for Runtime {
-    type Request = Request;
+    type Request = BusMsg;
     type Error = Error;
 
     fn identity(&self) -> ServiceId {
@@ -239,12 +244,14 @@ impl esb::Handler<ServiceBus> for Runtime {
         endpoints: &mut Endpoints,
         bus: ServiceBus,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Self::Error> {
         match bus {
-            ServiceBus::Msg => self.handle_rpc_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_rpc_ctl(endpoints, source, request),
+            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
+            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
+            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
             ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
+            _ => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -257,33 +264,34 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_rpc_msg(
+    fn handle_msg(
         &mut self,
         _endpoints: &mut Endpoints,
         _source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
             _ => {
-                error!("Request is not supported by the MSG interface");
+                error!("BusMsg is not supported by the MSG interface");
             }
         }
         Ok(())
     }
 
-    fn handle_rpc_ctl(
+    fn handle_ctl(
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            Request::Hello => {
+            BusMsg::Ctl(Ctl::Hello) => {
                 debug!("Received Hello from {}", source);
             }
+
             _ => {
                 if let ServiceId::GrpcdClient(id) = source {
                     self.tx_response
@@ -294,6 +302,32 @@ impl Runtime {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    fn handle_rpc(
+        &mut self,
+        _endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: BusMsg,
+    ) -> Result<(), Error> {
+        match request {
+            BusMsg::Ctl(Ctl::Hello) => {
+                debug!("Received Hello from {}", source);
+            }
+
+            _ => {
+                if let ServiceId::GrpcdClient(id) = source {
+                    self.tx_response
+                        .send((id, request))
+                        .expect("could not send response from grpc runtime to server");
+                } else {
+                    error!("Grpcd server can only handle messages addressed to a grpcd client");
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -301,10 +335,25 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Request,
+        request: BusMsg,
     ) -> Result<(), Error> {
         debug!("GRPCD BRIDGE RPC request: {}, {}", request, source);
-        endpoints.send_to(ServiceBus::Ctl, source, ServiceId::Farcasterd, request)?;
+        match request {
+            BusMsg::Ctl(req) => endpoints.send_to(
+                ServiceBus::Ctl,
+                source,
+                ServiceId::Farcasterd,
+                BusMsg::Ctl(req),
+            )?,
+            BusMsg::Rpc(req) => endpoints.send_to(
+                ServiceBus::Rpc,
+                source,
+                ServiceId::Farcasterd,
+                BusMsg::Rpc(req),
+            )?,
+            _ => error!("Could not send this type of request over the bridge"),
+        }
+
         Ok(())
     }
 }

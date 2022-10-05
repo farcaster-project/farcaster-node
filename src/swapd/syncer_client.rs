@@ -1,5 +1,5 @@
 use crate::{
-    rpc::ServiceBus,
+    bus::ServiceBus,
     service::{Endpoints, LogStyle},
     syncerd::{
         Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx,
@@ -14,7 +14,8 @@ use farcaster_core::{blockchain::Blockchain, swap::SwapId, transaction::TxLabel}
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    rpc::Request,
+    bus::sync::SyncMsg,
+    bus::BusMsg,
     syncerd::{Task, TaskId},
     ServiceId,
 };
@@ -45,8 +46,8 @@ pub struct SyncerState {
     pub bitcoin_height: u64,
     pub monero_height: u64,
     pub confirmation_bound: u32,
-    pub lock_tx_confs: Option<Request>,
-    pub cancel_tx_confs: Option<Request>,
+    pub lock_tx_confs: Option<SyncMsg>,
+    pub cancel_tx_confs: Option<SyncMsg>,
     pub network: farcaster_core::blockchain::Network,
     pub bitcoin_syncer: ServiceId,
     pub monero_syncer: ServiceId,
@@ -405,25 +406,25 @@ impl SyncerState {
         let identity = ServiceId::Swap(self.swap_id.clone());
         let task = self.estimate_fee_btc();
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::SyncerTask(task),
+            BusMsg::Sync(SyncMsg::Task(task)),
         )?;
         let watch_height_btc_task = self.watch_height(Blockchain::Bitcoin);
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity.clone(),
             self.bitcoin_syncer(),
-            Request::SyncerTask(watch_height_btc_task),
+            BusMsg::Sync(SyncMsg::Task(watch_height_btc_task)),
         )?;
         // assumes xmr syncer will be up as well at this point
         let watch_height_xmr_task = self.watch_height(Blockchain::Monero);
         endpoints.send_to(
-            ServiceBus::Ctl,
+            ServiceBus::Sync,
             identity,
             self.monero_syncer(),
-            Request::SyncerTask(watch_height_xmr_task),
+            BusMsg::Sync(SyncMsg::Task(watch_height_xmr_task)),
         )?;
         Ok(())
     }

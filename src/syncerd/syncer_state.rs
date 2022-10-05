@@ -1,4 +1,4 @@
-use crate::rpc::request::SyncerdBridgeEvent;
+use crate::bus::sync::BridgeEvent;
 use crate::syncerd::{TaskId, TaskTarget};
 use crate::Error;
 use crate::ServiceId;
@@ -42,7 +42,7 @@ pub struct SyncerState {
     pub transactions: HashMap<InternalId, WatchedTransaction>,
     pub unseen_transactions: HashSet<InternalId>,
     pub sweep_addresses: HashMap<InternalId, SweepAddress>,
-    tx_event: TokioSender<SyncerdBridgeEvent>,
+    tx_event: TokioSender<BridgeEvent>,
     task_count: TaskCounter,
     pub subscribed_addresses: HashSet<AddressAddendum>,
     pub fee_estimation: Option<FeeEstimations>,
@@ -73,7 +73,7 @@ pub fn create_set<T: std::hash::Hash + Eq>(xs: Vec<T>) -> HashSet<T> {
 }
 
 impl SyncerState {
-    pub fn new(tx_event: TokioSender<SyncerdBridgeEvent>, blockchain: Blockchain) -> Self {
+    pub fn new(tx_event: TokioSender<BridgeEvent>, blockchain: Blockchain) -> Self {
         Self {
             block_height: 0,
             block_hash: vec![0],
@@ -770,13 +770,10 @@ impl SyncerState {
     }
 }
 
-async fn send_event(
-    tx_event: &TokioSender<SyncerdBridgeEvent>,
-    events: &mut Vec<(Event, ServiceId)>,
-) {
+async fn send_event(tx_event: &TokioSender<BridgeEvent>, events: &mut Vec<(Event, ServiceId)>) {
     for (event, source) in events.drain(..) {
         tx_event
-            .send(SyncerdBridgeEvent { event, source })
+            .send(BridgeEvent { event, source })
             .await
             .expect("error sending event from the syncer state");
     }
@@ -787,10 +784,8 @@ async fn syncer_state_transaction() {
     use farcaster_core::blockchain::Network;
 
     use tokio::sync::mpsc::Receiver as TokioReceiver;
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
 
     let transaction_task_one = WatchTransaction {
@@ -905,10 +900,8 @@ async fn syncer_state_addresses() {
     use std::str::FromStr;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
 
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let address = bitcoin::Address::from_str("32BkaQeAVcd65Vn7pjEziohf5bCiryNQov").unwrap();
     let addendum = AddressAddendum::Bitcoin(BtcAddressAddendum {
@@ -1063,10 +1056,8 @@ async fn syncer_state_sweep_addresses() {
     use std::str::FromStr;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
 
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Monero);
     let sweep_task = SweepAddress {
         id: TaskId(0),
@@ -1119,10 +1110,8 @@ async fn syncer_state_height() {
     use farcaster_core::blockchain::Network;
     use tokio::sync::mpsc::Receiver as TokioReceiver;
 
-    let (event_tx, mut event_rx): (
-        TokioSender<SyncerdBridgeEvent>,
-        TokioReceiver<SyncerdBridgeEvent>,
-    ) = tokio::sync::mpsc::channel(120);
+    let (event_tx, mut event_rx): (TokioSender<BridgeEvent>, TokioReceiver<BridgeEvent>) =
+        tokio::sync::mpsc::channel(120);
     let mut state = SyncerState::new(event_tx.clone(), Blockchain::Bitcoin);
     let height_task = WatchHeight {
         id: TaskId(0),

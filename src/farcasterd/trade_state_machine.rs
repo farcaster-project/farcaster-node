@@ -1,16 +1,16 @@
-use crate::event::StateMachineExecutor;
-use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
-use crate::rpc::request::{
-    BitcoinAddress, BitcoinFundingInfo, CheckpointEntry, FundingInfo, InitSwap, LaunchSwap,
-    MadeOffer, MoneroAddress, MoneroFundingInfo, Msg, OfferInfo, OfferStatus, OfferStatusPair,
-    ProtoPublicOffer, PubOffer, TakeCommit, TookOffer,
+use crate::bus::ctl::{
+    BitcoinAddress, BitcoinFundingInfo, Ctl, FundingInfo, InitSwap, LaunchSwap, MoneroAddress,
+    MoneroFundingInfo, ProtoPublicOffer, PubOffer,
 };
-use crate::rpc::{Failure, FailureCode};
+use crate::bus::msg::{Msg, TakeCommit};
+use crate::bus::rpc::{CheckpointEntry, MadeOffer, OfferInfo, Rpc, TookOffer};
+use crate::bus::{Failure, FailureCode, OfferStatus, OfferStatusPair};
+use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;
 use crate::{
+    bus::{BusMsg, Outcome},
     error::Error,
-    event::{Event, StateMachine},
-    rpc::request::{Outcome, Request},
+    event::{Event, StateMachine, StateMachineExecutor},
     ServiceId,
 };
 use bitcoin::hashes::hex::ToHex;
@@ -302,14 +302,14 @@ fn attempt_transition_to_make_offer(
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
     match event.request.clone() {
-        Request::MakeOffer(ProtoPublicOffer {
+        BusMsg::Ctl(Ctl::MakeOffer(ProtoPublicOffer {
             offer,
             arbitrating_addr,
             accordant_addr,
             public_addr,
             bind_addr,
             ..
-        }) => {
+        })) => {
             let node_id = runtime.services_ready().and_then(|_| {
                 let (peer_secret_key, peer_public_key) = runtime.peer_keys_ready()?;
                 let node_id = NodeId::from(peer_public_key);
@@ -341,10 +341,10 @@ fn attempt_transition_to_make_offer(
             });
             match node_id {
                 Err(err) => {
-                    event.complete_ctl(Request::Failure(Failure {
+                    event.complete_ctl(BusMsg::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
-                    }))?;
+                    })))?;
                     Ok(None)
                 }
                 Ok(node_id) => {
@@ -357,18 +357,18 @@ fn attempt_transition_to_make_offer(
                     );
                     event.send_ctl_service(
                         ServiceId::Database,
-                        Request::SetOfferStatus(OfferStatusPair {
+                        BusMsg::Ctl(Ctl::SetOfferStatus(OfferStatusPair {
                             offer: public_offer.clone(),
                             status: OfferStatus::Open,
-                        }),
+                        })),
                     )?;
-                    event.complete_ctl(Request::MadeOffer(MadeOffer {
+                    event.complete_rpc(BusMsg::Rpc(Rpc::MadeOffer(MadeOffer {
                         message: msg,
                         offer_info: OfferInfo {
                             offer: public_offer.to_string(),
                             details: public_offer.clone(),
                         },
-                    }))?;
+                    })))?;
                     runtime.public_offers.insert(public_offer.clone());
                     Ok(Some(TradeStateMachine::MakeOffer(MakeOffer {
                         public_offer,
@@ -393,11 +393,11 @@ fn attempt_transition_to_take_offer(
     runtime: &mut Runtime,
 ) -> Result<Option<TradeStateMachine>, Error> {
     match event.request.clone() {
-        Request::TakeOffer(PubOffer {
+        BusMsg::Ctl(Ctl::TakeOffer(PubOffer {
             public_offer,
             external_address,
             internal_address,
-        }) => {
+        })) => {
             if runtime.trade_state_machines.iter().any(|tsm| {
                 if let Some(tsm_public_offer) = tsm.consumed_offer() {
                     tsm_public_offer == public_offer
@@ -411,10 +411,10 @@ fn attempt_transition_to_take_offer(
                     &public_offer.to_string()
                 );
                 warn!("{}", msg.err());
-                event.complete_ctl(Request::Failure(Failure {
+                event.complete_ctl(BusMsg::Ctl(Ctl::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: msg,
-                }))?;
+                })))?;
                 return Ok(None);
             }
             let PublicOffer {
@@ -461,10 +461,10 @@ fn attempt_transition_to_take_offer(
             });
             match res {
                 Err(err) => {
-                    event.complete_ctl(Request::Failure(Failure {
+                    event.complete_ctl(BusMsg::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
-                    }))?;
+                    })))?;
                     Ok(None)
                 }
                 Ok(peer_service_id) => {
@@ -477,16 +477,16 @@ fn attempt_transition_to_take_offer(
 
                     event.send_ctl_service(
                         ServiceId::Wallet,
-                        Request::TakeOffer(PubOffer {
+                        BusMsg::Ctl(Ctl::TakeOffer(PubOffer {
                             public_offer: public_offer.clone(),
                             external_address: external_address.clone(),
                             internal_address,
-                        }),
+                        })),
                     )?;
-                    event.complete_ctl(Request::TookOffer(TookOffer {
+                    event.complete_rpc(BusMsg::Rpc(Rpc::TookOffer(TookOffer {
                         offerid: public_offer.id(),
                         message: offer_registered,
-                    }))?;
+                    })))?;
                     runtime.public_offers.insert(public_offer.clone());
                     Ok(Some(TradeStateMachine::TakeOffer(TakeOffer {
                         public_offer,
@@ -513,27 +513,27 @@ fn attempt_transition_to_restoring_swapd(
 ) -> Result<Option<TradeStateMachine>, Error> {
     // check if databased and walletd are running
     match event.request.clone() {
-        Request::RestoreCheckpoint(swap_id) => {
+        BusMsg::Ctl(Ctl::RestoreCheckpoint(swap_id)) => {
             if let Err(err) = runtime.services_ready() {
                 event.send_ctl_service(
                     event.source.clone(),
-                    Request::Failure(Failure {
+                    BusMsg::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
-                    }),
+                    })),
                 )?;
                 return Ok(None);
             }
 
             // check if swapd is not running
             if event
-                .send_ctl_service(ServiceId::Swap(swap_id), Request::Hello)
+                .send_ctl_service(ServiceId::Swap(swap_id), BusMsg::Ctl(Ctl::Hello))
                 .is_ok()
             {
-                event.complete_ctl(Request::Failure(Failure {
+                event.complete_ctl(BusMsg::Ctl(Ctl::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: "Cannot restore a checkpoint into a running swap.".to_string(),
-                }))?;
+                })))?;
                 return Ok(None);
             }
 
@@ -548,11 +548,11 @@ fn attempt_transition_to_restoring_swapd(
             {
                 Some(ce) => ce,
                 None => {
-                    event.complete_ctl(Request::Failure(Failure {
+                    event.complete_ctl(BusMsg::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: "No checkpoint found with given swap id, aborting restore."
                             .to_string(),
-                    }))?;
+                    })))?;
                     return Ok(None);
                 }
             };
@@ -580,7 +580,9 @@ fn attempt_transition_to_restoring_swapd(
                 ],
             )?;
 
-            event.complete_ctl(Request::String("Restoring checkpoint.".to_string()))?;
+            event.complete_rpc(BusMsg::Rpc(Rpc::String(
+                "Restoring checkpoint.".to_string(),
+            )))?;
 
             Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
                 public_offer: public_offer.clone(),
@@ -612,7 +614,7 @@ fn attempt_transition_to_taker_committed(
     } = make_offer;
     match (event.request.clone(), event.source.clone()) {
         (
-            Request::Protocol(Msg::TakerCommit(TakeCommit {
+            BusMsg::Msg(Msg::TakerCommit(TakeCommit {
                 public_offer: committed_public_offer,
                 swap_id,
                 ..
@@ -621,18 +623,22 @@ fn attempt_transition_to_taker_committed(
         ) => {
             if public_offer == committed_public_offer {
                 let source = event.source.clone();
-                let btc_addr_req = Request::BitcoinAddress(BitcoinAddress(swap_id, arb_addr));
+                // FIXME this should go into 1 msg over ctl to avoid race condition and 2 buses
+                // usage
+                let btc_addr_req =
+                    BusMsg::Ctl(Ctl::BitcoinAddress(BitcoinAddress(swap_id, arb_addr)));
                 event.send_msg_service(ServiceId::Wallet, btc_addr_req)?;
-                let xmr_addr_req = Request::MoneroAddress(MoneroAddress(swap_id, acc_addr));
+                let xmr_addr_req =
+                    BusMsg::Ctl(Ctl::MoneroAddress(MoneroAddress(swap_id, acc_addr)));
                 event.send_msg_service(ServiceId::Wallet, xmr_addr_req)?;
                 info!("passing request to walletd from {}", event.source);
                 event.forward_msg(ServiceId::Wallet)?;
                 event.complete_ctl_service(
                     ServiceId::Database,
-                    Request::SetOfferStatus(OfferStatusPair {
+                    BusMsg::Ctl(Ctl::SetOfferStatus(OfferStatusPair {
                         offer: public_offer.clone(),
                         status: OfferStatus::InProgress,
-                    }),
+                    })),
                 )?;
                 Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
                     peerd: source,
@@ -650,16 +656,18 @@ fn attempt_transition_to_taker_committed(
                 })))
             }
         }
-        (Request::RevokeOffer(revoke_public_offer), _) => {
+        (BusMsg::Ctl(Ctl::RevokeOffer(revoke_public_offer)), _) => {
             debug!("attempting to revoke {}", public_offer);
             if revoke_public_offer == public_offer {
                 info!("Revoked offer {}", public_offer);
-                event.complete_ctl(Request::String("Successfully revoked offer.".to_string()))?;
+                event.complete_rpc(BusMsg::Rpc(Rpc::String(
+                    "Successfully revoked offer.".to_string(),
+                )))?;
                 Ok(None)
             } else {
                 let msg = "Cannot revoke offer, it does not exist".to_string();
                 error!("{}", msg);
-                event.complete_ctl(Request::String(msg))?;
+                event.complete_rpc(BusMsg::Rpc(Rpc::String(msg)))?;
                 Ok(Some(TradeStateMachine::MakeOffer(MakeOffer {
                     public_offer,
                     arb_addr,
@@ -668,15 +676,15 @@ fn attempt_transition_to_taker_committed(
             }
         }
         (req, source) => {
-            if let Request::Hello = req {
+            if let BusMsg::Ctl(Ctl::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state make offer.",
+                    "BusMsg {} from {} invalid for state make offer.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state make offer.",
+                    "BusMsg {} from {} invalid for state make offer.",
                     req, source
                 );
             }
@@ -699,15 +707,15 @@ fn attempt_transition_from_taker_commit_to_swapd_launched(
         public_offer,
     } = taker_commit;
     match event.request {
-        Request::LaunchSwap(launch_swap) => {
+        BusMsg::Ctl(Ctl::LaunchSwap(launch_swap)) => {
             let tsm = transition_to_swapd_launched_tsm(runtime, launch_swap, peerd, public_offer)?;
             Ok(Some(tsm))
         }
         req => {
-            if let Request::Hello = req {
-                trace!("Request {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
+            if let BusMsg::Ctl(Ctl::Hello) = req {
+                trace!("BusMsg {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
             } else {
-                warn!("Request {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
+                warn!("BusMsg {} from {} invalid for state Taker Commit - expected LaunchSwap request.", req, event.source);
             }
             Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
                 peerd,
@@ -729,15 +737,22 @@ fn attempt_transition_from_take_offer_to_swapd_launched(
         peerd,
     } = take_offer;
     match event.request {
-        Request::LaunchSwap(launch_swap) => {
+        BusMsg::Ctl(Ctl::LaunchSwap(launch_swap)) => {
             let tsm = transition_to_swapd_launched_tsm(runtime, launch_swap, peerd, public_offer)?;
             Ok(Some(tsm))
         }
         req => {
-            if let Request::Hello = req {
-                trace!("Request {} from {} invalid for state Take Offer - expected LaunchSwap request.", req, event.source);
+            if let BusMsg::Ctl(Ctl::Hello) = req {
+                trace!(
+                    "BusMsg {} from {} invalid for state Take Offer - expected LaunchSwap request.",
+                    req,
+                    event.source
+                );
             } else {
-                warn!("Request {} from {} invalid for state Take Offer - expected LaunchSwap request.", req, event.source);
+                warn!(
+                    "BusMsg {} from {} invalid for state Take Offer - expected LaunchSwap request.",
+                    req, event.source
+                );
             }
             Ok(Some(TradeStateMachine::TakeOffer(TakeOffer {
                 public_offer,
@@ -821,21 +836,21 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         local_trade_role,
     } = swapd_launched;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, source)
+        (BusMsg::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Monero, public_offer.offer.network) == source =>
         {
             accordant_syncer_up = Some(source);
         }
-        (Request::Hello, source) if ServiceId::Swap(swap_id) == source => {
+        (BusMsg::Ctl(Ctl::Hello), source) if ServiceId::Swap(swap_id) == source => {
             swapd_up = true;
         }
-        (Request::Hello, source)
+        (BusMsg::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Bitcoin, public_offer.offer.network) == source =>
         {
             arbitrating_syncer_up = Some(source);
         }
         _ => {
-            trace!("Request {} invalid for state swapd launched", event.request);
+            trace!("BusMsg {} invalid for state swapd launched", event.request);
         }
     }
     if let (Some(accordant_syncer), Some(arbitrating_syncer), true) = (
@@ -847,12 +862,12 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         // connection daemon
         debug!(
             "Swapd {} is known: we spawned it to create a swap. \
-                 Requesting swapd to be the {} of this swap",
+                 BusMsging swapd to be the {} of this swap",
             swap_id, local_trade_role,
         );
         let init_swap_req = match local_trade_role {
-            TradeRole::Maker => Request::MakeSwap(init_swap),
-            TradeRole::Taker => Request::TakeSwap(init_swap),
+            TradeRole::Maker => BusMsg::Ctl(Ctl::MakeSwap(init_swap)),
+            TradeRole::Taker => BusMsg::Ctl(Ctl::TakeSwap(init_swap)),
         };
         event.complete_ctl_service(ServiceId::Swap(swap_id), init_swap_req)?;
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
@@ -892,15 +907,15 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut swapd_up,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, source)
+        (BusMsg::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Monero, public_offer.offer.network) == source =>
         {
             accordant_syncer_up = Some(source);
         }
-        (Request::Hello, source) if ServiceId::Swap(swap_id) == source => {
+        (BusMsg::Ctl(Ctl::Hello), source) if ServiceId::Swap(swap_id) == source => {
             swapd_up = true;
         }
-        (Request::Hello, source)
+        (BusMsg::Ctl(Ctl::Hello), source)
             if ServiceId::Syncer(Blockchain::Bitcoin, public_offer.offer.network) == source =>
         {
             arbitrating_syncer_up = Some(source);
@@ -914,7 +929,10 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
     ) {
         info!("Restoring swap {}", swap_id.bright_blue_italic());
         runtime.stats.incr_initiated();
-        event.complete_ctl_service(ServiceId::Database, Request::RestoreCheckpoint(swap_id))?;
+        event.complete_ctl_service(
+            ServiceId::Database,
+            BusMsg::Ctl(Ctl::RestoreCheckpoint(swap_id)),
+        )?;
 
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
             peerd: ServiceId::Loopback, // TODO: Move this from the dummy value to the actual peerd once we handle reconnect
@@ -953,10 +971,13 @@ fn attempt_transition_to_end(
         auto_funded,
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
-        (Request::Hello, source) if source == peerd => {
+        (BusMsg::Ctl(Ctl::Hello), source) if source == peerd => {
             let swap_service_id = ServiceId::Swap(swap_id);
             debug!("Letting {} know of peer reconnection.", swap_service_id);
-            event.complete_ctl_service(swap_service_id, Request::PeerdReconnected(source))?;
+            event.complete_ctl_service(
+                swap_service_id,
+                BusMsg::Ctl(Ctl::PeerdReconnected(source)),
+            )?;
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 public_offer,
@@ -969,13 +990,15 @@ fn attempt_transition_to_end(
             })))
         }
 
-        (Request::FundingInfo(info), _) => match info {
+        (BusMsg::Ctl(Ctl::FundingInfo(info)), _) => match info {
             FundingInfo::Bitcoin(BitcoinFundingInfo {
                 swap_id,
                 ref address,
                 amount,
             }) => {
-                runtime.stats.incr_awaiting_funding(&Blockchain::Bitcoin);
+                runtime
+                    .stats
+                    .incr_awaiting_funding(&Blockchain::Bitcoin, swap_id);
                 let network = address.network.into();
                 if let Some(auto_fund_config) = runtime.config.get_auto_funding_config(network) {
                     info!(
@@ -1073,7 +1096,9 @@ fn attempt_transition_to_end(
                 address,
                 amount,
             }) => {
-                runtime.stats.incr_awaiting_funding(&Blockchain::Monero);
+                runtime
+                    .stats
+                    .incr_awaiting_funding(&Blockchain::Monero, swap_id);
                 let network = address.network.into();
                 if let Some(auto_fund_config) = runtime.config.get_auto_funding_config(network) {
                     info!(
@@ -1154,8 +1179,8 @@ fn attempt_transition_to_end(
             }
         },
 
-        (Request::FundingCompleted(blockchain), _) => {
-            runtime.stats.incr_funded(&blockchain);
+        (BusMsg::Ctl(Ctl::FundingCompleted(blockchain)), _) => {
+            runtime.stats.incr_funded(&blockchain, &swap_id);
             info!(
                 "{} | Your {} funding completed",
                 swap_id.bright_blue_italic(),
@@ -1173,25 +1198,13 @@ fn attempt_transition_to_end(
             })))
         }
 
-        (Request::FundingCanceled(blockchain), _) => {
-            match blockchain {
-                Blockchain::Bitcoin => {
-                    runtime.stats.incr_funding_bitcoin_canceled();
-                    info!(
-                        "{} | Your {} funding was canceled.",
-                        swap_id.bright_blue_italic(),
-                        blockchain.bright_green_bold()
-                    );
-                }
-                Blockchain::Monero => {
-                    runtime.stats.incr_funding_monero_canceled();
-                    info!(
-                        "{} | Your {} funding was canceled.",
-                        swap_id.bright_blue_italic(),
-                        blockchain.bright_green_bold()
-                    );
-                }
-            };
+        (BusMsg::Ctl(Ctl::FundingCanceled(blockchain)), _) => {
+            runtime.stats.incr_funding_canceled(&blockchain, &swap_id);
+            info!(
+                "{} | Your {} funding was canceled.",
+                swap_id.bright_blue_italic(),
+                blockchain.bright_green_bold()
+            );
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 public_offer,
@@ -1204,7 +1217,7 @@ fn attempt_transition_to_end(
             })))
         }
 
-        (Request::PeerdUnreachable(ServiceId::Peer(addr)), source)
+        (BusMsg::Ctl(Ctl::PeerdUnreachable(ServiceId::Peer(addr))), source)
             if ServiceId::Swap(swap_id) == source =>
         {
             if runtime.registered_services.contains(&ServiceId::Peer(addr)) {
@@ -1214,7 +1227,7 @@ fn attempt_transition_to_end(
                     taker and the swap is still running.",
                     addr
                 );
-                event.complete_ctl_service(ServiceId::Peer(addr), Request::Terminate)?;
+                event.complete_ctl_service(ServiceId::Peer(addr), BusMsg::Ctl(Ctl::Terminate))?;
             }
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
@@ -1228,13 +1241,13 @@ fn attempt_transition_to_end(
             })))
         }
 
-        (Request::SwapOutcome(outcome), source) if ServiceId::Swap(swap_id) == source => {
+        (BusMsg::Ctl(Ctl::SwapOutcome(outcome)), source) if ServiceId::Swap(swap_id) == source => {
             event.send_ctl_service(
                 ServiceId::Database,
-                Request::SetOfferStatus(OfferStatusPair {
+                BusMsg::Ctl(Ctl::SetOfferStatus(OfferStatusPair {
                     offer: public_offer,
                     status: OfferStatus::Ended(outcome.clone()),
-                }),
+                })),
             )?;
             runtime.clean_up_after_swap(&swap_id, event.endpoints)?;
             runtime.stats.incr_outcome(&outcome);
@@ -1257,15 +1270,15 @@ fn attempt_transition_to_end(
         }
 
         (req, source) => {
-            if let Request::Hello = req {
+            if let BusMsg::Ctl(Ctl::Hello) = req {
                 trace!(
-                    "Request {} from {} invalid for state swapd running.",
+                    "BusMsg {} from {} invalid for state swapd running.",
                     req,
                     source
                 );
             } else {
                 warn!(
-                    "Request {} from {} invalid for state Swapd Running.",
+                    "BusMsg {} from {} invalid for state Swapd Running.",
                     req, source
                 );
             }
