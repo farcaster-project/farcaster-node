@@ -440,13 +440,13 @@ impl esb::Handler<ServiceBus> for Runtime {
         match (bus, request) {
             // Peer-to-peer message bus
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
-            // Control bus for internal command
+            // Control bus for issuing control commands
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // User issued command RPC bus, only accept BusMsg::Rpc
+            // RPC command bus, only accept BusMsg::Rpc
             (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
-            // Syncer event bus
+            // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
-            // All other pairs are not supported in swapd
+            // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }

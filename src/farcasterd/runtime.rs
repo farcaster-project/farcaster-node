@@ -267,10 +267,15 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
+            // Peer-to-peer message bus
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            // Control bus for issuing control commands
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
+            // RPC command bus, only accept BusMsg::Rpc
             (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // Syncer event bus for blockchain tasks and events
             (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
+            // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }

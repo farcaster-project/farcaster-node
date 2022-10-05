@@ -293,11 +293,11 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             // Peer-to-peer message bus
             ServiceBus::Msg => self.handle_msg(endpoints, source, request),
-            // Control bus for internal command
+            // Control bus for issuing control commands
             ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
-            // Syncer event bus
+            // Syncer event bus for blockchain tasks and events
             ServiceBus::Sync => self.handle_sync(endpoints, source, request),
-            // All other buses are not supported in walletd
+            // All other pairs are not supported
             _ => Err(Error::NotSupported(bus, request.to_string())),
         }
     }

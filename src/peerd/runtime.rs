@@ -314,12 +314,13 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            // Peer-to-peer message bus
+            // Peer-to-peer message bus, only accept BusMsg::Msg
             (ServiceBus::Msg, BusMsg::Msg(req)) => self.handle_msg(endpoints, source, req),
-            // Control bus for issuing internal commands
+            // Control bus for issuing control commands, only accept BusMsg::Ctl
             (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
-            // User issued command RPC bus, only accept BusMsg::Rpc
+            // RPC command bus, only accept BusMsg::Rpc
             (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // Internal peerd bridge for inner communication, accept all type of request
             (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
             // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
