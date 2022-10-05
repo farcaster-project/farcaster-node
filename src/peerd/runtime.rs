@@ -344,8 +344,7 @@ impl Runtime {
         _source: ServiceId,
         message: Msg,
     ) -> Result<(), Error> {
-        // 1. Check permissions
-        // 2. Forward to the remote peer
+        // Forward to the remote peer
         debug!("Message type: {}", message.get_type());
         debug!(
             "Forwarding peer message to the remote peer, request: {}",
