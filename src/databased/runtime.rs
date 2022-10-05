@@ -640,7 +640,7 @@ impl Database {
 
 #[test]
 fn test_lmdb_state() {
-    use crate::bus::ctl::Outcome;
+    use crate::bus::Outcome;
     use std::str::FromStr;
 
     let val1 = vec![0, 1];
