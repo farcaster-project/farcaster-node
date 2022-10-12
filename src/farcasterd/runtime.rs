@@ -19,6 +19,8 @@ use crate::bus::rpc::NodeInfo;
 use crate::bus::sync::SyncMsg;
 use crate::bus::{BusMsg, List, ServiceBus};
 use crate::event::{Event, StateMachine};
+use crate::farcasterd::syncer_state_machine::SyncerStateMachine;
+use crate::farcasterd::trade_state_machine::TradeStateMachine;
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
@@ -30,8 +32,7 @@ use crate::{
     service::Endpoints,
 };
 use crate::{Config, CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-use bitcoin::{hashes::hex::ToHex, secp256k1::PublicKey, secp256k1::SecretKey};
-use clap::IntoApp;
+
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
@@ -40,14 +41,15 @@ use std::iter::FromIterator;
 use std::process;
 use std::time::{Duration, SystemTime};
 
-use super::syncer_state_machine::SyncerStateMachine;
-use super::trade_state_machine::TradeStateMachine;
+use bitcoin::{hashes::hex::ToHex, secp256k1::PublicKey, secp256k1::SecretKey};
+use clap::IntoApp;
 use farcaster_core::{
     blockchain::{Blockchain, Network},
     role::TradeRole,
     swap::btcxmr::PublicOffer,
     swap::SwapId,
 };
+use internet2::addr::NodeId;
 use internet2::{addr::InetSocketAddr, addr::NodeAddr};
 use microservices::esb::{self, Handler};
 
@@ -342,6 +344,7 @@ impl Runtime {
                         )?;
                     }
                     ServiceId::Peer(connection_id) => {
+                        self.spawning_services.remove(&source);
                         if self.registered_services.insert(source.clone()) {
                             info!(
                                 "Connection {} is registered; total {} connections are known",
@@ -1094,9 +1097,23 @@ impl Runtime {
         }
     }
 
-    pub fn listen(&mut self, addr: NodeAddr, sk: SecretKey) -> Result<(), Error> {
-        let address = addr.addr.address();
-        let port = addr.addr.port().ok_or(Error::Farcaster(
+    pub fn listen(&mut self, bind_addr: InetSocketAddr) -> Result<NodeId, Error> {
+        self.services_ready()?;
+        let (peer_secret_key, peer_public_key) = self.peer_keys_ready()?;
+        let node_id = NodeId::from(peer_public_key);
+        if self.listens.iter().any(|a| a == &bind_addr) {
+            let msg = format!("Already listening on {}", &bind_addr);
+            debug!("{}", &msg);
+            return Ok(node_id);
+        }
+        info!(
+            "{} for incoming peer connections on {}",
+            "Starting listener".bright_blue_bold(),
+            bind_addr.bright_blue_bold()
+        );
+
+        let address = bind_addr.address();
+        let port = bind_addr.port().ok_or(Error::Farcaster(
             "listen requires the port to listen on".to_string(),
         ))?;
 
@@ -1109,37 +1126,66 @@ impl Runtime {
                 "--port",
                 &port.to_string(),
                 "--peer-secret-key",
-                &format!("{}", sk.display_secret()),
+                &format!("{}", peer_secret_key.display_secret()),
                 "--token",
                 &self.wallet_token.clone().to_string(),
             ],
         );
 
         // in case it can't connect wait for it to crash
-        std::thread::sleep(Duration::from_secs_f32(0.5));
+        std::thread::sleep(Duration::from_secs_f32(0.1));
 
         // status is Some if peerd returns because it crashed
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
-
         if status.is_some() {
             return Err(Error::Peer(internet2::presentation::Error::InvalidEndpoint));
         }
 
+        self.listens.insert(bind_addr);
         debug!("New instance of peerd launched with PID {}", child.id());
-        Ok(())
+        info!(
+            "Connection daemon {} for incoming peer connections on {}",
+            "listens".bright_green_bold(),
+            bind_addr
+        );
+        Ok(node_id)
     }
 
-    pub fn connect_peer(&mut self, node_addr: &NodeAddr, sk: SecretKey) -> Result<(), Error> {
-        debug!("Instantiating peerd...");
-        if self
-            .registered_services
-            .contains(&ServiceId::Peer(*node_addr))
-        {
-            return Err(Error::Other(format!(
-                "Already connected to peer {}",
-                node_addr
-            )));
+    pub fn connect_peer(&mut self, node_addr: &NodeAddr) -> Result<ServiceId, Error> {
+        self.services_ready()?;
+        let (peer_secret_key, _) = self.peer_keys_ready()?;
+        if let Some(spawning_peer) = self.spawning_services.iter().find(|service| {
+            if let ServiceId::Peer(registered_node_addr) = service {
+                registered_node_addr.id == node_addr.id
+            } else {
+                false
+            }
+        }) {
+            warn!(
+                "Already spawning a connection with remote peer {}, through a spawned connection {}, but have not received Hello from it yet.",
+                node_addr.id, spawning_peer
+            );
+            return Ok(spawning_peer.clone());
+        };
+        if let Some(existing_peer) = self.registered_services.iter().find(|service| {
+            if let ServiceId::Peer(registered_node_addr) = service {
+                registered_node_addr.id == node_addr.id
+            } else {
+                false
+            }
+        }) {
+            debug!(
+                "Already connected to remote peer {} through a spawned connection {}",
+                node_addr.id, existing_peer
+            );
+            return Ok(existing_peer.clone());
         }
+
+        debug!(
+            "{} to remote peer {}",
+            "Connecting".bright_blue_bold(),
+            node_addr.bright_blue_italic()
+        );
 
         // Start peerd
         let child = launch(
@@ -1148,14 +1194,14 @@ impl Runtime {
                 "--connect",
                 &node_addr.to_string(),
                 "--peer-secret-key",
-                &format!("{}", sk.display_secret()),
+                &format!("{}", peer_secret_key.display_secret()),
                 "--token",
                 &self.wallet_token.clone().to_string(),
             ],
         );
 
         // in case it can't connect wait for it to crash
-        std::thread::sleep(Duration::from_secs_f32(0.5));
+        std::thread::sleep(Duration::from_secs_f32(0.1));
 
         // status is Some if peerd returns because it crashed
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
@@ -1169,7 +1215,7 @@ impl Runtime {
         self.spawning_services.insert(ServiceId::Peer(*node_addr));
         debug!("Awaiting for peerd to connect...");
 
-        Ok(())
+        Ok(ServiceId::Peer(*node_addr))
     }
 
     /// Notify(forward to) the subscribed clients still online with the given request

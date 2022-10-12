@@ -17,7 +17,7 @@ use bitcoin::hashes::hex::ToHex;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::role::TradeRole;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
-use internet2::addr::{NodeAddr, NodeId};
+use internet2::addr::NodeId;
 use microservices::esb::Handler;
 use std::str::FromStr;
 
@@ -304,36 +304,8 @@ fn attempt_transition_to_make_offer(
             bind_addr,
             ..
         })) => {
-            let node_id = runtime.services_ready().and_then(|_| {
-                let (peer_secret_key, peer_public_key) = runtime.peer_keys_ready()?;
-                let node_id = NodeId::from(peer_public_key);
-                let address_bound = runtime.listens.iter().any(|a| a == &bind_addr);
-                if !address_bound {
-                    // if address not bound, bind first
-                    info!(
-                        "{} for incoming peer connections on {}",
-                        "Starting listener".bright_blue_bold(),
-                        bind_addr.bright_blue_bold()
-                    );
-                    runtime
-                        .listen(NodeAddr::new(node_id, bind_addr), peer_secret_key)
-                        .and_then(|_| {
-                            runtime.listens.insert(bind_addr);
-                            Ok(())
-                        })?;
-                } else {
-                    // no need for the keys, because peerd already knows them
-                    let msg = format!("Already listening on {}", &bind_addr);
-                    debug!("{}", &msg);
-                }
-                info!(
-                    "Connection daemon {} for incoming peer connections on {}",
-                    "listens".bright_green_bold(),
-                    bind_addr
-                );
-                Ok(node_id)
-            });
-            match node_id {
+            // start a listener on the bind_addr
+            match runtime.listen(bind_addr) {
                 Err(err) => {
                     event.complete_ctl(BusMsg::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
@@ -425,42 +397,12 @@ fn attempt_transition_to_take_offer(
                 peer_address, // InetSocketAddr
             } = public_offer;
 
-            let peer = internet2::addr::NodeAddr {
+            let peer_node_addr = internet2::addr::NodeAddr {
                 id: NodeId::from(node_id.clone()), // checked above
                 addr: peer_address,
             };
-            let res = runtime.services_ready().and_then(|_| {
-                let (peer_secret_key, _) = runtime.peer_keys_ready()?;
-                // Connect
-                if let Some(existing_peer) = runtime.registered_services.iter().find(|service| {
-                    if let ServiceId::Peer(node_addr) = service {
-                        node_addr.id.public_key() == node_id
-                    } else {
-                        false
-                    }
-                }) {
-                    warn!(
-                        "Already connected to remote peer {} through a listener spawned connection {}",
-                        node_id, existing_peer
-                    );
-                    Ok(existing_peer.clone())
-                } else if runtime.registered_services.contains(&ServiceId::Peer(peer)) {
-                    warn!(
-                        "Already connected to remote peer {}",
-                        peer.bright_blue_italic()
-                    );
-                    Ok(ServiceId::Peer(peer))
-                } else {
-                    debug!(
-                        "{} to remote peer {}",
-                        "Connecting".bright_blue_bold(),
-                        peer.bright_blue_italic()
-                    );
-                    runtime.connect_peer(&peer, peer_secret_key)?;
-                    Ok(ServiceId::Peer(peer))
-                }
-            });
-            match res {
+            // connect to the remote peer
+            match runtime.connect_peer(&peer_node_addr) {
                 Err(err) => {
                     event.complete_ctl(BusMsg::Ctl(Ctl::Failure(Failure {
                         code: FailureCode::Unknown,
@@ -823,7 +765,7 @@ fn transition_to_swapd_launched_tsm(
 
 fn attempt_transition_from_swapd_launched_to_swapd_running(
     event: Event,
-    _runtime: &mut Runtime,
+    runtime: &mut Runtime,
     swapd_launched: SwapdLaunched,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let SwapdLaunched {
@@ -850,14 +792,18 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         {
             arbitrating_syncer_up = Some(source);
         }
+        (BusMsg::Ctl(Ctl::Hello), ServiceId::Peer(..)) => {}
         _ => {
             trace!("BusMsg {} invalid for state swapd launched", event.request);
         }
     }
-    if let (Some(accordant_syncer), Some(arbitrating_syncer), true) = (
+    let peerd_up = runtime.registered_services.contains(&peerd);
+
+    if let (Some(accordant_syncer), Some(arbitrating_syncer), true, true) = (
         accordant_syncer_up.clone(),
         arbitrating_syncer_up.clone(),
         swapd_up,
+        peerd_up,
     ) {
         // Tell swapd swap options and link it with the
         // connection daemon
