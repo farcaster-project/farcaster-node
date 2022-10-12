@@ -102,8 +102,13 @@ impl Exec for Command {
             }
 
             Command::RestoreCheckpoint { swap_id } => {
-                runtime.request_ctl(ServiceId::Farcasterd, Ctl::RestoreCheckpoint(swap_id))?;
-                runtime.report_response_or_fail()?;
+                runtime.request_rpc(ServiceId::Database, Rpc::GetCheckpointEntry(swap_id))?;
+                if let BusMsg::Rpc(Rpc::CheckpointEntry(entry)) = runtime.report_failure()? {
+                    runtime.request_ctl(ServiceId::Farcasterd, Ctl::RestoreCheckpoint(entry))?;
+                    runtime.report_response_or_fail()?;
+                } else {
+                    return Err(Error::Farcaster("Received unexpected response".to_string()));
+                }
             }
 
             Command::Make {

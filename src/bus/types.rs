@@ -1,10 +1,27 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use farcaster_core::swap::btcxmr::PublicOffer;
+use farcaster_core::{
+    role::TradeRole,
+    swap::{btcxmr::PublicOffer, SwapId},
+};
 
 use amplify::{ToYamlString, Wrapper};
 use microservices::rpc;
 use strict_encoding::{NetworkDecode, NetworkEncode};
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
+#[display("{swap_id}, {public_offer}")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(CheckpointEntry::to_yaml_string)]
+pub struct CheckpointEntry {
+    pub swap_id: SwapId,
+    pub public_offer: PublicOffer,
+    pub trade_role: TradeRole,
+}
 
 #[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 pub enum AddressSecretKey {

@@ -11,11 +11,11 @@ participant cli
 entryspacing 0.8
 farcasterd -> walletd : launch
 farcasterd -> databased : launch
-cli -> databased : RetrieveAllCheckpointInfo
-databased -> farcasterd : CheckpointList
-farcasterd -> cli : CheckpointList
-cli -> farcasterd : RestoreCheckpoint
+cli -> databased: GetCheckpointEntry
+databased -> cli: ChechkpointEntry
+cli -> farcasterd: RestoreCheckpoint
 farcasterd -> swapd : launch
+swapd -> farcasterd: Hello
 farcasterd -> databased : RestoreCheckpoint
 databased -> walletd : Checkpoint
 databased -> swapd: Checkpoint
