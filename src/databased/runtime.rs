@@ -12,11 +12,12 @@ use bitcoin::secp256k1::SecretKey;
 
 use crate::bus::{
     ctl::{Checkpoint, CheckpointState, Ctl},
-    rpc::{Address, CheckpointEntry, OfferStatusSelector, Rpc},
-    AddressSecretKey, BusMsg, Failure, FailureCode, List, OfferStatus, OfferStatusPair, ServiceBus,
+    rpc::{Address, OfferStatusSelector, Rpc},
+    AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
+    OfferStatusPair, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-use microservices::esb;
+use microservices::esb::{self, Handler};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
@@ -121,7 +122,7 @@ impl Runtime {
                 debug!("checkpoint set");
             }
 
-            BusMsg::Ctl(Ctl::RestoreCheckpoint(swap_id)) => {
+            BusMsg::Ctl(Ctl::RestoreCheckpoint(CheckpointEntry { swap_id, .. })) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -286,10 +287,57 @@ impl Runtime {
                     .collect();
                 endpoints.send_to(
                     ServiceBus::Rpc,
+                    self.identity(),
                     source,
-                    ServiceId::Farcasterd,
                     BusMsg::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
                 )?;
+            }
+
+            Rpc::GetCheckpointEntry(swap_id) => {
+                let entry = match self.database.get_checkpoint_state(&CheckpointKey {
+                    swap_id,
+                    service_id: ServiceId::Wallet,
+                }) {
+                    Ok(raw_state) => {
+                        match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
+                            Ok(CheckpointState::CheckpointWallet(CheckpointWallet {
+                                wallet,
+                                ..
+                            })) => match wallet {
+                                Wallet::Bob(wallet) => Some(CheckpointEntry {
+                                    swap_id,
+                                    public_offer: wallet.pub_offer,
+                                    trade_role: wallet.local_trade_role,
+                                }),
+                                Wallet::Alice(wallet) => Some(CheckpointEntry {
+                                    swap_id,
+                                    public_offer: wallet.pub_offer,
+                                    trade_role: wallet.local_trade_role,
+                                }),
+                            },
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(entry) = entry {
+                    endpoints.send_to(
+                        ServiceBus::Rpc,
+                        self.identity(),
+                        source,
+                        BusMsg::Rpc(Rpc::CheckpointEntry(entry)),
+                    )?;
+                } else {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        BusMsg::Ctl(Ctl::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: format!("Could not retrieve checkpoint entry for {}", swap_id),
+                        })),
+                    )?;
+                }
             }
 
             Rpc::GetAddressSecretKey(Address::Monero(address)) => {

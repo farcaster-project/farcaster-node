@@ -2,16 +2,16 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use amplify::ToYamlString;
-use farcaster_core::{
-    blockchain::Blockchain, role::TradeRole, swap::btcxmr::PublicOffer, swap::SwapId,
-};
+use farcaster_core::{blockchain::Blockchain, swap::btcxmr::PublicOffer, swap::SwapId};
 use internet2::addr::{InetSocketAddr, NodeAddr};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds};
 use strict_encoding::{NetworkDecode, NetworkEncode, StrictDecode, StrictEncode};
 use uuid::Uuid;
 
-use crate::bus::{AddressSecretKey, Failure, List, OfferStatusPair, OptionDetails, Progress};
+use crate::bus::{
+    AddressSecretKey, CheckpointEntry, Failure, List, OfferStatusPair, OptionDetails, Progress,
+};
 use crate::cli::OfferSelector;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
@@ -49,6 +49,9 @@ pub enum Rpc {
 
     #[display("needs_funding({0})")]
     NeedsFunding(Blockchain),
+
+    #[display("get_checkpoint_entry({0})")]
+    GetCheckpointEntry(SwapId),
 
     // Progress functionalities
     // ----------------
@@ -152,6 +155,11 @@ pub enum Rpc {
     #[display("monero_address_list({0})")]
     MoneroAddressList(List<String>),
     // - End GetAddresses section
+
+    // - GetCheckpointEntry section
+    #[display("checkpoint_entry({0})")]
+    CheckpointEntry(CheckpointEntry),
+    // - End GetCheckpointEntry section
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -273,20 +281,6 @@ pub struct SwapInfo {
     pub uptime: Duration,
     pub since: u64,
     pub public_offer: PublicOffer,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display("{swap_id}, {public_offer}")]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-#[display(CheckpointEntry::to_yaml_string)]
-pub struct CheckpointEntry {
-    pub swap_id: SwapId,
-    pub public_offer: PublicOffer,
-    pub trade_role: TradeRole,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

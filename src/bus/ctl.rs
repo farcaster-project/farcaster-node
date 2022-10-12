@@ -14,7 +14,9 @@ use internet2::addr::{InetSocketAddr, NodeAddr};
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::bus::msg::Commit;
-use crate::bus::{AddressSecretKey, Failure, OfferStatusPair, OptionDetails, Outcome, Progress};
+use crate::bus::{
+    AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
+};
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::SweepAddressAddendum;
 use crate::walletd::runtime::CheckpointWallet;
@@ -61,7 +63,7 @@ pub enum Ctl {
     PeerdTerminated,
 
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
-    RestoreCheckpoint(SwapId),
+    RestoreCheckpoint(CheckpointEntry),
 
     #[display("make_offer({0})")]
     MakeOffer(ProtoPublicOffer),

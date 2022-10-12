@@ -23,7 +23,7 @@ use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
-    bus::rpc::{CheckpointEntry, OfferInfo, OfferStatusSelector, ProgressEvent, Rpc, SwapProgress},
+    bus::rpc::{OfferInfo, OfferStatusSelector, ProgressEvent, Rpc, SwapProgress},
     bus::{Failure, FailureCode, Outcome, Progress},
     clap::Parser,
     error::SyncerError,
@@ -94,7 +94,6 @@ pub fn run(
         progress: none!(),
         progress_subscriptions: none!(),
         stats: none!(),
-        checkpointed_pub_offers: vec![].into(),
         config,
         syncer_task_counter: 0,
         trade_state_machines: vec![],
@@ -117,9 +116,8 @@ pub struct Runtime {
     pub public_offers: HashSet<PublicOffer>, // The set of all known public offers. Includes open, consumed and ended offers includes open, consumed and ended offers
     progress: HashMap<ServiceId, VecDeque<ProgressStack>>, // A mapping from Swap ServiceId to its sent and received progress messages (Progress, Success, Failure)
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
-    pub checkpointed_pub_offers: List<CheckpointEntry>, // A list of existing swap checkpoint entries that may be restored again
-    pub stats: Stats,                                   // Some stats about offers and swaps
-    pub config: Config, // Configuration for syncers, auto-funding, and grpc
+    pub stats: Stats,             // Some stats about offers and swaps
+    pub config: Config,           // Configuration for syncers, auto-funding, and grpc
     pub syncer_task_counter: u32, // A strictly incrementing counter of issued syncer tasks
     pub trade_state_machines: Vec<TradeStateMachine>, // New trade state machines are inserted on creation and destroyed upon state machine end transitions
     syncer_state_machines: HashMap<TaskId, SyncerStateMachine>, // New syncer state machines are inserted by their syncer task id when sending a syncer request and destroyed upon matching syncer request receival
@@ -566,16 +564,6 @@ impl Runtime {
                 let listen_url: List<String> =
                     List::from_iter(self.listens.clone().iter().map(|listen| listen.to_string()));
                 self.send_client_rpc(endpoints, source, Rpc::ListenList(listen_url))?;
-            }
-
-            Rpc::CheckpointList(checkpointed_pub_offers) => {
-                self.checkpointed_pub_offers = checkpointed_pub_offers.clone();
-                endpoints.send_to(
-                    ServiceBus::Rpc,
-                    ServiceId::Farcasterd,
-                    source,
-                    BusMsg::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
-                )?;
             }
 
             // Returns a unique response that contains the complete progress queue
