@@ -24,6 +24,11 @@ use farcaster::farcaster_server::{Farcaster, FarcasterServer};
 use farcaster::{InfoRequest, InfoResponse};
 use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
 
+use self::farcaster::CheckpointsRequest;
+use self::farcaster::CheckpointsResponse;
+use self::farcaster::PeersRequest;
+use self::farcaster::PeersResponse;
+
 pub mod farcaster {
     tonic::include_proto!("farcaster");
 }
@@ -119,6 +124,61 @@ impl Farcaster for FarcasterService {
                         .offers
                         .iter()
                         .map(|offer| format!("{}", offer))
+                        .collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Err(error) => Err(Status::internal(format!("{}", error))),
+            _ => Err(Status::invalid_argument("received invalid response")),
+        }
+    }
+
+    async fn peers(
+        &self,
+        request: GrpcRequest<PeersRequest>,
+    ) -> Result<GrpcResponse<PeersResponse>, Status> {
+        debug!("Received a grpc peer request: {:?}", request);
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::ListPeers,
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::PeerList(peers))) => {
+                let reply = farcaster::PeersResponse {
+                    id: request.into_inner().id,
+                    peers: peers.iter().map(|peer| format!("{}", peer)).collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Err(error) => Err(Status::internal(format!("{}", error))),
+            _ => Err(Status::invalid_argument("received invalid response")),
+        }
+    }
+
+    async fn checkpoints(
+        &self,
+        request: GrpcRequest<CheckpointsRequest>,
+    ) -> Result<GrpcResponse<CheckpointsResponse>, Status> {
+        debug!("Received a grpc checkpoints request: {:?}", request);
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::RetrieveAllCheckpointInfo,
+                service_id: ServiceId::Database,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::CheckpointList(checkpoint_entries))) => {
+                let reply = farcaster::CheckpointsResponse {
+                    id: request.into_inner().id,
+                    checkpoint_entries: checkpoint_entries
+                        .iter()
+                        .map(|entry| farcaster::CheckpointEntry {
+                            swap_id: format!("{:#x}", entry.swap_id),
+                            public_offer: format!("{}", entry.public_offer),
+                            trade_role: format!("{}", entry.trade_role),
+                        })
                         .collect(),
                 };
                 Ok(GrpcResponse::new(reply))

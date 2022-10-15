@@ -268,14 +268,10 @@ impl Runtime {
                         CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
                     })
                     .collect();
-
-                debug!("checkpointed pub offers: {:?}", checkpointed_pub_offers);
-
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::CheckpointList(checkpointed_pub_offers)),
+                    InfoMsg::CheckpointList(checkpointed_pub_offers),
                 )?;
             }
 

@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use crate::farcaster::farcaster_client::FarcasterClient;
+use crate::farcaster::{farcaster_client::FarcasterClient, CheckpointsRequest, PeersRequest};
 use farcaster::InfoRequest;
 use std::time;
 use tonic::transport::Endpoint;
@@ -30,6 +30,15 @@ async fn grpc_server_functional_test() {
     let request = tonic::Request::new(InfoRequest { id: 0 });
     let response = farcaster_client.info(request).await;
     assert_eq!(response.unwrap().into_inner().id, 0);
+
+    let request = tonic::Request::new(PeersRequest { id: 1 });
+    let response = farcaster_client.peers(request).await;
+    assert_eq!(response.unwrap().into_inner().id, 1);
+
+    let request = tonic::Request::new(CheckpointsRequest { id: 2 });
+    let response = farcaster_client.checkpoints(request).await;
+    println!("response: {:?}", response);
+    assert_eq!(response.unwrap().into_inner().id, 2);
 
     kill_all();
 }

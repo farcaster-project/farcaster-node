@@ -3,6 +3,8 @@ package farcaster;
 
 service Farcaster {
     rpc Info(InfoRequest) returns (InfoResponse){}
+    rpc Peers(PeersRequest) returns (PeersResponse){}
+    rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
 }
 
 message InfoRequest {
@@ -19,3 +21,26 @@ message InfoResponse {
     repeated string offers = 8;
 }
 
+message PeersRequest {
+    uint32 id = 1;
+}
+
+message PeersResponse {
+    uint32 id = 1;
+    repeated string peers = 2;
+}
+
+message CheckpointsRequest {
+    uint32 id = 1;
+}
+
+message CheckpointsResponse {
+    uint32 id = 1;
+    repeated CheckpointEntry checkpoint_entries = 2;
+}
+
+message CheckpointEntry {
+    string swap_id = 1;
+    string public_offer = 2;
+    string trade_role = 3;
+}
