@@ -12,6 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+pub mod bridge;
 pub mod ctl;
 pub mod info;
 pub mod p2p;
@@ -24,6 +25,7 @@ pub use types::*;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 
+use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::CtlMsg;
 use crate::bus::info::InfoMsg;
 use crate::bus::p2p::PeerMsg;
@@ -91,6 +93,12 @@ pub enum BusMsg {
     #[display(inner)]
     #[from]
     Sync(SyncMsg),
+
+    /// Wrapper for inner type of bridge messages to be transmitted over bridge busses
+    #[api(type = 5)]
+    #[display(inner)]
+    #[from]
+    Bridge(BridgeMsg),
 }
 
 impl microservices::rpc::Request for BusMsg {}

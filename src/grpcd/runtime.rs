@@ -1,3 +1,4 @@
+use crate::bus::bridge::BridgeMsg;
 use crate::service::Endpoints;
 use internet2::DuplexConnection;
 use internet2::Encrypt;
@@ -67,23 +68,16 @@ pub struct FarcasterService {
     id_counter: Arc<Mutex<IdCounter>>,
 }
 
-#[tonic::async_trait]
-impl Farcaster for FarcasterService {
-    async fn info(
+impl FarcasterService {
+    async fn process_request(
         &self,
-        request: GrpcRequest<InfoRequest>,
-    ) -> Result<GrpcResponse<InfoResponse>, Status> {
-        println!("Got a request: {:?}", request);
-
+        msg: BusMsg,
+    ) -> Result<tokio::sync::oneshot::Receiver<BusMsg>, Status> {
         let mut id_counter = self.id_counter.lock().await;
         let id = id_counter.increment();
         drop(id_counter);
 
-        if let Err(error) = self
-            .tokio_tx_request
-            .send((id, BusMsg::Info(InfoMsg::GetInfo)))
-            .await
-        {
+        if let Err(error) = self.tokio_tx_request.send((id, msg)).await {
             return Err(Status::internal(format!("{}", error)));
         }
 
@@ -91,6 +85,23 @@ impl Farcaster for FarcasterService {
         let mut pending_requests = self.pending_requests.lock().await;
         pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
+        Ok(oneshot_rx)
+    }
+}
+
+#[tonic::async_trait]
+impl Farcaster for FarcasterService {
+    async fn info(
+        &self,
+        request: GrpcRequest<InfoRequest>,
+    ) -> Result<GrpcResponse<InfoResponse>, Status> {
+        debug!("Received a grpc info request: {:?}", request);
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::GetInfo,
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
         match oneshot_rx.await {
             Ok(BusMsg::Info(InfoMsg::NodeInfo(info))) => {
                 let reply = farcaster::InfoResponse {
@@ -317,20 +328,14 @@ impl Runtime {
     ) -> Result<(), Error> {
         debug!("GRPCD BRIDGE RPC request: {}, {}", request, source);
         match request {
-            BusMsg::Ctl(req) => endpoints.send_to(
-                ServiceBus::Ctl,
-                source,
-                ServiceId::Farcasterd,
-                BusMsg::Ctl(req),
-            )?,
-
-            BusMsg::Info(req) => endpoints.send_to(
-                ServiceBus::Info,
-                source,
-                ServiceId::Farcasterd,
-                BusMsg::Info(req),
-            )?,
-
+            BusMsg::Bridge(BridgeMsg::Ctl {
+                request,
+                service_id,
+            }) => endpoints.send_to(ServiceBus::Ctl, source, service_id, BusMsg::Ctl(request))?,
+            BusMsg::Bridge(BridgeMsg::Info {
+                request,
+                service_id,
+            }) => endpoints.send_to(ServiceBus::Info, source, service_id, BusMsg::Info(request))?,
             _ => error!("Could not send this type of request over the bridge"),
         }
 
