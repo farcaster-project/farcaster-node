@@ -462,13 +462,10 @@ fn attempt_transition_to_restoring_swapd(
             trade_role,
         })) => {
             if let Err(err) = runtime.services_ready() {
-                event.send_ctl_service(
-                    event.source.clone(),
-                    BusMsg::Ctl(CtlMsg::Failure(Failure {
-                        code: FailureCode::Unknown,
-                        info: err.to_string(),
-                    })),
-                )?;
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    code: FailureCode::Unknown,
+                    info: err.to_string(),
+                })))?;
                 return Ok(None);
             }
 
@@ -477,7 +474,7 @@ fn attempt_transition_to_restoring_swapd(
                 .send_ctl_service(ServiceId::Swap(swap_id), BusMsg::Ctl(CtlMsg::Hello))
                 .is_ok()
             {
-                event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: "Cannot restore a checkpoint into a running swap.".to_string(),
                 })))?;
@@ -508,7 +505,7 @@ fn attempt_transition_to_restoring_swapd(
                 ],
             )?;
 
-            event.complete_info(BusMsg::Info(InfoMsg::String(
+            event.complete_client_info(BusMsg::Info(InfoMsg::String(
                 "Restoring checkpoint.".to_string(),
             )))?;
 
