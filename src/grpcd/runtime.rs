@@ -1,10 +1,12 @@
 use crate::bus::bridge::BridgeMsg;
 use crate::service::Endpoints;
+use farcaster_core::swap::SwapId;
 use internet2::DuplexConnection;
 use internet2::Encrypt;
 use internet2::PlainTranscoder;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
@@ -28,6 +30,8 @@ use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
 use self::farcaster::PeersRequest;
 use self::farcaster::PeersResponse;
+use self::farcaster::RestoreCheckpointRequest;
+use self::farcaster::RestoreCheckpointResponse;
 
 pub mod farcaster {
     tonic::include_proto!("farcaster");
@@ -185,6 +189,50 @@ impl Farcaster for FarcasterService {
             }
             Err(error) => Err(Status::internal(format!("{}", error))),
             _ => Err(Status::invalid_argument("received invalid response")),
+        }
+    }
+
+    async fn restore_checkpoint(
+        &self,
+        request: GrpcRequest<RestoreCheckpointRequest>,
+    ) -> Result<GrpcResponse<RestoreCheckpointResponse>, Status> {
+        debug!("Received a grpc restore checkpoints request: {:?}", request);
+        let RestoreCheckpointRequest {
+            id,
+            swap_id: string_swap_id,
+        } = request.into_inner();
+        let swap_id = match SwapId::from_str(&string_swap_id) {
+            Ok(swap_id) => swap_id,
+            Err(_) => {
+                return Err(Status::internal(format!("Invalid swap id")));
+            }
+        };
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Rpc {
+                request: Rpc::GetCheckpointEntry(swap_id),
+                service_id: ServiceId::Database,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Rpc(Rpc::CheckpointEntry(checkpoint_entry))) => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: Ctl::RestoreCheckpoint(checkpoint_entry),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+                match oneshot_rx.await {
+                    Ok(BusMsg::Rpc(Rpc::String(message))) => {
+                        let reply = farcaster::RestoreCheckpointResponse {
+                            id,
+                            status: message,
+                        };
+                        Ok(GrpcResponse::new(reply))
+                    }
+                    _ => Err(Status::internal(format!("Received invalid response"))),
+                }
+            }
+            _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
 }

@@ -5,6 +5,7 @@ service Farcaster {
     rpc Info(InfoRequest) returns (InfoResponse){}
     rpc Peers(PeersRequest) returns (PeersResponse){}
     rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
+    rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
 }
 
 message InfoRequest {
@@ -43,4 +44,14 @@ message CheckpointEntry {
     string swap_id = 1;
     string public_offer = 2;
     string trade_role = 3;
+}
+
+message RestoreCheckpointRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message RestoreCheckpointResponse {
+    uint32 id = 1;
+    string status = 2;
 }
