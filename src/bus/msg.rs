@@ -16,27 +16,27 @@ use strict_encoding::{StrictDecode, StrictEncode};
 #[non_exhaustive]
 pub enum Msg {
     #[api(type = 33701)]
-    #[display("maker_commit({0})")]
+    #[display("{0} maker commit")]
     MakerCommit(Commit),
 
     #[api(type = 33702)]
-    #[display("taker_commit({0})")]
+    #[display("{0} taker commit")]
     TakerCommit(TakeCommit),
 
     #[api(type = 33703)]
-    #[display("reveal({0})")]
+    #[display("reveal {0}")]
     Reveal(Reveal),
 
     #[api(type = 33720)]
-    #[display("refund_procedure_signatures(..)")]
+    #[display("refund procedure signatures")]
     RefundProcedureSignatures(RefundProcedureSignatures),
 
     #[api(type = 33710)]
-    #[display("core_arbitrating_setup(..)")]
+    #[display("core arbitrating setup")]
     CoreArbitratingSetup(CoreArbitratingSetup),
 
     #[api(type = 33730)]
-    #[display("buy_procedure_signature(..)")]
+    #[display("buy procedure signature")]
     BuyProcedureSignature(BuyProcedureSignature),
 
     #[api(type = 18)]
@@ -106,20 +106,32 @@ impl Msg {
                 | Msg::Pong(_)
         )
     }
+
+    pub fn is_protocol(&self) -> bool {
+        matches!(
+            self,
+            Msg::MakerCommit(_)
+                | Msg::TakerCommit(_)
+                | Msg::Reveal(_)
+                | Msg::RefundProcedureSignatures(_)
+                | Msg::CoreArbitratingSetup(_)
+                | Msg::BuyProcedureSignature(_)
+        )
+    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 pub enum Reveal {
-    #[display("alice(..)")]
+    #[display("Alice parameters")]
     AliceParameters(RevealAliceParameters),
-    #[display("bob(..)")]
+    #[display("Bob parameters")]
     BobParameters(RevealBobParameters),
-    #[display("proof(..)")]
+    #[display("proof")]
     Proof(RevealProof), // FIXME should be Msg::RevealProof(..)
 }
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]
-#[display("{swap_id}, ..")]
+#[display("{commit}")]
 pub struct TakeCommit {
     pub commit: Commit,
     pub public_offer: PublicOffer, // TODO: replace by public offer id
@@ -128,8 +140,8 @@ pub struct TakeCommit {
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 pub enum Commit {
-    #[display("alice(..)")]
+    #[display("Alice")]
     AliceParameters(CommitAliceParameters),
-    #[display("bob(..)")]
+    #[display("Bob")]
     BobParameters(CommitBobParameters),
 }
