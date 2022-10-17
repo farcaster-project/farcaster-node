@@ -359,14 +359,16 @@ impl SyncerState {
                     "confirmations".bright_green_bold()
                 );
                 self.tasks.final_txs.insert(*txlabel, true);
-            } else if self.tasks.final_txs.contains_key(txlabel) {
-                debug!(
-                    "{} | Tx {} {} with {} {}",
+            } else if let Some(finality) = self.tasks.final_txs.get(txlabel) {
+                info!(
+                    "{} | Tx {} {}",
                     self.swap_id.swap_id(),
                     txlabel.label(),
-                    "final".bright_green_bold(),
-                    confirmations.unwrap().bright_green_bold(),
-                    "confirmations".bright_green_bold()
+                    if *finality {
+                        "final".bright_green_bold()
+                    } else {
+                        "non-final".red_bold()
+                    },
                 );
             } else {
                 match confirmations {
