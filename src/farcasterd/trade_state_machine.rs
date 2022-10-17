@@ -10,7 +10,7 @@ use crate::LogStyle;
 use crate::{
     bus::{BusMsg, Outcome},
     error::Error,
-    event::{Event, StateMachine},
+    event::{Event, StateMachine, StateMachineExecutor},
     ServiceId,
 };
 use bitcoin::hashes::hex::ToHex;
@@ -188,7 +188,14 @@ impl StateMachine<Runtime, Error> for TradeStateMachine {
             }
         }
     }
+
+    fn name(&self) -> String {
+        "Syncer".to_string()
+    }
 }
+
+pub struct TradeStateMachineExecutor {}
+impl StateMachineExecutor<Runtime, Error, TradeStateMachine> for TradeStateMachineExecutor {}
 
 impl TradeStateMachine {
     pub fn open_offer(&self) -> Option<PublicOffer> {
@@ -345,17 +352,10 @@ fn attempt_transition_to_make_offer(
             }
         }
         req => {
-            if let BusMsg::Ctl(Ctl::Hello) = req {
-                trace!(
-                    "BusMsg {} invalid for state start maker - invalidating.",
-                    req
-                );
-            } else {
-                warn!(
-                    "BusMsg {} invalid for state start maker - invalidating.",
-                    req
-                );
-            }
+            warn!(
+                "Request {} from {} invalid for state start maker - invalidating.",
+                req, event.source
+            );
             Ok(None)
         }
     }
@@ -441,17 +441,10 @@ fn attempt_transition_to_take_offer(
             }
         }
         req => {
-            if let BusMsg::Ctl(Ctl::Hello) = req {
-                trace!(
-                    "BusMsg {} invalid for state start restore - invalidating.",
-                    req
-                );
-            } else {
-                warn!(
-                    "BusMsg {} invalid for state start restore - invalidating.",
-                    req
-                );
-            }
+            warn!(
+                "Request {} from {} invalid for state start restore - invalidating.",
+                req, event.source,
+            );
             Ok(None)
         }
     }
@@ -529,17 +522,10 @@ fn attempt_transition_to_restoring_swapd(
             })))
         }
         req => {
-            if let BusMsg::Ctl(Ctl::Hello) = req {
-                trace!(
-                    "BusMsg {} invalid for state start restore - invalidating.",
-                    req
-                );
-            } else {
-                warn!(
-                    "BusMsg {} invalid for state start restore - invalidating.",
-                    req
-                );
-            }
+            warn!(
+                "Request {} from {} invalid for state start restore - invalidating.",
+                req, event.source,
+            );
             Ok(None)
         }
     }

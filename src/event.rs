@@ -2,7 +2,55 @@ use microservices::esb;
 
 use crate::bus::{BusMsg, ServiceBus};
 use crate::Endpoints;
+use crate::LogStyle;
 use crate::ServiceId;
+
+pub trait StateMachineExecutor<
+    Runtime: esb::Handler<ServiceBus>,
+    Error: std::error::Error,
+    T: StateMachine<Runtime, Error>,
+> where
+    esb::Error<ServiceId>: From<<Runtime as esb::Handler<ServiceBus>>::Error>,
+{
+    fn execute(
+        runtime: &mut Runtime,
+        endpoints: &mut Endpoints,
+        source: ServiceId,
+        request: BusMsg,
+        sm: T,
+    ) -> Result<Option<T>, Error> {
+        let event = Event::with(endpoints, runtime.identity(), source, request);
+        let sm_display = sm.to_string();
+        let sm_name = sm.name();
+        if let Some(new_sm) = sm.next(event, runtime)? {
+            let new_sm_display = new_sm.to_string();
+            // relegate state transitions staying the same to debug
+            if new_sm_display == sm_display {
+                debug!(
+                    "{} state self transition {}",
+                    sm_name,
+                    new_sm.bright_green_bold()
+                );
+            } else {
+                info!(
+                    "{} state transition {} -> {}",
+                    sm_name,
+                    sm_display.red_bold(),
+                    new_sm.bright_green_bold()
+                );
+            }
+            Ok(Some(new_sm))
+        } else {
+            info!(
+                "{} state machine ended {} -> {}",
+                sm_name,
+                sm_display.red_bold(),
+                "End".to_string().bright_green_bold()
+            );
+            Ok(None)
+        }
+    }
+}
 
 /// State machine used by runtimes for managing complex asynchronous workflows
 pub trait StateMachine<Runtime: esb::Handler<ServiceBus>, Error: std::error::Error>:
@@ -15,6 +63,8 @@ where
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error>
     where
         Self: Sized;
+
+    fn name(&self) -> String;
 }
 
 /// Event changing state machine state, consisting of a certain P2P or RPC `request` sent from some

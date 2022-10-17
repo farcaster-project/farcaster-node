@@ -7,7 +7,7 @@ use crate::{
     bus::sync::SyncMsg,
     bus::BusMsg,
     error::Error,
-    event::{Event, StateMachine},
+    event::{Event, StateMachine, StateMachineExecutor},
     syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
     ServiceId,
 };
@@ -78,7 +78,14 @@ impl StateMachine<Runtime, Error> for SyncerStateMachine {
             }
         }
     }
+
+    fn name(&self) -> String {
+        "Syncer".to_string()
+    }
 }
+
+pub struct SyncerStateMachineExecutor {}
+impl StateMachineExecutor<Runtime, Error, SyncerStateMachine> for SyncerStateMachineExecutor {}
 
 impl SyncerStateMachine {
     pub fn task_id(&self) -> Option<TaskId> {
@@ -173,7 +180,13 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
             }
         }
 
-        _ => Ok(None),
+        req => {
+            warn!(
+                "Request {} from {} invalid for state start - invalidating.",
+                req, event.source
+            );
+            Ok(None)
+        }
     }
 }
 
