@@ -34,6 +34,7 @@ use std::time::{Duration, SystemTime};
 use farcaster_core::blockchain::{Blockchain, Network};
 use microservices::esb::{self, Handler};
 use microservices::ZMQ_CONTEXT;
+use strict_encoding::{StrictDecode, StrictEncode};
 
 pub trait Synclet {
     fn run(
@@ -46,6 +47,13 @@ pub trait Synclet {
     ) -> Result<(), Error>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
 pub struct SyncerdTask {
     pub task: Task,
     pub source: ServiceId,
@@ -88,7 +96,7 @@ pub struct Runtime {
     identity: ServiceId,
     syncer: Box<dyn Synclet>,
     started: SystemTime,
-    tasks: HashSet<u64>, // FIXME
+    tasks: HashSet<SyncerdTask>,
     tx: Sender<SyncerdTask>,
 }
 
@@ -201,6 +209,7 @@ impl Runtime {
                     endpoints,
                     source,
                     Rpc::SyncerInfo(SyncerInfo {
+                        syncer: self.identity().to_string(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
                             .unwrap_or_else(|_| Duration::from_secs(0)),
@@ -238,10 +247,12 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             SyncMsg::Task(task) => {
-                match self.tx.send(SyncerdTask {
+                let t = SyncerdTask {
                     task: task.clone(),
                     source,
-                }) {
+                };
+                self.tasks.insert(t.clone());
+                match self.tx.send(t) {
                     Ok(()) => trace!("Task successfully sent to syncer runtime"),
                     Err(e) => error!("Failed to send task with error: {}", e.to_string()),
                 };

@@ -51,9 +51,9 @@ pub enum Command {
     /// General information about the running node
     #[display("info<{subject:?}>")]
     Info {
-        /// Remote peer address or temporary/permanent/short channel id. If
-        /// absent, returns information about the node itself
-        subject: Option<String>,
+        /// Remote peer address, swap id, or blockchain and network. If absent, returns information
+        /// about the node itself
+        subject: Vec<String>,
     },
 
     /// Lists existing peer connections
@@ -86,6 +86,16 @@ pub enum Command {
     /// Lists listeners created by daemon
     #[clap(aliases = &["ll"])]
     ListListens,
+
+    /// Lists tasks currently treated by a syncer
+    #[clap(aliases = &["lt"])]
+    ListTasks {
+        /// The blockchain for which we want to list the tasks
+        blockchain: Blockchain,
+
+        /// The network for which we want to list the tasks
+        network: Network,
+    },
 
     /// Lists saved checkpoints of the swaps
     #[clap(aliases = &["lc"])]

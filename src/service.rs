@@ -61,6 +61,11 @@ lazy_static! {
     StrictEncode,
     StrictDecode,
 )]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct ClientName([u8; 32]);
 
 impl Display for ClientName {
@@ -122,6 +127,11 @@ impl From<Opts> for ServiceConfig {
 
 /// Identifiers of daemons participating in LNP Node
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, From, StrictEncode, StrictDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum ServiceId {
     #[display("loopback")]
     Loopback,

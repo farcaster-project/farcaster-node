@@ -25,7 +25,12 @@ use microservices::shell::Exec;
 use clap::IntoApp;
 use clap_complete::generate;
 use clap_complete::shells::*;
-use farcaster_core::{blockchain::Network, negotiation::PublicOffer, role::SwapRole, swap::SwapId};
+use farcaster_core::{
+    blockchain::{Blockchain, Network},
+    negotiation::PublicOffer,
+    role::SwapRole,
+    swap::SwapId,
+};
 
 use super::Command;
 use crate::bus::BusMsg;
@@ -44,29 +49,37 @@ impl Exec for Command {
         debug!("Performing {:?}: {}", self, self);
         match self {
             Command::Info { subject } => {
-                if let Some(subj) = subject {
-                    if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                        runtime.request_rpc(ServiceId::Peer(node_addr), Rpc::GetInfo)?;
-                    } else if let Ok(swap_id) = SwapId::from_str(&subj) {
-                        runtime.request_rpc(ServiceId::Swap(swap_id), Rpc::GetInfo)?;
-                    } else {
-                        let err = format!(
-                            "{}",
-                            "Subject parameter must be either remote node \
-                            address or swap id"
-                                .err()
-                        );
-                        return Err(Error::Other(err));
+                let err = format!(
+                    "{}",
+                    "Subject parameter must be either remote node address, swap id, or syncer"
+                        .err()
+                );
+                match subject.len() {
+                    0 => runtime.request_rpc(ServiceId::Farcasterd, Rpc::GetInfo)?,
+                    1 => {
+                        let subj = subject.get(0).expect("vec of lenght 1");
+                        if let Ok(node_addr) = NodeAddr::from_str(&subj) {
+                            runtime.request_rpc(ServiceId::Peer(node_addr), Rpc::GetInfo)?;
+                        } else if let Ok(swap_id) = SwapId::from_str(&subj) {
+                            runtime.request_rpc(ServiceId::Swap(swap_id), Rpc::GetInfo)?;
+                        } else {
+                            return Err(Error::Other(err));
+                        }
                     }
-                } else {
-                    // subject is none
-                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::GetInfo)?;
+                    2 => {
+                        let blockchain =
+                            Blockchain::from_str(&subject.get(0).expect("vec of lenght 2"))?;
+                        let network = Network::from_str(&subject.get(1).expect("vec of lenght 2"))?;
+                        runtime
+                            .request_rpc(ServiceId::Syncer(blockchain, network), Rpc::GetInfo)?;
+                    }
+                    _ => return Err(Error::Other(err)),
                 }
                 match runtime.response()? {
                     BusMsg::Rpc(Rpc::NodeInfo(info)) => println!("{}", info),
                     BusMsg::Rpc(Rpc::PeerInfo(info)) => println!("{}", info),
                     BusMsg::Rpc(Rpc::SwapInfo(info)) => println!("{}", info),
-                    // TODO add syncer info
+                    BusMsg::Rpc(Rpc::SyncerInfo(info)) => println!("{}", info),
                     _ => {
                         return Err(Error::Other(
                             "Server returned unrecognizable response".to_string(),
@@ -88,6 +101,14 @@ impl Exec for Command {
             // TODO: only list offers matching list of OfferIds
             Command::ListOffers { select } => {
                 runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListOffers(select.into()))?;
+                runtime.report_response_or_fail()?;
+            }
+
+            Command::ListTasks {
+                blockchain,
+                network,
+            } => {
+                runtime.request_rpc(ServiceId::Syncer(blockchain, network), Rpc::ListTasks)?;
                 runtime.report_response_or_fail()?;
             }
 

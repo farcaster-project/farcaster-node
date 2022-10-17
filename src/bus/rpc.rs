@@ -13,6 +13,8 @@ use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, List, OfferStatusPair, OptionDetails, Progress,
 };
 use crate::cli::OfferSelector;
+use crate::farcasterd::stats::Stats;
+use crate::syncerd::runtime::SyncerdTask;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -123,7 +125,7 @@ pub enum Rpc {
     // - ListTasks section
     #[display(inner)]
     #[from]
-    TaskList(List<u64>),
+    TaskList(List<SyncerdTask>),
     // - End ListTasks section
 
     // - ListOffers section
@@ -205,7 +207,7 @@ impl StrictDecode for TookOffer {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
-#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -213,11 +215,11 @@ impl StrictDecode for TookOffer {
 )]
 #[display(SyncerInfo::to_yaml_string)]
 pub struct SyncerInfo {
+    pub syncer: String,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub tasks: Vec<u64>,
+    pub tasks: Vec<SyncerdTask>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -238,6 +240,8 @@ pub struct NodeInfo {
     pub swaps: Vec<SwapId>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub offers: Vec<PublicOffer>,
+    #[serde(alias = "statistics")]
+    pub stats: Stats,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
