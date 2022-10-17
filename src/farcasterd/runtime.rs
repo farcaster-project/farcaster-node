@@ -629,12 +629,7 @@ impl Runtime {
                 if respond_to == self.identity() {
                     continue;
                 }
-                trace!(
-                    "(#{}) Respond to {}: {}",
-                    i,
-                    respond_to.bright_yellow_bold(),
-                    resp.bright_blue_bold(),
-                );
+                trace!("(#{}) Respond to {}: {}", i, respond_to, resp,);
                 endpoints.send_to(
                     ServiceBus::Rpc,
                     self.identity(),
@@ -995,11 +990,7 @@ impl Runtime {
             return Ok(existing_peer.clone());
         }
 
-        debug!(
-            "{} to remote peer {}",
-            "Connecting".bright_blue_bold(),
-            node_addr.bright_blue_italic()
-        );
+        debug!("{} to remote peer {}", "Connecting", node_addr);
 
         // Start peerd
         let child = launch(
