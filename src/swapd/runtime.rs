@@ -188,39 +188,42 @@ impl PendingRequestsT for PendingRequests {
     ) -> bool {
         let success = if let Some(pending_reqs) = runtime.pending_requests.remove(&key) {
             let len0 = pending_reqs.len();
-            let remaining_pending_reqs: Vec<_> =
-                pending_reqs
-                    .into_iter()
-                    .filter_map(|r| {
-                        if predicate(&r) {
-                            if let Ok(_) = match (&r.bus_id, &r.request) {
-                                (ServiceBus::Ctl, _) if &r.dest == &runtime.identity => runtime
-                                    .handle_ctl(endpoints, r.source.clone(), r.request.clone()),
-                                (ServiceBus::Msg, _) if &r.dest == &runtime.identity => runtime
-                                    .handle_msg(endpoints, r.source.clone(), r.request.clone()),
-                                (ServiceBus::Sync, BusMsg::Sync(sync))
-                                    if &r.dest == &runtime.identity =>
-                                {
-                                    runtime.handle_sync(endpoints, r.source.clone(), sync.clone())
-                                }
-                                (_, _) => endpoints
-                                    .send_to(
-                                        r.bus_id.clone(),
-                                        r.source.clone(),
-                                        r.dest.clone(),
-                                        r.request.clone(),
-                                    )
-                                    .map_err(Into::into),
-                            } {
-                                None
-                            } else {
-                                Some(r)
+            let remaining_pending_reqs: Vec<_> = pending_reqs
+                .into_iter()
+                .filter_map(|r| {
+                    if predicate(&r) {
+                        if let Ok(_) = match (&r.bus_id, &r.request) {
+                            (ServiceBus::Ctl, _) if &r.dest == &runtime.identity => {
+                                runtime.handle_ctl(endpoints, r.source.clone(), r.request.clone())
                             }
+                            (ServiceBus::Msg, BusMsg::P2p(peer))
+                                if &r.dest == &runtime.identity =>
+                            {
+                                runtime.handle_msg(endpoints, r.source.clone(), peer.clone())
+                            }
+                            (ServiceBus::Sync, BusMsg::Sync(sync))
+                                if &r.dest == &runtime.identity =>
+                            {
+                                runtime.handle_sync(endpoints, r.source.clone(), sync.clone())
+                            }
+                            (_, _) => endpoints
+                                .send_to(
+                                    r.bus_id.clone(),
+                                    r.source.clone(),
+                                    r.dest.clone(),
+                                    r.request.clone(),
+                                )
+                                .map_err(Into::into),
+                        } {
+                            None
                         } else {
                             Some(r)
                         }
-                    })
-                    .collect();
+                    } else {
+                        Some(r)
+                    }
+                })
+                .collect();
             let len1 = remaining_pending_reqs.len();
             runtime.pending_requests.insert(key, remaining_pending_reqs);
             if len0 - len1 > 1 {
@@ -438,13 +441,13 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            // Peer-to-peer message bus
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            // Peer-to-peer message bus, only accept peer message
+            (ServiceBus::Msg, BusMsg::P2p(req)) => self.handle_msg(endpoints, source, req),
             // Control bus for issuing control commands
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // RPC command bus, only accept BusMsg::Info
+            // Info command bus, only accept Info message
             (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
-            // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
+            // Syncer event bus for blockchain tasks and events, only accept Sync message
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
             // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
@@ -535,34 +538,26 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: PeerMsg,
     ) -> Result<(), Error> {
+        // check if message are from consistent peer source
         if self.peer_service != source {
             return Err(Error::Farcaster(format!(
-                "{}: expected {}, found {}",
-                "Incorrect peer connection", self.peer_service, source
+                "Incorrect peer connection: expected {}, found {}",
+                self.peer_service, source
             )));
         }
-        let msg = match &request {
-            BusMsg::P2p(msg) => {
-                if msg.swap_id() != self.swap_id() {
-                    return Err(Error::Farcaster(format!(
-                        "{}: expected {}, found {}",
-                        "Incorrect swap_id ",
-                        self.swap_id(),
-                        msg.swap_id(),
-                    )));
-                } else {
-                    msg
-                }
-            }
-            _ => {
-                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.to_string()));
-            }
-        };
-        let msg_bus = ServiceBus::Msg;
-        match &msg {
+
+        // check if message swap id matches internal swap id
+        if request.swap_id() != self.swap_id() {
+            return Err(Error::Farcaster(format!(
+                "Incorrect swap id: expected {}, found {}",
+                self.swap_id(),
+                request.swap_id(),
+            )));
+        }
+
+        match &request {
             // we are taker and the maker committed, now we reveal after checking
             // whether we're Bob or Alice and that we're on a compatible state
             PeerMsg::MakerCommit(remote_commit)
@@ -591,14 +586,14 @@ impl Runtime {
                     }
                 }
 
-                self.send_wallet(msg_bus, endpoints, request)?;
+                self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?;
             }
+
             PeerMsg::TakerCommit(_) => {
-                unreachable!(
-                    "msg handled by farcasterd/walletd, and indirectly here by \
-                             Ctl BusMsg::MakeSwap"
-                )
+                // msg handled by farcasterd/walletd, and indirectly here by Ctl BusMsg::MakeSwap
+                unreachable!()
             }
+
             PeerMsg::Reveal(Reveal::Proof(_)) => {
                 // These messages are saved as pending if Bob and then forwarded once the
                 // parameter reveal forward is triggered. If Alice, send immediately.
@@ -608,7 +603,7 @@ impl Runtime {
                             self.identity(),
                             ServiceId::Wallet,
                             ServiceBus::Msg,
-                            request,
+                            BusMsg::P2p(request),
                         );
 
                         self.pending_requests
@@ -622,10 +617,11 @@ impl Runtime {
                             &ServiceId::Wallet,
                             &ServiceBus::Msg
                         );
-                        self.send_wallet(msg_bus, endpoints, request)?
+                        self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?
                     }
                 }
             }
+
             PeerMsg::Reveal(Reveal::AliceParameters(..))
                 if self.state.swap_role() == SwapRole::Bob
                     && (self.state.b_address().is_none()
@@ -640,10 +636,16 @@ impl Runtime {
                     "Deferring request {} for when btc_fee_estimate available, then recurse in the runtime",
                     &request
                 );
-                let pending_req = PendingRequest::new(source, self.identity(), msg_bus, request);
+                let pending_req = PendingRequest::new(
+                    source,
+                    self.identity(),
+                    ServiceBus::Msg,
+                    BusMsg::P2p(request),
+                );
                 self.pending_requests
                     .defer_request(self.syncer_state.bitcoin_syncer(), pending_req);
             }
+
             // bob and alice
             // store parameters from counterparty if we have not received them yet.
             // if we're maker, also reveal to taker if their commitment is valid.
@@ -688,7 +690,7 @@ impl Runtime {
                             &ServiceId::Wallet,
                             &ServiceBus::Msg
                         );
-                        self.send_wallet(msg_bus, endpoints, request)?
+                        self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?
                     }
                     SwapRole::Bob
                         if self.syncer_state.btc_fee_estimate_sat_per_kvb.is_some()
@@ -704,8 +706,8 @@ impl Runtime {
                         let pending_req = PendingRequest::new(
                             self.identity(),
                             ServiceId::Wallet,
-                            msg_bus,
-                            request,
+                            ServiceBus::Msg,
+                            BusMsg::P2p(request),
                         );
                         self.pending_requests
                             .defer_request(ServiceId::Wallet, pending_req);
@@ -734,6 +736,7 @@ impl Runtime {
                     }
                 }
             }
+
             // alice receives, bob sends
             PeerMsg::CoreArbitratingSetup(CoreArbitratingSetup {
                 lock,
@@ -767,13 +770,15 @@ impl Runtime {
                         self.syncer_state.tasks.txids.insert(TxLabel::Refund, txid);
                     }
                 }
-                self.send_wallet(msg_bus, endpoints, request)?;
+                self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?;
             }
+
             // bob receives, alice sends
             PeerMsg::RefundProcedureSignatures(_) if self.state.b_core_arb() => {
                 self.state.sup_received_refund_procedure_signatures();
-                self.send_wallet(msg_bus, endpoints, request)?;
+                self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?;
             }
+
             // alice receives, bob sends
             PeerMsg::BuyProcedureSignature(buy_proc_sig)
                 if self.state.a_refundsig() && !self.state.a_overfunded() =>
@@ -814,21 +819,26 @@ impl Runtime {
                     )?;
                 }
 
-                self.send_wallet(msg_bus, endpoints, request)?
+                self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?
             }
 
             // bob and alice
             PeerMsg::Abort(_) => {
                 return Err(Error::Farcaster("Abort not yet supported".to_string()))
             }
+
             PeerMsg::Ping(_) | PeerMsg::Pong(_) | PeerMsg::PingPeer => {
                 unreachable!("ping/pong must remain in peerd, and unreachable in swapd")
             }
+
             request => error!(
-                "request {} not supported at msg bus at state {}",
-                request, self.state
+                "{} | Request {} not supported at state {}",
+                self.swap_id.swap_id(),
+                request,
+                self.state
             ),
         }
+
         Ok(())
     }
 
