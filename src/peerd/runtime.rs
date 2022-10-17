@@ -374,8 +374,8 @@ impl Runtime {
             let swap_id = message.swap_id();
             info!(
                 "{} | Sent the {} protocol message",
-                swap_id.bright_blue_italic(),
-                message.bright_white_bold()
+                swap_id.swap_id(),
+                message.label()
             );
         }
 
@@ -390,7 +390,7 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             Ctl::Terminate if source == ServiceId::Farcasterd => {
-                info!("Terminating {}", self.identity().bright_white_bold());
+                info!("Terminating {}", self.identity().label());
                 std::process::exit(0);
             }
 
@@ -553,8 +553,8 @@ impl Runtime {
                 let swap_id = msg.swap_id();
                 info!(
                     "{} | Received the {} protocol message",
-                    swap_id.bright_blue_italic(),
-                    msg.bright_white_bold()
+                    swap_id.swap_id(),
+                    msg.label()
                 );
                 endpoints.send_to(
                     ServiceBus::Msg,

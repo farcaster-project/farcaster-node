@@ -93,7 +93,7 @@ pub fn run(
     info!(
         "{} | Initial state: {}",
         swap_id.swap_id(),
-        init_state.bright_white_bold()
+        init_state.label()
     );
 
     let temporal_safety = TemporalSafety {
@@ -505,8 +505,8 @@ impl Runtime {
         info!(
             "{} | State transition: {} -> {}",
             self.swap_id.swap_id(),
-            self.state.bright_white_bold(),
-            next_state.bright_white_bold(),
+            self.state.label(),
+            next_state.label(),
         );
         let msg = format!("{} -> {}", self.state, next_state,);
         self.state = next_state;
@@ -872,7 +872,7 @@ impl Runtime {
                 info!(
                     "{} | {}",
                     self.swap_id.swap_id(),
-                    format!("Terminating {}", self.identity()).bright_white_bold()
+                    format!("Terminating {}", self.identity()).label()
                 );
                 std::process::exit(0);
             }
@@ -1711,7 +1711,7 @@ impl Runtime {
                             info!(
                                 "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
                                 self.swap_id.swap_id(),
-                                self.syncer_state.monero_height.bright_white_bold()
+                                self.syncer_state.monero_height.label()
                             );
                             endpoints.send_to(bus_id, self.identity(), dest, request)?;
                         } else {
@@ -2425,8 +2425,8 @@ impl Runtime {
                             tx_label => trace!(
                                 "{} | Tx {} with {} confirmations evokes no response in state {}",
                                 self.swap_id.swap_id(),
-                                tx_label.bright_white_bold(),
-                                confirmations,
+                                tx_label.label(),
+                                confirmations.label(),
                                 &self.state
                             ),
                         }
@@ -2552,7 +2552,7 @@ impl Runtime {
             swap_id.swap_id(),
             amount.bright_green_bold(),
             address.addr(),
-            total_fees.bright_white_bold(),
+            total_fees.label(),
         );
         self.state.b_sup_required_funding_amount(amount);
         let req = BusMsg::Ctl(Ctl::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {

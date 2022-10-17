@@ -200,7 +200,7 @@ impl Runtime {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} is now {}",
-                    source.bright_white_bold(),
+                    source.label(),
                     "connected".bright_green_bold()
                 );
 
