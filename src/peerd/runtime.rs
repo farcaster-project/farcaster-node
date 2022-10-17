@@ -33,7 +33,12 @@ use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 use microservices::ZMQ_CONTEXT;
 
-use crate::bus::{ctl::CtlMsg, p2p::P2pMsg, rpc::PeerInfo, rpc::Rpc, BusMsg, ServiceBus};
+use crate::bus::{
+    ctl::CtlMsg,
+    info::{InfoMsg, PeerInfo},
+    p2p::P2pMsg,
+    BusMsg, ServiceBus,
+};
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]
@@ -405,10 +410,10 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
         match request {
-            Rpc::GetInfo => {
+            InfoMsg::GetInfo => {
                 let info = PeerInfo {
                     local_id: self.local_node.node_id(),
                     remote_id: self
@@ -433,7 +438,7 @@ impl Runtime {
                     forked_from_listener: self.forked_from_listener,
                     awaits_pong: self.awaited_pong.is_some(),
                 };
-                self.send_client_rpc(endpoints, source, Rpc::PeerInfo(info))?;
+                self.send_client_info(endpoints, source, InfoMsg::PeerInfo(info))?;
             }
 
             req => {

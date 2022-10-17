@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::bus::ctl::CtlMsg;
-use crate::bus::rpc::Rpc;
+use crate::bus::info::InfoMsg;
 use crate::bus::sync::SyncMsg;
 use crate::bus::BusMsg;
 use crate::bus::{Failure, Progress, ServiceBus};
@@ -460,11 +460,11 @@ where
         Ok(())
     }
 
-    fn send_client_rpc(
+    fn send_client_info(
         &mut self,
         senders: &mut Endpoints,
         dest: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
         let bus = ServiceBus::Info;
         if let ServiceId::GrpcdClient(_) = dest {

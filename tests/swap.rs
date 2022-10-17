@@ -4,7 +4,7 @@ extern crate log;
 use bitcoincore_rpc::RpcApi;
 use farcaster_core::swap::SwapId;
 use farcaster_node::bus::ctl::{BitcoinFundingInfo, MoneroFundingInfo};
-use farcaster_node::bus::rpc::NodeInfo;
+use farcaster_node::bus::info::NodeInfo;
 use farcaster_node::bus::CheckpointEntry;
 use futures::future::join_all;
 use std::collections::HashSet;

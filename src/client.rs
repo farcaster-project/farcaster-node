@@ -18,7 +18,7 @@ use std::time::Duration;
 use internet2::ZmqSocketType;
 use microservices::esb;
 
-use crate::bus::{ctl::CtlMsg, rpc::Rpc, BusMsg, ServiceBus};
+use crate::bus::{ctl::CtlMsg, info::InfoMsg, BusMsg, ServiceBus};
 use crate::service::Endpoints;
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
@@ -72,7 +72,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn request_rpc(&mut self, daemon: ServiceId, req: Rpc) -> Result<(), Error> {
+    pub fn request_info(&mut self, daemon: ServiceId, req: InfoMsg) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb
             .send_to(ServiceBus::Info, daemon, BusMsg::Info(req))?;

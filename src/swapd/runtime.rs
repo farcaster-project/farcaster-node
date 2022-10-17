@@ -28,8 +28,8 @@ use crate::{
         BitcoinFundingInfo, Checkpoint, CheckpointState, CtlMsg, FundingInfo, InitSwap,
         MoneroFundingInfo, Params, Tx,
     },
+    bus::info::{InfoMsg, SwapInfo},
     bus::p2p::{Commit, P2pMsg, Reveal, TakeCommit},
-    bus::rpc::{Rpc, SwapInfo},
     bus::sync::SyncMsg,
     bus::{BusMsg, Failure, FailureCode, Outcome, ServiceBus},
     syncerd::{
@@ -1333,7 +1333,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Info(Rpc::String("Aborted swap".to_string())),
+                        BusMsg::Info(InfoMsg::String("Aborted swap".to_string())),
                     )?;
                 }
             }
@@ -1345,7 +1345,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Info(Rpc::String("Aborted swap".to_string())),
+                        BusMsg::Info(InfoMsg::String("Aborted swap".to_string())),
                     )?;
                 }
             }
@@ -1368,7 +1368,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Info(Rpc::String(
+                        BusMsg::Info(InfoMsg::String(
                             "Aborting swap, checking if funds can be sweeped.".to_string(),
                         )),
                     )?;
@@ -1382,7 +1382,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Info(Rpc::Failure(Failure {
+                        BusMsg::Info(InfoMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: msg,
                         })),
@@ -1504,10 +1504,10 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
         match request {
-            Rpc::GetInfo => {
+            InfoMsg::GetInfo => {
                 let swap_id = if self.swap_id() == zero!() {
                     None
                 } else {
@@ -1527,7 +1527,7 @@ impl Runtime {
                         .as_secs(),
                     public_offer: self.public_offer.clone(),
                 };
-                self.send_client_rpc(endpoints, source, Rpc::SwapInfo(info))?;
+                self.send_client_info(endpoints, source, InfoMsg::SwapInfo(info))?;
             }
 
             req => {

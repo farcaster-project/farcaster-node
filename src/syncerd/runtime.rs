@@ -14,7 +14,7 @@
 
 use crate::bus::{
     ctl::CtlMsg,
-    rpc::{Rpc, SyncerInfo},
+    info::{InfoMsg, SyncerInfo},
     sync::SyncMsg,
     BusMsg, ServiceBus,
 };
@@ -201,14 +201,14 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
         match request {
-            Rpc::GetInfo => {
-                self.send_client_rpc(
+            InfoMsg::GetInfo => {
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::SyncerInfo(SyncerInfo {
+                    InfoMsg::SyncerInfo(SyncerInfo {
                         syncer: self.identity().to_string(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -223,11 +223,11 @@ impl Runtime {
                 )?;
             }
 
-            Rpc::ListTasks => {
-                self.send_client_rpc(
+            InfoMsg::ListTasks => {
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::TaskList(self.tasks.iter().cloned().collect()),
+                    InfoMsg::TaskList(self.tasks.iter().cloned().collect()),
                 )?;
             }
 

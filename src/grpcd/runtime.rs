@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 
-use crate::bus::{ctl::CtlMsg, rpc::Rpc};
+use crate::bus::{ctl::CtlMsg, info::InfoMsg};
 use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
@@ -81,7 +81,7 @@ impl Farcaster for FarcasterService {
 
         if let Err(error) = self
             .tokio_tx_request
-            .send((id, BusMsg::Info(Rpc::GetInfo)))
+            .send((id, BusMsg::Info(InfoMsg::GetInfo)))
             .await
         {
             return Err(Status::internal(format!("{}", error)));
@@ -92,7 +92,7 @@ impl Farcaster for FarcasterService {
         pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
         match oneshot_rx.await {
-            Ok(BusMsg::Info(Rpc::NodeInfo(info))) => {
+            Ok(BusMsg::Info(InfoMsg::NodeInfo(info))) => {
                 let reply = farcaster::InfoResponse {
                     id: request.into_inner().id,
                     listens: info

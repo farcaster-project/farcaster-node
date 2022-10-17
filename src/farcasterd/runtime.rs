@@ -15,7 +15,6 @@
 
 use crate::bus::ctl::{BitcoinFundingInfo, CtlMsg, GetKeys, MoneroFundingInfo};
 use crate::bus::p2p::{P2pMsg, TakeCommit};
-use crate::bus::rpc::NodeInfo;
 use crate::bus::sync::SyncMsg;
 use crate::bus::{BusMsg, List, ServiceBus};
 use crate::event::StateMachineExecutor;
@@ -26,7 +25,7 @@ use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
-    bus::rpc::{OfferInfo, OfferStatusSelector, ProgressEvent, Rpc, SwapProgress},
+    bus::info::{InfoMsg, NodeInfo, OfferInfo, OfferStatusSelector, ProgressEvent, SwapProgress},
     bus::{Failure, FailureCode, Progress},
     clap::Parser,
     error::SyncerError,
@@ -353,16 +352,16 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
-        let mut report_to: Vec<(Option<ServiceId>, Rpc)> = none!();
+        let mut report_to: Vec<(Option<ServiceId>, InfoMsg)> = none!();
 
         match request {
-            Rpc::GetInfo => {
-                self.send_client_rpc(
+            InfoMsg::GetInfo => {
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::NodeInfo(NodeInfo {
+                    InfoMsg::NodeInfo(NodeInfo {
                         listens: self.listens.iter().into_iter().cloned().collect(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -388,19 +387,19 @@ impl Runtime {
                 )?;
             }
 
-            Rpc::ListPeers => {
-                self.send_client_rpc(
+            InfoMsg::ListPeers => {
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::PeerList(self.get_open_connections().into()),
+                    InfoMsg::PeerList(self.get_open_connections().into()),
                 )?;
             }
 
-            Rpc::ListSwaps => {
-                self.send_client_rpc(
+            InfoMsg::ListSwaps => {
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::SwapList(
+                    InfoMsg::SwapList(
                         self.trade_state_machines
                             .iter()
                             .filter_map(|tsm| tsm.swap_id())
@@ -409,7 +408,7 @@ impl Runtime {
                 )?;
             }
 
-            Rpc::ListOffers(ref offer_status_selector) => {
+            InfoMsg::ListOffers(ref offer_status_selector) => {
                 match offer_status_selector {
                     OfferStatusSelector::Open => {
                         let open_offers = self
@@ -421,7 +420,7 @@ impl Runtime {
                                 details: offer.clone(),
                             })
                             .collect();
-                        self.send_client_rpc(endpoints, source, Rpc::OfferList(open_offers))?;
+                        self.send_client_info(endpoints, source, InfoMsg::OfferList(open_offers))?;
                     }
                     OfferStatusSelector::InProgress => {
                         let pub_offers = self
@@ -433,7 +432,7 @@ impl Runtime {
                                 details: offer.clone(),
                             })
                             .collect();
-                        self.send_client_rpc(endpoints, source, Rpc::OfferList(pub_offers))?;
+                        self.send_client_info(endpoints, source, InfoMsg::OfferList(pub_offers))?;
                     }
                     _ => {
                         // Forward the request to database service
@@ -447,14 +446,14 @@ impl Runtime {
                 };
             }
 
-            Rpc::ListListens => {
+            InfoMsg::ListListens => {
                 let listen_url: List<String> =
                     List::from_iter(self.listens.clone().iter().map(|listen| listen.to_string()));
-                self.send_client_rpc(endpoints, source, Rpc::ListenList(listen_url))?;
+                self.send_client_info(endpoints, source, InfoMsg::ListenList(listen_url))?;
             }
 
             // Returns a unique response that contains the complete progress queue
-            Rpc::ReadProgress(swap_id) => {
+            InfoMsg::ReadProgress(swap_id) => {
                 if let Some(queue) = self.progress.get_mut(&ServiceId::Swap(swap_id)) {
                     let mut swap_progress = SwapProgress { progress: vec![] };
                     for req in queue.iter() {
@@ -481,7 +480,7 @@ impl Runtime {
                             }
                         };
                     }
-                    report_to.push((Some(source.clone()), Rpc::SwapProgress(swap_progress)));
+                    report_to.push((Some(source.clone()), InfoMsg::SwapProgress(swap_progress)));
                 } else {
                     let info = if self.running_swaps_contain(&swap_id) {
                         s!("No progress made yet on this swap")
@@ -490,7 +489,7 @@ impl Runtime {
                     };
                     report_to.push((
                         Some(source.clone()),
-                        Rpc::Failure(Failure {
+                        InfoMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info,
                         }),
@@ -500,7 +499,7 @@ impl Runtime {
 
             // Add the request's source to the subscription list for later progress notifications
             // and send all notifications already in the queue
-            Rpc::SubscribeProgress(swap_id) => {
+            InfoMsg::SubscribeProgress(swap_id) => {
                 let service = ServiceId::Swap(swap_id);
                 // if the swap is known either in the tsm's or progress, attach the client
                 // otherwise terminate
@@ -528,9 +527,9 @@ impl Runtime {
                             report_to.push((
                                 Some(source.clone()),
                                 match req.clone() {
-                                    ProgressStack::Progress(p) => Rpc::Progress(p),
-                                    ProgressStack::Success(s) => Rpc::Success(s),
-                                    ProgressStack::Failure(f) => Rpc::Failure(f),
+                                    ProgressStack::Progress(p) => InfoMsg::Progress(p),
+                                    ProgressStack::Success(s) => InfoMsg::Success(s),
+                                    ProgressStack::Failure(f) => InfoMsg::Failure(f),
                                 },
                             ));
                         }
@@ -539,7 +538,7 @@ impl Runtime {
                     // no swap service exists, terminate
                     report_to.push((
                         Some(source.clone()),
-                        Rpc::Failure(Failure {
+                        InfoMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: "Unknown swapd".to_string(),
                         }),
@@ -548,7 +547,7 @@ impl Runtime {
             }
 
             // Remove the request's source from the subscription list of notifications
-            Rpc::UnsubscribeProgress(swap_id) => {
+            InfoMsg::UnsubscribeProgress(swap_id) => {
                 let service = ServiceId::Swap(swap_id);
                 if let Some(subscribed) = self.progress_subscriptions.get_mut(&service) {
                     // we don't care if the source was not in the set
@@ -566,7 +565,7 @@ impl Runtime {
                 // if no swap service exists no subscription need to be removed
             }
 
-            Rpc::NeedsFunding(Blockchain::Monero) => {
+            InfoMsg::NeedsFunding(Blockchain::Monero) => {
                 let funding_infos: Vec<MoneroFundingInfo> = self
                     .trade_state_machines
                     .iter()
@@ -588,11 +587,11 @@ impl Runtime {
                     ServiceBus::Info,
                     self.identity(),
                     source,
-                    BusMsg::Info(Rpc::String(res)),
+                    BusMsg::Info(InfoMsg::String(res)),
                 )?;
             }
 
-            Rpc::NeedsFunding(Blockchain::Bitcoin) => {
+            InfoMsg::NeedsFunding(Blockchain::Bitcoin) => {
                 let funding_infos: Vec<BitcoinFundingInfo> = self
                     .trade_state_machines
                     .iter()
@@ -614,7 +613,7 @@ impl Runtime {
                     ServiceBus::Info,
                     self.identity(),
                     source,
-                    BusMsg::Info(Rpc::String(res)),
+                    BusMsg::Info(InfoMsg::String(res)),
                 )?;
             }
 

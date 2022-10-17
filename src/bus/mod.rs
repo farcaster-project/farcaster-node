@@ -13,8 +13,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 pub mod ctl;
+pub mod info;
 pub mod p2p;
-pub mod rpc;
 pub mod sync;
 mod types;
 
@@ -25,8 +25,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 
 use crate::bus::ctl::CtlMsg;
+use crate::bus::info::InfoMsg;
 use crate::bus::p2p::P2pMsg;
-use crate::bus::rpc::Rpc;
 use crate::bus::sync::SyncMsg;
 use crate::ServiceId;
 
@@ -84,7 +84,7 @@ pub enum BusMsg {
     #[api(type = 3)]
     #[display(inner)]
     #[from]
-    Info(Rpc),
+    Info(InfoMsg),
 
     /// Wrapper for inner type of syncer messages to be transmitted over the syncer bus
     #[api(type = 4)]

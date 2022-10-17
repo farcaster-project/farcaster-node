@@ -12,7 +12,7 @@ use bitcoin::secp256k1::SecretKey;
 
 use crate::bus::{
     ctl::{Checkpoint, CheckpointState, CtlMsg},
-    rpc::{Address, OfferStatusSelector, Rpc},
+    info::{Address, InfoMsg, OfferStatusSelector},
     AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
     OfferStatusPair, ServiceBus,
 };
@@ -236,19 +236,19 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
         match request {
-            Rpc::ListOffers(selector) => {
+            InfoMsg::ListOffers(selector) => {
                 let offer_status_pairs = self.database.get_offers(selector)?;
-                self.send_client_rpc(
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::OfferStatusList(offer_status_pairs.into()),
+                    InfoMsg::OfferStatusList(offer_status_pairs.into()),
                 )?;
             }
 
-            Rpc::RetrieveAllCheckpointInfo => {
+            InfoMsg::RetrieveAllCheckpointInfo => {
                 let pairs = self.database.get_checkpoint_key_value_pairs()?;
                 let checkpointed_pub_offers: List<CheckpointEntry> = pairs
                     .iter()
@@ -289,11 +289,11 @@ impl Runtime {
                     ServiceBus::Info,
                     self.identity(),
                     source,
-                    BusMsg::Info(Rpc::CheckpointList(checkpointed_pub_offers)),
+                    BusMsg::Info(InfoMsg::CheckpointList(checkpointed_pub_offers)),
                 )?;
             }
 
-            Rpc::GetCheckpointEntry(swap_id) => {
+            InfoMsg::GetCheckpointEntry(swap_id) => {
                 let entry = match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -325,7 +325,7 @@ impl Runtime {
                         ServiceBus::Info,
                         self.identity(),
                         source,
-                        BusMsg::Info(Rpc::CheckpointEntry(entry)),
+                        BusMsg::Info(InfoMsg::CheckpointEntry(entry)),
                     )?;
                 } else {
                     endpoints.send_to(
@@ -340,7 +340,7 @@ impl Runtime {
                 }
             }
 
-            Rpc::GetAddressSecretKey(Address::Monero(address)) => {
+            InfoMsg::GetAddressSecretKey(Address::Monero(address)) => {
                 match self.database.get_monero_address_secret_key(&address) {
                     Err(_) => endpoints.send_to(
                         ServiceBus::Ctl,
@@ -356,7 +356,7 @@ impl Runtime {
                             ServiceBus::Info,
                             ServiceId::Database,
                             source,
-                            BusMsg::Info(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                            BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
                                 address,
                                 view: secret_key_pair.view.as_bytes().try_into().unwrap(),
                                 spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
@@ -366,7 +366,7 @@ impl Runtime {
                 }
             }
 
-            Rpc::GetAddressSecretKey(Address::Bitcoin(address)) => {
+            InfoMsg::GetAddressSecretKey(Address::Bitcoin(address)) => {
                 match self.database.get_bitcoin_address_secret_key(&address) {
                     Err(_) => endpoints.send_to(
                         ServiceBus::Ctl,
@@ -382,7 +382,7 @@ impl Runtime {
                             ServiceBus::Info,
                             ServiceId::Database,
                             source,
-                            BusMsg::Info(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                            BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
                                 address,
                                 secret_key,
                             })),
@@ -391,23 +391,23 @@ impl Runtime {
                 }
             }
 
-            Rpc::GetAddresses(Blockchain::Bitcoin) => {
+            InfoMsg::GetAddresses(Blockchain::Bitcoin) => {
                 let addresses = self.database.get_all_bitcoin_addresses()?;
                 endpoints.send_to(
                     ServiceBus::Info,
                     ServiceId::Database,
                     source,
-                    BusMsg::Info(Rpc::BitcoinAddressList(addresses.into())),
+                    BusMsg::Info(InfoMsg::BitcoinAddressList(addresses.into())),
                 )?;
             }
 
-            Rpc::GetAddresses(Blockchain::Monero) => {
+            InfoMsg::GetAddresses(Blockchain::Monero) => {
                 let addresses = self.database.get_all_monero_addresses()?;
                 endpoints.send_to(
                     ServiceBus::Info,
                     ServiceId::Database,
                     source,
-                    BusMsg::Info(Rpc::MoneroAddressList(addresses.into())),
+                    BusMsg::Info(InfoMsg::MoneroAddressList(addresses.into())),
                 )?;
             }
 

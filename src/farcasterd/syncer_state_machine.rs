@@ -3,7 +3,7 @@ use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
     bus::ctl::CtlMsg,
-    bus::rpc::Rpc,
+    bus::info::InfoMsg,
     bus::sync::SyncMsg,
     bus::BusMsg,
     error::Error,
@@ -258,7 +258,7 @@ fn attempt_transition_to_end(
             {
                 event.send_info_service(
                     source,
-                    BusMsg::Info(Rpc::String(format!(
+                    BusMsg::Info(InfoMsg::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
                         txid.to_hex()
                     ))),
@@ -266,7 +266,7 @@ fn attempt_transition_to_end(
             } else {
                 event.send_info_service(
                     source,
-                    BusMsg::Info(Rpc::String("Nothing to sweep.".to_string())),
+                    BusMsg::Info(InfoMsg::String("Nothing to sweep.".to_string())),
                 )?;
             }
 
