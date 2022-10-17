@@ -214,6 +214,7 @@ impl PeerReceiverRuntime {
 
 impl peer::Handler<PeerMsg> for PeerReceiverRuntime {
     type Error = crate::Error;
+
     fn handle(
         &mut self,
         message: <Unmarshaller<PeerMsg> as Unmarshall>::Data,

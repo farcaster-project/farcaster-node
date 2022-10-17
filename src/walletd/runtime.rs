@@ -292,10 +292,8 @@ impl esb::Handler<ServiceBus> for Runtime {
         match (bus, request) {
             // Peer-to-peer message bus
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
-            // Control bus for issuing control commands
-            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // Syncer event bus for blockchain tasks and events
-            (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
+            // Control bus for issuing control commands, only accept Ctl message
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
             // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
@@ -354,6 +352,7 @@ impl Runtime {
                 return Ok(());
             }
         }
+
         match request {
             BusMsg::Ctl(CtlMsg::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
@@ -386,6 +385,7 @@ impl Runtime {
                     )
                 };
             }
+
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
@@ -517,6 +517,7 @@ impl Runtime {
                     }
                 }
             }
+
             BusMsg::P2p(PeerMsg::MakerCommit(commit)) => {
                 let req_swap_id = req_swap_id.expect("validated previously");
                 match commit {
@@ -575,6 +576,7 @@ impl Runtime {
                     }))),
                 )?;
             }
+
             BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(proof))) => {
                 let swap_id = get_swap_id(&source)?;
                 let wallet = self.wallets.get_mut(&swap_id);
@@ -599,6 +601,7 @@ impl Runtime {
                     ),
                 }
             }
+
             BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
                 let swap_id = get_swap_id(&source)?;
                 match reveal {
@@ -822,6 +825,7 @@ impl Runtime {
                     }
                 }
             }
+
             BusMsg::P2p(PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures {
                 swap_id: _,
                 cancel_sig: alice_cancel_sig,
@@ -967,6 +971,7 @@ impl Runtime {
                     error!("{} | Unknown wallet and swap_id", swap_id.swap_id(),);
                 }
             }
+
             BusMsg::P2p(PeerMsg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
@@ -1108,6 +1113,7 @@ impl Runtime {
                     error!("{} | only Some(Wallet::Alice)", swap_id.swap_id(),);
                 }
             }
+
             BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_proc_sig)) => {
                 let BuyProcedureSignature { swap_id, .. } = buy_proc_sig;
                 trace!("wallet received buyproceduresignature");
@@ -1195,6 +1201,7 @@ impl Runtime {
                     error!("{} | could not get alice's wallet", swap_id.swap_id(),)
                 }
             }
+
             req => {
                 error!(
                     "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}, {:?}",
@@ -1202,6 +1209,7 @@ impl Runtime {
                 )
             }
         }
+
         Ok(())
     }
 
@@ -1209,10 +1217,10 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(CtlMsg::Hello) => match &source {
+            CtlMsg::Hello => match &source {
                 ServiceId::Swap(swap_id) => {
                     if let Some(option_req) = self.swaps.get_mut(swap_id) {
                         trace!("Known swapd, you launched it");
@@ -1228,11 +1236,11 @@ impl Runtime {
                 }
             },
 
-            BusMsg::Ctl(CtlMsg::TakeOffer(ctl::PubOffer {
+            CtlMsg::TakeOffer(ctl::PubOffer {
                 public_offer,
                 external_address,
                 internal_address,
-            })) if source == ServiceId::Farcasterd => {
+            }) if source == ServiceId::Farcasterd => {
                 let PublicOffer { offer, .. } = public_offer.clone();
 
                 let swap_id: SwapId = SwapId::random();
@@ -1343,7 +1351,7 @@ impl Runtime {
                 };
             }
 
-            BusMsg::Ctl(CtlMsg::Tx(Tx::Funding(tx))) => {
+            CtlMsg::Tx(Tx::Funding(tx)) => {
                 let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState {
                     funding_tx: Some(funding),
@@ -1371,7 +1379,8 @@ impl Runtime {
                     )?;
                 }
             }
-            BusMsg::Ctl(CtlMsg::Tx(Tx::Buy(buy_tx))) => {
+
+            CtlMsg::Tx(Tx::Buy(buy_tx)) => {
                 let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState {
                     bob,
@@ -1466,9 +1475,9 @@ impl Runtime {
                     )?;
                 }
             }
-            BusMsg::Ctl(CtlMsg::Tx(Tx::Refund(refund_tx))) => {
-                let swap_id = get_swap_id(&source)?;
 
+            CtlMsg::Tx(Tx::Refund(refund_tx)) => {
+                let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Alice(AliceState {
                     alice,
                     local_params,
@@ -1567,15 +1576,11 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(CtlMsg::GetKeys(GetKeys(wallet_token))) => {
+            CtlMsg::GetKeys(GetKeys(wallet_token)) => {
                 if wallet_token != self.wallet_token {
                     return Err(Error::InvalidToken);
                 }
                 trace!("sent Secret request to farcasterd");
-                // let mut rng = thread_rng();
-                // let sk = SecretKey::new(&mut rng);
-                // let pk = PublicKey::from_secret_key(&Secp256k1::new(), &sk);
-                // self.send_farcasterd(endpoints, BusMsg::Keys(Keys(sk, pk, request_id)))?
                 self.send_farcasterd(
                     endpoints,
                     BusMsg::Ctl(CtlMsg::Keys(Keys(
@@ -1585,7 +1590,7 @@ impl Runtime {
                 )?
             }
 
-            BusMsg::Ctl(CtlMsg::GetSweepBitcoinAddress(source_address)) => {
+            CtlMsg::GetSweepBitcoinAddress(source_address) => {
                 let swap_id = get_swap_id(&source)?;
                 if let Some(Wallet::Bob(BobState { key_manager, .. })) =
                     self.wallets.get_mut(&swap_id)
@@ -1614,7 +1619,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(CtlMsg::SwapOutcome(success)) => {
+            CtlMsg::SwapOutcome(success) => {
                 let swap_id = get_swap_id(&source)?;
                 let success = match success {
                     Outcome::Buy => success.bright_green_bold(),
@@ -1628,7 +1633,7 @@ impl Runtime {
                 self.clean_up_after_swap(&swap_id);
             }
 
-            BusMsg::Ctl(CtlMsg::Checkpoint(Checkpoint { swap_id, state })) => match state {
+            CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => match state {
                 CheckpointState::CheckpointWallet(CheckpointWallet { wallet, xmr_addr }) => {
                     info!("{} | Restoring wallet for swap", swap_id.swap_id());
                     if !self.wallets.contains_key(&swap_id) {
@@ -1652,16 +1657,6 @@ impl Runtime {
             }
         }
 
-        Ok(())
-    }
-
-    fn handle_sync(
-        &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        _request: BusMsg,
-    ) -> Result<(), Error> {
-        // TODO
         Ok(())
     }
 }
