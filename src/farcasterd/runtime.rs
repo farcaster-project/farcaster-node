@@ -147,14 +147,14 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            // Peer-to-peer message bus
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
-            // Control bus for issuing control commands
-            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // RPC command bus, only accept BusMsg::Info
+            // Peer-to-peer message bus, only accept Peer message
+            (ServiceBus::Msg, BusMsg::P2p(req)) => self.handle_msg(endpoints, source, req),
+            // Control bus for issuing control commands, only accept Ctl message
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
+            // Info command bus, only accept Info message
             (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
-            // Syncer event bus for blockchain tasks and events
-            (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
+            // Syncer event bus for blockchain tasks and events, only accept Sync message
+            (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
             // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
@@ -173,29 +173,19 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: PeerMsg,
     ) -> Result<(), Error> {
-        match (&request, &source) {
-            (BusMsg::Ctl(CtlMsg::Hello), _) => {
-                trace!("Hello farcasterd from {}", source);
-                // Ignoring; this is used to set remote identity at ZMQ level
-            }
-            _ => {
-                self.process_request_with_state_machines(request, source, endpoints)?;
-            }
-        }
-
-        Ok(())
+        self.process_request_with_state_machines(BusMsg::P2p(request), source, endpoints)
     }
 
     fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
+            CtlMsg::Hello => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} is now {}",
@@ -273,7 +263,7 @@ impl Runtime {
                         self,
                         endpoints,
                         source.clone(),
-                        request.clone(),
+                        BusMsg::Ctl(request.clone()),
                         tsm,
                     )? {
                         self.trade_state_machines.push(new_tsm);
@@ -288,7 +278,7 @@ impl Runtime {
                         self,
                         endpoints,
                         source.clone(),
-                        request.clone(),
+                        BusMsg::Ctl(request.clone()),
                         ssm,
                     )? {
                         self.syncer_state_machines.insert(task_id, new_ssm);
@@ -296,13 +286,13 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(CtlMsg::Keys(Keys(sk, pk))) => {
+            CtlMsg::Keys(Keys(sk, pk)) => {
                 debug!("received peerd keys {}", sk.display_secret());
                 self.node_secret_key = Some(sk);
                 self.node_public_key = Some(pk);
             }
 
-            BusMsg::Ctl(CtlMsg::PeerdTerminated) => {
+            CtlMsg::PeerdTerminated => {
                 if let ServiceId::Peer(addr) = source {
                     if self.registered_services.remove(&source) {
                         debug!(
@@ -321,27 +311,27 @@ impl Runtime {
             }
 
             // Add progress in queues and forward to subscribed clients
-            BusMsg::Ctl(CtlMsg::Progress(..))
-            | BusMsg::Ctl(CtlMsg::Success(..))
-            | BusMsg::Ctl(CtlMsg::Failure(..)) => {
+            event @ (CtlMsg::Progress(..) | CtlMsg::Success(..) | CtlMsg::Failure(..)) => {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
                 };
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
-                let prog = match request.clone() {
-                    BusMsg::Ctl(CtlMsg::Progress(p)) => Some(ProgressStack::Progress(p)),
-                    BusMsg::Ctl(CtlMsg::Success(s)) => Some(ProgressStack::Success(s)),
-                    BusMsg::Ctl(CtlMsg::Failure(f)) => Some(ProgressStack::Failure(f)),
-                    _ => None,
-                }
-                .expect("checked above");
-                queue.push_back(prog);
+                let prog = match event {
+                    CtlMsg::Progress(p) => {
+                        (ProgressStack::Progress(p.clone()), InfoMsg::Progress(p))
+                    }
+                    CtlMsg::Success(s) => (ProgressStack::Success(s.clone()), InfoMsg::Success(s)),
+                    CtlMsg::Failure(f) => (ProgressStack::Failure(f.clone()), InfoMsg::Failure(f)),
+                    // filtered at higher level
+                    _ => unreachable!(),
+                };
+                queue.push_back(prog.0);
                 // forward the request to each subscribed clients
-                self.notify_subscribed_clients(endpoints, &source, &request);
+                self.notify_subscribed_clients(endpoints, &source, prog.1);
             }
 
             req => {
-                self.process_request_with_state_machines(req, source, endpoints)?;
+                self.process_request_with_state_machines(BusMsg::Ctl(req), source, endpoints)?;
             }
         }
 
@@ -646,19 +636,9 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: SyncMsg,
     ) -> Result<(), Error> {
-        match (&request, &source) {
-            (BusMsg::Ctl(CtlMsg::Hello), _) => {
-                trace!("Hello farcasterd from {}", source);
-                // Ignoring; this is used to set remote identity at ZMQ level
-            }
-            _ => {
-                self.process_request_with_state_machines(request, source, endpoints)?;
-            }
-        }
-
-        Ok(())
+        self.process_request_with_state_machines(BusMsg::Sync(request), source, endpoints)
     }
 
     pub fn services_ready(&self) -> Result<(), Error> {
@@ -1027,7 +1007,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: &ServiceId,
-        request: &BusMsg,
+        request: InfoMsg,
     ) {
         // if subs exists for the source (swap_id), forward the request to every subs
         if let Some(subs) = self.progress_subscriptions.get_mut(source) {
@@ -1039,7 +1019,7 @@ impl Runtime {
                         ServiceBus::Info,
                         ServiceId::Farcasterd,
                         sub.clone(),
-                        request.clone(),
+                        BusMsg::Info(request.clone()),
                     )
                     .is_ok()
             });
