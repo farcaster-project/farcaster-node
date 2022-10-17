@@ -461,11 +461,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 
 impl Runtime {
     fn send_peer(&mut self, endpoints: &mut Endpoints, msg: Msg) -> Result<(), Error> {
-        trace!(
-            "sending peer message {} to {}",
-            msg.bright_yellow_bold(),
-            self.peer_service
-        );
+        trace!("sending peer message {} to {}", msg, self.peer_service);
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
@@ -797,10 +793,7 @@ impl Runtime {
                 }
 
                 // checkpoint swap alice pre buy
-                debug!(
-                    "{} | checkpointing alice pre buy swapd state",
-                    self.swap_id.swap_id()
-                );
+                debug!("{} | checkpointing alice pre buy swapd state", self.swap_id);
                 if self.state.a_sup_checkpoint_pre_buy() {
                     checkpoint_send(
                         endpoints,
@@ -1047,10 +1040,7 @@ impl Runtime {
                     && self.state.local_params().is_some() =>
             {
                 // checkpoint swap pre lock bob
-                debug!(
-                    "{} | checkpointing bob pre lock swapd state",
-                    self.swap_id.bright_blue_italic()
-                );
+                debug!("{} | checkpointing bob pre lock swapd state", self.swap_id);
                 if self.state.b_sup_checkpoint_pre_lock() {
                     checkpoint_send(
                         endpoints,
@@ -1233,7 +1223,7 @@ impl Runtime {
                 // checkpoint alice pre lock bob
                 debug!(
                     "{} | checkpointing alice pre lock swapd state",
-                    self.swap_id.bright_blue_italic()
+                    self.swap_id
                 );
                 if self.state.a_sup_checkpoint_pre_lock() {
                     checkpoint_send(
@@ -1277,10 +1267,7 @@ impl Runtime {
                     && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
             {
                 // checkpoint bob pre buy
-                debug!(
-                    "{} | checkpointing bob pre buy swapd state",
-                    self.swap_id.bright_blue_italic()
-                );
+                debug!("{} | checkpointing bob pre buy swapd state", self.swap_id);
                 if self.state.b_sup_checkpoint_pre_buy() {
                     checkpoint_send(
                         endpoints,
@@ -2424,9 +2411,9 @@ impl Runtime {
                             }
                             tx_label => trace!(
                                 "{} | Tx {} with {} confirmations evokes no response in state {}",
-                                self.swap_id.swap_id(),
-                                tx_label.label(),
-                                confirmations.label(),
+                                self.swap_id,
+                                tx_label,
+                                confirmations,
                                 &self.state
                             ),
                         }
