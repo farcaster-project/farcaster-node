@@ -81,7 +81,11 @@ pub fn run(
     let _databased = launch("databased", empty)?;
 
     if config.is_auto_funding_enable() {
-        info!("farcasterd will attempt to fund automatically");
+        info!(
+            "{} will attempt to {}",
+            "farcasterd".label(),
+            "fund automatically".label()
+        );
     }
 
     let runtime = Runtime {
@@ -196,7 +200,7 @@ impl Runtime {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} is now {}",
-                    source.bright_white_bold(),
+                    source.label(),
                     "connected".bright_green_bold()
                 );
 
@@ -311,7 +315,7 @@ impl Runtime {
                         // is not completed, and thus present in consumed_offers
                         let peerd_id = ServiceId::Peer(addr);
                         if self.connection_has_swap_client(&peerd_id) {
-                            info!("a swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr);
+                            info!("A swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr.bright_blue_italic());
                         }
                     }
                 }
@@ -625,12 +629,7 @@ impl Runtime {
                 if respond_to == self.identity() {
                     continue;
                 }
-                trace!(
-                    "(#{}) Respond to {}: {}",
-                    i,
-                    respond_to.bright_yellow_bold(),
-                    resp.bright_blue_bold(),
-                );
+                trace!("(#{}) Respond to {}: {}", i, respond_to, resp,);
                 endpoints.send_to(
                     ServiceBus::Rpc,
                     self.identity(),
@@ -991,11 +990,7 @@ impl Runtime {
             return Ok(existing_peer.clone());
         }
 
-        debug!(
-            "{} to remote peer {}",
-            "Connecting".bright_blue_bold(),
-            node_addr.bright_blue_italic()
-        );
+        debug!("{} to remote peer {}", "Connecting", node_addr);
 
         // Start peerd
         let child = launch(
@@ -1071,7 +1066,7 @@ pub fn syncer_up(
             network.to_string(),
         ];
         args.append(&mut syncer_servers_args(config, blockchain, network)?);
-        info!("launching syncer with: {:?}", args);
+        debug!("launching syncer with: {:?}", args);
         launch("syncerd", args)?;
         spawning_services.insert(syncer_service.clone());
     }
@@ -1189,7 +1184,7 @@ pub fn launch(
 
     // Forward tor proxy argument
     let parsed = Opts::parse();
-    info!("tor opts: {:?}", parsed.shared.tor_proxy);
+    debug!("tor opts: {:?}", parsed.shared.tor_proxy);
     if let Some(t) = &matches.value_of("tor-proxy") {
         cmd.args(&["-T", *t]);
     }

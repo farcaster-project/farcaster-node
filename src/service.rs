@@ -517,8 +517,24 @@ pub trait LogStyle: ToString {
         self.to_string().bold().bright_white()
     }
 
+    // Typed log styles
+    // This is used to standardize color and fonts across the codebase
+    // ----------------
+
+    fn swap_id(&self) -> colored::ColoredString {
+        self.to_string().italic().bright_blue()
+    }
+
+    fn label(&self) -> colored::ColoredString {
+        self.to_string().bold().bright_white()
+    }
+
     fn addr(&self) -> colored::ColoredString {
         self.to_string().bold().bright_yellow()
+    }
+
+    fn tx_hash(&self) -> colored::ColoredString {
+        self.to_string().italic().bright_yellow()
     }
 
     fn err(&self) -> colored::ColoredString {

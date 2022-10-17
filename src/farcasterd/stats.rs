@@ -49,8 +49,8 @@ impl Stats {
         if !newly_inserted {
             warn!(
                 "{} | This swap was already in awaiting {} funding",
-                swapid.bright_blue_italic(),
-                blockchain.bright_white_bold()
+                swapid.swap_id(),
+                blockchain.label()
             );
         }
     }
@@ -69,8 +69,8 @@ impl Stats {
         if !present_in_set {
             warn!(
                 "{} | This swap wasn't awaiting {} funding",
-                swapid.bright_blue_italic(),
-                "Bitcoin".bright_white_bold()
+                swapid.swap_id(),
+                blockchain.label()
             );
         }
     }
@@ -91,8 +91,8 @@ impl Stats {
         if !present_in_set {
             warn!(
                 "{} | This swap wasn't awaiting {} funding",
-                swapid.bright_blue_italic(),
-                "Bitcoin".bright_white_bold()
+                swapid.swap_id(),
+                blockchain.label()
             );
         }
     }
@@ -115,17 +115,17 @@ impl Stats {
         let rate = *success as f64 / (total as f64);
         info!(
             "Swapped({}) | Refunded({}) / Punished({}) | Aborted({}) | Initialized({}) / AwaitingFundingXMR({}) / AwaitingFundingBTC({}) / FundedXMR({}) / FundedBTC({}) / FundingCanceledXMR({}) / FundingCanceledBTC({})",
-            success.bright_white_bold(),
-            refund.bright_white_bold(),
-            punish.bright_white_bold(),
-            abort.bright_white_bold(),
-            initialized,
-            awaiting_funding_xmr.len().bright_white_bold(),
-            awaiting_funding_btc.len().bright_white_bold(),
-            funded_xmr.bright_white_bold(),
-            funded_btc.bright_white_bold(),
-            funding_canceled_xmr.bright_white_bold(),
-            funding_canceled_btc.bright_white_bold(),
+            success.label(),
+            refund.label(),
+            punish.label(),
+            abort.label(),
+            initialized.label(),
+            awaiting_funding_xmr.len().label(),
+            awaiting_funding_btc.len().label(),
+            funded_xmr.label(),
+            funded_btc.label(),
+            funding_canceled_xmr.label(),
+            funding_canceled_btc.label(),
         );
         info!(
             "{} = {:>4.3}%",
