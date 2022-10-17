@@ -53,11 +53,11 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
-            // Control bus for database command
-            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // RPC client bus for issuing user command
+            // Control bus for database command, only accept Ctl message
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
+            // Info bus for client, only accept Info message
             (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
+            // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
@@ -71,39 +71,18 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_msg(
-        &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        request: BusMsg,
-    ) -> Result<(), Error> {
-        match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
-                // Ignoring; this is used to set remote identity at ZMQ level
-            }
-
-            req => {
-                error!(
-                    "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}, {:#?}",
-                    req.to_string(), req
-                )
-            }
-        }
-        Ok(())
-    }
-
     fn handle_ctl(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
+            CtlMsg::Hello => {
                 debug!("Received Hello from {}", source);
             }
 
-            BusMsg::Ctl(CtlMsg::Checkpoint(Checkpoint { swap_id, state })) => {
+            CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => {
                 match state {
                     CheckpointState::CheckpointWallet(_) => {
                         debug!("setting wallet checkpoint");
@@ -122,7 +101,7 @@ impl Runtime {
                 debug!("checkpoint set");
             }
 
-            BusMsg::Ctl(CtlMsg::RestoreCheckpoint(CheckpointEntry { swap_id, .. })) => {
+            CtlMsg::RestoreCheckpoint(CheckpointEntry { swap_id, .. }) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -189,7 +168,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(CtlMsg::RemoveCheckpoint(swap_id)) => {
+            CtlMsg::RemoveCheckpoint(swap_id) => {
                 if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -204,23 +183,23 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+            CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                 address,
                 secret_key,
-            })) => {
+            }) => {
                 self.database.set_bitcoin_address(&address, &secret_key)?;
             }
 
-            BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
+            CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                 address,
                 view,
                 spend,
-            })) => {
+            }) => {
                 self.database
                     .set_monero_address(&address, &monero::KeyPair { view, spend })?;
             }
 
-            BusMsg::Ctl(CtlMsg::SetOfferStatus(OfferStatusPair { offer, status })) => {
+            CtlMsg::SetOfferStatus(OfferStatusPair { offer, status }) => {
                 self.database.set_offer_status(&offer, &status)?;
             }
 
