@@ -6,9 +6,6 @@ use crate::ServiceId;
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
 pub enum SyncMsg {
-    #[display("hello()")]
-    Hello,
-
     #[display("syncer_task({0})", alt = "{0:#}")]
     #[from]
     Task(Task),

@@ -14,7 +14,6 @@
 
 use crate::bus::ctl::CtlMsg;
 use crate::bus::info::InfoMsg;
-use crate::bus::sync::SyncMsg;
 use crate::bus::BusMsg;
 use crate::bus::{Failure, Progress, ServiceBus};
 use std::fmt::{self, Display, Formatter};
@@ -300,16 +299,6 @@ where
                 ServiceBus::Ctl,
                 ServiceId::Farcasterd,
                 BusMsg::Ctl(CtlMsg::Hello),
-            )?;
-            self.esb.send_to(
-                ServiceBus::Msg,
-                ServiceId::Farcasterd,
-                BusMsg::Ctl(CtlMsg::Hello),
-            )?;
-            self.esb.send_to(
-                ServiceBus::Sync,
-                ServiceId::Farcasterd,
-                BusMsg::Sync(SyncMsg::Hello),
             )?;
         }
 
