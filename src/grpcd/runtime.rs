@@ -246,12 +246,15 @@ impl esb::Handler<ServiceBus> for Runtime {
         source: ServiceId,
         request: BusMsg,
     ) -> Result<(), Self::Error> {
-        match bus {
-            ServiceBus::Msg => self.handle_msg(endpoints, source, request),
-            ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
-            ServiceBus::Info => self.handle_info(endpoints, source, request),
-            ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
-            _ => Err(Error::NotSupported(bus, request.to_string())),
+        match (bus, request) {
+            // Control bus for database command, only accept Ctl message
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
+            // Info bus for client, only accept Info message
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
+            // Internal bridge, accept all type of message
+            (ServiceBus::Bridge, req) => self.handle_bridge(endpoints, source, req),
+            // All other pairs are not supported
+            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
 
@@ -264,38 +267,21 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_msg(
-        &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        request: BusMsg,
-    ) -> Result<(), Error> {
-        match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
-                // Ignoring; this is used to set remote identity at ZMQ level
-            }
-            _ => {
-                error!("BusMsg is not supported by the MSG interface");
-            }
-        }
-        Ok(())
-    }
-
     fn handle_ctl(
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
+            CtlMsg::Hello => {
                 debug!("Received Hello from {}", source);
             }
 
-            _ => {
+            req => {
                 if let ServiceId::GrpcdClient(id) = source {
                     self.tx_response
-                        .send((id, request))
+                        .send((id, BusMsg::Ctl(req)))
                         .expect("could not send response from grpc runtime to server");
                 } else {
                     error!("Grpcd server can only handle messages addressed to a grpcd client");
@@ -310,22 +296,14 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: InfoMsg,
     ) -> Result<(), Error> {
-        match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
-                debug!("Received Hello from {}", source);
-            }
-
-            _ => {
-                if let ServiceId::GrpcdClient(id) = source {
-                    self.tx_response
-                        .send((id, request))
-                        .expect("could not send response from grpc runtime to server");
-                } else {
-                    error!("Grpcd server can only handle messages addressed to a grpcd client");
-                }
-            }
+        if let ServiceId::GrpcdClient(id) = source {
+            self.tx_response
+                .send((id, BusMsg::Info(request)))
+                .expect("could not send response from grpc runtime to server");
+        } else {
+            error!("Grpcd server can only handle messages addressed to a grpcd client");
         }
 
         Ok(())
@@ -345,12 +323,14 @@ impl Runtime {
                 ServiceId::Farcasterd,
                 BusMsg::Ctl(req),
             )?,
+
             BusMsg::Info(req) => endpoints.send_to(
                 ServiceBus::Info,
                 source,
                 ServiceId::Farcasterd,
                 BusMsg::Info(req),
             )?,
+
             _ => error!("Could not send this type of request over the bridge"),
         }
 
