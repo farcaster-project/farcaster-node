@@ -36,7 +36,7 @@ use microservices::ZMQ_CONTEXT;
 use crate::bus::{
     ctl::CtlMsg,
     info::{InfoMsg, PeerInfo},
-    p2p::P2pMsg,
+    p2p::PeerMsg,
     BusMsg, ServiceBus,
 };
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
@@ -62,7 +62,7 @@ pub fn run(
     let internal_identity = if !forked_from_listener {
         // taker's case
         peer_sender
-            .send_message(P2pMsg::Identity(local_node.node_id()))
+            .send_message(PeerMsg::Identity(local_node.node_id()))
             .expect("failed to send taker identity to maker");
         debug!(
             "sent message with local node id {} to the maker",
@@ -74,12 +74,12 @@ pub fn run(
         )
     } else {
         // maker's case
-        let unmarshaller: Unmarshaller<P2pMsg> = P2pMsg::create_unmarshaller();
-        let msg: &P2pMsg = &*peer_receiver
+        let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
+        let msg: &PeerMsg = &*peer_receiver
             .recv_message(&unmarshaller)
             .expect("failed to receive identity message from maker");
         let id = match msg {
-            P2pMsg::Identity(id) => {
+            PeerMsg::Identity(id) => {
                 debug!("Received the following local node id from the taker {}", id);
                 Some(id)
             }
@@ -117,8 +117,8 @@ pub fn run(
         _thread_flag_rx,
         awaiting_pong: false,
     };
-    let unmarshaller: Unmarshaller<P2pMsg> = P2pMsg::create_unmarshaller();
-    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, P2pMsg>::with(
+    let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
+    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, PeerMsg>::with(
         peer_receiver,
         bridge_handler,
         unmarshaller,
@@ -196,7 +196,7 @@ impl PeerReceiverRuntime {
     /// send msgs over bridge from remote to local runtime
     fn send_over_bridge(
         &mut self,
-        req: <Unmarshaller<P2pMsg> as Unmarshall>::Data,
+        req: <Unmarshaller<PeerMsg> as Unmarshall>::Data,
     ) -> Result<(), Error> {
         debug!("Forwarding FWP message over BRIDGE interface to the runtime");
         if let Err(err) = self.bridge.send_to(
@@ -212,14 +212,14 @@ impl PeerReceiverRuntime {
     }
 }
 
-impl peer::Handler<P2pMsg> for PeerReceiverRuntime {
+impl peer::Handler<PeerMsg> for PeerReceiverRuntime {
     type Error = crate::Error;
     fn handle(
         &mut self,
-        message: <Unmarshaller<P2pMsg> as Unmarshall>::Data,
+        message: <Unmarshaller<PeerMsg> as Unmarshall>::Data,
     ) -> Result<(), Self::Error> {
         trace!("FWP message details: {:?}", message);
-        if let P2pMsg::Pong(_) = *Arc::clone(&message) {
+        if let PeerMsg::Pong(_) = *Arc::clone(&message) {
             if self.awaiting_pong {
                 self.awaiting_pong = false;
             } else {
@@ -246,12 +246,12 @@ impl peer::Handler<P2pMsg> for PeerReceiverRuntime {
                     error!(
                         "The ping has failed, probably the connection is down. Will shutdown the receiver runtime."
                     );
-                    self.send_over_bridge(Arc::new(P2pMsg::PeerReceiverRuntimeShutdown))?;
+                    self.send_over_bridge(Arc::new(PeerMsg::PeerReceiverRuntimeShutdown))?;
                     return Err(Error::NotResponding);
                 }
                 // This means socket reading timeout and the fact that we need
                 // to send a ping message
-                self.send_over_bridge(Arc::new(P2pMsg::PingPeer))?;
+                self.send_over_bridge(Arc::new(PeerMsg::PingPeer))?;
                 self.awaiting_pong = true;
                 Ok(())
             }
@@ -263,7 +263,7 @@ impl peer::Handler<P2pMsg> for PeerReceiverRuntime {
                     "The remote connection is broken; notifying peerd that its receiver runtime is halting: {}",
                     err
                 );
-                self.send_over_bridge(Arc::new(P2pMsg::PeerReceiverRuntimeShutdown))?;
+                self.send_over_bridge(Arc::new(PeerMsg::PeerReceiverRuntimeShutdown))?;
                 Err(err)
             }
         }
@@ -347,7 +347,7 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         _source: ServiceId,
-        message: P2pMsg,
+        message: PeerMsg,
     ) -> Result<(), Error> {
         // Forward to the remote peer
         debug!("Message type: {}", message.get_type());
@@ -475,7 +475,7 @@ impl Runtime {
         self.peer_sender = peer_sender;
         // send the local id to the maker(listener) again
         self.peer_sender
-            .send_message(P2pMsg::Identity(self.local_node.node_id()))?;
+            .send_message(PeerMsg::Identity(self.local_node.node_id()))?;
 
         let identity = self.identity.clone();
         let dying_thread_flag_tx = self.thread_flag_tx.clone();
@@ -507,14 +507,14 @@ impl Runtime {
         }
 
         match &request {
-            BusMsg::P2p(P2pMsg::PingPeer) => self.ping()?,
+            BusMsg::P2p(PeerMsg::PingPeer) => self.ping()?,
 
-            BusMsg::P2p(P2pMsg::Ping(pong_size)) => {
+            BusMsg::P2p(PeerMsg::Ping(pong_size)) => {
                 debug!("receiving ping, ponging back");
                 self.pong(*pong_size)?
             }
 
-            BusMsg::P2p(P2pMsg::Pong(noise)) => {
+            BusMsg::P2p(PeerMsg::Pong(noise)) => {
                 match self.awaited_pong {
                     None => error!("Unexpected pong from the remote peer"),
                     Some(len) if len as usize != noise.len() => {
@@ -525,7 +525,7 @@ impl Runtime {
                 self.awaited_pong = None;
             }
 
-            BusMsg::P2p(P2pMsg::PeerReceiverRuntimeShutdown) => {
+            BusMsg::P2p(PeerMsg::PeerReceiverRuntimeShutdown) => {
                 warn!("Exiting peerd receiver runtime");
                 // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
                 if self.forked_from_listener {
@@ -545,7 +545,7 @@ impl Runtime {
             }
 
             // swap initiation message
-            BusMsg::P2p(P2pMsg::TakerCommit(_)) => {
+            BusMsg::P2p(PeerMsg::TakerCommit(_)) => {
                 endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
@@ -586,7 +586,7 @@ impl Runtime {
         rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.peer_sender.send_message(P2pMsg::Ping(pong_size))?;
+        self.peer_sender.send_message(PeerMsg::Ping(pong_size))?;
         self.awaited_pong = Some(pong_size);
         Ok(())
     }
@@ -599,7 +599,7 @@ impl Runtime {
             .map(|_| rng.gen())
             .collect();
         self.messages_sent += 1;
-        self.peer_sender.send_message(P2pMsg::Pong(noise))?;
+        self.peer_sender.send_message(PeerMsg::Pong(noise))?;
         Ok(())
     }
 }
@@ -640,8 +640,8 @@ fn restart_receiver_runtime(
         awaiting_pong: false,
         _thread_flag_rx,
     };
-    let unmarshaller: Unmarshaller<P2pMsg> = P2pMsg::create_unmarshaller();
-    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, P2pMsg>::with(
+    let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
+    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, PeerMsg>::with(
         peer_receiver,
         bridge_handler,
         unmarshaller,

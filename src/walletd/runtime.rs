@@ -3,7 +3,7 @@ use crate::bus::{
         self, BitcoinAddress, Checkpoint, CheckpointState, CtlMsg, GetKeys, Keys, LaunchSwap,
         MoneroAddress, Params, Token, Tx,
     },
-    p2p::{Commit, P2pMsg, Reveal, TakeCommit},
+    p2p::{Commit, PeerMsg, Reveal, TakeCommit},
     AddressSecretKey, BusMsg, Outcome, ServiceBus,
 };
 use crate::databased::checkpoint_send;
@@ -332,7 +332,7 @@ impl Runtime {
 
             req if source == ServiceId::Farcasterd => match req {
                 // TODO enter farcasterd messages allowed
-                BusMsg::P2p(P2pMsg::TakerCommit(_)) => {}
+                BusMsg::P2p(PeerMsg::TakerCommit(_)) => {}
                 BusMsg::P2p(_) => return Ok(()),
                 _ => {}
             },
@@ -389,7 +389,7 @@ impl Runtime {
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
-            BusMsg::P2p(P2pMsg::TakerCommit(TakeCommit {
+            BusMsg::P2p(PeerMsg::TakerCommit(TakeCommit {
                 commit: remote_commit,
                 public_offer,
                 swap_id,
@@ -517,7 +517,7 @@ impl Runtime {
                     }
                 }
             }
-            BusMsg::P2p(P2pMsg::MakerCommit(commit)) => {
+            BusMsg::P2p(PeerMsg::MakerCommit(commit)) => {
                 let req_swap_id = req_swap_id.expect("validated previously");
                 match commit {
                     Commit::BobParameters(CommitBobParameters { swap_id, .. }) => {
@@ -569,13 +569,13 @@ impl Runtime {
                     ServiceBus::Ctl,
                     self.identity(),
                     source,
-                    BusMsg::P2p(P2pMsg::Reveal(Reveal::Proof(RevealProof {
+                    BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
                         swap_id: req_swap_id,
                         proof: proof.expect("local proof is always Some").clone(),
                     }))),
                 )?;
             }
-            BusMsg::P2p(P2pMsg::Reveal(Reveal::Proof(proof))) => {
+            BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(proof))) => {
                 let swap_id = get_swap_id(&source)?;
                 let wallet = self.wallets.get_mut(&swap_id);
                 match wallet {
@@ -599,7 +599,7 @@ impl Runtime {
                     ),
                 }
             }
-            BusMsg::P2p(P2pMsg::Reveal(reveal)) => {
+            BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
                 let swap_id = get_swap_id(&source)?;
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
@@ -642,7 +642,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         ServiceId::Wallet,
                                         source,
-                                        BusMsg::P2p(P2pMsg::Reveal(Reveal::Proof(RevealProof {
+                                        BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
                                             swap_id,
                                             proof: local_params
                                                 .proof
@@ -704,7 +704,7 @@ impl Runtime {
                                     // TODO: (maybe) what if the message responded to is not sent
                                     // by swapd?
                                     source.clone(),
-                                    BusMsg::P2p(P2pMsg::Reveal(Reveal::Proof(RevealProof {
+                                    BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
                                         swap_id,
                                         proof: local_params
                                             .proof
@@ -766,7 +766,7 @@ impl Runtime {
                                     .into_arbitrating_setup(swap_id, cosign_arbitrating_cancel),
                             );
                             let core_arb_setup_msg =
-                                P2pMsg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
+                                PeerMsg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
 
                             self.send_ctl(endpoints, source, BusMsg::P2p(core_arb_setup_msg))?;
                         } else {
@@ -822,7 +822,7 @@ impl Runtime {
                     }
                 }
             }
-            BusMsg::P2p(P2pMsg::RefundProcedureSignatures(RefundProcedureSignatures {
+            BusMsg::P2p(PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures {
                 swap_id: _,
                 cancel_sig: alice_cancel_sig,
                 refund_adaptor_sig,
@@ -955,7 +955,7 @@ impl Runtime {
 
                     {
                         let buy_proc_sig =
-                            P2pMsg::BuyProcedureSignature(adaptor_buy.clone().unwrap());
+                            PeerMsg::BuyProcedureSignature(adaptor_buy.clone().unwrap());
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             my_id,
@@ -967,7 +967,7 @@ impl Runtime {
                     error!("{} | Unknown wallet and swap_id", swap_id.swap_id(),);
                 }
             }
-            BusMsg::P2p(P2pMsg::CoreArbitratingSetup(core_arbitrating_setup)) => {
+            BusMsg::P2p(PeerMsg::CoreArbitratingSetup(core_arbitrating_setup)) => {
                 let swap_id = get_swap_id(&source)?;
                 let my_id = self.identity();
 
@@ -1096,7 +1096,7 @@ impl Runtime {
                     }
 
                     let refund_proc_signatures =
-                        P2pMsg::RefundProcedureSignatures(refund_proc_signatures);
+                        PeerMsg::RefundProcedureSignatures(refund_proc_signatures);
 
                     endpoints.send_to(
                         ServiceBus::Ctl,
@@ -1108,7 +1108,7 @@ impl Runtime {
                     error!("{} | only Some(Wallet::Alice)", swap_id.swap_id(),);
                 }
             }
-            BusMsg::P2p(P2pMsg::BuyProcedureSignature(buy_proc_sig)) => {
+            BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_proc_sig)) => {
                 let BuyProcedureSignature { swap_id, .. } = buy_proc_sig;
                 trace!("wallet received buyproceduresignature");
                 let id = self.identity();

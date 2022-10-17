@@ -14,7 +14,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 #[api(encoding = "strict")]
 #[display(inner)]
 #[non_exhaustive]
-pub enum P2pMsg {
+pub enum PeerMsg {
     #[api(type = 33701)]
     #[display("{0} maker commit")]
     MakerCommit(Commit),
@@ -64,30 +64,30 @@ pub enum P2pMsg {
     PeerReceiverRuntimeShutdown,
 }
 
-impl P2pMsg {
+impl PeerMsg {
     pub fn swap_id(&self) -> SwapId {
         match self {
-            P2pMsg::MakerCommit(m) => match m {
+            PeerMsg::MakerCommit(m) => match m {
                 Commit::AliceParameters(n) => n.swap_id,
                 Commit::BobParameters(n) => n.swap_id,
             },
-            P2pMsg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
-            P2pMsg::Reveal(m) => match m {
+            PeerMsg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
+            PeerMsg::Reveal(m) => match m {
                 Reveal::AliceParameters(n) => n.swap_id,
                 Reveal::BobParameters(n) => n.swap_id,
                 Reveal::Proof(n) => n.swap_id,
             },
-            P2pMsg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => {
+            PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => {
                 *swap_id
             }
-            P2pMsg::Abort(Abort { swap_id, .. }) => *swap_id,
-            P2pMsg::CoreArbitratingSetup(CoreArbitratingSetup { swap_id, .. }) => *swap_id,
-            P2pMsg::BuyProcedureSignature(BuyProcedureSignature { swap_id, .. }) => *swap_id,
-            P2pMsg::Ping(_)
-            | P2pMsg::Pong(_)
-            | P2pMsg::PingPeer
-            | P2pMsg::PeerReceiverRuntimeShutdown
-            | P2pMsg::Identity(_) => {
+            PeerMsg::Abort(Abort { swap_id, .. }) => *swap_id,
+            PeerMsg::CoreArbitratingSetup(CoreArbitratingSetup { swap_id, .. }) => *swap_id,
+            PeerMsg::BuyProcedureSignature(BuyProcedureSignature { swap_id, .. }) => *swap_id,
+            PeerMsg::Ping(_)
+            | PeerMsg::Pong(_)
+            | PeerMsg::PingPeer
+            | PeerMsg::PeerReceiverRuntimeShutdown
+            | PeerMsg::Identity(_) => {
                 unreachable!(
                     "Ping, Pong, PingPeer, PeerdShutdown and Identity do not contain swapid"
                 )
@@ -98,26 +98,26 @@ impl P2pMsg {
     pub fn on_receiver_whitelist(&self) -> bool {
         matches!(
             self,
-            P2pMsg::MakerCommit(_)
-                | P2pMsg::TakerCommit(_)
-                | P2pMsg::Reveal(_)
-                | P2pMsg::RefundProcedureSignatures(_)
-                | P2pMsg::CoreArbitratingSetup(_)
-                | P2pMsg::BuyProcedureSignature(_)
-                | P2pMsg::Ping(_)
-                | P2pMsg::Pong(_)
+            PeerMsg::MakerCommit(_)
+                | PeerMsg::TakerCommit(_)
+                | PeerMsg::Reveal(_)
+                | PeerMsg::RefundProcedureSignatures(_)
+                | PeerMsg::CoreArbitratingSetup(_)
+                | PeerMsg::BuyProcedureSignature(_)
+                | PeerMsg::Ping(_)
+                | PeerMsg::Pong(_)
         )
     }
 
     pub fn is_protocol(&self) -> bool {
         matches!(
             self,
-            P2pMsg::MakerCommit(_)
-                | P2pMsg::TakerCommit(_)
-                | P2pMsg::Reveal(_)
-                | P2pMsg::RefundProcedureSignatures(_)
-                | P2pMsg::CoreArbitratingSetup(_)
-                | P2pMsg::BuyProcedureSignature(_)
+            PeerMsg::MakerCommit(_)
+                | PeerMsg::TakerCommit(_)
+                | PeerMsg::Reveal(_)
+                | PeerMsg::RefundProcedureSignatures(_)
+                | PeerMsg::CoreArbitratingSetup(_)
+                | PeerMsg::BuyProcedureSignature(_)
         )
     }
 }
@@ -129,7 +129,7 @@ pub enum Reveal {
     #[display("Bob parameters")]
     BobParameters(RevealBobParameters),
     #[display("proof")]
-    Proof(RevealProof), // FIXME should be P2pMsg::RevealProof(..)
+    Proof(RevealProof), // FIXME should be PeerMsg::RevealProof(..)
 }
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]

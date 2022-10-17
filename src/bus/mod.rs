@@ -26,7 +26,7 @@ use std::iter::FromIterator;
 
 use crate::bus::ctl::CtlMsg;
 use crate::bus::info::InfoMsg;
-use crate::bus::p2p::P2pMsg;
+use crate::bus::p2p::PeerMsg;
 use crate::bus::sync::SyncMsg;
 use crate::ServiceId;
 
@@ -72,7 +72,7 @@ pub enum BusMsg {
     #[api(type = 1)]
     #[display(inner)]
     #[from]
-    P2p(P2pMsg),
+    P2p(PeerMsg),
 
     /// Wrapper for inner type of control messages to be transmitted over the control bus
     #[api(type = 2)]
