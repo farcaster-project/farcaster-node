@@ -106,8 +106,8 @@ pub struct ServiceConfig {
     /// ZMQ socket for internal service control bus
     pub ctl_endpoint: ServiceAddr,
 
-    /// ZMQ socket for remote procedure call bus
-    pub rpc_endpoint: ServiceAddr,
+    /// ZMQ socket for internal info service bus
+    pub info_endpoint: ServiceAddr,
 
     /// ZMQ socket for syncer events bus
     pub sync_endpoint: ServiceAddr,
@@ -119,7 +119,7 @@ impl From<Opts> for ServiceConfig {
         ServiceConfig {
             msg_endpoint: opts.msg_socket,
             ctl_endpoint: opts.ctl_socket,
-            rpc_endpoint: opts.rpc_socket,
+            info_endpoint: opts.info_socket,
             sync_endpoint: opts.sync_socket,
         }
     }
@@ -246,8 +246,8 @@ where
                 api_type,
                 router.clone()
             ),
-            ServiceBus::Rpc => esb::BusConfig::with_addr(
-                config.rpc_endpoint,
+            ServiceBus::Info => esb::BusConfig::with_addr(
+                config.info_endpoint,
                 api_type,
                 router.clone()
             ),
@@ -466,11 +466,11 @@ where
         dest: ServiceId,
         request: Rpc,
     ) -> Result<(), Error> {
-        let bus = ServiceBus::Rpc;
+        let bus = ServiceBus::Info;
         if let ServiceId::GrpcdClient(_) = dest {
-            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Rpc(request))?;
+            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Info(request))?;
         } else {
-            senders.send_to(bus, self.identity(), dest, BusMsg::Rpc(request))?;
+            senders.send_to(bus, self.identity(), dest, BusMsg::Info(request))?;
         }
         Ok(())
     }

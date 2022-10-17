@@ -76,10 +76,10 @@ impl Exec for Command {
                     _ => return Err(Error::Other(err)),
                 }
                 match runtime.response()? {
-                    BusMsg::Rpc(Rpc::NodeInfo(info)) => println!("{}", info),
-                    BusMsg::Rpc(Rpc::PeerInfo(info)) => println!("{}", info),
-                    BusMsg::Rpc(Rpc::SwapInfo(info)) => println!("{}", info),
-                    BusMsg::Rpc(Rpc::SyncerInfo(info)) => println!("{}", info),
+                    BusMsg::Info(Rpc::NodeInfo(info)) => println!("{}", info),
+                    BusMsg::Info(Rpc::PeerInfo(info)) => println!("{}", info),
+                    BusMsg::Info(Rpc::SwapInfo(info)) => println!("{}", info),
+                    BusMsg::Info(Rpc::SyncerInfo(info)) => println!("{}", info),
                     _ => {
                         return Err(Error::Other(
                             "Server returned unrecognizable response".to_string(),
@@ -124,7 +124,7 @@ impl Exec for Command {
 
             Command::RestoreCheckpoint { swap_id } => {
                 runtime.request_rpc(ServiceId::Database, Rpc::GetCheckpointEntry(swap_id))?;
-                if let BusMsg::Rpc(Rpc::CheckpointEntry(entry)) = runtime.report_failure()? {
+                if let BusMsg::Info(Rpc::CheckpointEntry(entry)) = runtime.report_failure()? {
                     runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RestoreCheckpoint(entry))?;
                     runtime.report_response_or_fail()?;
                 } else {
@@ -352,7 +352,7 @@ impl Exec for Command {
                     ServiceId::Database,
                     Rpc::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
-                if let BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                if let BusMsg::Info(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
                     secret_key,
                     ..
                 })) = runtime.report_failure()?
@@ -379,7 +379,7 @@ impl Exec for Command {
                     ServiceId::Database,
                     Rpc::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
-                if let BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                if let BusMsg::Info(Rpc::AddressSecretKey(AddressSecretKey::Monero {
                     view,
                     spend,
                     ..

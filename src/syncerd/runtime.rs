@@ -122,8 +122,8 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for issuing control commands, only accept BusMsg::Ctl
             (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
-            // RPC command bus, only accept BusMsg::Rpc
-            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // RPC command bus, only accept BusMsg::Info
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
             // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
             // Internal syncer bridge for inner communication, only accept BusMsg::Sync
@@ -197,7 +197,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,

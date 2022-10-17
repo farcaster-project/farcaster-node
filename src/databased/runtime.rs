@@ -57,7 +57,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             // Control bus for database command
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
             // RPC client bus for issuing user command
-            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
     }
@@ -232,7 +232,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
@@ -286,10 +286,10 @@ impl Runtime {
                     })
                     .collect();
                 endpoints.send_to(
-                    ServiceBus::Rpc,
+                    ServiceBus::Info,
                     self.identity(),
                     source,
-                    BusMsg::Rpc(Rpc::CheckpointList(checkpointed_pub_offers)),
+                    BusMsg::Info(Rpc::CheckpointList(checkpointed_pub_offers)),
                 )?;
             }
 
@@ -322,10 +322,10 @@ impl Runtime {
                 };
                 if let Some(entry) = entry {
                     endpoints.send_to(
-                        ServiceBus::Rpc,
+                        ServiceBus::Info,
                         self.identity(),
                         source,
-                        BusMsg::Rpc(Rpc::CheckpointEntry(entry)),
+                        BusMsg::Info(Rpc::CheckpointEntry(entry)),
                     )?;
                 } else {
                     endpoints.send_to(
@@ -353,10 +353,10 @@ impl Runtime {
                     )?,
                     Ok(secret_key_pair) => {
                         endpoints.send_to(
-                            ServiceBus::Rpc,
+                            ServiceBus::Info,
                             ServiceId::Database,
                             source,
-                            BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                            BusMsg::Info(Rpc::AddressSecretKey(AddressSecretKey::Monero {
                                 address,
                                 view: secret_key_pair.view.as_bytes().try_into().unwrap(),
                                 spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
@@ -379,10 +379,10 @@ impl Runtime {
                     )?,
                     Ok(secret_key) => {
                         endpoints.send_to(
-                            ServiceBus::Rpc,
+                            ServiceBus::Info,
                             ServiceId::Database,
                             source,
-                            BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                            BusMsg::Info(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
                                 address,
                                 secret_key,
                             })),
@@ -394,20 +394,20 @@ impl Runtime {
             Rpc::GetAddresses(Blockchain::Bitcoin) => {
                 let addresses = self.database.get_all_bitcoin_addresses()?;
                 endpoints.send_to(
-                    ServiceBus::Rpc,
+                    ServiceBus::Info,
                     ServiceId::Database,
                     source,
-                    BusMsg::Rpc(Rpc::BitcoinAddressList(addresses.into())),
+                    BusMsg::Info(Rpc::BitcoinAddressList(addresses.into())),
                 )?;
             }
 
             Rpc::GetAddresses(Blockchain::Monero) => {
                 let addresses = self.database.get_all_monero_addresses()?;
                 endpoints.send_to(
-                    ServiceBus::Rpc,
+                    ServiceBus::Info,
                     ServiceId::Database,
                     source,
-                    BusMsg::Rpc(Rpc::MoneroAddressList(addresses.into())),
+                    BusMsg::Info(Rpc::MoneroAddressList(addresses.into())),
                 )?;
             }
 

@@ -46,9 +46,9 @@ pub enum ServiceBus {
     #[display("CTL")]
     Ctl,
 
-    /// RPC interface, from client to node
-    #[display("RPC")]
-    Rpc,
+    /// Info interface, from client to node to read data
+    #[display("INFO")]
+    Info,
 
     /// Syncer interface, for syncer's tasks and events
     #[display("SYNC")]
@@ -80,11 +80,11 @@ pub enum BusMsg {
     #[from]
     Ctl(CtlMsg),
 
-    /// Wrapper for inner type of RPC messages to be transmitted over the rpc bus
+    /// Wrapper for inner type of info messages to be transmitted over the info bus
     #[api(type = 3)]
     #[display(inner)]
     #[from]
-    Rpc(Rpc),
+    Info(Rpc),
 
     /// Wrapper for inner type of syncer messages to be transmitted over the syncer bus
     #[api(type = 4)]

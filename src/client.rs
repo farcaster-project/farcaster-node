@@ -41,8 +41,8 @@ impl Client {
                     ZmqSocketType::RouterConnect,
                     Some(ServiceId::router())
                 ),
-                ServiceBus::Rpc => esb::BusConfig::with_addr(
-                    config.rpc_endpoint,
+                ServiceBus::Info => esb::BusConfig::with_addr(
+                    config.info_endpoint,
                     ZmqSocketType::RouterConnect,
                     Some(ServiceId::router()),
                 )
@@ -68,14 +68,14 @@ impl Client {
 
     pub fn request(&mut self, daemon: ServiceId, req: BusMsg) -> Result<(), Error> {
         debug!("Executing {}", req);
-        self.esb.send_to(ServiceBus::Rpc, daemon, req)?;
+        self.esb.send_to(ServiceBus::Info, daemon, req)?;
         Ok(())
     }
 
     pub fn request_rpc(&mut self, daemon: ServiceId, req: Rpc) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb
-            .send_to(ServiceBus::Rpc, daemon, BusMsg::Rpc(req))?;
+            .send_to(ServiceBus::Info, daemon, BusMsg::Info(req))?;
         Ok(())
     }
 

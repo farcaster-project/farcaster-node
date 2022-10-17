@@ -81,7 +81,7 @@ impl Farcaster for FarcasterService {
 
         if let Err(error) = self
             .tokio_tx_request
-            .send((id, BusMsg::Rpc(Rpc::GetInfo)))
+            .send((id, BusMsg::Info(Rpc::GetInfo)))
             .await
         {
             return Err(Status::internal(format!("{}", error)));
@@ -92,7 +92,7 @@ impl Farcaster for FarcasterService {
         pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
         match oneshot_rx.await {
-            Ok(BusMsg::Rpc(Rpc::NodeInfo(info))) => {
+            Ok(BusMsg::Info(Rpc::NodeInfo(info))) => {
                 let reply = farcaster::InfoResponse {
                     id: request.into_inner().id,
                     listens: info
@@ -249,7 +249,7 @@ impl esb::Handler<ServiceBus> for Runtime {
         match bus {
             ServiceBus::Msg => self.handle_msg(endpoints, source, request),
             ServiceBus::Ctl => self.handle_ctl(endpoints, source, request),
-            ServiceBus::Rpc => self.handle_rpc(endpoints, source, request),
+            ServiceBus::Info => self.handle_info(endpoints, source, request),
             ServiceBus::Bridge => self.handle_bridge(endpoints, source, request),
             _ => Err(Error::NotSupported(bus, request.to_string())),
         }
@@ -306,7 +306,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
@@ -345,11 +345,11 @@ impl Runtime {
                 ServiceId::Farcasterd,
                 BusMsg::Ctl(req),
             )?,
-            BusMsg::Rpc(req) => endpoints.send_to(
-                ServiceBus::Rpc,
+            BusMsg::Info(req) => endpoints.send_to(
+                ServiceBus::Info,
                 source,
                 ServiceId::Farcasterd,
-                BusMsg::Rpc(req),
+                BusMsg::Info(req),
             )?,
             _ => error!("Could not send this type of request over the bridge"),
         }

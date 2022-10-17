@@ -336,7 +336,7 @@ fn attempt_transition_to_make_offer(
                             status: OfferStatus::Open,
                         })),
                     )?;
-                    event.complete_rpc(BusMsg::Rpc(Rpc::MadeOffer(MadeOffer {
+                    event.complete_info(BusMsg::Info(Rpc::MadeOffer(MadeOffer {
                         message: msg,
                         offer_info: OfferInfo {
                             offer: public_offer.to_string(),
@@ -427,7 +427,7 @@ fn attempt_transition_to_take_offer(
                             internal_address,
                         })),
                     )?;
-                    event.complete_rpc(BusMsg::Rpc(Rpc::TookOffer(TookOffer {
+                    event.complete_info(BusMsg::Info(Rpc::TookOffer(TookOffer {
                         offerid: public_offer.id(),
                         message: offer_registered,
                     })))?;
@@ -509,7 +509,7 @@ fn attempt_transition_to_restoring_swapd(
                 ],
             )?;
 
-            event.complete_rpc(BusMsg::Rpc(Rpc::String(
+            event.complete_info(BusMsg::Info(Rpc::String(
                 "Restoring checkpoint.".to_string(),
             )))?;
 
@@ -590,14 +590,14 @@ fn attempt_transition_to_taker_committed(
             debug!("attempting to revoke {}", public_offer);
             if revoke_public_offer == public_offer {
                 info!("Revoked offer {}", public_offer.label());
-                event.complete_rpc(BusMsg::Rpc(Rpc::String(
+                event.complete_info(BusMsg::Info(Rpc::String(
                     "Successfully revoked offer.".to_string(),
                 )))?;
                 Ok(None)
             } else {
                 let msg = "Cannot revoke offer, it does not exist".to_string();
                 error!("{}", msg);
-                event.complete_rpc(BusMsg::Rpc(Rpc::String(msg)))?;
+                event.complete_info(BusMsg::Info(Rpc::String(msg)))?;
                 Ok(Some(TradeStateMachine::MakeOffer(MakeOffer {
                     public_offer,
                     arb_addr,

@@ -442,8 +442,8 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for issuing control commands
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // RPC command bus, only accept BusMsg::Rpc
-            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // RPC command bus, only accept BusMsg::Info
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
             // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
             // All other pairs are not supported
@@ -1333,7 +1333,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::String("Aborted swap".to_string())),
+                        BusMsg::Info(Rpc::String("Aborted swap".to_string())),
                     )?;
                 }
             }
@@ -1345,7 +1345,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::String("Aborted swap".to_string())),
+                        BusMsg::Info(Rpc::String("Aborted swap".to_string())),
                     )?;
                 }
             }
@@ -1368,7 +1368,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::String(
+                        BusMsg::Info(Rpc::String(
                             "Aborting swap, checking if funds can be sweeped.".to_string(),
                         )),
                     )?;
@@ -1382,7 +1382,7 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::Failure(Failure {
+                        BusMsg::Info(Rpc::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: msg,
                         })),
@@ -1500,7 +1500,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,

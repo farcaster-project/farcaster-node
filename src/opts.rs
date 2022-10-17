@@ -35,7 +35,7 @@ pub const FARCASTER_DATA_DIR: &str = ".";
 
 pub const FARCASTER_MSG_SOCKET_NAME: &str = "{data_dir}/msg";
 pub const FARCASTER_CTL_SOCKET_NAME: &str = "{data_dir}/ctl";
-pub const FARCASTER_RPC_SOCKET_NAME: &str = "{data_dir}/rpc";
+pub const FARCASTER_INFO_SOCKET_NAME: &str = "{data_dir}/info";
 pub const FARCASTER_SYNC_SOCKET_NAME: &str = "{data_dir}/sync";
 
 pub const FARCASTER_KEY_FILE: &str = "{data_dir}/key.dat";
@@ -102,17 +102,17 @@ pub struct Opts {
 
     /// ZMQ socket name/address for remote procedure call interface
     ///
-    /// Internal interface for client RPC protocol communications. Defaults
-    /// to `rpc.rpc` file inside `--data-dir` directory.
+    /// Internal interface for client info RPC protocol communications. Defaults
+    /// to `info.rpc` file inside `--data-dir` directory.
     #[clap(
-        short = 'R',
+        short = 'i',
         long,
         global = true,
-        env = "FARCASTER_RPC_SOCKET",
+        env = "FARCASTER_INFO_SOCKET",
         value_hint = ValueHint::FilePath,
-        default_value = FARCASTER_RPC_SOCKET_NAME
+        default_value = FARCASTER_INFO_SOCKET_NAME
     )]
-    pub rpc_socket: ServiceAddr,
+    pub info_socket: ServiceAddr,
 
     /// ZMQ socket name/address for syncer interface
     ///
@@ -165,7 +165,7 @@ impl Opts {
         for s in vec![
             &mut self.msg_socket,
             &mut self.ctl_socket,
-            &mut self.rpc_socket,
+            &mut self.info_socket,
             &mut self.sync_socket,
         ] {
             match s {

@@ -152,8 +152,8 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
             // Control bus for issuing control commands
             (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // RPC command bus, only accept BusMsg::Rpc
-            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // RPC command bus, only accept BusMsg::Info
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
             // Syncer event bus for blockchain tasks and events
             (ServiceBus::Sync, request) => self.handle_sync(endpoints, source, request),
             // All other pairs are not supported
@@ -349,7 +349,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
@@ -438,10 +438,10 @@ impl Runtime {
                     _ => {
                         // Forward the request to database service
                         endpoints.send_to(
-                            ServiceBus::Rpc,
+                            ServiceBus::Info,
                             source,
                             ServiceId::Database,
-                            BusMsg::Rpc(request),
+                            BusMsg::Info(request),
                         )?;
                     }
                 };
@@ -585,10 +585,10 @@ impl Runtime {
                     })
                     .collect();
                 endpoints.send_to(
-                    ServiceBus::Rpc,
+                    ServiceBus::Info,
                     self.identity(),
                     source,
-                    BusMsg::Rpc(Rpc::String(res)),
+                    BusMsg::Info(Rpc::String(res)),
                 )?;
             }
 
@@ -611,10 +611,10 @@ impl Runtime {
                     })
                     .collect();
                 endpoints.send_to(
-                    ServiceBus::Rpc,
+                    ServiceBus::Info,
                     self.identity(),
                     source,
-                    BusMsg::Rpc(Rpc::String(res)),
+                    BusMsg::Info(Rpc::String(res)),
                 )?;
             }
 
@@ -631,10 +631,10 @@ impl Runtime {
                 }
                 trace!("(#{}) Respond to {}: {}", i, respond_to, resp,);
                 endpoints.send_to(
-                    ServiceBus::Rpc,
+                    ServiceBus::Info,
                     self.identity(),
                     respond_to,
-                    BusMsg::Rpc(resp),
+                    BusMsg::Info(resp),
                 )?;
             }
         }
@@ -1037,7 +1037,7 @@ impl Runtime {
             subs.retain(|sub| {
                 endpoints
                     .send_to(
-                        ServiceBus::Rpc,
+                        ServiceBus::Info,
                         ServiceId::Farcasterd,
                         sub.clone(),
                         request.clone(),
@@ -1174,8 +1174,8 @@ pub fn launch(
         cmd.args(&["-x", x]);
     }
 
-    if let Some(y) = &matches.value_of("rpc-socket") {
-        cmd.args(&["-R", y]);
+    if let Some(i) = &matches.value_of("info-socket") {
+        cmd.args(&["-i", i]);
     }
 
     if let Some(s) = &matches.value_of("sync-socket") {

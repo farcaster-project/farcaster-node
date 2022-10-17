@@ -256,17 +256,17 @@ fn attempt_transition_to_end(
                 .pop()
                 .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
             {
-                event.send_rpc_service(
+                event.send_info_service(
                     source,
-                    BusMsg::Rpc(Rpc::String(format!(
+                    BusMsg::Info(Rpc::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
                         txid.to_hex()
                     ))),
                 )?;
             } else {
-                event.send_rpc_service(
+                event.send_info_service(
                     source,
-                    BusMsg::Rpc(Rpc::String("Nothing to sweep.".to_string())),
+                    BusMsg::Info(Rpc::String("Nothing to sweep.".to_string())),
                 )?;
             }
 

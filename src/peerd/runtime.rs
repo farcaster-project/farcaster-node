@@ -318,8 +318,8 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Msg, BusMsg::P2p(req)) => self.handle_msg(endpoints, source, req),
             // Control bus for issuing control commands, only accept BusMsg::Ctl
             (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
-            // RPC command bus, only accept BusMsg::Rpc
-            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
+            // RPC command bus, only accept BusMsg::Info
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
             // Internal peerd bridge for inner communication, accept all type of request
             (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
             // All other pairs are not supported
@@ -401,7 +401,7 @@ impl Runtime {
         }
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
