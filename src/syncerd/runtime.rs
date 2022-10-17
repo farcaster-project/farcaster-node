@@ -118,15 +118,13 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            // FIXME: to be removed
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
-            // Control bus for issuing control commands, only accept BusMsg::Ctl
+            // Control bus for issuing control commands, only accept Ctl message
             (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
-            // RPC command bus, only accept BusMsg::Info
+            // Info command bus, only accept Info message
             (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
-            // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
+            // Syncer event bus for blockchain tasks and events, only accept Sync message
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
-            // Internal syncer bridge for inner communication, only accept BusMsg::Sync
+            // Internal syncer bridge for inner communication, only accept Sync message
             (ServiceBus::Bridge, BusMsg::Sync(req)) => self.handle_bridge(endpoints, source, req),
             // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
@@ -142,25 +140,6 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_msg(
-        &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        request: BusMsg,
-    ) -> Result<(), Error> {
-        match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
-                // Ignoring; this is used to set remote identity at ZMQ level
-            }
-
-            _ => {
-                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.to_string()));
-            }
-        }
-        Ok(())
-    }
-
     fn handle_ctl(
         &mut self,
         _endpoints: &mut Endpoints,
