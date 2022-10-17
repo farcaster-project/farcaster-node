@@ -2,7 +2,7 @@ use crate::bus::ctl::{
     BitcoinAddress, BitcoinFundingInfo, Ctl, FundingInfo, InitSwap, LaunchSwap, MoneroAddress,
     MoneroFundingInfo, ProtoPublicOffer, PubOffer,
 };
-use crate::bus::msg::{Msg, TakeCommit};
+use crate::bus::p2p::{P2pMsg, TakeCommit};
 use crate::bus::rpc::{MadeOffer, OfferInfo, Rpc, TookOffer};
 use crate::bus::{CheckpointEntry, Failure, FailureCode, OfferStatus, OfferStatusPair};
 use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
@@ -544,7 +544,7 @@ fn attempt_transition_to_taker_committed(
     } = make_offer;
     match (event.request.clone(), event.source.clone()) {
         (
-            BusMsg::Msg(Msg::TakerCommit(TakeCommit {
+            BusMsg::P2p(P2pMsg::TakerCommit(TakeCommit {
                 public_offer: committed_public_offer,
                 swap_id,
                 ..

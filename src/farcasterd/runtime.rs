@@ -14,7 +14,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::bus::ctl::{BitcoinFundingInfo, Ctl, GetKeys, MoneroFundingInfo};
-use crate::bus::msg::{self, Msg};
+use crate::bus::p2p::{P2pMsg, TakeCommit};
 use crate::bus::rpc::NodeInfo;
 use crate::bus::sync::SyncMsg;
 use crate::bus::{BusMsg, List, ServiceBus};
@@ -830,7 +830,7 @@ impl Runtime {
             }
             (BusMsg::Ctl(Ctl::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
             (BusMsg::Ctl(Ctl::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
-            (BusMsg::Msg(Msg::TakerCommit(msg::TakeCommit { public_offer, .. })), _)
+            (BusMsg::P2p(P2pMsg::TakerCommit(TakeCommit { public_offer, .. })), _)
             | (BusMsg::Ctl(Ctl::RevokeOffer(public_offer)), _) => Ok(self
                 .trade_state_machines
                 .iter()

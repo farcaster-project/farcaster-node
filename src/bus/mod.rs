@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 pub mod ctl;
-pub mod msg;
+pub mod p2p;
 pub mod rpc;
 pub mod sync;
 mod types;
@@ -25,7 +25,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 
 use crate::bus::ctl::Ctl;
-use crate::bus::msg::Msg;
+use crate::bus::p2p::P2pMsg;
 use crate::bus::rpc::Rpc;
 use crate::bus::sync::SyncMsg;
 use crate::ServiceId;
@@ -72,7 +72,7 @@ pub enum BusMsg {
     #[api(type = 1)]
     #[display(inner)]
     #[from]
-    Msg(Msg),
+    P2p(P2pMsg),
 
     /// Wrapper for inner type of control messages to be transmitted over the control bus
     #[api(type = 2)]

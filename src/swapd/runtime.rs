@@ -28,7 +28,7 @@ use crate::{
         BitcoinFundingInfo, Checkpoint, CheckpointState, Ctl, FundingInfo, InitSwap,
         MoneroFundingInfo, Params, Tx,
     },
-    bus::msg::{Commit, Msg, Reveal, TakeCommit},
+    bus::p2p::{Commit, P2pMsg, Reveal, TakeCommit},
     bus::rpc::{Rpc, SwapInfo},
     bus::sync::SyncMsg,
     bus::{BusMsg, Failure, FailureCode, Outcome, ServiceBus},
@@ -167,7 +167,7 @@ pub struct Runtime {
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
     pending_requests: PendingRequests,
-    pending_peer_request: Vec<Msg>, // Peer requests that failed and are waiting for reconnection
+    pending_peer_request: Vec<P2pMsg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     public_offer: PublicOffer,
 }
@@ -297,7 +297,7 @@ impl StrictDecode for PendingRequest {
 #[display("checkpoint-swapd")]
 pub struct CheckpointSwapd {
     pub state: State,
-    pub last_msg: Msg,
+    pub last_msg: P2pMsg,
     pub enquirer: Option<ServiceId>,
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub temporal_safety: TemporalSafety,
@@ -368,7 +368,7 @@ impl StrictEncode for CheckpointSwapd {
 impl StrictDecode for CheckpointSwapd {
     fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
         let state = State::strict_decode(&mut d)?;
-        let last_msg = Msg::strict_decode(&mut d)?;
+        let last_msg = P2pMsg::strict_decode(&mut d)?;
         let enquirer = Option::<ServiceId>::strict_decode(&mut d)?;
         let xmr_addr_addendum = Option::<XmrAddressAddendum>::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
@@ -460,13 +460,13 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: Msg) -> Result<(), Error> {
+    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: P2pMsg) -> Result<(), Error> {
         trace!("sending peer message {} to {}", msg, self.peer_service);
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
             self.peer_service.clone(), // ServiceId::Loopback if not initiailized
-            BusMsg::Msg(msg.clone()),
+            BusMsg::P2p(msg.clone()),
         ) {
             error!(
                 "could not send message {} to {} due to {}",
@@ -544,7 +544,7 @@ impl Runtime {
             )));
         }
         let msg = match &request {
-            BusMsg::Msg(msg) => {
+            BusMsg::P2p(msg) => {
                 if msg.swap_id() != self.swap_id() {
                     return Err(Error::Farcaster(format!(
                         "{}: expected {}, found {}",
@@ -565,7 +565,7 @@ impl Runtime {
         match &msg {
             // we are taker and the maker committed, now we reveal after checking
             // whether we're Bob or Alice and that we're on a compatible state
-            Msg::MakerCommit(remote_commit)
+            P2pMsg::MakerCommit(remote_commit)
                 if self.state.commit()
                     && self.state.trade_role() == Some(TradeRole::Taker)
                     && self.state.remote_commit().is_none() =>
@@ -593,13 +593,13 @@ impl Runtime {
 
                 self.send_wallet(msg_bus, endpoints, request)?;
             }
-            Msg::TakerCommit(_) => {
+            P2pMsg::TakerCommit(_) => {
                 unreachable!(
                     "msg handled by farcasterd/walletd, and indirectly here by \
                              Ctl BusMsg::MakeSwap"
                 )
             }
-            Msg::Reveal(Reveal::Proof(_)) => {
+            P2pMsg::Reveal(Reveal::Proof(_)) => {
                 // These messages are saved as pending if Bob and then forwarded once the
                 // parameter reveal forward is triggered. If Alice, send immediately.
                 match self.state.swap_role() {
@@ -626,7 +626,7 @@ impl Runtime {
                     }
                 }
             }
-            Msg::Reveal(Reveal::AliceParameters(..))
+            P2pMsg::Reveal(Reveal::AliceParameters(..))
                 if self.state.swap_role() == SwapRole::Bob
                     && (self.state.b_address().is_none()
                         || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()) =>
@@ -647,7 +647,7 @@ impl Runtime {
             // bob and alice
             // store parameters from counterparty if we have not received them yet.
             // if we're maker, also reveal to taker if their commitment is valid.
-            Msg::Reveal(reveal)
+            P2pMsg::Reveal(reveal)
                 if self.state.remote_commit().is_some()
                     && (self.state.commit() || self.state.reveal())
                     && {
@@ -735,7 +735,7 @@ impl Runtime {
                 }
             }
             // alice receives, bob sends
-            Msg::CoreArbitratingSetup(CoreArbitratingSetup {
+            P2pMsg::CoreArbitratingSetup(CoreArbitratingSetup {
                 lock,
                 cancel,
                 refund,
@@ -770,12 +770,12 @@ impl Runtime {
                 self.send_wallet(msg_bus, endpoints, request)?;
             }
             // bob receives, alice sends
-            Msg::RefundProcedureSignatures(_) if self.state.b_core_arb() => {
+            P2pMsg::RefundProcedureSignatures(_) if self.state.b_core_arb() => {
                 self.state.sup_received_refund_procedure_signatures();
                 self.send_wallet(msg_bus, endpoints, request)?;
             }
             // alice receives, bob sends
-            Msg::BuyProcedureSignature(buy_proc_sig)
+            P2pMsg::BuyProcedureSignature(buy_proc_sig)
                 if self.state.a_refundsig() && !self.state.a_overfunded() =>
             {
                 // Alice verifies that she has sent refund procedure signatures before
@@ -802,7 +802,7 @@ impl Runtime {
                         ServiceId::Database,
                         CheckpointState::CheckpointSwapd(CheckpointSwapd {
                             state: self.state.clone(),
-                            last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
+                            last_msg: P2pMsg::BuyProcedureSignature(buy_proc_sig.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
@@ -818,8 +818,10 @@ impl Runtime {
             }
 
             // bob and alice
-            Msg::Abort(_) => return Err(Error::Farcaster("Abort not yet supported".to_string())),
-            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
+            P2pMsg::Abort(_) => {
+                return Err(Error::Farcaster("Abort not yet supported".to_string()))
+            }
+            P2pMsg::Ping(_) | P2pMsg::Pong(_) | P2pMsg::PingPeer => {
                 unreachable!("ping/pong must remain in peerd, and unreachable in swapd")
             }
             request => error!(
@@ -917,14 +919,14 @@ impl Runtime {
                     public_offer: self.public_offer.clone(),
                     swap_id,
                 };
-                self.send_peer(endpoints, Msg::TakerCommit(take_swap))?;
+                self.send_peer(endpoints, P2pMsg::TakerCommit(take_swap))?;
                 self.state_update(endpoints, next_state)?;
             }
 
-            BusMsg::Msg(Msg::Reveal(Reveal::Proof(proof)))
+            BusMsg::P2p(P2pMsg::Reveal(Reveal::Proof(proof)))
                 if self.state.commit() && self.state.remote_commit().is_some() =>
             {
-                let reveal_proof = Msg::Reveal(Reveal::Proof(proof));
+                let reveal_proof = P2pMsg::Reveal(Reveal::Proof(proof));
                 let swap_id = reveal_proof.swap_id();
                 self.send_peer(endpoints, reveal_proof)?;
                 trace!("sent reveal_proof to peerd");
@@ -940,7 +942,7 @@ impl Runtime {
                         Reveal::BobParameters(params.reveal_bob(swap_id))
                     }
                 };
-                self.send_peer(endpoints, Msg::Reveal(reveal_params))?;
+                self.send_peer(endpoints, P2pMsg::Reveal(reveal_params))?;
                 trace!("sent reveal_proof to peerd");
                 let next_state = self.state.clone().sup_commit_to_reveal();
                 self.state_update(endpoints, next_state)?;
@@ -980,7 +982,7 @@ impl Runtime {
                 );
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
-                self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
+                self.send_peer(endpoints, P2pMsg::MakerCommit(local_commit))?;
                 self.state_update(endpoints, next_state)?;
             }
 
@@ -1007,7 +1009,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: BusMsg::Msg(Msg::Reveal(Reveal::Proof(_))),
+                                request: BusMsg::P2p(P2pMsg::Reveal(Reveal::Proof(_))),
                                 ..
                             }
                         )
@@ -1024,7 +1026,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: BusMsg::Msg(Msg::Reveal(Reveal::AliceParameters(_))),
+                                request: BusMsg::P2p(P2pMsg::Reveal(Reveal::AliceParameters(_))),
                                 ..
                             }
                         )
@@ -1034,7 +1036,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Msg(Msg::CoreArbitratingSetup(core_arb_setup))
+            BusMsg::P2p(P2pMsg::CoreArbitratingSetup(core_arb_setup))
                 if self.state.reveal()
                     && self.state.remote_params().is_some()
                     && self.state.local_params().is_some() =>
@@ -1049,7 +1051,7 @@ impl Runtime {
                         ServiceId::Database,
                         CheckpointState::CheckpointSwapd(CheckpointSwapd {
                             state: self.state.clone(),
-                            last_msg: Msg::CoreArbitratingSetup(core_arb_setup.clone()),
+                            last_msg: P2pMsg::CoreArbitratingSetup(core_arb_setup.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
@@ -1084,7 +1086,7 @@ impl Runtime {
                     }
                 }
                 trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
-                self.send_peer(endpoints, Msg::CoreArbitratingSetup(core_arb_setup))?;
+                self.send_peer(endpoints, P2pMsg::CoreArbitratingSetup(core_arb_setup))?;
                 let next_state = State::Bob(BobState::CorearbB {
                     received_refund_procedure_signatures: false,
                     local_params: self.state.local_params().cloned().unwrap(),
@@ -1215,7 +1217,7 @@ impl Runtime {
                 }
             },
 
-            BusMsg::Msg(Msg::RefundProcedureSignatures(refund_proc_sigs))
+            BusMsg::P2p(P2pMsg::RefundProcedureSignatures(refund_proc_sigs))
                 if self.state.reveal()
                     && self.state.remote_params().is_some()
                     && self.state.local_params().is_some() =>
@@ -1233,7 +1235,7 @@ impl Runtime {
                         ServiceId::Database,
                         CheckpointState::CheckpointSwapd(CheckpointSwapd {
                             state: self.state.clone(),
-                            last_msg: Msg::RefundProcedureSignatures(refund_proc_sigs.clone()),
+                            last_msg: P2pMsg::RefundProcedureSignatures(refund_proc_sigs.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
@@ -1245,7 +1247,10 @@ impl Runtime {
                     )?;
                 }
 
-                self.send_peer(endpoints, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
+                self.send_peer(
+                    endpoints,
+                    P2pMsg::RefundProcedureSignatures(refund_proc_sigs),
+                )?;
                 trace!("sent peer RefundProcedureSignatures msg");
                 let next_state = State::Alice(AliceState::RefundSigA {
                     last_checkpoint_type: SwapCheckpointType::CheckpointAlicePreLock,
@@ -1262,7 +1267,7 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            BusMsg::Msg(Msg::BuyProcedureSignature(ref buy_proc_sig))
+            BusMsg::P2p(P2pMsg::BuyProcedureSignature(ref buy_proc_sig))
                 if self.state.b_core_arb()
                     && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
             {
@@ -1276,7 +1281,7 @@ impl Runtime {
                         ServiceId::Database,
                         CheckpointState::CheckpointSwapd(CheckpointSwapd {
                             state: self.state.clone(),
-                            last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
+                            last_msg: P2pMsg::BuyProcedureSignature(buy_proc_sig.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
@@ -1479,7 +1484,7 @@ impl Runtime {
                     let msg = format!("Restored swap at state {}", self.state);
                     let _ = self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg);
 
-                    self.handle_ctl(endpoints, ServiceId::Database, BusMsg::Msg(last_msg))?;
+                    self.handle_ctl(endpoints, ServiceId::Database, BusMsg::P2p(last_msg))?;
                 }
                 s => {
                     error!("Checkpoint {} not supported in swapd", s);
@@ -1734,7 +1739,7 @@ impl Runtime {
                                     r,
                                     &PendingRequest {
                                         bus_id: ServiceBus::Msg,
-                                        request: BusMsg::Msg(Msg::BuyProcedureSignature(_)),
+                                        request: BusMsg::P2p(P2pMsg::BuyProcedureSignature(_)),
                                         ..
                                     }
                                 )
@@ -2493,7 +2498,7 @@ impl Runtime {
                                         &i,
                                         &PendingRequest {
                                             bus_id: ServiceBus::Msg,
-                                            request: BusMsg::Msg(Msg::Reveal(
+                                            request: BusMsg::P2p(P2pMsg::Reveal(
                                                 Reveal::AliceParameters(..)
                                             )),
                                             dest: ServiceId::Swap(..),
