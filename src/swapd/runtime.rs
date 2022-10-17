@@ -25,7 +25,7 @@ use crate::syncerd::types::{AddressTransaction, Boolean, Event, Task, Transactio
 use crate::syncerd::{FeeEstimation, FeeEstimations, SweepAddressAddendum};
 use crate::{
     bus::ctl::{
-        BitcoinFundingInfo, Checkpoint, CheckpointState, Ctl, FundingInfo, InitSwap,
+        BitcoinFundingInfo, Checkpoint, CheckpointState, CtlMsg, FundingInfo, InitSwap,
         MoneroFundingInfo, Params, Tx,
     },
     bus::p2p::{Commit, P2pMsg, Reveal, TakeCommit},
@@ -477,7 +477,7 @@ impl Runtime {
                 ServiceBus::Ctl,
                 self.identity(),
                 ServiceId::Farcasterd,
-                BusMsg::Ctl(Ctl::PeerdUnreachable(self.peer_service.clone())),
+                BusMsg::Ctl(CtlMsg::PeerdUnreachable(self.peer_service.clone())),
             )?;
             self.pending_peer_request.push(msg);
         }
@@ -839,7 +839,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (BusMsg::Ctl(Ctl::Hello), _) => {
+            (BusMsg::Ctl(CtlMsg::Hello), _) => {
                 info!(
                     "{} | Service {} daemon is now {}",
                     self.swap_id.swap_id(),
@@ -855,7 +855,7 @@ impl Runtime {
                 | ServiceId::Wallet
                 | ServiceId::Database
             ) => {}
-            (BusMsg::Ctl(Ctl::AbortSwap), ServiceId::Client(_)) => {}
+            (BusMsg::Ctl(CtlMsg::AbortSwap), ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
@@ -863,7 +863,7 @@ impl Runtime {
         };
 
         match request {
-            BusMsg::Ctl(Ctl::Terminate) if source == ServiceId::Farcasterd => {
+            BusMsg::Ctl(CtlMsg::Terminate) if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
                     self.swap_id.swap_id(),
@@ -872,7 +872,7 @@ impl Runtime {
                 std::process::exit(0);
             }
 
-            BusMsg::Ctl(Ctl::TakeSwap(InitSwap {
+            BusMsg::Ctl(CtlMsg::TakeSwap(InitSwap {
                 peerd,
                 report_to,
                 local_params,
@@ -948,7 +948,7 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            BusMsg::Ctl(Ctl::MakeSwap(InitSwap {
+            BusMsg::Ctl(CtlMsg::MakeSwap(InitSwap {
                 peerd,
                 report_to,
                 local_params,
@@ -986,7 +986,7 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            BusMsg::Ctl(Ctl::FundingUpdated)
+            BusMsg::Ctl(CtlMsg::FundingUpdated)
                 if source == ServiceId::Wallet
                     && ((self.state.trade_role() == Some(TradeRole::Taker)
                         && self.state.reveal())
@@ -1099,7 +1099,7 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            BusMsg::Ctl(Ctl::Tx(Tx::Lock(btc_lock))) if self.state.b_core_arb() => {
+            BusMsg::Ctl(CtlMsg::Tx(Tx::Lock(btc_lock))) if self.state.b_core_arb() => {
                 log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, endpoints)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
@@ -1124,7 +1124,7 @@ impl Runtime {
                     )
                 }
             }
-            BusMsg::Ctl(Ctl::Tx(transaction)) => {
+            BusMsg::Ctl(CtlMsg::Tx(transaction)) => {
                 // update state
                 match transaction.clone() {
                     Tx::Cancel(tx) => {
@@ -1164,7 +1164,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(Ctl::SweepAddress(sweep_address)) => match sweep_address {
+            BusMsg::Ctl(CtlMsg::SweepAddress(sweep_address)) => match sweep_address {
                 SweepAddressAddendum::Bitcoin(sweep_btc) => {
                     info!(
                         "{} | Sweeping source (funding) address: {} to destination address: {}",
@@ -1320,7 +1320,7 @@ impl Runtime {
                     .defer_request(self.syncer_state.monero_syncer(), pending_request);
             }
 
-            BusMsg::Ctl(Ctl::AbortSwap)
+            BusMsg::Ctl(CtlMsg::AbortSwap)
                 if self.state.a_start()
                     || self.state.a_commit()
                     || self.state.a_reveal()
@@ -1337,7 +1337,7 @@ impl Runtime {
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::AbortSwap) if self.state.b_start() => {
+            BusMsg::Ctl(CtlMsg::AbortSwap) if self.state.b_start() => {
                 // just cancel the swap, no additional logic required, since funding was not yet retrieved
                 self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Abort)))?;
                 self.abort_swap(endpoints)?;
@@ -1349,7 +1349,7 @@ impl Runtime {
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::AbortSwap)
+            BusMsg::Ctl(CtlMsg::AbortSwap)
                 if self.state.b_commit()
                     || self.state.b_reveal()
                     || (!self.state.b_received_refund_procedure_signatures()
@@ -1358,7 +1358,7 @@ impl Runtime {
                 self.send_ctl(
                     endpoints,
                     ServiceId::Wallet,
-                    BusMsg::Ctl(Ctl::GetSweepBitcoinAddress(
+                    BusMsg::Ctl(CtlMsg::GetSweepBitcoinAddress(
                         self.state.b_address().cloned().unwrap(),
                     )),
                 )?;
@@ -1374,7 +1374,7 @@ impl Runtime {
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::AbortSwap) => {
+            BusMsg::Ctl(CtlMsg::AbortSwap) => {
                 let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
                 warn!("{} | {}", self.swap_id.swap_id(), msg);
 
@@ -1389,7 +1389,7 @@ impl Runtime {
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::PeerdReconnected(service_id)) => {
+            BusMsg::Ctl(CtlMsg::PeerdReconnected(service_id)) => {
                 // set the reconnected service id, if it is not set yet. This
                 // can happen if this is a maker launched swap after restoration
                 // and the taker reconnects
@@ -1402,7 +1402,7 @@ impl Runtime {
                 self.pending_peer_request.clear();
             }
 
-            BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => match state {
+            BusMsg::Ctl(CtlMsg::Checkpoint(Checkpoint { swap_id, state })) => match state {
                 CheckpointState::CheckpointSwapd(CheckpointSwapd {
                     state,
                     last_msg,
@@ -1602,7 +1602,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Monero)),
+                                    BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Monero)),
                                 )?;
                                 self.syncer_state.awaiting_funding = false;
                             }
@@ -1804,7 +1804,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Monero)),
+                                        BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Monero)),
                                     )?;
                                 }
                                 SwapRole::Bob => {
@@ -1812,7 +1812,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Bitcoin)),
+                                        BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Bitcoin)),
                                     )?;
                                 }
                             }
@@ -1850,7 +1850,7 @@ impl Runtime {
                             None
                         };
                         if let Some(success) = success {
-                            let swap_success_req = BusMsg::Ctl(Ctl::SwapOutcome(success));
+                            let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(success));
                             self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
                             self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
                             // remove txs to invalidate outdated states
@@ -1907,7 +1907,7 @@ impl Runtime {
                                     self.handle_ctl(
                                         endpoints,
                                         source,
-                                        BusMsg::Ctl(Ctl::AbortSwap),
+                                        BusMsg::Ctl(CtlMsg::AbortSwap),
                                     )?;
                                     return Ok(());
                                 } else {
@@ -1916,12 +1916,12 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Bitcoin)),
+                                        BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Bitcoin)),
                                     )?;
                                 }
 
                                 // forward tx to wallet
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Funding(tx)));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Funding(tx)));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?;
                             }
 
@@ -1951,13 +1951,13 @@ impl Runtime {
                             TxLabel::Buy if self.state.b_buy_sig() => {
                                 log_tx_seen(self.swap_id, &txlabel, &tx.txid());
                                 self.state.b_sup_buy_tx_seen();
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Buy(tx.clone())));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Buy(tx.clone())));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?
                             }
                             TxLabel::Buy if self.state.b_core_arb() => {
                                 log_tx_seen(self.swap_id, &txlabel, &tx.txid());
                                 self.state.b_sup_buy_tx_seen();
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Buy(tx.clone())));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Buy(tx.clone())));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?;
 
                                 // The buy transaction is received in Corearb state, go straight to buy state
@@ -1983,7 +1983,7 @@ impl Runtime {
                                 =>
                             {
                                 log_tx_seen(self.swap_id, &txlabel, &tx.txid());
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Refund(tx.clone())));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Refund(tx.clone())));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?
                             }
                             txlabel => {
@@ -2071,7 +2071,7 @@ impl Runtime {
                                         address.addr(),
                                     );
                                     self.state.a_sup_required_funding_amount(amount);
-                                    let funding_request = BusMsg::Ctl(Ctl::FundingInfo(
+                                    let funding_request = BusMsg::Ctl(CtlMsg::FundingInfo(
                                         FundingInfo::Monero(MoneroFundingInfo {
                                             swap_id,
                                             address,
@@ -2175,7 +2175,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    BusMsg::Ctl(Ctl::FundingCanceled(Blockchain::Monero)),
+                                    BusMsg::Ctl(CtlMsg::FundingCanceled(Blockchain::Monero)),
                                 )?
                             }
 
@@ -2228,7 +2228,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCanceled(Blockchain::Monero)),
+                                        BusMsg::Ctl(CtlMsg::FundingCanceled(Blockchain::Monero)),
                                     )?;
                                     self.syncer_state.awaiting_funding = false;
                                 }
@@ -2253,7 +2253,7 @@ impl Runtime {
                                     BusMsg::Sync(SyncMsg::Task(abort_all)),
                                 )?;
                                 let swap_success_req =
-                                    BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Refund));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Refund));
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     endpoints,
@@ -2292,7 +2292,8 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     BusMsg::Sync(SyncMsg::Task(abort_all)),
                                 )?;
-                                let swap_success_req = BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Buy));
+                                let swap_success_req =
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Buy));
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     endpoints,
@@ -2357,7 +2358,7 @@ impl Runtime {
                                     State::Bob(BobState::FinishB(Outcome::Refund)),
                                 )?;
                                 let swap_success_req =
-                                    BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Refund));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Refund));
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Wallet,
@@ -2401,7 +2402,7 @@ impl Runtime {
                                     }
                                 }
                                 let swap_success_req =
-                                    BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Punish));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Punish));
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Wallet,
@@ -2458,7 +2459,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             ServiceId::Farcasterd,
-                            BusMsg::Ctl(Ctl::FundingCanceled(Blockchain::Bitcoin)),
+                            BusMsg::Ctl(CtlMsg::FundingCanceled(Blockchain::Bitcoin)),
                         )?;
                         self.abort_swap(endpoints)?;
                     }
@@ -2547,11 +2548,13 @@ impl Runtime {
             total_fees.label(),
         );
         self.state.b_sup_required_funding_amount(amount);
-        let req = BusMsg::Ctl(Ctl::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {
-            swap_id,
-            address,
-            amount,
-        })));
+        let req = BusMsg::Ctl(CtlMsg::FundingInfo(FundingInfo::Bitcoin(
+            BitcoinFundingInfo {
+                swap_id,
+                address,
+                amount,
+            },
+        )));
         self.syncer_state.awaiting_funding = true;
 
         if let Some(enquirer) = self.enquirer.clone() {
@@ -2629,7 +2632,7 @@ impl Runtime {
     }
 
     fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        let swap_success_req = BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Abort));
+        let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Abort));
         self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
         self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
         info!("{} | Aborted swap.", self.swap_id.swap_id());

@@ -13,7 +13,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::{BitcoinFundingInfo, Ctl, GetKeys, MoneroFundingInfo};
+use crate::bus::ctl::{BitcoinFundingInfo, CtlMsg, GetKeys, MoneroFundingInfo};
 use crate::bus::p2p::{P2pMsg, TakeCommit};
 use crate::bus::rpc::NodeInfo;
 use crate::bus::sync::SyncMsg;
@@ -177,7 +177,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (BusMsg::Ctl(Ctl::Hello), _) => {
+            (BusMsg::Ctl(CtlMsg::Hello), _) => {
                 trace!("Hello farcasterd from {}", source);
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
@@ -196,7 +196,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(CtlMsg::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} is now {}",
@@ -221,7 +221,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             source.clone(),
-                            BusMsg::Ctl(Ctl::GetKeys(wallet_token)),
+                            BusMsg::Ctl(CtlMsg::GetKeys(wallet_token)),
                         )?;
                     }
                     ServiceId::Peer(connection_id) => {
@@ -297,13 +297,13 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(Ctl::Keys(Keys(sk, pk))) => {
+            BusMsg::Ctl(CtlMsg::Keys(Keys(sk, pk))) => {
                 debug!("received peerd keys {}", sk.display_secret());
                 self.node_secret_key = Some(sk);
                 self.node_public_key = Some(pk);
             }
 
-            BusMsg::Ctl(Ctl::PeerdTerminated) => {
+            BusMsg::Ctl(CtlMsg::PeerdTerminated) => {
                 if let ServiceId::Peer(addr) = source {
                     if self.registered_services.remove(&source) {
                         debug!(
@@ -322,17 +322,17 @@ impl Runtime {
             }
 
             // Add progress in queues and forward to subscribed clients
-            BusMsg::Ctl(Ctl::Progress(..))
-            | BusMsg::Ctl(Ctl::Success(..))
-            | BusMsg::Ctl(Ctl::Failure(..)) => {
+            BusMsg::Ctl(CtlMsg::Progress(..))
+            | BusMsg::Ctl(CtlMsg::Success(..))
+            | BusMsg::Ctl(CtlMsg::Failure(..)) => {
                 if !self.progress.contains_key(&source) {
                     self.progress.insert(source.clone(), none!());
                 };
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 let prog = match request.clone() {
-                    BusMsg::Ctl(Ctl::Progress(p)) => Some(ProgressStack::Progress(p)),
-                    BusMsg::Ctl(Ctl::Success(s)) => Some(ProgressStack::Success(s)),
-                    BusMsg::Ctl(Ctl::Failure(f)) => Some(ProgressStack::Failure(f)),
+                    BusMsg::Ctl(CtlMsg::Progress(p)) => Some(ProgressStack::Progress(p)),
+                    BusMsg::Ctl(CtlMsg::Success(s)) => Some(ProgressStack::Success(s)),
+                    BusMsg::Ctl(CtlMsg::Failure(f)) => Some(ProgressStack::Failure(f)),
                     _ => None,
                 }
                 .expect("checked above");
@@ -650,7 +650,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (BusMsg::Ctl(Ctl::Hello), _) => {
+            (BusMsg::Ctl(CtlMsg::Hello), _) => {
                 trace!("Hello farcasterd from {}", source);
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
@@ -693,13 +693,13 @@ impl Runtime {
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Swap(*swap_id),
-            BusMsg::Ctl(Ctl::Terminate),
+            BusMsg::Ctl(CtlMsg::Terminate),
         )?;
         endpoints.send_to(
             ServiceBus::Ctl,
             self.identity(),
             ServiceId::Database,
-            BusMsg::Ctl(Ctl::RemoveCheckpoint(*swap_id)),
+            BusMsg::Ctl(CtlMsg::RemoveCheckpoint(*swap_id)),
         )?;
 
         self.registered_services = self
@@ -714,7 +714,7 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 service.clone(),
-                                BusMsg::Ctl(Ctl::Terminate),
+                                BusMsg::Ctl(CtlMsg::Terminate),
                             )
                             .is_err()
                     } else {
@@ -728,7 +728,7 @@ impl Runtime {
                                 ServiceBus::Ctl,
                                 self.identity(),
                                 service.clone(),
-                                BusMsg::Ctl(Ctl::Terminate),
+                                BusMsg::Ctl(CtlMsg::Terminate),
                             )
                             .is_err()
                     } else {
@@ -808,7 +808,7 @@ impl Runtime {
         source: ServiceId,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
-            (BusMsg::Ctl(Ctl::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
+            (BusMsg::Ctl(CtlMsg::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
             (
                 BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
                     id, ..
@@ -825,13 +825,13 @@ impl Runtime {
         source: ServiceId,
     ) -> Result<Option<TradeStateMachine>, Error> {
         match (req, source) {
-            (BusMsg::Ctl(Ctl::RestoreCheckpoint(..)), _) => {
+            (BusMsg::Ctl(CtlMsg::RestoreCheckpoint(..)), _) => {
                 Ok(Some(TradeStateMachine::StartRestore))
             }
-            (BusMsg::Ctl(Ctl::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
-            (BusMsg::Ctl(Ctl::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
+            (BusMsg::Ctl(CtlMsg::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
+            (BusMsg::Ctl(CtlMsg::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
             (BusMsg::P2p(P2pMsg::TakerCommit(TakeCommit { public_offer, .. })), _)
-            | (BusMsg::Ctl(Ctl::RevokeOffer(public_offer)), _) => Ok(self
+            | (BusMsg::Ctl(CtlMsg::RevokeOffer(public_offer)), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -842,7 +842,7 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (BusMsg::Ctl(Ctl::LaunchSwap(LaunchSwap { public_offer, .. })), _) => Ok(self
+            (BusMsg::Ctl(CtlMsg::LaunchSwap(LaunchSwap { public_offer, .. })), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
@@ -853,11 +853,11 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (BusMsg::Ctl(Ctl::PeerdUnreachable(..)), ServiceId::Swap(swap_id))
-            | (BusMsg::Ctl(Ctl::FundingInfo(..)), ServiceId::Swap(swap_id))
-            | (BusMsg::Ctl(Ctl::FundingCanceled(..)), ServiceId::Swap(swap_id))
-            | (BusMsg::Ctl(Ctl::FundingCompleted(..)), ServiceId::Swap(swap_id))
-            | (BusMsg::Ctl(Ctl::SwapOutcome(..)), ServiceId::Swap(swap_id)) => Ok(self
+            (BusMsg::Ctl(CtlMsg::PeerdUnreachable(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(CtlMsg::FundingInfo(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(CtlMsg::FundingCanceled(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(CtlMsg::FundingCompleted(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(CtlMsg::SwapOutcome(..)), ServiceId::Swap(swap_id)) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {

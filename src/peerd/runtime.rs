@@ -33,7 +33,7 @@ use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 use microservices::ZMQ_CONTEXT;
 
-use crate::bus::{ctl::Ctl, p2p::P2pMsg, rpc::PeerInfo, rpc::Rpc, BusMsg, ServiceBus};
+use crate::bus::{ctl::CtlMsg, p2p::P2pMsg, rpc::PeerInfo, rpc::Rpc, BusMsg, ServiceBus};
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 #[allow(clippy::too_many_arguments)]
@@ -359,7 +359,7 @@ impl Runtime {
                     ServiceBus::Ctl,
                     self.identity(),
                     ServiceId::Farcasterd,
-                    BusMsg::Ctl(Ctl::PeerdTerminated),
+                    BusMsg::Ctl(CtlMsg::PeerdTerminated),
                 )?;
                 warn!("Exiting peerd");
                 std::process::exit(0);
@@ -386,10 +386,10 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Ctl,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match request {
-            Ctl::Terminate if source == ServiceId::Farcasterd => {
+            CtlMsg::Terminate if source == ServiceId::Farcasterd => {
                 info!("Terminating {}", self.identity().label());
                 std::process::exit(0);
             }
@@ -528,7 +528,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         ServiceId::Farcasterd,
-                        BusMsg::Ctl(Ctl::PeerdTerminated),
+                        BusMsg::Ctl(CtlMsg::PeerdTerminated),
                     )?;
                     warn!("Exiting peerd");
                     std::process::exit(0);

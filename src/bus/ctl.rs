@@ -24,7 +24,7 @@ use crate::{Error, ServiceId};
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
-pub enum Ctl {
+pub enum CtlMsg {
     #[display("hello()")]
     Hello,
 

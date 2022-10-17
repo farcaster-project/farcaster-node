@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::Ctl;
+use crate::bus::ctl::CtlMsg;
 use crate::bus::rpc::Rpc;
 use crate::bus::sync::SyncMsg;
 use crate::bus::BusMsg;
@@ -299,12 +299,12 @@ where
             self.esb.send_to(
                 ServiceBus::Ctl,
                 ServiceId::Farcasterd,
-                BusMsg::Ctl(Ctl::Hello),
+                BusMsg::Ctl(CtlMsg::Hello),
             )?;
             self.esb.send_to(
                 ServiceBus::Msg,
                 ServiceId::Farcasterd,
-                BusMsg::Ctl(Ctl::Hello),
+                BusMsg::Ctl(CtlMsg::Hello),
             )?;
             self.esb.send_to(
                 ServiceBus::Sync,
@@ -362,7 +362,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Success(msg.map(|m| m.to_string()).into())),
+                BusMsg::Ctl(CtlMsg::Success(msg.map(|m| m.to_string()).into())),
             )?;
         }
         Ok(())
@@ -379,7 +379,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Progress(Progress::Message(msg.to_string()))),
+                BusMsg::Ctl(CtlMsg::Progress(Progress::Message(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -396,7 +396,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Progress(Progress::StateTransition(msg.to_string()))),
+                BusMsg::Ctl(CtlMsg::Progress(Progress::StateTransition(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -414,7 +414,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Failure(failure.clone())),
+                BusMsg::Ctl(CtlMsg::Failure(failure.clone())),
             );
         }
         Error::Terminate(failure.to_string())

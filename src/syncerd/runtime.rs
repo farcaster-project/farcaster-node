@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::bus::{
-    ctl::Ctl,
+    ctl::CtlMsg,
     rpc::{Rpc, SyncerInfo},
     sync::SyncMsg,
     BusMsg, ServiceBus,
@@ -149,7 +149,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(CtlMsg::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -165,10 +165,10 @@ impl Runtime {
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Ctl,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Ctl::Hello, _) => {
+            (CtlMsg::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} daemon is now {}",
@@ -177,7 +177,7 @@ impl Runtime {
                 );
             }
 
-            (Ctl::Terminate, ServiceId::Farcasterd) => {
+            (CtlMsg::Terminate, ServiceId::Farcasterd) => {
                 // terminate all runtimes
                 info!("Received terminate on {}", self.identity());
                 std::process::exit(0);

@@ -35,7 +35,7 @@ use farcaster_core::{
 use super::Command;
 use crate::bus::BusMsg;
 use crate::bus::{
-    ctl::{self, Ctl},
+    ctl::{self, CtlMsg},
     rpc::Rpc,
 };
 use crate::client::Client;
@@ -125,7 +125,7 @@ impl Exec for Command {
             Command::RestoreCheckpoint { swap_id } => {
                 runtime.request_rpc(ServiceId::Database, Rpc::GetCheckpointEntry(swap_id))?;
                 if let BusMsg::Rpc(Rpc::CheckpointEntry(entry)) = runtime.report_failure()? {
-                    runtime.request_ctl(ServiceId::Farcasterd, Ctl::RestoreCheckpoint(entry))?;
+                    runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RestoreCheckpoint(entry))?;
                     runtime.report_response_or_fail()?;
                 } else {
                     return Err(Error::Farcaster("Received unexpected response".to_string()));
@@ -209,7 +209,7 @@ impl Exec for Command {
                     arbitrating_addr,
                     accordant_addr,
                 };
-                runtime.request_ctl(ServiceId::Farcasterd, Ctl::MakeOffer(proto_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::MakeOffer(proto_offer))?;
                 // report success or failure of the request to cli
                 runtime.report_response_or_fail()?;
             }
@@ -299,7 +299,7 @@ impl Exec for Command {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Ctl::TakeOffer(ctl::PubOffer {
+                        CtlMsg::TakeOffer(ctl::PubOffer {
                             public_offer,
                             external_address: bitcoin_address,
                             internal_address: monero_address,
@@ -311,12 +311,12 @@ impl Exec for Command {
             }
 
             Command::RevokeOffer { public_offer } => {
-                runtime.request_ctl(ServiceId::Farcasterd, Ctl::RevokeOffer(public_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RevokeOffer(public_offer))?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::AbortSwap { swap_id } => {
-                runtime.request_ctl(ServiceId::Swap(swap_id), Ctl::AbortSwap)?;
+                runtime.request_ctl(ServiceId::Swap(swap_id), CtlMsg::AbortSwap)?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -359,7 +359,7 @@ impl Exec for Command {
                 {
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Ctl::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
+                        CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                             source_address,
                             source_secret_key: secret_key,
                             destination_address,
@@ -387,7 +387,7 @@ impl Exec for Command {
                 {
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Ctl::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
+                        CtlMsg::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
                             source_spend_key: spend,
                             source_view_key: view,
                             destination_address,

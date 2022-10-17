@@ -24,7 +24,7 @@ pub use types::*;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 
-use crate::bus::ctl::Ctl;
+use crate::bus::ctl::CtlMsg;
 use crate::bus::p2p::P2pMsg;
 use crate::bus::rpc::Rpc;
 use crate::bus::sync::SyncMsg;
@@ -78,7 +78,7 @@ pub enum BusMsg {
     #[api(type = 2)]
     #[display(inner)]
     #[from]
-    Ctl(Ctl),
+    Ctl(CtlMsg),
 
     /// Wrapper for inner type of RPC messages to be transmitted over the rpc bus
     #[api(type = 3)]
@@ -97,7 +97,7 @@ impl microservices::rpc::Request for BusMsg {}
 
 impl From<crate::Error> for BusMsg {
     fn from(err: crate::Error) -> Self {
-        BusMsg::Ctl(Ctl::Failure(Failure {
+        BusMsg::Ctl(CtlMsg::Failure(Failure {
             code: FailureCode::Unknown,
             info: err.to_string(),
         }))

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 
-use crate::bus::{ctl::Ctl, rpc::Rpc};
+use crate::bus::{ctl::CtlMsg, rpc::Rpc};
 use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
@@ -271,7 +271,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(CtlMsg::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
             _ => {
@@ -288,7 +288,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(CtlMsg::Hello) => {
                 debug!("Received Hello from {}", source);
             }
 
@@ -313,7 +313,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(CtlMsg::Hello) => {
                 debug!("Received Hello from {}", source);
             }
 

@@ -11,7 +11,7 @@ use crate::Endpoints;
 use bitcoin::secp256k1::SecretKey;
 
 use crate::bus::{
-    ctl::{Checkpoint, CheckpointState, Ctl},
+    ctl::{Checkpoint, CheckpointState, CtlMsg},
     rpc::{Address, OfferStatusSelector, Rpc},
     AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
     OfferStatusPair, ServiceBus,
@@ -78,7 +78,7 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(CtlMsg::Hello) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
@@ -99,11 +99,11 @@ impl Runtime {
         request: BusMsg,
     ) -> Result<(), Error> {
         match request {
-            BusMsg::Ctl(Ctl::Hello) => {
+            BusMsg::Ctl(CtlMsg::Hello) => {
                 debug!("Received Hello from {}", source);
             }
 
-            BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => {
+            BusMsg::Ctl(CtlMsg::Checkpoint(Checkpoint { swap_id, state })) => {
                 match state {
                     CheckpointState::CheckpointWallet(_) => {
                         debug!("setting wallet checkpoint");
@@ -122,7 +122,7 @@ impl Runtime {
                 debug!("checkpoint set");
             }
 
-            BusMsg::Ctl(Ctl::RestoreCheckpoint(CheckpointEntry { swap_id, .. })) => {
+            BusMsg::Ctl(CtlMsg::RestoreCheckpoint(CheckpointEntry { swap_id, .. })) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -189,7 +189,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(Ctl::RemoveCheckpoint(swap_id)) => {
+            BusMsg::Ctl(CtlMsg::RemoveCheckpoint(swap_id)) => {
                 if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Wallet,
@@ -204,14 +204,14 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Bitcoin {
+            BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                 address,
                 secret_key,
             })) => {
                 self.database.set_bitcoin_address(&address, &secret_key)?;
             }
 
-            BusMsg::Ctl(Ctl::SetAddressSecretKey(AddressSecretKey::Monero {
+            BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                 address,
                 view,
                 spend,
@@ -220,7 +220,7 @@ impl Runtime {
                     .set_monero_address(&address, &monero::KeyPair { view, spend })?;
             }
 
-            BusMsg::Ctl(Ctl::SetOfferStatus(OfferStatusPair { offer, status })) => {
+            BusMsg::Ctl(CtlMsg::SetOfferStatus(OfferStatusPair { offer, status })) => {
                 self.database.set_offer_status(&offer, &status)?;
             }
 
@@ -332,7 +332,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        BusMsg::Ctl(Ctl::Failure(Failure {
+                        BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve checkpoint entry for {}", swap_id),
                         })),
@@ -346,7 +346,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        BusMsg::Ctl(Ctl::Failure(Failure {
+                        BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         })),
@@ -372,7 +372,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         ServiceId::Database,
                         source,
-                        BusMsg::Ctl(Ctl::Failure(Failure {
+                        BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
                         })),
@@ -431,7 +431,7 @@ pub fn checkpoint_send(
         ServiceBus::Ctl,
         source,
         destination,
-        BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })),
+        BusMsg::Ctl(CtlMsg::Checkpoint(Checkpoint { swap_id, state })),
     )?;
     Ok(())
 }

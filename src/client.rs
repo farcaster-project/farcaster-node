@@ -18,7 +18,7 @@ use std::time::Duration;
 use internet2::ZmqSocketType;
 use microservices::esb;
 
-use crate::bus::{ctl::Ctl, rpc::Rpc, BusMsg, ServiceBus};
+use crate::bus::{ctl::CtlMsg, rpc::Rpc, BusMsg, ServiceBus};
 use crate::service::Endpoints;
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
@@ -79,7 +79,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn request_ctl(&mut self, daemon: ServiceId, req: Ctl) -> Result<(), Error> {
+    pub fn request_ctl(&mut self, daemon: ServiceId, req: CtlMsg) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb
             .send_to(ServiceBus::Ctl, daemon, BusMsg::Ctl(req))?;
@@ -100,7 +100,7 @@ impl Client {
 
     pub fn report_failure(&mut self) -> Result<BusMsg, Error> {
         match self.response()? {
-            BusMsg::Ctl(Ctl::Failure(fail)) => Err(Error::Farcaster(fail.info)),
+            BusMsg::Ctl(CtlMsg::Failure(fail)) => Err(Error::Farcaster(fail.info)),
             resp => Ok(resp),
         }
     }
@@ -124,7 +124,7 @@ impl Client {
                 {
                     break Err(e)
                 }
-                Ok(BusMsg::Ctl(Ctl::Success(s))) => {
+                Ok(BusMsg::Ctl(CtlMsg::Success(s))) => {
                     println!("{}", s.bright_green_bold());
                     // terminate on success
                     break Ok(());
