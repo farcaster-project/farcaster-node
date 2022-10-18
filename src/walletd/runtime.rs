@@ -1,7 +1,7 @@
 use crate::bus::{
     ctl::{
-        self, BitcoinAddress, Checkpoint, CheckpointState, CtlMsg, GetKeys, Keys, LaunchSwap,
-        MoneroAddress, Params, TakerCommitted, Token, Tx,
+        self, Checkpoint, CheckpointState, CtlMsg, GetKeys, Keys, LaunchSwap, Params,
+        TakerCommitted, Token, Tx,
     },
     p2p::{Commit, PeerMsg, Reveal, TakeCommit},
     AddressSecretKey, BusMsg, Outcome, ServiceBus,
@@ -290,12 +290,12 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            // Peer-to-peer message bus
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
+            // Peer-to-peer message bus, only accept Peer message
+            (ServiceBus::Msg, BusMsg::P2p(req)) => self.handle_msg(endpoints, source, req),
             // Control bus for issuing control commands, only accept Ctl message
             (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
             // All other pairs are not supported
-            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
+            (bus, req) => Err(Error::NotSupported(bus, req.to_string())),
         }
     }
 
@@ -308,101 +308,29 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_farcasterd(&self, endpoints: &mut Endpoints, message: BusMsg) -> Result<(), Error> {
-        endpoints.send_to(
-            ServiceBus::Ctl,
-            self.identity(),
-            ServiceId::Farcasterd,
-            message,
-        )?;
-        Ok(())
-    }
-
     fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: PeerMsg,
     ) -> Result<(), Error> {
-        let req_swap_id = get_swap_id(&source).ok();
-        match &request {
-            BusMsg::P2p(msg) if req_swap_id.is_some() && Some(msg.swap_id()) == req_swap_id => {}
+        // Peer messages should all arrive from a swap service, so we can error on getting swap id
+        // from source
+        let req_swap_id = get_swap_id(&source)?;
+        // Peer messages should all have an embeded swap id
+        let msg_swap_id = request.swap_id();
 
-            req if source == ServiceId::Farcasterd => match req {
-                // TODO enter farcasterd messages allowed
-                BusMsg::P2p(PeerMsg::TakerCommit(_)) => {}
-                BusMsg::P2p(_) => return Ok(()),
-                _ => {}
-            },
-
-            // errors
-            BusMsg::P2p(msg) if req_swap_id.is_some() && Some(msg.swap_id()) != req_swap_id => {
-                error!(
-                    "Msg and source don't have same swap id ({} | {}), ignoring...",
-                    msg.swap_id(),
-                    req_swap_id.expect("checked above is some").swap_id()
-                );
-                return Ok(());
-            }
-            _ => {
-                error!(
-                    "Service not supported by wallet, req: {}, source: {}",
-                    request, source
-                );
-                return Ok(());
-            }
+        if req_swap_id != msg_swap_id {
+            error!(
+                "Msg and source don't have same swap id ({} | {}), ignoring...",
+                msg_swap_id, req_swap_id,
+            );
+            return Ok(());
         }
+        let swap_id = msg_swap_id;
 
         match request {
-            BusMsg::Ctl(CtlMsg::Hello) => {
-                // Ignoring; this is used to set remote identity at ZMQ level
-            }
-
-            // FIXME: remove this when refactor is tested
-            // Handled in Msg to avoid race condition between Msg and Ctl bus (2 msgs sent
-            // sequencially on the diferent buses arriving in random order), now both msgs go
-            // through the msg bus, and always arrive in the correct order. BitcoinAddress arriving
-            // after TakerCommit, blocks TakerCommit, as `self.btc_addrs.contains_key(&swap_id) ==
-            // false`
-            BusMsg::Ctl(CtlMsg::BitcoinAddress(BitcoinAddress(swap_id, _btc_addr))) => {
-                error!(
-                    "{} | This is now depricated and should not be hit",
-                    swap_id.swap_id()
-                );
-                panic!("exiting because CtlMsg::BitcoinAddress in {}", swap_id);
-            }
-
-            // FIXME: remove this when refactor is tested
-            // Handled in Msg to avoid race condition between Msg and Ctl bus (2 msgs sent
-            // sequencially on the diferent buses arriving in random order), now both msgs go
-            // through the msg bus, and always arrive in the correct order. MoneroAddress arriving
-            // after TakerCommit, blocks TakerCommit, as `self.xmr_addrs.contains_key(&swap_id) ==
-            // false`
-            BusMsg::Ctl(CtlMsg::MoneroAddress(MoneroAddress(swap_id, _xmr_addr))) => {
-                error!(
-                    "{} | This is now depricated and should not be hit",
-                    swap_id.swap_id()
-                );
-                panic!("exiting because CtlMsg::MoneroAddress in {}", swap_id);
-            }
-
-            // FIXME: remove this when refactor is tested
-            // 1st protocol message received through peer connection, and last
-            // handled by farcasterd, receiving taker commit because we are
-            // maker
-            BusMsg::P2p(PeerMsg::TakerCommit(TakeCommit { swap_id, .. }))
-                if self.btc_addrs.contains_key(&swap_id)
-                    && self.xmr_addrs.contains_key(&swap_id) =>
-            {
-                error!(
-                    "{} | This is now depricated and should not be hit",
-                    swap_id.swap_id()
-                );
-                panic!("exiting because PeerMsg::TakerCommit in {}", swap_id);
-            }
-
-            BusMsg::P2p(PeerMsg::MakerCommit(commit)) => {
-                let req_swap_id = req_swap_id.expect("validated previously");
+            PeerMsg::MakerCommit(commit) => {
                 match commit {
                     Commit::BobParameters(CommitBobParameters { swap_id, .. }) => {
                         if let Some(Wallet::Alice(AliceState {
@@ -445,7 +373,7 @@ impl Runtime {
                         }
                     }
                 }
-                let proof = match self.wallets.get(&req_swap_id).unwrap() {
+                let proof = match self.wallets.get(&swap_id).unwrap() {
                     Wallet::Alice(AliceState { local_params, .. }) => local_params.proof.as_ref(),
                     Wallet::Bob(BobState { local_params, .. }) => local_params.proof.as_ref(),
                 };
@@ -454,14 +382,13 @@ impl Runtime {
                     self.identity(),
                     source,
                     BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
-                        swap_id: req_swap_id,
+                        swap_id,
                         proof: proof.expect("local proof is always Some").clone(),
                     }))),
                 )?;
             }
 
-            BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(proof))) => {
-                let swap_id = get_swap_id(&source)?;
+            PeerMsg::Reveal(Reveal::Proof(proof)) => {
                 let wallet = self.wallets.get_mut(&swap_id);
                 match wallet {
                     Some(Wallet::Alice(AliceState { remote_proof, .. })) => {
@@ -485,8 +412,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
-                let swap_id = get_swap_id(&source)?;
+            PeerMsg::Reveal(reveal) => {
                 match reveal {
                     // receiving from counterparty Bob, thus I'm Alice (Maker or Taker)
                     Reveal::BobParameters(reveal) => {
@@ -601,7 +527,6 @@ impl Runtime {
                             }
 
                             // checkpoint here after proof verification and potentially sending RevealProof
-                            let swap_id = get_swap_id(&source)?;
                             debug!("checkpointing bob pre lock.");
                             checkpoint_send(
                                 endpoints,
@@ -709,12 +634,11 @@ impl Runtime {
                 }
             }
 
-            BusMsg::P2p(PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures {
+            PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures {
                 swap_id: _,
                 cancel_sig: alice_cancel_sig,
                 refund_adaptor_sig,
-            })) => {
-                let swap_id = get_swap_id(&source)?;
+            }) => {
                 let my_id = self.identity();
 
                 if let Some(Wallet::Bob(BobState {
@@ -851,12 +775,11 @@ impl Runtime {
                         )?;
                     }
                 } else {
-                    error!("{} | Unknown wallet and swap_id", swap_id.swap_id(),);
+                    error!("{} | Unknown wallet and swap id", swap_id.swap_id(),);
                 }
             }
 
-            BusMsg::P2p(PeerMsg::CoreArbitratingSetup(core_arbitrating_setup)) => {
-                let swap_id = get_swap_id(&source)?;
+            PeerMsg::CoreArbitratingSetup(core_arbitrating_setup) => {
                 let my_id = self.identity();
 
                 if let Some(Wallet::Alice(AliceState {
@@ -997,7 +920,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_proc_sig)) => {
+            PeerMsg::BuyProcedureSignature(buy_proc_sig) => {
                 let BuyProcedureSignature { swap_id, .. } = buy_proc_sig;
                 trace!("wallet received buyproceduresignature");
                 let id = self.identity();
@@ -1017,7 +940,7 @@ impl Runtime {
                         }),
                     )?;
                 } else {
-                    error!("{} | Unknown wallet and swap_id", swap_id.swap_id(),);
+                    error!("{} | Unknown wallet and swap id", swap_id.swap_id(),);
                 };
 
                 if let Some(Wallet::Alice(AliceState {
@@ -1087,9 +1010,9 @@ impl Runtime {
 
             req => {
                 error!(
-                    "MSG RPC can only be used for forwarding farcaster protocol messages, found {:?}, {:?}",
-                    req.to_string(), req
-                )
+                    "BusMsg {} is not supported by the MSG interface",
+                    req.to_string()
+                );
             }
         }
 
@@ -1612,13 +1535,15 @@ impl Runtime {
                     return Err(Error::InvalidToken);
                 }
                 trace!("sent Secret request to farcasterd");
-                self.send_farcasterd(
-                    endpoints,
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Farcasterd,
                     BusMsg::Ctl(CtlMsg::Keys(Keys(
                         self.node_secrets.peerd_secret_key,
                         self.node_secrets.node_id(),
                     ))),
-                )?
+                )?;
             }
 
             CtlMsg::GetSweepBitcoinAddress(source_address) => {
@@ -1683,8 +1608,11 @@ impl Runtime {
                 }
             },
 
-            _ => {
-                error!("BusMsg {:?} is not supported by the CTL interface", request);
+            req => {
+                error!(
+                    "BusMsg {} is not supported by the CTL interface",
+                    req.to_string()
+                );
             }
         }
 
