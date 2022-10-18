@@ -1,4 +1,5 @@
-use crate::walletd::runtime::{CheckpointWallet, Wallet};
+use crate::walletd::runtime::CheckpointWallet;
+use crate::walletd::state::Wallet;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;

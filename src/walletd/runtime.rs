@@ -10,11 +10,11 @@ use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
 use crate::swapd::get_swap_id;
 use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
+use crate::walletd::state::{AliceState, BobState, Wallet};
 use crate::walletd::NodeSecrets;
 use crate::LogStyle;
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 
-use bitcoin::secp256k1::ecdsa::Signature;
 use farcaster_core::{
     bitcoin::{
         segwitv0::LockTx,
@@ -22,20 +22,13 @@ use farcaster_core::{
         BitcoinSegwitV0,
     },
     blockchain::FeePriority,
-    consensus::{self, CanonicalBytes, Decodable, Encodable},
-    crypto::dleq::DLEQProof,
     crypto::{ArbitratingKeyId, GenerateKey, SharedKeyId},
     crypto::{CommitmentEngine, ProveCrossGroupDleq},
-    impl_strict_encoding,
     monero::{Monero, SHARED_VIEW_KEY_ID},
     role::{SwapRole, TradeRole},
-    swap::btcxmr::message::{
-        BuyProcedureSignature, CommitAliceParameters, CommitBobParameters, CoreArbitratingSetup,
-        RefundProcedureSignatures, RevealProof,
-    },
+    swap::btcxmr::message::{BuyProcedureSignature, RefundProcedureSignatures, RevealProof},
     swap::btcxmr::{
-        Alice, Bob, EncryptedSignature, FullySignedPunish, KeyManager, Parameters, PublicOffer,
-        TxSignatures,
+        Alice, Bob, FullySignedPunish, KeyManager, Parameters, PublicOffer, TxSignatures,
     },
     swap::SwapId,
     transaction::{Broadcastable, Fundable, Transaction, Witnessable},
@@ -44,7 +37,7 @@ use microservices::esb::{self, Handler};
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use std::{collections::HashMap, convert::TryInto, io};
+use std::{collections::HashMap, convert::TryInto};
 
 pub fn run(
     config: ServiceConfig,
@@ -105,172 +98,6 @@ impl StrictDecode for CheckpointWallet {
         Ok(CheckpointWallet { wallet, xmr_addr })
     }
 }
-
-#[derive(Clone, Debug, StrictEncode, StrictDecode)]
-pub enum Wallet {
-    Alice(AliceState),
-    Bob(BobState),
-}
-
-#[derive(Clone, Debug)]
-pub struct AliceState {
-    alice: Alice,
-    pub local_trade_role: TradeRole,
-    local_params: Parameters,
-    key_manager: KeyManager,
-    pub pub_offer: PublicOffer,
-    remote_commit: Option<CommitBobParameters>,
-    remote_params: Option<Parameters>,
-    remote_proof: Option<DLEQProof>,
-    core_arb_setup: Option<CoreArbitratingSetup>,
-    alice_cancel_signature: Option<Signature>,
-    adaptor_refund: Option<EncryptedSignature>,
-}
-
-impl Encodable for AliceState {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.alice.consensus_encode(writer)?;
-        len += self.local_trade_role.consensus_encode(writer)?;
-        len += self.local_params.consensus_encode(writer)?;
-        len += self.key_manager.consensus_encode(writer)?;
-        len += self.pub_offer.consensus_encode(writer)?;
-        len += self.remote_commit.consensus_encode(writer)?;
-        len += self.remote_params.consensus_encode(writer)?;
-        len += self.remote_proof.consensus_encode(writer)?;
-        len += self.core_arb_setup.consensus_encode(writer)?;
-        len += farcaster_core::consensus::Encodable::consensus_encode(
-            &self.alice_cancel_signature.as_canonical_bytes(),
-            writer,
-        )?;
-        len += self.adaptor_refund.consensus_encode(writer)?;
-        Ok(len)
-    }
-}
-
-impl Decodable for AliceState {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(AliceState {
-            alice: Decodable::consensus_decode(d)?,
-            local_trade_role: Decodable::consensus_decode(d)?,
-            local_params: Decodable::consensus_decode(d)?,
-            key_manager: Decodable::consensus_decode(d)?,
-            pub_offer: Decodable::consensus_decode(d)?,
-            remote_commit: Decodable::consensus_decode(d)?,
-            remote_params: Decodable::consensus_decode(d)?,
-            remote_proof: Decodable::consensus_decode(d)?,
-            core_arb_setup: Decodable::consensus_decode(d)?,
-            alice_cancel_signature: Option::<Signature>::from_canonical_bytes(
-                farcaster_core::unwrap_vec_ref!(d).as_ref(),
-            )?,
-            adaptor_refund: Decodable::consensus_decode(d)?,
-        })
-    }
-}
-
-impl_strict_encoding!(AliceState);
-
-impl AliceState {
-    fn new(
-        alice: Alice,
-        local_trade_role: TradeRole,
-        local_params: Parameters,
-        key_manager: KeyManager,
-        pub_offer: PublicOffer,
-        remote_commit: Option<CommitBobParameters>,
-    ) -> Self {
-        Self {
-            alice,
-            local_trade_role,
-            local_params,
-            key_manager,
-            pub_offer,
-            remote_commit,
-            remote_params: None,
-            remote_proof: None,
-            core_arb_setup: None,
-            alice_cancel_signature: None,
-            adaptor_refund: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct BobState {
-    bob: Bob,
-    pub local_trade_role: TradeRole,
-    local_params: Parameters,
-    key_manager: KeyManager,
-    pub pub_offer: PublicOffer,
-    funding_tx: Option<FundingTx>,
-    remote_commit_params: Option<CommitAliceParameters>,
-    remote_params: Option<Parameters>,
-    remote_proof: Option<DLEQProof>,
-    core_arb_setup: Option<CoreArbitratingSetup>,
-    adaptor_buy: Option<BuyProcedureSignature>,
-}
-
-impl Encodable for BobState {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut len = self.bob.consensus_encode(writer)?;
-        len += self.local_trade_role.consensus_encode(writer)?;
-        len += self.local_params.consensus_encode(writer)?;
-        len += self.key_manager.consensus_encode(writer)?;
-        len += self.pub_offer.consensus_encode(writer)?;
-        len += self.funding_tx.consensus_encode(writer)?;
-        len += self.remote_commit_params.consensus_encode(writer)?;
-        len += self.remote_params.consensus_encode(writer)?;
-        len += self.remote_proof.consensus_encode(writer)?;
-        len += self.core_arb_setup.consensus_encode(writer)?;
-        len += self.adaptor_buy.consensus_encode(writer)?;
-        Ok(len)
-    }
-}
-
-impl Decodable for BobState {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
-        Ok(BobState {
-            bob: Decodable::consensus_decode(d)?,
-            local_trade_role: Decodable::consensus_decode(d)?,
-            local_params: Decodable::consensus_decode(d)?,
-            key_manager: Decodable::consensus_decode(d)?,
-            pub_offer: Decodable::consensus_decode(d)?,
-            funding_tx: Decodable::consensus_decode(d)?,
-            remote_commit_params: Decodable::consensus_decode(d)?,
-            remote_params: Decodable::consensus_decode(d)?,
-            remote_proof: Decodable::consensus_decode(d)?,
-            core_arb_setup: Decodable::consensus_decode(d)?,
-            adaptor_buy: Decodable::consensus_decode(d)?,
-        })
-    }
-}
-
-impl BobState {
-    fn new(
-        bob: Bob,
-        local_trade_role: TradeRole,
-        local_params: Parameters,
-        key_manager: KeyManager,
-        pub_offer: PublicOffer,
-        funding_tx: Option<FundingTx>,
-        remote_commit_params: Option<CommitAliceParameters>,
-    ) -> Self {
-        Self {
-            bob,
-            local_trade_role,
-            local_params,
-            key_manager,
-            pub_offer,
-            funding_tx,
-            remote_commit_params,
-            remote_params: None,
-            remote_proof: None,
-            core_arb_setup: None,
-            adaptor_buy: None,
-        }
-    }
-}
-
-impl_strict_encoding!(BobState);
 
 impl CtlServer for Runtime {}
 
