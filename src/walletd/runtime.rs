@@ -1,7 +1,7 @@
 use crate::bus::{
     ctl::{
         self, BitcoinAddress, Checkpoint, CheckpointState, CtlMsg, GetKeys, Keys, LaunchSwap,
-        MoneroAddress, Params, Token, Tx,
+        MoneroAddress, Params, TakerCommitted, Token, Tx,
     },
     p2p::{Commit, PeerMsg, Reveal, TakeCommit},
     AddressSecretKey, BusMsg, Outcome, ServiceBus,
@@ -358,164 +358,47 @@ impl Runtime {
                 // Ignoring; this is used to set remote identity at ZMQ level
             }
 
+            // FIXME: remove this when refactor is tested
             // Handled in Msg to avoid race condition between Msg and Ctl bus (2 msgs sent
             // sequencially on the diferent buses arriving in random order), now both msgs go
             // through the msg bus, and always arrive in the correct order. BitcoinAddress arriving
             // after TakerCommit, blocks TakerCommit, as `self.btc_addrs.contains_key(&swap_id) ==
             // false`
-            BusMsg::Ctl(CtlMsg::BitcoinAddress(BitcoinAddress(swapid, btc_addr))) => {
-                if self.btc_addrs.insert(swapid, btc_addr).is_some() {
-                    error!(
-                        "{} | Bitcoin address replaced accidentally",
-                        swapid.swap_id()
-                    )
-                };
+            BusMsg::Ctl(CtlMsg::BitcoinAddress(BitcoinAddress(swap_id, _btc_addr))) => {
+                error!(
+                    "{} | This is now depricated and should not be hit",
+                    swap_id.swap_id()
+                );
+                panic!("exiting because CtlMsg::BitcoinAddress in {}", swap_id);
             }
 
+            // FIXME: remove this when refactor is tested
             // Handled in Msg to avoid race condition between Msg and Ctl bus (2 msgs sent
             // sequencially on the diferent buses arriving in random order), now both msgs go
             // through the msg bus, and always arrive in the correct order. MoneroAddress arriving
             // after TakerCommit, blocks TakerCommit, as `self.xmr_addrs.contains_key(&swap_id) ==
             // false`
-            BusMsg::Ctl(CtlMsg::MoneroAddress(MoneroAddress(swapid, xmr_addr))) => {
-                if self.xmr_addrs.insert(swapid, xmr_addr).is_some() {
-                    error!(
-                        "{} | Monero address replaced accidentally",
-                        swapid.swap_id()
-                    )
-                };
+            BusMsg::Ctl(CtlMsg::MoneroAddress(MoneroAddress(swap_id, _xmr_addr))) => {
+                error!(
+                    "{} | This is now depricated and should not be hit",
+                    swap_id.swap_id()
+                );
+                panic!("exiting because CtlMsg::MoneroAddress in {}", swap_id);
             }
 
+            // FIXME: remove this when refactor is tested
             // 1st protocol message received through peer connection, and last
             // handled by farcasterd, receiving taker commit because we are
             // maker
-            BusMsg::P2p(PeerMsg::TakerCommit(TakeCommit {
-                commit: remote_commit,
-                public_offer,
-                swap_id,
-            })) if self.btc_addrs.contains_key(&swap_id)
-                && self.xmr_addrs.contains_key(&swap_id) =>
+            BusMsg::P2p(PeerMsg::TakerCommit(TakeCommit { swap_id, .. }))
+                if self.btc_addrs.contains_key(&swap_id)
+                    && self.xmr_addrs.contains_key(&swap_id) =>
             {
-                trace!(
-                    "Offer {} is known, you created it previously, initiating swap with taker",
-                    &public_offer
+                error!(
+                    "{} | This is now depricated and should not be hit",
+                    swap_id.swap_id()
                 );
-                let PublicOffer { offer, .. } = public_offer.clone();
-                let external_address = self.btc_addrs.get(&swap_id).expect("checked above").clone();
-                match offer.maker_role {
-                    SwapRole::Bob => {
-                        let bob = Bob::new(
-                            BitcoinSegwitV0::new(),
-                            Monero,
-                            external_address,
-                            FeePriority::Low,
-                        );
-                        let wallet_index = self.node_secrets.increment_wallet_counter();
-                        let mut key_manager =
-                            KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
-                        let local_params =
-                            bob.generate_parameters(&mut key_manager, &public_offer)?;
-                        if self.wallets.get(&swap_id).is_none() {
-                            let funding = create_funding(&mut key_manager, offer.network)?;
-                            let funding_addr = funding.get_address()?;
-                            self.send_ctl(
-                                endpoints,
-                                ServiceId::Database,
-                                BusMsg::Ctl(CtlMsg::SetAddressSecretKey(
-                                    AddressSecretKey::Bitcoin {
-                                        address: funding_addr.clone(),
-                                        secret_key: key_manager
-                                            .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
-                                    },
-                                )),
-                            )?;
-                            info!("{} | Loading {}", swap_id.swap_id(), "Wallet::Bob".label());
-                            let local_trade_role = TradeRole::Maker;
-                            if let Commit::AliceParameters(remote_commit) = remote_commit.clone() {
-                                let bob_wallet = BobState::new(
-                                    bob,
-                                    local_trade_role,
-                                    local_params.clone(),
-                                    key_manager,
-                                    public_offer.clone(),
-                                    Some(funding),
-                                    Some(remote_commit),
-                                );
-                                self.wallets.insert(swap_id, Wallet::Bob(bob_wallet));
-                            } else {
-                                error!("{} | Not Commit::Alice", swap_id.swap_id());
-                                return Ok(());
-                            }
-                            let launch_swap = LaunchSwap {
-                                local_trade_role,
-                                public_offer: public_offer,
-                                local_params: Params::Bob(local_params),
-                                swap_id,
-                                remote_commit: Some(remote_commit),
-                                funding_address: Some(funding_addr),
-                            };
-                            self.swaps.insert(swap_id, None);
-                            self.send_ctl(
-                                endpoints,
-                                ServiceId::Farcasterd,
-                                BusMsg::Ctl(CtlMsg::LaunchSwap(launch_swap)),
-                            )?;
-                        } else {
-                            error!("{} | Wallet already existed", swap_id.swap_id());
-                        }
-                    }
-                    SwapRole::Alice => {
-                        let alice = Alice::new(
-                            BitcoinSegwitV0::new(),
-                            Monero,
-                            external_address,
-                            FeePriority::Low,
-                        );
-                        let wallet_seed = self.node_secrets.wallet_seed;
-                        let wallet_index = self.node_secrets.increment_wallet_counter();
-                        let mut key_manager = KeyManager::new(wallet_seed, wallet_index)?;
-                        let local_params =
-                            alice.generate_parameters(&mut key_manager, &public_offer)?;
-                        if self.wallets.get(&swap_id).is_none() {
-                            info!(
-                                "{} | Loading {}",
-                                swap_id.swap_id(),
-                                "Wallet::Alice".label()
-                            );
-                            if let Commit::BobParameters(bob_commit) = remote_commit.clone() {
-                                let local_trade_role = TradeRole::Maker;
-                                let alice_state = AliceState::new(
-                                    alice,
-                                    local_trade_role,
-                                    local_params.clone(),
-                                    key_manager,
-                                    public_offer.clone(),
-                                    Some(bob_commit),
-                                );
-
-                                self.wallets.insert(swap_id, Wallet::Alice(alice_state));
-
-                                let launch_swap = LaunchSwap {
-                                    local_trade_role,
-                                    public_offer: public_offer,
-                                    local_params: Params::Alice(local_params),
-                                    swap_id,
-                                    remote_commit: Some(remote_commit),
-                                    funding_address: None,
-                                };
-                                self.send_ctl(
-                                    endpoints,
-                                    ServiceId::Farcasterd,
-                                    BusMsg::Ctl(CtlMsg::LaunchSwap(launch_swap)),
-                                )?;
-                            } else {
-                                error!("{} | Not Commit::Bob", swap_id.swap_id());
-                            }
-                        } else {
-                            error!("{} | Wallet already existed", swap_id.swap_id());
-                        }
-                    }
-                }
+                panic!("exiting because PeerMsg::TakerCommit in {}", swap_id);
             }
 
             BusMsg::P2p(PeerMsg::MakerCommit(commit)) => {
@@ -1236,6 +1119,7 @@ impl Runtime {
                 }
             },
 
+            // First message received from farcaster to create a taker wallet.
             CtlMsg::TakeOffer(ctl::PubOffer {
                 public_offer,
                 external_address,
@@ -1349,6 +1233,153 @@ impl Runtime {
                         )?;
                     }
                 };
+            }
+
+            // First message received from farcaster to create a maker wallet.
+            CtlMsg::TakerCommitted(TakerCommitted {
+                arbitrating_addr,
+                accordant_addr,
+                taker_commit,
+                ..
+            }) => {
+                let swap_id = get_swap_id(&source)?;
+                if self.btc_addrs.insert(swap_id, arbitrating_addr).is_some() {
+                    error!(
+                        "{} | Bitcoin address replaced accidentally",
+                        swap_id.swap_id()
+                    )
+                };
+                if self.xmr_addrs.insert(swap_id, accordant_addr).is_some() {
+                    error!(
+                        "{} | Monero address replaced accidentally",
+                        swap_id.swap_id()
+                    )
+                };
+                let TakeCommit {
+                    commit: remote_commit,
+                    public_offer,
+                    ..
+                } = taker_commit;
+                trace!(
+                    "Offer {} is known, you created it previously, initiating swap with taker",
+                    &public_offer
+                );
+                let PublicOffer { offer, .. } = public_offer.clone();
+                let external_address = self.btc_addrs.get(&swap_id).expect("checked above").clone();
+                match offer.maker_role {
+                    SwapRole::Bob => {
+                        let bob = Bob::new(
+                            BitcoinSegwitV0::new(),
+                            Monero,
+                            external_address,
+                            FeePriority::Low,
+                        );
+                        let wallet_index = self.node_secrets.increment_wallet_counter();
+                        let mut key_manager =
+                            KeyManager::new(self.node_secrets.wallet_seed, wallet_index)?;
+                        let local_params =
+                            bob.generate_parameters(&mut key_manager, &public_offer)?;
+                        if self.wallets.get(&swap_id).is_none() {
+                            let funding = create_funding(&mut key_manager, offer.network)?;
+                            let funding_addr = funding.get_address()?;
+                            self.send_ctl(
+                                endpoints,
+                                ServiceId::Database,
+                                BusMsg::Ctl(CtlMsg::SetAddressSecretKey(
+                                    AddressSecretKey::Bitcoin {
+                                        address: funding_addr.clone(),
+                                        secret_key: key_manager
+                                            .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
+                                    },
+                                )),
+                            )?;
+                            info!("{} | Loading {}", swap_id.swap_id(), "Wallet::Bob".label());
+                            let local_trade_role = TradeRole::Maker;
+                            if let Commit::AliceParameters(remote_commit) = remote_commit.clone() {
+                                let bob_wallet = BobState::new(
+                                    bob,
+                                    local_trade_role,
+                                    local_params.clone(),
+                                    key_manager,
+                                    public_offer.clone(),
+                                    Some(funding),
+                                    Some(remote_commit),
+                                );
+                                self.wallets.insert(swap_id, Wallet::Bob(bob_wallet));
+                            } else {
+                                error!("{} | Not Commit::Alice", swap_id.swap_id());
+                                return Ok(());
+                            }
+                            let launch_swap = LaunchSwap {
+                                local_trade_role,
+                                public_offer: public_offer,
+                                local_params: Params::Bob(local_params),
+                                swap_id,
+                                remote_commit: Some(remote_commit),
+                                funding_address: Some(funding_addr),
+                            };
+                            self.swaps.insert(swap_id, None);
+                            self.send_ctl(
+                                endpoints,
+                                ServiceId::Farcasterd,
+                                BusMsg::Ctl(CtlMsg::LaunchSwap(launch_swap)),
+                            )?;
+                        } else {
+                            error!("{} | Wallet already existed", swap_id.swap_id());
+                        }
+                    }
+                    SwapRole::Alice => {
+                        let alice = Alice::new(
+                            BitcoinSegwitV0::new(),
+                            Monero,
+                            external_address,
+                            FeePriority::Low,
+                        );
+                        let wallet_seed = self.node_secrets.wallet_seed;
+                        let wallet_index = self.node_secrets.increment_wallet_counter();
+                        let mut key_manager = KeyManager::new(wallet_seed, wallet_index)?;
+                        let local_params =
+                            alice.generate_parameters(&mut key_manager, &public_offer)?;
+                        if self.wallets.get(&swap_id).is_none() {
+                            info!(
+                                "{} | Loading {}",
+                                swap_id.swap_id(),
+                                "Wallet::Alice".label()
+                            );
+                            if let Commit::BobParameters(bob_commit) = remote_commit.clone() {
+                                let local_trade_role = TradeRole::Maker;
+                                let alice_state = AliceState::new(
+                                    alice,
+                                    local_trade_role,
+                                    local_params.clone(),
+                                    key_manager,
+                                    public_offer.clone(),
+                                    Some(bob_commit),
+                                );
+
+                                self.wallets.insert(swap_id, Wallet::Alice(alice_state));
+
+                                let launch_swap = LaunchSwap {
+                                    local_trade_role,
+                                    public_offer: public_offer,
+                                    local_params: Params::Alice(local_params),
+                                    swap_id,
+                                    remote_commit: Some(remote_commit),
+                                    funding_address: None,
+                                };
+                                self.send_ctl(
+                                    endpoints,
+                                    ServiceId::Farcasterd,
+                                    BusMsg::Ctl(CtlMsg::LaunchSwap(launch_swap)),
+                                )?;
+                            } else {
+                                error!("{} | Not Commit::Bob", swap_id.swap_id());
+                            }
+                        } else {
+                            error!("{} | Wallet already existed", swap_id.swap_id());
+                        }
+                    }
+                }
             }
 
             CtlMsg::Tx(Tx::Funding(tx)) => {

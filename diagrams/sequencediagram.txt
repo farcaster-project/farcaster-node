@@ -41,9 +41,7 @@ t_syncer <- t_swap : Ctl WatchHeight
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
 
-m_farcasterd -> m_wallet : Msg BitcoinAddress
-m_farcasterd->m_wallet : Msg MoneroAddress
-m_farcasterd -> m_wallet : Msg TakerCommit
+m_farcasterd -> m_wallet : Ctl TakerCommitted
 m_wallet -> m_wallet : create maker wallet
 m_wallet -> m_farcasterd : Ctl LaunchSwap
 m_farcasterd -> m_farcasterd:launch syncer

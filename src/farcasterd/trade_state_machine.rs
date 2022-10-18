@@ -1,6 +1,6 @@
 use crate::bus::ctl::{
-    BitcoinAddress, BitcoinFundingInfo, CtlMsg, FundingInfo, InitSwap, LaunchSwap, MoneroAddress,
-    MoneroFundingInfo, ProtoPublicOffer, PubOffer,
+    BitcoinFundingInfo, CtlMsg, FundingInfo, InitSwap, LaunchSwap, MoneroFundingInfo,
+    ProtoPublicOffer, PubOffer, TakerCommitted,
 };
 use crate::bus::info::{InfoMsg, MadeOffer, OfferInfo, TookOffer};
 use crate::bus::p2p::{PeerMsg, TakeCommit};
@@ -543,26 +543,17 @@ fn attempt_transition_to_taker_committed(
         acc_addr,
     } = make_offer;
     match (event.request.clone(), event.source.clone()) {
-        (
-            BusMsg::P2p(PeerMsg::TakerCommit(TakeCommit {
-                public_offer: committed_public_offer,
-                swap_id,
-                ..
-            })),
-            ServiceId::Peer(..),
-        ) => {
-            if public_offer == committed_public_offer {
+        (BusMsg::P2p(PeerMsg::TakerCommit(taker_commit)), ServiceId::Peer(..)) => {
+            if public_offer == taker_commit.public_offer {
                 let source = event.source.clone();
-                // FIXME this should go into 1 msg over ctl to avoid race condition and 2 buses
-                // usage
-                let btc_addr_req =
-                    BusMsg::Ctl(CtlMsg::BitcoinAddress(BitcoinAddress(swap_id, arb_addr)));
-                event.send_msg_service(ServiceId::Wallet, btc_addr_req)?;
-                let xmr_addr_req =
-                    BusMsg::Ctl(CtlMsg::MoneroAddress(MoneroAddress(swap_id, acc_addr)));
-                event.send_msg_service(ServiceId::Wallet, xmr_addr_req)?;
-                debug!("passing request to walletd from {}", event.source);
-                event.forward_msg(ServiceId::Wallet)?;
+                let TakeCommit { swap_id, .. } = taker_commit;
+                let req = BusMsg::Ctl(CtlMsg::TakerCommitted(TakerCommitted {
+                    swap_id,
+                    arbitrating_addr: arb_addr,
+                    accordant_addr: acc_addr,
+                    taker_commit,
+                }));
+                event.send_ctl_service(ServiceId::Wallet, req)?;
                 event.complete_ctl_service(
                     ServiceId::Database,
                     BusMsg::Ctl(CtlMsg::SetOfferStatus(OfferStatusPair {

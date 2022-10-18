@@ -882,6 +882,7 @@ impl Runtime {
                 std::process::exit(0);
             }
 
+            // The first message received on the taker swap side.
             BusMsg::Ctl(CtlMsg::TakeSwap(InitSwap {
                 peerd,
                 report_to,
@@ -958,6 +959,7 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
+            // The first message received on the maker swap side.
             BusMsg::Ctl(CtlMsg::MakeSwap(InitSwap {
                 peerd,
                 report_to,
