@@ -33,7 +33,7 @@ use farcaster_core::{
     swap::SwapId,
     transaction::{Broadcastable, Fundable, Transaction, Witnessable},
 };
-use microservices::esb::{self, Handler};
+use microservices::esb;
 use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -205,9 +205,9 @@ impl Runtime {
                     Wallet::Bob(BobState { local_params, .. }) => local_params.proof.as_ref(),
                 };
                 endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    source,
+                    ServiceBus::Msg,
+                    ServiceId::Wallet,
+                    ServiceId::Swap(swap_id),
                     BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
                         swap_id,
                         proof: proof.expect("local proof is always Some").clone(),
@@ -265,9 +265,9 @@ impl Runtime {
                             // if we're maker, send Ctl RevealProof to counterparty
                             if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Alice {
                                 endpoints.send_to(
-                                    ServiceBus::Ctl,
+                                    ServiceBus::Msg,
                                     ServiceId::Wallet,
-                                    source,
+                                    ServiceId::Swap(swap_id),
                                     BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
                                         swap_id,
                                         proof: local_params
@@ -325,11 +325,9 @@ impl Runtime {
                             // if we're maker, send Ctl RevealProof to counterparty
                             if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Bob {
                                 endpoints.send_to(
-                                    ServiceBus::Ctl,
+                                    ServiceBus::Msg,
                                     ServiceId::Wallet,
-                                    // TODO: (maybe) what if the message responded to is not sent
-                                    // by swapd?
-                                    source.clone(),
+                                    ServiceId::Swap(swap_id),
                                     BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
                                         swap_id,
                                         proof: local_params
@@ -392,8 +390,12 @@ impl Runtime {
                             );
                             let core_arb_setup_msg =
                                 PeerMsg::CoreArbitratingSetup(core_arb_setup.clone().unwrap());
-
-                            self.send_ctl(endpoints, source, BusMsg::P2p(core_arb_setup_msg))?;
+                            endpoints.send_to(
+                                ServiceBus::Msg,
+                                ServiceId::Wallet,
+                                ServiceId::Swap(swap_id),
+                                BusMsg::P2p(core_arb_setup_msg),
+                            )?;
                         } else {
                             error!("{} | only Some(Wallet::Bob)", swap_id.swap_id());
                         }
@@ -409,8 +411,6 @@ impl Runtime {
                 cancel_sig: alice_cancel_sig,
                 refund_adaptor_sig,
             }) => {
-                let my_id = self.identity();
-
                 if let Some(Wallet::Bob(BobState {
                     bob,
                     local_params,
@@ -489,8 +489,8 @@ impl Runtime {
 
                         endpoints.send_to(
                             ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(), // destination swapd
+                            ServiceId::Wallet,
+                            ServiceId::Swap(swap_id),
                             BusMsg::Ctl(CtlMsg::Tx(Tx::Lock(finalized_lock_tx))),
                         )?;
                     }
@@ -507,8 +507,8 @@ impl Runtime {
                             )?;
                         endpoints.send_to(
                             ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(), // destination swapd
+                            ServiceId::Wallet,
+                            ServiceId::Swap(swap_id),
                             BusMsg::Ctl(CtlMsg::Tx(Tx::Cancel(finalized_cancel_tx))),
                         )?;
                     }
@@ -528,8 +528,8 @@ impl Runtime {
                             )?;
                         endpoints.send_to(
                             ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(), // destination swapd
+                            ServiceId::Wallet,
+                            ServiceId::Swap(swap_id),
                             BusMsg::Ctl(CtlMsg::Tx(Tx::Refund(final_refund_tx))),
                         )?;
                     }
@@ -538,9 +538,9 @@ impl Runtime {
                         let buy_proc_sig =
                             PeerMsg::BuyProcedureSignature(adaptor_buy.clone().unwrap());
                         endpoints.send_to(
-                            ServiceBus::Ctl,
-                            my_id,
-                            source, // destination swapd
+                            ServiceBus::Msg,
+                            ServiceId::Wallet,
+                            ServiceId::Swap(swap_id),
                             BusMsg::P2p(buy_proc_sig),
                         )?;
                     }
@@ -550,8 +550,6 @@ impl Runtime {
             }
 
             PeerMsg::CoreArbitratingSetup(core_arbitrating_setup) => {
-                let my_id = self.identity();
-
                 if let Some(Wallet::Alice(AliceState {
                     alice,
                     local_params,
@@ -645,8 +643,8 @@ impl Runtime {
                             )?;
                         endpoints.send_to(
                             ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(), // destination swapd
+                            ServiceId::Wallet,
+                            ServiceId::Swap(swap_id),
                             BusMsg::Ctl(CtlMsg::Tx(Tx::Cancel(finalized_cancel_tx))),
                         )?;
                     }
@@ -670,8 +668,8 @@ impl Runtime {
                         )?;
                         endpoints.send_to(
                             ServiceBus::Ctl,
-                            my_id.clone(),
-                            source.clone(),
+                            ServiceId::Wallet,
+                            ServiceId::Swap(swap_id),
                             BusMsg::Ctl(CtlMsg::Tx(Tx::Punish(tx))),
                         )?;
                     }
@@ -680,9 +678,9 @@ impl Runtime {
                         PeerMsg::RefundProcedureSignatures(refund_proc_signatures);
 
                     endpoints.send_to(
-                        ServiceBus::Ctl,
-                        my_id,
-                        source,
+                        ServiceBus::Msg,
+                        ServiceId::Wallet,
+                        ServiceId::Swap(swap_id),
                         BusMsg::P2p(refund_proc_signatures),
                     )?
                 } else {
@@ -693,7 +691,6 @@ impl Runtime {
             PeerMsg::BuyProcedureSignature(buy_proc_sig) => {
                 let BuyProcedureSignature { swap_id, .. } = buy_proc_sig;
                 trace!("wallet received buyproceduresignature");
-                let id = self.identity();
                 debug!("checkpointing alice pre buy sig.");
                 if let Some(Wallet::Alice(state)) = self.wallets.get(&swap_id) {
                     checkpoint_send(
@@ -737,8 +734,8 @@ impl Runtime {
                         )?;
                     endpoints.send_to(
                         ServiceBus::Ctl,
-                        id.clone(),
-                        source.clone(), // destination swapd
+                        ServiceId::Wallet,
+                        ServiceId::Swap(swap_id),
                         BusMsg::Ctl(CtlMsg::Tx(Tx::Cancel(finalized_cancel_tx))),
                     )?;
 
@@ -767,8 +764,8 @@ impl Runtime {
                     trace!("wallet sends fullysignedbuy");
                     endpoints.send_to(
                         ServiceBus::Ctl,
-                        id,
-                        source,
+                        ServiceId::Wallet,
+                        ServiceId::Swap(swap_id),
                         BusMsg::Ctl(CtlMsg::Tx(Tx::Buy(tx))),
                     )?;
 
@@ -1097,8 +1094,7 @@ impl Runtime {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
-                        // TODO: (maybe) what if this message responded to is not sent by swapd?
-                        source,
+                        ServiceId::Swap(swap_id),
                         BusMsg::Ctl(CtlMsg::FundingUpdated),
                     )?;
                 }
@@ -1191,7 +1187,7 @@ impl Runtime {
                     };
                     endpoints.send_to(
                         ServiceBus::Ctl,
-                        self.identity(),
+                        ServiceId::Wallet,
                         source,
                         BusMsg::Ctl(CtlMsg::SweepAddress(SweepAddressAddendum::Monero(
                             sweep_keys,
@@ -1289,7 +1285,7 @@ impl Runtime {
                     };
                     endpoints.send_to(
                         ServiceBus::Ctl,
-                        self.identity(),
+                        ServiceId::Wallet,
                         source,
                         BusMsg::Ctl(CtlMsg::SweepAddress(SweepAddressAddendum::Monero(
                             sweep_keys,
@@ -1307,7 +1303,7 @@ impl Runtime {
                 trace!("sent Secret request to farcasterd");
                 endpoints.send_to(
                     ServiceBus::Ctl,
-                    self.identity(),
+                    ServiceId::Wallet,
                     ServiceId::Farcasterd,
                     BusMsg::Ctl(CtlMsg::Keys(Keys(
                         self.node_secrets.peerd_secret_key,
@@ -1330,7 +1326,7 @@ impl Runtime {
                         .clone();
                     endpoints.send_to(
                         ServiceBus::Ctl,
-                        self.identity(),
+                        ServiceId::Wallet,
                         source,
                         BusMsg::Ctl(CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(
                             SweepBitcoinAddress {
