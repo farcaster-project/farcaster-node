@@ -129,7 +129,7 @@ pub enum Reveal {
     #[display("Bob parameters")]
     BobParameters(RevealBobParameters),
     #[display("proof")]
-    Proof(RevealProof), // FIXME should be PeerMsg::RevealProof(..)
+    Proof(RevealProof),
 }
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]
