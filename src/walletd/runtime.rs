@@ -3,7 +3,7 @@ use crate::bus::{
         self, Checkpoint, CheckpointState, CtlMsg, GetKeys, Keys, LaunchSwap, Params,
         TakerCommitted, Token, Tx,
     },
-    p2p::{Commit, PeerMsg, Reveal, TakeCommit},
+    p2p::{Commit, PeerMsg, Reveal, TakerCommit},
     AddressSecretKey, BusMsg, Outcome, ServiceBus,
 };
 use crate::databased::checkpoint_send;
@@ -944,10 +944,9 @@ impl Runtime {
                         swap_id.swap_id()
                     )
                 };
-                let TakeCommit {
+                let TakerCommit {
                     commit: remote_commit,
                     public_offer,
-                    ..
                 } = taker_commit;
                 trace!(
                     "Offer {} is known, you created it previously, initiating swap with taker",
