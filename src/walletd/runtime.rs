@@ -927,12 +927,11 @@ impl Runtime {
 
             // First message received from farcaster to create a maker wallet.
             CtlMsg::TakerCommitted(TakerCommitted {
+                swap_id,
                 arbitrating_addr,
                 accordant_addr,
                 taker_commit,
-                ..
             }) => {
-                let swap_id = get_swap_id(&source)?;
                 if self.btc_addrs.insert(swap_id, arbitrating_addr).is_some() {
                     error!(
                         "{} | Bitcoin address replaced accidentally",
