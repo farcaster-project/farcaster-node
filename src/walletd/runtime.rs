@@ -3,7 +3,7 @@ use crate::bus::{
         self, Checkpoint, CheckpointState, CtlMsg, GetKeys, Keys, LaunchSwap, Params,
         TakerCommitted, Token, Tx,
     },
-    p2p::{Commit, PeerMsg, Reveal, TakerCommit},
+    p2p::{Commit, PeerMsg, /*Reveal,*/ Reveal2, TakerCommit},
     AddressSecretKey, BusMsg, Outcome, ServiceBus,
 };
 use crate::databased::checkpoint_send;
@@ -157,17 +157,18 @@ impl Runtime {
         let swap_id = msg_swap_id;
 
         match request {
+            // Taker is receiving this message from maker
             PeerMsg::MakerCommit(commit) => {
                 match commit {
-                    Commit::BobParameters(_) => {
+                    Commit::BobParameters(commit) => {
                         if let Some(Wallet::Alice(AliceState {
                             remote_commit, // None
                             ..
                         })) = self.wallets.get_mut(&swap_id)
                         {
                             if remote_commit.is_some() {
-                                error!("{} | Bob commit (remote) already set", swap_id.swap_id(),);
-                            } else if let Commit::BobParameters(commit) = commit {
+                                error!("{} | Bob commit (remote) already set", swap_id.swap_id());
+                            } else {
                                 trace!("Setting bob commit");
                                 *remote_commit = Some(commit);
                             }
@@ -179,17 +180,17 @@ impl Runtime {
                             return Ok(());
                         }
                     }
-                    Commit::AliceParameters(_) => {
+                    Commit::AliceParameters(commit) => {
                         if let Some(Wallet::Bob(BobState {
-                            remote_commit_params, // None
+                            remote_commit, // None
                             ..
                         })) = self.wallets.get_mut(&swap_id)
                         {
-                            if remote_commit_params.is_some() {
-                                error!("{} | Alice commit (remote) already set", swap_id.swap_id(),);
-                            } else if let Commit::AliceParameters(commit) = commit {
+                            if remote_commit.is_some() {
+                                error!("{} | Alice commit (remote) already set", swap_id.swap_id());
+                            } else {
                                 trace!("Setting alice commit");
-                                *remote_commit_params = Some(commit);
+                                *remote_commit = Some(commit);
                             }
                         } else {
                             error!(
@@ -200,21 +201,222 @@ impl Runtime {
                         }
                     }
                 }
-                let proof = match self.wallets.get(&swap_id).unwrap() {
-                    Wallet::Alice(AliceState { local_params, .. }) => local_params.proof.as_ref(),
-                    Wallet::Bob(BobState { local_params, .. }) => local_params.proof.as_ref(),
+                // craft the correct reveal depending on role
+                let reveal = match self.wallets.get(&swap_id).unwrap() {
+                    Wallet::Alice(AliceState { local_params, .. }) => Reveal2::Alice {
+                        parameters: local_params.clone().reveal_alice(swap_id),
+                        proof: RevealProof {
+                            swap_id,
+                            proof: local_params.proof.clone().expect("local always some"),
+                        },
+                    },
+                    Wallet::Bob(BobState { local_params, .. }) => Reveal2::Bob {
+                        parameters: local_params.clone().reveal_bob(swap_id),
+                        proof: RevealProof {
+                            swap_id,
+                            proof: local_params.proof.clone().expect("local always some"),
+                        },
+                    },
                 };
+                // send the reveal peer-to-peer message to swap
                 endpoints.send_to(
                     ServiceBus::Msg,
                     ServiceId::Wallet,
                     ServiceId::Swap(swap_id),
-                    BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(RevealProof {
-                        swap_id,
-                        proof: proof.expect("local proof is always Some").clone(),
-                    }))),
+                    BusMsg::P2p(PeerMsg::Reveal2(reveal)),
                 )?;
             }
 
+            // A message received from counterparty, forwarded by swap
+            PeerMsg::Reveal2(reveal) => {
+                match reveal {
+                    // receiving from counterparty Bob, thus wallet is acting as Alice (Maker or
+                    // Taker)
+                    Reveal2::Bob { parameters, proof } => {
+                        if let Some(Wallet::Alice(AliceState {
+                            local_params,
+                            key_manager,
+                            pub_offer,
+                            remote_commit: Some(remote_commit),
+                            remote_params, // None
+                            remote_proof,  // None
+                            ..
+                        })) = self.wallets.get_mut(&swap_id)
+                        {
+                            if remote_params.is_some() || remote_proof.is_some() {
+                                error!("{} | Bob params or proof already set", swap_id.swap_id(),);
+                                return Ok(());
+                            }
+
+                            trace!("Setting Bob params: {}", parameters);
+                            trace!("Setting Bob proof: {}", proof);
+                            remote_commit
+                                .verify_with_reveal(&CommitmentEngine, parameters.clone())?;
+                            let remote_params_candidate: Parameters = parameters.into_parameters();
+                            let proof_verification = key_manager.verify_proof(
+                                &remote_params_candidate.spend,
+                                &remote_params_candidate.adaptor,
+                                proof.proof.clone(),
+                            );
+                            if proof_verification.is_err() {
+                                error!("{} | DLEQ proof invalid", swap_id.swap_id());
+                                return Ok(());
+                            }
+                            info!("{} | Proof successfully verified", swap_id.swap_id());
+                            *remote_params = Some(remote_params_candidate);
+                            *remote_proof = Some(proof.proof);
+                            // if we're maker, send Reveal back to counterparty
+                            if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Alice {
+                                endpoints.send_to(
+                                    ServiceBus::Msg,
+                                    ServiceId::Wallet,
+                                    ServiceId::Swap(swap_id),
+                                    BusMsg::P2p(PeerMsg::Reveal2(Reveal2::Alice {
+                                        parameters: local_params.clone().reveal_alice(swap_id),
+                                        proof: RevealProof {
+                                            swap_id,
+                                            proof: local_params
+                                                .proof
+                                                .clone()
+                                                .expect("local always some"),
+                                        },
+                                    })),
+                                )?;
+                            }
+                            // nothing to do yet, waiting for Msg
+                            // CoreArbitratingSetup to proceed
+                        } else {
+                            error!("{} | only Some(Wallet::Alice)", swap_id.swap_id(),);
+                        }
+                        return Ok(());
+                    }
+                    // getting parameters from counterparty alice routed through
+                    // swapd, thus I'm Bob on this swap: Bob can proceed
+                    Reveal2::Alice { parameters, proof } => {
+                        if let Some(Wallet::Bob(BobState {
+                            bob,
+                            local_trade_role,
+                            local_params,
+                            key_manager,
+                            pub_offer,
+                            funding_tx: Some(funding_tx),
+                            remote_commit: Some(remote_commit),
+                            remote_params,  // None
+                            remote_proof,   // None
+                            core_arb_setup, // None
+                            adaptor_buy,
+                        })) = self.wallets.get_mut(&swap_id)
+                        {
+                            // set wallet params
+                            if remote_params.is_some() || remote_proof.is_some() {
+                                error!("{} | Alice params or proof already set", swap_id.swap_id(),);
+                                return Ok(());
+                            }
+
+                            trace!("Setting Alice params: {}", parameters);
+                            trace!("Setting Alice proof: {}", proof);
+                            remote_commit
+                                .verify_with_reveal(&CommitmentEngine, parameters.clone())?;
+                            let remote_params_candidate: Parameters = parameters.into_parameters();
+                            let proof_verification = key_manager.verify_proof(
+                                &remote_params_candidate.spend,
+                                &remote_params_candidate.adaptor,
+                                proof.proof.clone(),
+                            );
+
+                            if proof_verification.is_err() {
+                                error!("{} | DLEQ proof invalid", swap_id.swap_id());
+                                return Ok(());
+                            }
+                            info!("{} | Proof successfully verified", swap_id.swap_id());
+                            *remote_params = Some(remote_params_candidate);
+                            *remote_proof = Some(proof.proof);
+
+                            // if we're maker, send Reveal back to counterparty
+                            if pub_offer.swap_role(&TradeRole::Maker) == SwapRole::Bob {
+                                endpoints.send_to(
+                                    ServiceBus::Msg,
+                                    ServiceId::Wallet,
+                                    ServiceId::Swap(swap_id),
+                                    BusMsg::P2p(PeerMsg::Reveal2(Reveal2::Bob {
+                                        parameters: local_params.clone().reveal_bob(swap_id),
+                                        proof: RevealProof {
+                                            swap_id,
+                                            proof: local_params
+                                                .proof
+                                                .clone()
+                                                .expect("local always some"),
+                                        },
+                                    })),
+                                )?;
+                            }
+
+                            // checkpoint here after proof verification and potentially sending reveal
+                            debug!("checkpointing bob pre lock.");
+                            checkpoint_send(
+                                endpoints,
+                                swap_id,
+                                ServiceId::Wallet,
+                                ServiceId::Database,
+                                CheckpointState::CheckpointWallet(CheckpointWallet {
+                                    xmr_addr: *self
+                                        .xmr_addrs
+                                        .get(&swap_id)
+                                        .expect("checked at start of swap"),
+                                    wallet: Wallet::Bob(BobState {
+                                        bob: bob.clone(),
+                                        local_trade_role: *local_trade_role,
+                                        local_params: local_params.clone(),
+                                        key_manager: key_manager.clone(),
+                                        pub_offer: pub_offer.clone(),
+                                        funding_tx: Some(funding_tx.clone()),
+                                        remote_commit: Some(remote_commit.clone()),
+                                        remote_params: remote_params.clone(),
+                                        remote_proof: remote_proof.clone(),
+                                        core_arb_setup: core_arb_setup.clone(),
+                                        adaptor_buy: adaptor_buy.clone(),
+                                    }),
+                                }),
+                            )?;
+
+                            // set wallet core_arb_txs
+                            if core_arb_setup.is_some() {
+                                error!("{} | Core Arb Txs already set", swap_id.swap_id(),);
+                                return Ok(());
+                            }
+                            if !funding_tx.was_seen() {
+                                error!("{} | Funding not yet seen", swap_id.swap_id());
+                                return Ok(());
+                            }
+                            // FIXME should be set before
+                            let core_arbitrating_txs = bob.core_arbitrating_transactions(
+                                &remote_params.clone().expect("alice_params set above"),
+                                local_params,
+                                funding_tx.clone(),
+                                pub_offer.to_arbitrating_params(),
+                            )?;
+                            let cosign_arbitrating_cancel =
+                                bob.cosign_arbitrating_cancel(key_manager, &core_arbitrating_txs)?;
+                            *core_arb_setup = Some(
+                                core_arbitrating_txs
+                                    .into_arbitrating_setup(swap_id, cosign_arbitrating_cancel),
+                            );
+                            endpoints.send_to(
+                                ServiceBus::Msg,
+                                ServiceId::Wallet,
+                                ServiceId::Swap(swap_id),
+                                BusMsg::P2p(PeerMsg::CoreArbitratingSetup(
+                                    core_arb_setup.clone().unwrap(),
+                                )),
+                            )?;
+                        } else {
+                            error!("{} | only Some(Wallet::Bob)", swap_id.swap_id());
+                        }
+                    }
+                }
+            }
+
+            /*
             PeerMsg::Reveal(Reveal::Proof(reveal)) => {
                 let wallet = self.wallets.get_mut(&swap_id);
                 match wallet {
@@ -294,7 +496,7 @@ impl Runtime {
                             key_manager,
                             pub_offer,
                             funding_tx: Some(funding_tx),
-                            remote_commit_params,
+                            remote_commit,
                             remote_params,                    // None
                             remote_proof: Some(remote_proof), // Some
                             core_arb_setup,                   // None
@@ -357,7 +559,7 @@ impl Runtime {
                                         key_manager: key_manager.clone(),
                                         pub_offer: pub_offer.clone(),
                                         funding_tx: Some(funding_tx.clone()),
-                                        remote_commit_params: remote_commit_params.clone(),
+                                        remote_commit: remote_commit.clone(),
                                         remote_params: remote_params.clone(),
                                         remote_proof: Some(remote_proof.clone()),
                                         core_arb_setup: core_arb_setup.clone(),
@@ -405,6 +607,7 @@ impl Runtime {
                     }
                 }
             }
+            */
 
             PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures {
                 swap_id: _,
@@ -421,7 +624,7 @@ impl Runtime {
                     adaptor_buy, // None
                     funding_tx,
                     local_trade_role,
-                    remote_commit_params,
+                    remote_commit,
                     remote_proof,
                 })) = self.wallets.get_mut(&swap_id)
                 {
@@ -469,7 +672,7 @@ impl Runtime {
                                 adaptor_buy: adaptor_buy.clone(),
                                 funding_tx: funding_tx.clone(),
                                 local_trade_role: *local_trade_role,
-                                remote_commit_params: remote_commit_params.clone(),
+                                remote_commit: remote_commit.clone(),
                                 remote_proof: remote_proof.clone(),
                             }),
                         }),

@@ -29,7 +29,7 @@ use crate::{
         MoneroFundingInfo, Params, Tx,
     },
     bus::info::{InfoMsg, SwapInfo},
-    bus::p2p::{Commit, PeerMsg, Reveal, TakerCommit},
+    bus::p2p::{Commit, PeerMsg, /*Reveal,*/ Reveal2, TakerCommit},
     bus::sync::SyncMsg,
     bus::{BusMsg, Failure, FailureCode, Outcome, ServiceBus},
     syncerd::{
@@ -655,6 +655,23 @@ impl Runtime {
             }
 
             // A message sent from wallet that contains the reveal peer message for the
+            // parameters and the zero-knowledge proof
+            PeerMsg::Reveal2(reveal)
+                if source == ServiceId::Wallet
+                    && self.state.commit()
+                    && self.state.remote_commit().is_some() =>
+            {
+                info!("RECEIVED REVEAL FROM WALLET: {}", self.state.swap_role());
+                // forward message to peer
+                self.send_peer(endpoints, PeerMsg::Reveal2(reveal))?;
+                trace!("sent reveal peer message to peerd");
+                // trigger state transition
+                let next_state = self.state.clone().sup_commit_to_reveal();
+                self.state_update(endpoints, next_state)?;
+            }
+
+            /*
+            // A message sent from wallet that contains the reveal peer message for the
             // zero-knowledge proof
             PeerMsg::Reveal(Reveal::Proof(reveal))
                 if source == ServiceId::Wallet
@@ -681,7 +698,270 @@ impl Runtime {
                 let next_state = self.state.clone().sup_commit_to_reveal();
                 self.state_update(endpoints, next_state)?;
             }
+            */
+            PeerMsg::Reveal2(reveal) => {
+                let remote_commit = self.state.remote_commit().cloned().unwrap();
+                if let Ok(remote_params_candidate) =
+                    remote_params_candidate2(&reveal, remote_commit)
+                {
+                    debug!("{:?} sets remote_params", self.state.swap_role());
+                    self.state.sup_remote_params(remote_params_candidate);
+                } else {
+                    error!("Revealed remote params not preimage of commitment");
+                }
 
+                match self.state.swap_role() {
+                    // As Alice always forward reveal to wallet
+                    SwapRole::Alice => {
+                        info!("RECEIVED REVEAL AS ALICE");
+                        debug!("Alice: forwarding reveal to wallet");
+                        self.send_wallet(
+                            ServiceBus::Msg,
+                            endpoints,
+                            BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                        )?
+                    }
+                    SwapRole::Bob => {
+                        info!("RECEIVED REVEAL AS BOB");
+
+                        if self.state.b_address().is_none() {
+                            let msg = format!("FIXME: b_address is None, request {}", reveal);
+                            error!("{}", msg);
+                            return Err(Error::Farcaster(msg));
+                        }
+
+                        // fee estimate not available yet, defer handling for later
+                        if let Some(sat_per_kvb) = self.syncer_state.btc_fee_estimate_sat_per_kvb {
+                            // 1. add reveal as a pending request
+                            debug!("Bob: add reveal as a pending request");
+                            self.pending_requests.defer_request(
+                                ServiceId::Wallet,
+                                PendingRequest::new(
+                                    self.identity(),
+                                    ServiceId::Wallet,
+                                    ServiceBus::Msg,
+                                    BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                                ),
+                            );
+
+                            // 2. send the funding information to farcasterd
+                            debug!("Bob: send the funding information to farcasterd");
+                            let address = self.state.b_address().cloned().unwrap();
+                            self.ask_bob_to_fund(sat_per_kvb, address.clone(), endpoints)?;
+
+                            let trade_role = self.state.trade_role().unwrap();
+                            if trade_role == TradeRole::Maker {
+                                // 3. watch the arbitrating address to receive an event on funding
+                                debug!("Bob: watch the arbitrating address to receive an event on funding");
+                                if !self.syncer_state.is_watched_addr(&TxLabel::Funding) {
+                                    let watch_addr_task = self
+                                        .syncer_state
+                                        .watch_addr_btc(address, TxLabel::Funding);
+                                    endpoints.send_to(
+                                        ServiceBus::Sync,
+                                        self.identity(),
+                                        self.syncer_state.bitcoin_syncer(),
+                                        BusMsg::Sync(SyncMsg::Task(watch_addr_task)),
+                                    )?;
+                                }
+                            }
+                        } else {
+                            debug!("Deferring request for when btc_fee_estimate available");
+                            self.pending_requests.defer_request(
+                                self.syncer_state.bitcoin_syncer(),
+                                PendingRequest::new(
+                                    source,
+                                    self.identity(),
+                                    ServiceBus::Msg,
+                                    BusMsg::P2p(PeerMsg::Reveal2(reveal.clone())),
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+
+            /*
+            // Received reveal from counter-party and acting as Taker in the swap
+            PeerMsg::Reveal2(reveal) if self.state.trade_role() == Some(TradeRole::Taker) => {
+                let remote_commit = self.state.remote_commit().cloned().unwrap();
+
+                if let Ok(remote_params_candidate) =
+                    remote_params_candidate2(&reveal, remote_commit)
+                {
+                    debug!("{:?} sets remote_params", self.state.swap_role());
+                    self.state.sup_remote_params(remote_params_candidate);
+                } else {
+                    error!("Revealed remote params not preimage of commitment");
+                }
+
+                info!("RECEIVED REVEAL AS TAKER: {}", self.state.swap_role());
+                match self.state.swap_role() {
+                    SwapRole::Alice => {
+                        debug!("Alice: forwarding reveal to wallet");
+                        self.send_wallet(
+                            ServiceBus::Msg,
+                            endpoints,
+                            BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                        )?
+                    }
+                    SwapRole::Bob => {
+                        if self.state.b_address().is_none()
+                            || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()
+                        {
+                            if self.state.b_address().is_none() {
+                                let msg = format!("FIXME: b_address is None, request {}", reveal);
+                                error!("{}", msg);
+                                return Err(Error::Farcaster(msg));
+                            }
+                            info!("Deferring request for when btc_fee_estimate available, then recurse in the runtime");
+                            info!("Deferring request for when btc_fee_estimate available, then recurse in the runtime");
+                            info!("Deferring request for when btc_fee_estimate available, then recurse in the runtime");
+                            info!("Deferring request for when btc_fee_estimate available, then recurse in the runtime");
+                            info!("Deferring request for when btc_fee_estimate available, then recurse in the runtime");
+                            let pending_req = PendingRequest::new(
+                                source,
+                                self.identity(),
+                                ServiceBus::Msg,
+                                BusMsg::P2p(PeerMsg::Reveal2(reveal.clone())),
+                            );
+                            self.pending_requests
+                                .defer_request(self.syncer_state.bitcoin_syncer(), pending_req);
+                        }
+
+                        // 1. add reveal as a pending request
+                        debug!("Bob: add reveal as a pending request");
+                        self.pending_requests.defer_request(
+                            ServiceId::Wallet,
+                            PendingRequest::new(
+                                self.identity(),
+                                ServiceId::Wallet,
+                                ServiceBus::Msg,
+                                BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                            ),
+                        );
+
+                        // 2. send the funding information to farcasterd
+                        debug!("Bob: send the funding information to farcasterd");
+                        // FIXME handle unwraps...
+                        let address = self.state.b_address().cloned().unwrap();
+                        let sat_per_kvb = self.syncer_state.btc_fee_estimate_sat_per_kvb.unwrap();
+                        self.ask_bob_to_fund(sat_per_kvb, address, endpoints)?;
+                    }
+                }
+            }
+
+            // Received reveal from counter-party and acting as Maker in the swap
+            PeerMsg::Reveal2(reveal) if self.state.trade_role() == Some(TradeRole::Maker) => {
+                let remote_commit = self.state.remote_commit().cloned().unwrap();
+
+                if let Ok(remote_params_candidate) =
+                    remote_params_candidate2(&reveal, remote_commit)
+                {
+                    debug!("{:?} sets remote_params", self.state.swap_role());
+                    self.state.sup_remote_params(remote_params_candidate);
+                } else {
+                    error!("Revealed remote params not preimage of commitment");
+                }
+
+                info!("RECEIVED REVEAL AS MAKER: {}", self.state.swap_role());
+                match self.state.swap_role() {
+                    SwapRole::Alice => {
+                        debug!("Alice: forwarding reveal to wallet");
+                        self.send_wallet(
+                            ServiceBus::Msg,
+                            endpoints,
+                            BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                        )?
+                    }
+                    SwapRole::Bob => {
+                        // 1. add reveal as a pending request
+                        debug!("Bob: add reveal as a pending request");
+                        self.pending_requests.defer_request(
+                            ServiceId::Wallet,
+                            PendingRequest::new(
+                                self.identity(),
+                                ServiceId::Wallet,
+                                ServiceBus::Msg,
+                                BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                            ),
+                        );
+
+                        // 2. send the funding information to farcasterd
+                        debug!("Bob: send the funding information to farcasterd");
+                        // FIXME handle unwraps...
+                        let address = self.state.b_address().cloned().unwrap();
+                        let sat_per_kvb = self.syncer_state.btc_fee_estimate_sat_per_kvb.unwrap();
+                        self.ask_bob_to_fund(sat_per_kvb, address, endpoints)?;
+
+                        // 3. watch the arbitrating address to receive an event on funding
+                        debug!("Bob: watch the arbitrating address to receive an event on funding");
+                        if let Some(addr) = self.state.b_address().cloned() {
+                            if !self.syncer_state.is_watched_addr(&TxLabel::Funding) {
+                                let watch_addr_task =
+                                    self.syncer_state.watch_addr_btc(addr, TxLabel::Funding);
+                                endpoints.send_to(
+                                    ServiceBus::Sync,
+                                    self.identity(),
+                                    self.syncer_state.bitcoin_syncer(),
+                                    BusMsg::Sync(SyncMsg::Task(watch_addr_task)),
+                                )?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // A message sent from peer that contains Bob counter-party reveal message, we then
+            // expect to act as Alice
+            PeerMsg::Reveal2(Reveal2::Bob { parameters, proof })
+                if self.state.swap_role() == SwapRole::Alice =>
+            {
+                // TODO
+                //let remote_commit = self.state.remote_commit().cloned().unwrap();
+                //if let Ok(remote_params_candidate) = remote_params_candidate(&reveal, remote_commit)
+                //{
+                //    debug!("{:?} sets remote_params", self.state.swap_role());
+                //    self.state.sup_remote_params(remote_params_candidate);
+                //} else {
+                //    error!("Revealed remote params not preimage of commitment");
+                //}
+
+                debug!("Alice: forwarding reveal to wallet");
+                self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?
+            }
+
+            // A message sent from peer that contains Alice counter-party reveal message, we then
+            // expect to act as Bob
+            //
+            // we
+            //   1. add reveal as a pending request
+            //   2. send the funding information to farcasterd
+            //   3. watch the arbitrating address to receive an event on funding
+            PeerMsg::Reveal2(Reveal2::Alice { parameters, proof })
+                if self.state.swap_role() == SwapRole::Bob =>
+            {
+                // 1. add reveal as a pending request
+                let pending_request = PendingRequest::new(
+                    self.identity(),
+                    ServiceId::Wallet,
+                    ServiceBus::Msg,
+                    BusMsg::P2p(request),
+                );
+                self.pending_requests
+                    .defer_request(ServiceId::Wallet, pending_request);
+
+                // 2. send the funding information to farcasterd
+                // FIXME handle unwraps...
+                let address = self.state.b_address().cloned().unwrap();
+                let sat_per_kvb = self.syncer_state.btc_fee_estimate_sat_per_kvb.unwrap();
+                self.ask_bob_to_fund(sat_per_kvb, address, endpoints)?;
+
+                // 3. watch
+            }
+            */
+
+            /*
             PeerMsg::Reveal(Reveal::Proof(_)) => {
                 // These messages are saved as pending if Bob and then forwarded once the
                 // parameter reveal forward is triggered. If Alice, send immediately.
@@ -830,6 +1110,7 @@ impl Runtime {
                     }
                 }
             }
+            */
 
             // Swap role: Bob, initiator of this message
             // Message #1 after commit/reveal
@@ -1144,7 +1425,7 @@ impl Runtime {
             }
 
             req => error!(
-                "{} | Request {} not supported at state {}",
+                "{} | BusMsg {} not supported at state {} on MSG interface",
                 self.swap_id.swap_id(),
                 req,
                 self.state
@@ -1296,7 +1577,7 @@ impl Runtime {
                     && self
                         .pending_requests()
                         .get(&source)
-                        .map(|reqs| reqs.len() == 2)
+                        .map(|reqs| reqs.len() == 1)
                         .unwrap() =>
             {
                 let success_proof = PendingRequests::continue_deferred_requests(
@@ -1309,7 +1590,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(_))),
+                                request: BusMsg::P2p(PeerMsg::Reveal2(_)),
                                 ..
                             }
                         )
@@ -1319,6 +1600,7 @@ impl Runtime {
                     error!("Did not dispatch proof pending request");
                 }
 
+                /*
                 let success_params =
                     PendingRequests::continue_deferred_requests(self, endpoints, source, |r| {
                         matches!(
@@ -1334,6 +1616,7 @@ impl Runtime {
                 if !success_params {
                     error!("Did not dispatch params pending requests");
                 }
+                */
             }
 
             CtlMsg::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
@@ -2631,9 +2914,7 @@ impl Runtime {
                                         &i,
                                         &PendingRequest {
                                             bus_id: ServiceBus::Msg,
-                                            request: BusMsg::P2p(PeerMsg::Reveal(
-                                                Reveal::AliceParameters(..)
-                                            )),
+                                            request: BusMsg::P2p(PeerMsg::Reveal2(_)),
                                             dest: ServiceId::Swap(..),
                                             ..
                                         }
@@ -2804,6 +3085,7 @@ fn aggregate_xmr_spend_view(
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 
+/*
 fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
     // parameter processing irrespective of maker & taker role
     let core_wallet = CommitmentEngine;
@@ -2833,5 +3115,35 @@ fn remote_params_candidate(reveal: &Reveal, remote_commit: Commit) -> Result<Par
         Reveal::Proof(_) => Err(Error::Farcaster(s!(
             "this should have been caught by another pattern!"
         ))),
+    }
+}
+*/
+
+fn remote_params_candidate2(reveal: &Reveal2, remote_commit: Commit) -> Result<Params, Error> {
+    // parameter processing irrespective of maker & taker role
+    let core_wallet = CommitmentEngine;
+    match reveal {
+        Reveal2::Alice { parameters, .. } => match &remote_commit {
+            Commit::AliceParameters(commit) => {
+                commit.verify_with_reveal(&core_wallet, parameters.clone())?;
+                Ok(Params::Alice(parameters.clone().into_parameters()))
+            }
+            _ => {
+                let err_msg = "expected Some(Commit::Alice(commit))";
+                error!("{}", err_msg);
+                Err(Error::Farcaster(err_msg.to_string()))
+            }
+        },
+        Reveal2::Bob { parameters, .. } => match &remote_commit {
+            Commit::BobParameters(commit) => {
+                commit.verify_with_reveal(&core_wallet, parameters.clone())?;
+                Ok(Params::Bob(parameters.clone().into_parameters()))
+            }
+            _ => {
+                let err_msg = "expected Some(Commit::Bob(commit))";
+                error!("{}", err_msg);
+                Err(Error::Farcaster(err_msg.to_string()))
+            }
+        },
     }
 }
