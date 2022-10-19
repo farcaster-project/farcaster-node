@@ -21,7 +21,7 @@ pub enum PeerMsg {
 
     #[api(type = 33702)]
     #[display("{0} taker commit")]
-    TakerCommit(TakeCommit),
+    TakerCommit(TakerCommit),
 
     #[api(type = 33703)]
     #[display("reveal {0}")]
@@ -67,11 +67,8 @@ pub enum PeerMsg {
 impl PeerMsg {
     pub fn swap_id(&self) -> SwapId {
         match self {
-            PeerMsg::MakerCommit(m) => match m {
-                Commit::AliceParameters(n) => n.swap_id,
-                Commit::BobParameters(n) => n.swap_id,
-            },
-            PeerMsg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
+            PeerMsg::MakerCommit(c) => c.swap_id(),
+            PeerMsg::TakerCommit(c) => c.swap_id(),
             PeerMsg::Reveal(m) => match m {
                 Reveal::AliceParameters(n) => n.swap_id,
                 Reveal::BobParameters(n) => n.swap_id,
@@ -134,10 +131,15 @@ pub enum Reveal {
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]
 #[display("{commit}")]
-pub struct TakeCommit {
+pub struct TakerCommit {
     pub commit: Commit,
     pub public_offer: PublicOffer, // TODO: replace by public offer id
-    pub swap_id: SwapId,
+}
+
+impl TakerCommit {
+    pub fn swap_id(&self) -> SwapId {
+        self.commit.swap_id()
+    }
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -146,4 +148,13 @@ pub enum Commit {
     AliceParameters(CommitAliceParameters),
     #[display("Bob")]
     BobParameters(CommitBobParameters),
+}
+
+impl Commit {
+    pub fn swap_id(&self) -> SwapId {
+        match self {
+            Self::AliceParameters(c) => c.swap_id,
+            Self::BobParameters(c) => c.swap_id,
+        }
+    }
 }

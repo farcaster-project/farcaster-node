@@ -29,7 +29,7 @@ use crate::{
         MoneroFundingInfo, Params, Tx,
     },
     bus::info::{InfoMsg, SwapInfo},
-    bus::p2p::{Commit, PeerMsg, Reveal, TakeCommit},
+    bus::p2p::{Commit, PeerMsg, Reveal, TakerCommit},
     bus::sync::SyncMsg,
     bus::{BusMsg, Failure, FailureCode, Outcome, ServiceBus},
     syncerd::{
@@ -1239,10 +1239,9 @@ impl Runtime {
                     funding_address,
                     None,
                 );
-                let take_swap = TakeCommit {
+                let take_swap = TakerCommit {
                     commit: local_commit,
                     public_offer: self.public_offer.clone(),
-                    swap_id,
                 };
                 self.send_peer(endpoints, PeerMsg::TakerCommit(take_swap))?;
                 self.state_update(endpoints, next_state)?;
