@@ -6,6 +6,7 @@ service Farcaster {
     rpc Peers(PeersRequest) returns (PeersResponse){}
     rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
     rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
+    rpc Make(MakeRequest) returns (MakeResponse){}
 }
 
 message InfoRequest {
@@ -43,7 +44,12 @@ message CheckpointsResponse {
 message CheckpointEntry {
     string swap_id = 1;
     string public_offer = 2;
-    string trade_role = 3;
+    TradeRole trade_role = 3;
+}
+
+enum TradeRole {
+    MAKER = 0;
+    TAKER = 1;
 }
 
 message RestoreCheckpointRequest {
@@ -54,4 +60,43 @@ message RestoreCheckpointRequest {
 message RestoreCheckpointResponse {
     uint32 id = 1;
     string status = 2;
+}
+
+message MakeRequest {
+    uint32 id = 1;
+    Network network = 2;
+    Blockchain accordant_blockchain = 3;
+    Blockchain arbitrating_blockchain = 4;
+    uint64 accordant_amount = 5;
+    uint64 arbitrating_amount = 6;
+    string arbitrating_addr = 7;
+    string accordant_addr = 8;
+    uint32 cancel_timelock = 9;
+    uint32 punish_timelock = 10;
+    string fee_strategy = 11;
+    SwapRole maker_role = 12;
+    string public_ip_addr = 13;
+    string bind_ip_addr = 14;
+    uint32 port = 15;
+}
+ 
+message MakeResponse {
+    uint32 id = 1;
+    string offer = 2;
+}
+
+enum SwapRole {
+    ALICE = 0;
+    BOB = 1;
+}
+
+enum Network {
+    MAINNET = 0;
+    TESTNET = 1;
+    LOCAL = 2;
+}
+
+enum Blockchain {
+    BITCOIN = 0;
+    MONERO = 1;
 }

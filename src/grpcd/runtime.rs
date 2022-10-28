@@ -1,15 +1,27 @@
 use crate::bus::bridge::BridgeMsg;
+use crate::bus::ctl::ProtoPublicOffer;
 use crate::service::Endpoints;
+use farcaster_core::bitcoin::fee::SatPerVByte;
+use farcaster_core::bitcoin::timelock::CSVTimelock;
+use farcaster_core::blockchain::Blockchain;
+use farcaster_core::blockchain::FeeStrategy;
+use farcaster_core::blockchain::Network;
+use farcaster_core::role::SwapRole;
+use farcaster_core::role::TradeRole;
+use farcaster_core::swap::btcxmr::Offer;
 use farcaster_core::swap::SwapId;
+use internet2::addr::InetSocketAddr;
 use internet2::DuplexConnection;
 use internet2::Encrypt;
 use internet2::PlainTranscoder;
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 use crate::bus::{ctl::CtlMsg, info::InfoMsg};
 use crate::bus::{BusMsg, ServiceBus};
@@ -28,6 +40,8 @@ use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse,
 
 use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
+use self::farcaster::MakeRequest;
+use self::farcaster::MakeResponse;
 use self::farcaster::PeersRequest;
 use self::farcaster::PeersResponse;
 use self::farcaster::RestoreCheckpointRequest;
@@ -35,6 +49,71 @@ use self::farcaster::RestoreCheckpointResponse;
 
 pub mod farcaster {
     tonic::include_proto!("farcaster");
+}
+
+impl From<TradeRole> for farcaster::TradeRole {
+    fn from(t: TradeRole) -> farcaster::TradeRole {
+        match t {
+            TradeRole::Maker => farcaster::TradeRole::Maker,
+            TradeRole::Taker => farcaster::TradeRole::Taker,
+        }
+    }
+}
+
+impl From<SwapRole> for farcaster::SwapRole {
+    fn from(t: SwapRole) -> farcaster::SwapRole {
+        match t {
+            SwapRole::Alice => farcaster::SwapRole::Alice,
+            SwapRole::Bob => farcaster::SwapRole::Bob,
+        }
+    }
+}
+
+impl From<farcaster::SwapRole> for SwapRole {
+    fn from(t: farcaster::SwapRole) -> SwapRole {
+        match t {
+            farcaster::SwapRole::Alice => SwapRole::Alice,
+            farcaster::SwapRole::Bob => SwapRole::Bob,
+        }
+    }
+}
+
+impl From<Network> for farcaster::Network {
+    fn from(t: Network) -> farcaster::Network {
+        match t {
+            Network::Mainnet => farcaster::Network::Mainnet,
+            Network::Testnet => farcaster::Network::Testnet,
+            Network::Local => farcaster::Network::Local,
+        }
+    }
+}
+
+impl From<farcaster::Network> for Network {
+    fn from(t: farcaster::Network) -> Network {
+        match t {
+            farcaster::Network::Mainnet => Network::Mainnet,
+            farcaster::Network::Testnet => Network::Testnet,
+            farcaster::Network::Local => Network::Local,
+        }
+    }
+}
+
+impl From<Blockchain> for farcaster::Blockchain {
+    fn from(t: Blockchain) -> farcaster::Blockchain {
+        match t {
+            Blockchain::Monero => farcaster::Blockchain::Monero,
+            Blockchain::Bitcoin => farcaster::Blockchain::Bitcoin,
+        }
+    }
+}
+
+impl From<farcaster::Blockchain> for Blockchain {
+    fn from(t: farcaster::Blockchain) -> Blockchain {
+        match t {
+            farcaster::Blockchain::Monero => Blockchain::Monero,
+            farcaster::Blockchain::Bitcoin => Blockchain::Bitcoin,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Hash, Display)]
@@ -181,7 +260,7 @@ impl Farcaster for FarcasterService {
                         .map(|entry| farcaster::CheckpointEntry {
                             swap_id: format!("{:#x}", entry.swap_id),
                             public_offer: format!("{}", entry.public_offer),
-                            trade_role: format!("{}", entry.trade_role),
+                            trade_role: farcaster::TradeRole::from(entry.trade_role) as i32,
                         })
                         .collect(),
                 };
@@ -208,24 +287,161 @@ impl Farcaster for FarcasterService {
             }
         };
         let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Rpc {
-                request: Rpc::GetCheckpointEntry(swap_id),
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::GetCheckpointEntry(swap_id),
                 service_id: ServiceId::Database,
             }))
             .await?;
         match oneshot_rx.await {
-            Ok(BusMsg::Rpc(Rpc::CheckpointEntry(checkpoint_entry))) => {
+            Ok(BusMsg::Info(InfoMsg::CheckpointEntry(checkpoint_entry))) => {
                 let oneshot_rx = self
                     .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: Ctl::RestoreCheckpoint(checkpoint_entry),
+                        request: CtlMsg::RestoreCheckpoint(checkpoint_entry),
                         service_id: ServiceId::Farcasterd,
                     }))
                     .await?;
                 match oneshot_rx.await {
-                    Ok(BusMsg::Rpc(Rpc::String(message))) => {
+                    Ok(BusMsg::Info(InfoMsg::String(message))) => {
                         let reply = farcaster::RestoreCheckpointResponse {
                             id,
                             status: message,
+                        };
+                        Ok(GrpcResponse::new(reply))
+                    }
+                    _ => Err(Status::internal(format!("Received invalid response"))),
+                }
+            }
+            _ => Err(Status::internal(format!("Received invalid response"))),
+        }
+    }
+
+    async fn make(
+        &self,
+        request: GrpcRequest<MakeRequest>,
+    ) -> Result<GrpcResponse<MakeResponse>, Status> {
+        debug!("Received a grpc make request: {:?}", request);
+        let MakeRequest {
+            id,
+            network: grpc_network,
+            arbitrating_blockchain: grpc_arb_blockchain,
+            accordant_blockchain: grpc_acc_blockchain,
+            arbitrating_amount: int_arb_amount,
+            accordant_amount: int_acc_amount,
+            arbitrating_addr: str_arb_addr,
+            accordant_addr: str_acc_addr,
+            cancel_timelock: int_cancel_timelock,
+            punish_timelock: int_punish_timelock,
+            fee_strategy: str_fee_strategy,
+            maker_role: grpc_trade_role,
+            public_ip_addr: str_public_ip_addr,
+            bind_ip_addr: str_bind_ip_addr,
+            port,
+        } = request.into_inner();
+
+        let network: Network = farcaster::Network::from_i32(grpc_network)
+            .ok_or(Status::invalid_argument("network"))?
+            .into();
+        let arbitrating_blockchain: Blockchain =
+            farcaster::Blockchain::from_i32(grpc_arb_blockchain)
+                .ok_or(Status::invalid_argument("arbitrating blockchain"))?
+                .into();
+        let accordant_blockchain: Blockchain = farcaster::Blockchain::from_i32(grpc_acc_blockchain)
+            .ok_or(Status::invalid_argument("accordant blockchain"))?
+            .into();
+        let arbitrating_amount = bitcoin::Amount::from_sat(int_arb_amount);
+        let accordant_amount = monero::Amount::from_pico(int_acc_amount);
+        let arbitrating_addr = bitcoin::Address::from_str(&str_arb_addr)
+            .map_err(|_| Status::invalid_argument("arbitrating address"))?;
+        let accordant_addr = monero::Address::from_str(&str_acc_addr)
+            .map_err(|_| Status::invalid_argument("accordant_address"))?;
+        let cancel_timelock = CSVTimelock::new(int_cancel_timelock);
+        let punish_timelock = CSVTimelock::new(int_punish_timelock);
+        let maker_role: SwapRole = farcaster::SwapRole::from_i32(grpc_trade_role)
+            .ok_or(Status::invalid_argument("maker role"))?
+            .into();
+        let public_ip_addr = IpAddr::from_str(&str_public_ip_addr)
+            .map_err(|_| Status::invalid_argument("public ip address"))?;
+        let bind_ip_addr = IpAddr::from_str(&str_bind_ip_addr)
+            .map_err(|_| Status::invalid_argument("bind ip address"))?;
+        let fee_strategy: FeeStrategy<SatPerVByte> = FeeStrategy::from_str(&str_fee_strategy).map_err(|_| Status::invalid_argument("
+        fee strategy is required to be formated as a fixed value, e.g. 100 satoshi/vByt or a range, e.g. 50 satoshi/vByte-150 satoshi/vByte "))?;
+
+        // Monero local address types are mainnet address types
+        if network != accordant_addr.network.into() && network != Network::Local {
+            return Err(Status::internal(format!(
+                "Error: The address {} is not for {}",
+                accordant_addr, network
+            )));
+        }
+        if network != arbitrating_addr.network.into() {
+            return Err(Status::internal(format!(
+                "Error: The address {} is not for {}",
+                arbitrating_addr, network
+            )));
+        }
+        if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
+            && network == Network::Mainnet
+        {
+            return Err(Status::internal(format!(
+                "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
+                arbitrating_amount
+            )));
+        }
+        if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
+            && network == Network::Mainnet
+        {
+            return Err(Status::internal(format!(
+                "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
+                accordant_amount
+            )));
+        }
+        if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
+            return Err(Status::internal(format!(
+                "Error: Monero amount {} too low, require at least 0.001 XMR",
+                accordant_amount
+            )));
+        }
+        let offer = Offer {
+            uuid: Uuid::new_v4(),
+            network,
+            arbitrating_blockchain,
+            accordant_blockchain,
+            arbitrating_amount,
+            accordant_amount,
+            cancel_timelock,
+            punish_timelock,
+            fee_strategy,
+            maker_role,
+        };
+        let public_addr = InetSocketAddr::socket(public_ip_addr, port as u16);
+        let bind_addr = InetSocketAddr::socket(bind_ip_addr, port as u16);
+        let proto_offer = ProtoPublicOffer {
+            offer,
+            public_addr,
+            bind_addr,
+            arbitrating_addr,
+            accordant_addr,
+        };
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::MakeOffer(proto_offer),
+                service_id: ServiceId::Database,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::CheckpointEntry(checkpoint_entry))) => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::RestoreCheckpoint(checkpoint_entry),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+                match oneshot_rx.await {
+                    Ok(BusMsg::Info(InfoMsg::MadeOffer(made_offer))) => {
+                        let reply = farcaster::MakeResponse {
+                            id,
+                            offer: made_offer.offer_info.offer,
                         };
                         Ok(GrpcResponse::new(reply))
                     }

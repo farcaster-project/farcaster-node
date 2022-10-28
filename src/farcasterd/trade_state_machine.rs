@@ -335,7 +335,7 @@ fn attempt_transition_to_make_offer(
                             status: OfferStatus::Open,
                         })),
                     )?;
-                    event.complete_info(BusMsg::Info(InfoMsg::MadeOffer(MadeOffer {
+                    event.complete_client_info(BusMsg::Info(InfoMsg::MadeOffer(MadeOffer {
                         message: msg,
                         offer_info: OfferInfo {
                             offer: public_offer.to_string(),
@@ -404,7 +404,7 @@ fn attempt_transition_to_take_offer(
             // connect to the remote peer
             match runtime.connect_peer(&peer_node_addr) {
                 Err(err) => {
-                    event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
                     })))?;
