@@ -384,7 +384,7 @@ fn attempt_transition_to_take_offer(
                     &public_offer.to_string()
                 );
                 warn!("{}", msg.err());
-                event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: msg,
                 })))?;
@@ -426,7 +426,7 @@ fn attempt_transition_to_take_offer(
                             internal_address,
                         })),
                     )?;
-                    event.complete_info(BusMsg::Info(InfoMsg::TookOffer(TookOffer {
+                    event.complete_client_info(BusMsg::Info(InfoMsg::TookOffer(TookOffer {
                         offerid: public_offer.id(),
                         message: offer_registered,
                     })))?;

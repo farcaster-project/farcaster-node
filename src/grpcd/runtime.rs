@@ -1,5 +1,6 @@
 use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::ProtoPublicOffer;
+use crate::bus::ctl::PubOffer;
 use crate::service::Endpoints;
 use farcaster_core::bitcoin::fee::SatPerVByte;
 use farcaster_core::bitcoin::timelock::CSVTimelock;
@@ -9,7 +10,7 @@ use farcaster_core::blockchain::Network;
 use farcaster_core::role::SwapRole;
 use farcaster_core::role::TradeRole;
 use farcaster_core::swap::btcxmr::Offer;
-use farcaster_core::swap::SwapId;
+use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
 use internet2::addr::InetSocketAddr;
 use internet2::DuplexConnection;
 use internet2::Encrypt;
@@ -46,6 +47,8 @@ use self::farcaster::PeersRequest;
 use self::farcaster::PeersResponse;
 use self::farcaster::RestoreCheckpointRequest;
 use self::farcaster::RestoreCheckpointResponse;
+use self::farcaster::TakeRequest;
+use self::farcaster::TakeResponse;
 
 pub mod farcaster {
     tonic::include_proto!("farcaster");
@@ -426,7 +429,7 @@ impl Farcaster for FarcasterService {
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
                 request: CtlMsg::MakeOffer(proto_offer),
-                service_id: ServiceId::Database,
+                service_id: ServiceId::Farcasterd,
             }))
             .await?;
         match oneshot_rx.await {
@@ -443,6 +446,97 @@ impl Farcaster for FarcasterService {
                             id,
                             offer: made_offer.offer_info.offer,
                         };
+                        Ok(GrpcResponse::new(reply))
+                    }
+                    _ => Err(Status::internal(format!("Received invalid response"))),
+                }
+            }
+            _ => Err(Status::internal(format!("Received invalid response"))),
+        }
+    }
+
+    async fn take(
+        &self,
+        request: GrpcRequest<TakeRequest>,
+    ) -> Result<GrpcResponse<TakeResponse>, Status> {
+        let TakeRequest {
+            id,
+            public_offer: str_public_offer,
+            bitcoin_address: str_bitcoin_address,
+            monero_address: str_monero_address,
+        } = request.into_inner();
+
+        let bitcoin_address = bitcoin::Address::from_str(&str_bitcoin_address)
+            .map_err(|_| Status::invalid_argument("arbitrating address"))?;
+        let monero_address = monero::Address::from_str(&str_monero_address)
+            .map_err(|_| Status::invalid_argument("accordant_address"))?;
+        let public_offer = PublicOffer::from_str(&str_public_offer)
+            .map_err(|_| Status::invalid_argument("public offer"))?;
+
+        let PublicOffer { offer, .. } = public_offer.clone();
+
+        let network = offer.network;
+        let arbitrating_amount = offer.arbitrating_amount;
+        let accordant_amount = offer.accordant_amount;
+
+        if network != bitcoin_address.network.into() {
+            return Err(Status::internal(format!(
+                "Error: The address {} is not for {}",
+                bitcoin_address, network
+            )));
+        }
+        // monero local address types are mainnet address types
+        if network != monero_address.network.into() && network != Network::Local {
+            return Err(Status::internal(format!(
+                "Error: The address {} is not for {}",
+                monero_address, network
+            )));
+        }
+
+        if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
+            && network == Network::Mainnet
+        {
+            return Err(Status::internal(format!(
+                "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
+                arbitrating_amount
+            )));
+        }
+        if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
+            && network == Network::Mainnet
+        {
+            return Err(Status::internal(format!(
+                "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
+                accordant_amount
+            )));
+        }
+        if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
+            return Err(Status::internal(format!(
+                "Error: Monero amount {} too low, require at least 0.001 XMR",
+                accordant_amount
+            )));
+        }
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::TakeOffer(PubOffer {
+                    public_offer,
+                    external_address: bitcoin_address,
+                    internal_address: monero_address,
+                }),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::CheckpointEntry(checkpoint_entry))) => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::RestoreCheckpoint(checkpoint_entry),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+                match oneshot_rx.await {
+                    Ok(BusMsg::Info(InfoMsg::TookOffer(_))) => {
+                        let reply = farcaster::TakeResponse { id };
                         Ok(GrpcResponse::new(reply))
                     }
                     _ => Err(Status::internal(format!("Received invalid response"))),

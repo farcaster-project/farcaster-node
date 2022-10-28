@@ -7,6 +7,7 @@ service Farcaster {
     rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
     rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
     rpc Make(MakeRequest) returns (MakeResponse){}
+    rpc Take(TakeRequest) returns (TakeResponse){}
 }
 
 message InfoRequest {
@@ -83,6 +84,17 @@ message MakeRequest {
 message MakeResponse {
     uint32 id = 1;
     string offer = 2;
+}
+
+message TakeRequest {
+    uint32 id = 1;
+    string public_offer = 2;
+    string bitcoin_address = 3;
+    string monero_address = 4;
+}
+
+message TakeResponse {
+    uint32 id = 1;
 }
 
 enum SwapRole {
