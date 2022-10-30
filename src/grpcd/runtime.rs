@@ -351,7 +351,7 @@ impl Farcaster for FarcasterService {
             cancel_timelock: int_cancel_timelock,
             punish_timelock: int_punish_timelock,
             fee_strategy: str_fee_strategy,
-            maker_role: grpc_trade_role,
+            maker_role: grpc_swap_role,
             public_ip_addr: str_public_ip_addr,
             bind_ip_addr: str_bind_ip_addr,
             port,
@@ -375,7 +375,7 @@ impl Farcaster for FarcasterService {
             .map_err(|_| Status::invalid_argument("accordant_address"))?;
         let cancel_timelock = CSVTimelock::new(int_cancel_timelock);
         let punish_timelock = CSVTimelock::new(int_punish_timelock);
-        let maker_role: SwapRole = farcaster::SwapRole::from_i32(grpc_trade_role)
+        let maker_role: SwapRole = farcaster::SwapRole::from_i32(grpc_swap_role)
             .ok_or(Status::invalid_argument("maker role"))?
             .into();
         let public_ip_addr = IpAddr::from_str(&str_public_ip_addr)
@@ -383,7 +383,7 @@ impl Farcaster for FarcasterService {
         let bind_ip_addr = IpAddr::from_str(&str_bind_ip_addr)
             .map_err(|_| Status::invalid_argument("bind ip address"))?;
         let fee_strategy: FeeStrategy<SatPerVByte> = FeeStrategy::from_str(&str_fee_strategy).map_err(|_| Status::invalid_argument("
-        fee strategy is required to be formated as a fixed value, e.g. 100 satoshi/vByt or a range, e.g. 50 satoshi/vByte-150 satoshi/vByte "))?;
+        fee strategy is required to be formated as a fixed value, e.g. \"100 satoshi/vByte\" or a range, e.g. \"50 satoshi/vByte-150 satoshi/vByte\" "))?;
 
         // Monero local address types are mainnet address types
         if network != accordant_addr.network.into() && network != Network::Local {

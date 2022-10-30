@@ -1,9 +1,12 @@
 #[macro_use]
 extern crate log;
 
-use crate::farcaster::{farcaster_client::FarcasterClient, CheckpointsRequest, PeersRequest};
+use crate::farcaster::{
+    farcaster_client::FarcasterClient, CheckpointsRequest, MakeRequest, PeersRequest,
+};
+use bitcoincore_rpc::RpcApi;
 use farcaster::InfoRequest;
-use std::time;
+use std::{str::FromStr, sync::Arc, time};
 use tonic::transport::Endpoint;
 use utils::fc::*;
 
@@ -39,6 +42,34 @@ async fn grpc_server_functional_test() {
     let response = farcaster_client.checkpoints(request).await;
     println!("response: {:?}", response);
     assert_eq!(response.unwrap().into_inner().id, 2);
+
+    let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (_monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (xmr_address, _xmr_address_wallet_name) =
+        monero_new_dest_address(Arc::clone(&monero_wallet)).await;
+    let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+
+    let request = tonic::Request::new(MakeRequest {
+        id: 3,
+        network: farcaster::Network::Local.into(),
+        arbitrating_blockchain: farcaster::Blockchain::Bitcoin.into(),
+        accordant_blockchain: farcaster::Blockchain::Monero.into(),
+        arbitrating_amount: bitcoin::Amount::from_str("1 BTC").unwrap().as_sat(),
+        accordant_amount: monero::Amount::from_str("1 XMR").unwrap().as_pico(),
+        arbitrating_addr: btc_address.to_string(),
+        accordant_addr: xmr_address.to_string(),
+        cancel_timelock: 20,
+        punish_timelock: 40,
+        fee_strategy: "100 satoshi/vByte".to_string(),
+        maker_role: farcaster::SwapRole::Bob.into(),
+        public_ip_addr: "127.0.0.1".to_string(),
+        bind_ip_addr: "0.0.0.0".to_string(),
+        port: 9376,
+    });
+
+    let response = farcaster_client.make(request).await;
+    println!("response: {:?}", response);
 
     kill_all();
 }
