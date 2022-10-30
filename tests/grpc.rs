@@ -3,10 +3,10 @@ extern crate log;
 
 use crate::farcaster::{
     farcaster_client::FarcasterClient, CheckpointsRequest, MakeRequest, PeersRequest,
-    RevokeOfferRequest,
+    RevokeOfferRequest, TakeRequest,
 };
 use bitcoincore_rpc::RpcApi;
-use farcaster::InfoRequest;
+use farcaster::{InfoRequest, MakeResponse};
 use std::{str::FromStr, sync::Arc, time};
 use tonic::transport::Endpoint;
 use utils::fc::*;
@@ -25,22 +25,28 @@ async fn grpc_server_functional_test() {
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
-    let channel = Endpoint::from_static("http://0.0.0.0:23432")
+    let channel_1 = Endpoint::from_static("http://0.0.0.0:23432")
         .connect()
         .await
         .unwrap();
+    let mut farcaster_client_1 = FarcasterClient::new(channel_1);
 
-    let mut farcaster_client = FarcasterClient::new(channel.clone());
+    let channel_2 = Endpoint::from_static("http://0.0.0.0:23433")
+        .connect()
+        .await
+        .unwrap();
+    let mut farcaster_client_2 = FarcasterClient::new(channel_2);
+
     let request = tonic::Request::new(InfoRequest { id: 0 });
-    let response = farcaster_client.info(request).await;
+    let response = farcaster_client_1.info(request).await;
     assert_eq!(response.unwrap().into_inner().id, 0);
 
     let request = tonic::Request::new(PeersRequest { id: 1 });
-    let response = farcaster_client.peers(request).await;
+    let response = farcaster_client_1.peers(request).await;
     assert_eq!(response.unwrap().into_inner().id, 1);
 
     let request = tonic::Request::new(CheckpointsRequest { id: 2 });
-    let response = farcaster_client.checkpoints(request).await;
+    let response = farcaster_client_1.checkpoints(request).await;
     println!("response: {:?}", response);
     assert_eq!(response.unwrap().into_inner().id, 2);
 
@@ -51,7 +57,7 @@ async fn grpc_server_functional_test() {
         monero_new_dest_address(Arc::clone(&monero_wallet)).await;
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
 
-    let request = tonic::Request::new(MakeRequest {
+    let make_request = MakeRequest {
         id: 3,
         network: farcaster::Network::Local.into(),
         arbitrating_blockchain: farcaster::Blockchain::Bitcoin.into(),
@@ -67,18 +73,36 @@ async fn grpc_server_functional_test() {
         public_ip_addr: "127.0.0.1".to_string(),
         bind_ip_addr: "0.0.0.0".to_string(),
         port: 9376,
-    });
-
-    let response = farcaster_client.make(request).await;
-    println!("response: {:?}", response);
-    let offer = response.unwrap().into_inner().offer;
+    };
+    let request = tonic::Request::new(make_request.clone());
+    let response = farcaster_client_1.make(request).await;
+    let MakeResponse { id, offer } = response.unwrap().into_inner();
+    assert_eq!(id, 3);
 
     let request = tonic::Request::new(RevokeOfferRequest {
         id: 4,
         public_offer: offer.to_string(),
     });
-    let response = farcaster_client.revoke_offer(request).await;
-    println!("response: {:?}", response);
+    let response = farcaster_client_1.revoke_offer(request).await;
+    assert_eq!(response.unwrap().into_inner().id, 4);
+
+    let request = tonic::Request::new(make_request.clone());
+    let response = farcaster_client_1.make(request).await;
+    assert_eq!(response.unwrap().into_inner().id, 3);
+
+    let (xmr_address, _xmr_address_wallet_name) =
+        monero_new_dest_address(Arc::clone(&monero_wallet)).await;
+    let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+
+    let take_request = TakeRequest {
+        id: 5,
+        public_offer: offer.to_string(),
+        bitcoin_address: btc_address.to_string(),
+        monero_address: xmr_address.to_string(),
+    };
+    let request = tonic::Request::new(take_request.clone());
+    let response = farcaster_client_2.take(request).await;
+    assert_eq!(response.unwrap().into_inner().id, 5);
 
     kill_all();
 }

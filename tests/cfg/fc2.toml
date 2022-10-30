@@ -1,3 +1,7 @@
+[farcasterd.grpc]
+use_grpc = true
+port = 23433
+
 [syncers.local]
 electrum_server = "tcp://localhost:60401"
 monero_daemon = "http://localhost:18081"
