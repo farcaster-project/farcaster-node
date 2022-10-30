@@ -3,6 +3,7 @@ extern crate log;
 
 use crate::farcaster::{
     farcaster_client::FarcasterClient, CheckpointsRequest, MakeRequest, PeersRequest,
+    RevokeOfferRequest,
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::InfoRequest;
@@ -69,6 +70,14 @@ async fn grpc_server_functional_test() {
     });
 
     let response = farcaster_client.make(request).await;
+    println!("response: {:?}", response);
+    let offer = response.unwrap().into_inner().offer;
+
+    let request = tonic::Request::new(RevokeOfferRequest {
+        id: 4,
+        public_offer: offer.to_string(),
+    });
+    let response = farcaster_client.revoke_offer(request).await;
     println!("response: {:?}", response);
 
     kill_all();
