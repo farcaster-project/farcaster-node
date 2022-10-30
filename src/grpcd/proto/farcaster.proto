@@ -8,6 +8,8 @@ service Farcaster {
     rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
     rpc Make(MakeRequest) returns (MakeResponse){}
     rpc Take(TakeRequest) returns (TakeResponse){}
+    rpc RevokeOffer(RevokeOfferRequest) returns (RevokeOfferResponse){}
+    rpc AbortSwap(AbortSwapRequest) returns (AbortSwapResponse){}
 }
 
 message InfoRequest {
@@ -94,6 +96,24 @@ message TakeRequest {
 }
 
 message TakeResponse {
+    uint32 id = 1;
+}
+
+message RevokeOfferRequest {
+    uint32 id = 1;
+    string public_offer = 2;
+}
+
+message RevokeOfferResponse {
+    uint32 id = 1;
+}
+
+message AbortSwapRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message AbortSwapResponse {
     uint32 id = 1;
 }
 

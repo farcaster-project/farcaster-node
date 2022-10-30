@@ -1,6 +1,7 @@
 use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::ProtoPublicOffer;
 use crate::bus::ctl::PubOffer;
+use crate::bus::Failure;
 use crate::service::Endpoints;
 use farcaster_core::bitcoin::fee::SatPerVByte;
 use farcaster_core::bitcoin::timelock::CSVTimelock;
@@ -39,6 +40,8 @@ use farcaster::farcaster_server::{Farcaster, FarcasterServer};
 use farcaster::{InfoRequest, InfoResponse};
 use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
 
+use self::farcaster::AbortSwapRequest;
+use self::farcaster::AbortSwapResponse;
 use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
 use self::farcaster::MakeRequest;
@@ -47,6 +50,8 @@ use self::farcaster::PeersRequest;
 use self::farcaster::PeersResponse;
 use self::farcaster::RestoreCheckpointRequest;
 use self::farcaster::RestoreCheckpointResponse;
+use self::farcaster::RevokeOfferRequest;
+use self::farcaster::RevokeOfferResponse;
 use self::farcaster::TakeRequest;
 use self::farcaster::TakeResponse;
 
@@ -433,24 +438,67 @@ impl Farcaster for FarcasterService {
             }))
             .await?;
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::CheckpointEntry(checkpoint_entry))) => {
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::RestoreCheckpoint(checkpoint_entry),
-                        service_id: ServiceId::Farcasterd,
-                    }))
-                    .await?;
-                match oneshot_rx.await {
-                    Ok(BusMsg::Info(InfoMsg::MadeOffer(made_offer))) => {
-                        let reply = farcaster::MakeResponse {
-                            id,
-                            offer: made_offer.offer_info.offer,
-                        };
-                        Ok(GrpcResponse::new(reply))
-                    }
-                    _ => Err(Status::internal(format!("Received invalid response"))),
-                }
+            Ok(BusMsg::Info(InfoMsg::MadeOffer(made_offer))) => {
+                let reply = farcaster::MakeResponse {
+                    id,
+                    offer: made_offer.offer_info.offer,
+                };
+                Ok(GrpcResponse::new(reply))
             }
+            _ => Err(Status::internal(format!("Received invalid response"))),
+        }
+    }
+
+    async fn revoke_offer(
+        &self,
+        request: GrpcRequest<RevokeOfferRequest>,
+    ) -> Result<GrpcResponse<RevokeOfferResponse>, Status> {
+        let RevokeOfferRequest {
+            id,
+            public_offer: str_public_offer,
+        } = request.into_inner();
+
+        let public_offer = PublicOffer::from_str(&str_public_offer)
+            .map_err(|_| Status::invalid_argument("public offer"))?;
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::RevokeOffer(public_offer),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::String(_))) => {
+                let reply = farcaster::RevokeOfferResponse { id };
+                Ok(GrpcResponse::new(reply))
+            }
+            _ => Err(Status::internal(format!("Received invalid response"))),
+        }
+    }
+
+    async fn abort_swap(
+        &self,
+        request: GrpcRequest<AbortSwapRequest>,
+    ) -> Result<GrpcResponse<AbortSwapResponse>, Status> {
+        let AbortSwapRequest {
+            id,
+            swap_id: str_swap_id,
+        } = request.into_inner();
+        let swap_id =
+            SwapId::from_str(&str_swap_id).map_err(|_| Status::invalid_argument("swap id"))?;
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::AbortSwap,
+                service_id: ServiceId::Swap(swap_id),
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::String(_))) => {
+                let reply = farcaster::AbortSwapResponse { id };
+                Ok(GrpcResponse::new(reply))
+            }
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -526,21 +574,11 @@ impl Farcaster for FarcasterService {
                 service_id: ServiceId::Farcasterd,
             }))
             .await?;
+
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::CheckpointEntry(checkpoint_entry))) => {
-                let oneshot_rx = self
-                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                        request: CtlMsg::RestoreCheckpoint(checkpoint_entry),
-                        service_id: ServiceId::Farcasterd,
-                    }))
-                    .await?;
-                match oneshot_rx.await {
-                    Ok(BusMsg::Info(InfoMsg::TookOffer(_))) => {
-                        let reply = farcaster::TakeResponse { id };
-                        Ok(GrpcResponse::new(reply))
-                    }
-                    _ => Err(Status::internal(format!("Received invalid response"))),
-                }
+            Ok(BusMsg::Info(InfoMsg::TookOffer(_))) => {
+                let reply = farcaster::TakeResponse { id };
+                Ok(GrpcResponse::new(reply))
             }
             _ => Err(Status::internal(format!("Received invalid response"))),
         }

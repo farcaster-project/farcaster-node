@@ -577,14 +577,14 @@ fn attempt_transition_to_taker_committed(
             debug!("attempting to revoke {}", public_offer);
             if revoke_public_offer == public_offer {
                 info!("Revoked offer {}", public_offer.label());
-                event.complete_info(BusMsg::Info(InfoMsg::String(
+                event.complete_client_info(BusMsg::Info(InfoMsg::String(
                     "Successfully revoked offer.".to_string(),
                 )))?;
                 Ok(None)
             } else {
                 let msg = "Cannot revoke offer, it does not exist".to_string();
                 error!("{}", msg);
-                event.complete_info(BusMsg::Info(InfoMsg::String(msg)))?;
+                event.complete_client_info(BusMsg::Info(InfoMsg::String(msg)))?;
                 Ok(Some(TradeStateMachine::MakeOffer(MakeOffer {
                     public_offer,
                     arb_addr,
