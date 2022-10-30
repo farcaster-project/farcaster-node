@@ -178,6 +178,23 @@ impl<'esb> Event<'esb> {
             .send_to(ServiceBus::Info, self.service.clone(), service, request)
     }
 
+    /// Finalizes event processing by sending reply request via RPC message bus to a client
+    pub fn send_client_info(
+        &mut self,
+        service: ServiceId,
+        request: BusMsg,
+    ) -> Result<(), esb::Error<ServiceId>> {
+        let bus = ServiceBus::Info;
+        if let ServiceId::GrpcdClient(_) = service {
+            self.endpoints
+                .send_to(bus, service, ServiceId::Grpcd, request)?;
+        } else {
+            self.endpoints
+                .send_to(bus, self.service.clone(), service, request)?;
+        }
+        Ok(())
+    }
+
     /// Send reply request via MSG message bus to a specific service (different from the event originating service)
     pub fn send_msg_service(
         &mut self,

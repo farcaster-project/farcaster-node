@@ -609,12 +609,7 @@ impl Runtime {
                     continue;
                 }
                 trace!("(#{}) Respond to {}: {}", i, respond_to, resp,);
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    respond_to,
-                    BusMsg::Info(resp),
-                )?;
+                self.send_client_info(endpoints, respond_to, resp)?;
             }
         }
         trace!("Processed all cli notifications");

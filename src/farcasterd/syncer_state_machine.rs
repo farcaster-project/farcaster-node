@@ -256,7 +256,7 @@ fn attempt_transition_to_end(
                 .pop()
                 .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
             {
-                event.send_info_service(
+                event.send_client_info(
                     source,
                     BusMsg::Info(InfoMsg::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
@@ -264,7 +264,7 @@ fn attempt_transition_to_end(
                     ))),
                 )?;
             } else {
-                event.send_info_service(
+                event.send_client_info(
                     source,
                     BusMsg::Info(InfoMsg::String("Nothing to sweep.".to_string())),
                 )?;

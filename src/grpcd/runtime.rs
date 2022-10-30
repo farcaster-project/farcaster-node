@@ -1,8 +1,13 @@
 use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::ProtoPublicOffer;
 use crate::bus::ctl::PubOffer;
+use crate::bus::info::Address;
+use crate::bus::AddressSecretKey;
 use crate::bus::Failure;
 use crate::service::Endpoints;
+use crate::syncerd::SweepAddressAddendum;
+use crate::syncerd::SweepBitcoinAddress;
+use crate::syncerd::SweepMoneroAddress;
 use farcaster_core::bitcoin::fee::SatPerVByte;
 use farcaster_core::bitcoin::timelock::CSVTimelock;
 use farcaster_core::blockchain::Blockchain;
@@ -56,6 +61,8 @@ use self::farcaster::RestoreCheckpointRequest;
 use self::farcaster::RestoreCheckpointResponse;
 use self::farcaster::RevokeOfferRequest;
 use self::farcaster::RevokeOfferResponse;
+use self::farcaster::SweepAddressRequest;
+use self::farcaster::SweepAddressResponse;
 use self::farcaster::TakeRequest;
 use self::farcaster::TakeResponse;
 
@@ -566,6 +573,97 @@ impl Farcaster for FarcasterService {
                 Ok(GrpcResponse::new(reply))
             }
             _ => Err(Status::internal(format!("Received invalid response"))),
+        }
+    }
+
+    async fn sweep_address(
+        &self,
+        request: GrpcRequest<SweepAddressRequest>,
+    ) -> Result<GrpcResponse<SweepAddressResponse>, Status> {
+        let SweepAddressRequest {
+            id,
+            source_address: str_source_address,
+            destination_address: str_destination_address,
+        } = request.into_inner();
+
+        if let (Ok(source_address), Ok(destination_address)) = (
+            bitcoin::Address::from_str(&str_source_address),
+            bitcoin::Address::from_str(&str_destination_address),
+        ) {
+            let oneshot_rx = self
+                .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                    service_id: ServiceId::Database,
+                    request: InfoMsg::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
+                }))
+                .await?;
+            match oneshot_rx.await {
+                Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
+                    secret_key,
+                    ..
+                }))) => {
+                    let oneshot_rx = self
+                        .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                            request: CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(
+                                SweepBitcoinAddress {
+                                    source_address,
+                                    source_secret_key: secret_key,
+                                    destination_address,
+                                },
+                            )),
+                            service_id: ServiceId::Farcasterd,
+                        }))
+                        .await?;
+                    match oneshot_rx.await {
+                        Ok(BusMsg::Info(InfoMsg::String(message))) => {
+                            let reply = SweepAddressResponse { id, message };
+                            Ok(GrpcResponse::new(reply))
+                        }
+                        _ => Err(Status::internal(format!("Received invalid response"))),
+                    }
+                }
+                _ => Err(Status::internal(format!("Received invalid response"))),
+            }
+        } else if let (Ok(source_address), Ok(destination_address)) = (
+            monero::Address::from_str(&str_source_address),
+            monero::Address::from_str(&str_destination_address),
+        ) {
+            let oneshot_rx = self
+                .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                    service_id: ServiceId::Database,
+                    request: InfoMsg::GetAddressSecretKey(Address::Monero(source_address.clone())),
+                }))
+                .await?;
+            match oneshot_rx.await {
+                Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
+                    view,
+                    spend,
+                    ..
+                }))) => {
+                    let oneshot_rx = self
+                        .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                            request: CtlMsg::SweepAddress(SweepAddressAddendum::Monero(
+                                SweepMoneroAddress {
+                                    source_spend_key: spend,
+                                    source_view_key: view,
+                                    destination_address,
+                                    minimum_balance: monero::Amount::from_pico(0),
+                                },
+                            )),
+                            service_id: ServiceId::Farcasterd,
+                        }))
+                        .await?;
+                    match oneshot_rx.await {
+                        Ok(BusMsg::Info(InfoMsg::String(message))) => {
+                            let reply = SweepAddressResponse { id, message };
+                            Ok(GrpcResponse::new(reply))
+                        }
+                        _ => Err(Status::internal(format!("Received invalid response"))),
+                    }
+                }
+                _ => Err(Status::internal(format!("Received invalid response"))),
+            }
+        } else {
+            Err(Status::invalid_argument(format!("address malformed")))
         }
     }
 
