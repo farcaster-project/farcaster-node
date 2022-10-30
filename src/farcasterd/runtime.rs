@@ -573,12 +573,7 @@ impl Runtime {
                         res
                     })
                     .collect();
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    source,
-                    BusMsg::Info(InfoMsg::String(res)),
-                )?;
+                self.send_client_info(endpoints, source, InfoMsg::String(res))?;
             }
 
             InfoMsg::NeedsFunding(Blockchain::Bitcoin) => {
@@ -599,12 +594,7 @@ impl Runtime {
                         res
                     })
                     .collect();
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    source,
-                    BusMsg::Info(InfoMsg::String(res)),
-                )?;
+                self.send_client_info(endpoints, source, InfoMsg::String(res))?;
             }
 
             req => {

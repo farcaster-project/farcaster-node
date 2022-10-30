@@ -10,6 +10,8 @@ service Farcaster {
     rpc Take(TakeRequest) returns (TakeResponse){}
     rpc RevokeOffer(RevokeOfferRequest) returns (RevokeOfferResponse){}
     rpc AbortSwap(AbortSwapRequest) returns (AbortSwapResponse){}
+    rpc Progress(ProgressRequest) returns (ProgressResponse){}
+    rpc NeedsFunding(NeedsFundingRequest) returns (NeedsFundingResponse){}
 }
 
 message InfoRequest {
@@ -115,6 +117,26 @@ message AbortSwapRequest {
 
 message AbortSwapResponse {
     uint32 id = 1;
+}
+
+message ProgressRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message ProgressResponse {
+    uint32 id = 1;
+    repeated string progress = 2;
+}
+
+message NeedsFundingRequest {
+    uint32 id = 1;
+    Blockchain blockchain = 2;
+}
+
+message NeedsFundingResponse {
+    uint32 id = 1;
+    string funding_infos = 2;
 }
 
 enum SwapRole {

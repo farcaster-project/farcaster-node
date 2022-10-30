@@ -46,8 +46,12 @@ use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
 use self::farcaster::MakeRequest;
 use self::farcaster::MakeResponse;
+use self::farcaster::NeedsFundingRequest;
+use self::farcaster::NeedsFundingResponse;
 use self::farcaster::PeersRequest;
 use self::farcaster::PeersResponse;
+use self::farcaster::ProgressRequest;
+use self::farcaster::ProgressResponse;
 use self::farcaster::RestoreCheckpointRequest;
 use self::farcaster::RestoreCheckpointResponse;
 use self::farcaster::RevokeOfferRequest;
@@ -499,6 +503,68 @@ impl Farcaster for FarcasterService {
                 Ok(GrpcResponse::new(reply))
             }
             Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            _ => Err(Status::internal(format!("Received invalid response"))),
+        }
+    }
+
+    async fn progress(
+        &self,
+        request: GrpcRequest<ProgressRequest>,
+    ) -> Result<GrpcResponse<ProgressResponse>, Status> {
+        let ProgressRequest {
+            id,
+            swap_id: str_swap_id,
+        } = request.into_inner();
+        let swap_id =
+            SwapId::from_str(&str_swap_id).map_err(|_| Status::invalid_argument("swap id"))?;
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::ReadProgress(swap_id),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::SwapProgress(progress))) => {
+                let reply = ProgressResponse {
+                    id,
+                    progress: progress.progress.iter().map(|p| p.to_string()).collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            _ => Err(Status::internal(format!("Received invalid response"))),
+        }
+    }
+
+    async fn needs_funding(
+        &self,
+        request: GrpcRequest<NeedsFundingRequest>,
+    ) -> Result<GrpcResponse<NeedsFundingResponse>, Status> {
+        let NeedsFundingRequest {
+            id,
+            blockchain: int_blockchain,
+        } = request.into_inner();
+
+        let blockchain: Blockchain = farcaster::Blockchain::from_i32(int_blockchain)
+            .ok_or(Status::invalid_argument("blockchain"))?
+            .into();
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::NeedsFunding(blockchain),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::String(infos))) => {
+                let reply = NeedsFundingResponse {
+                    id,
+                    funding_infos: infos,
+                };
+                Ok(GrpcResponse::new(reply))
+            }
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
