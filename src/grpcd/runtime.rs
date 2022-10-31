@@ -79,30 +79,11 @@ impl From<TradeRole> for farcaster::TradeRole {
     }
 }
 
-impl From<SwapRole> for farcaster::SwapRole {
-    fn from(t: SwapRole) -> farcaster::SwapRole {
-        match t {
-            SwapRole::Alice => farcaster::SwapRole::Alice,
-            SwapRole::Bob => farcaster::SwapRole::Bob,
-        }
-    }
-}
-
 impl From<farcaster::SwapRole> for SwapRole {
     fn from(t: farcaster::SwapRole) -> SwapRole {
         match t {
             farcaster::SwapRole::Alice => SwapRole::Alice,
             farcaster::SwapRole::Bob => SwapRole::Bob,
-        }
-    }
-}
-
-impl From<Network> for farcaster::Network {
-    fn from(t: Network) -> farcaster::Network {
-        match t {
-            Network::Mainnet => farcaster::Network::Mainnet,
-            Network::Testnet => farcaster::Network::Testnet,
-            Network::Local => farcaster::Network::Local,
         }
     }
 }
@@ -113,15 +94,6 @@ impl From<farcaster::Network> for Network {
             farcaster::Network::Mainnet => Network::Mainnet,
             farcaster::Network::Testnet => Network::Testnet,
             farcaster::Network::Local => Network::Local,
-        }
-    }
-}
-
-impl From<Blockchain> for farcaster::Blockchain {
-    fn from(t: Blockchain) -> farcaster::Blockchain {
-        match t {
-            Blockchain::Monero => farcaster::Blockchain::Monero,
-            Blockchain::Bitcoin => farcaster::Blockchain::Bitcoin,
         }
     }
 }
