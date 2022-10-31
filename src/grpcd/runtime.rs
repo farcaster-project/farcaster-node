@@ -235,6 +235,7 @@ impl Farcaster for FarcasterService {
                 Ok(GrpcResponse::new(reply))
             }
             Err(error) => Err(Status::internal(format!("{}", error))),
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::invalid_argument("received invalid response")),
         }
     }
@@ -259,6 +260,7 @@ impl Farcaster for FarcasterService {
                 Ok(GrpcResponse::new(reply))
             }
             Err(error) => Err(Status::internal(format!("{}", error))),
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::invalid_argument("received invalid response")),
         }
     }
@@ -290,6 +292,7 @@ impl Farcaster for FarcasterService {
                 Ok(GrpcResponse::new(reply))
             }
             Err(error) => Err(Status::internal(format!("{}", error))),
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::invalid_argument("received invalid response")),
         }
     }
@@ -331,9 +334,13 @@ impl Farcaster for FarcasterService {
                         };
                         Ok(GrpcResponse::new(reply))
                     }
+                    Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => {
+                        Err(Status::internal(info))
+                    }
                     _ => Err(Status::internal(format!("Received invalid response"))),
                 }
             }
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -460,6 +467,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -487,6 +495,7 @@ impl Farcaster for FarcasterService {
                 let reply = farcaster::RevokeOfferResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -544,6 +553,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -576,6 +586,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -622,9 +633,13 @@ impl Farcaster for FarcasterService {
                             let reply = SweepAddressResponse { id, message };
                             Ok(GrpcResponse::new(reply))
                         }
+                        Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => {
+                            Err(Status::internal(info))
+                        }
                         _ => Err(Status::internal(format!("Received invalid response"))),
                     }
                 }
+                Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
                 _ => Err(Status::internal(format!("Received invalid response"))),
             }
         } else if let (Ok(source_address), Ok(destination_address)) = (
@@ -661,9 +676,13 @@ impl Farcaster for FarcasterService {
                             let reply = SweepAddressResponse { id, message };
                             Ok(GrpcResponse::new(reply))
                         }
+                        Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => {
+                            Err(Status::internal(info))
+                        }
                         _ => Err(Status::internal(format!("Received invalid response"))),
                     }
                 }
+                Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
                 _ => Err(Status::internal(format!("Received invalid response"))),
             }
         } else {
@@ -748,6 +767,7 @@ impl Farcaster for FarcasterService {
                 let reply = farcaster::TakeResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
+            Ok(BusMsg::Ctl(Ctl::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
