@@ -221,7 +221,11 @@ impl Farcaster for FarcasterService {
                     uptime: info.uptime.as_secs(),
                     since: info.since,
                     peers: info.peers.iter().map(|peer| format!("{}", peer)).collect(),
-                    swaps: info.swaps.iter().map(|swap| format!("{}", swap)).collect(),
+                    swaps: info
+                        .swaps
+                        .iter()
+                        .map(|swap| format!("{:#x}", swap))
+                        .collect(),
                     offers: info
                         .offers
                         .iter()
