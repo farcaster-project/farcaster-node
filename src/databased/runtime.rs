@@ -17,7 +17,7 @@ use crate::bus::{
     OfferStatusPair, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-use microservices::esb::{self, Handler};
+use microservices::esb::{self};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
@@ -286,17 +286,10 @@ impl Runtime {
                     _ => None,
                 };
                 if let Some(entry) = entry {
-                    debug!("checkpoint entry: {:?}", entry);
-                    endpoints.send_to(
-                        ServiceBus::Info,
-                        self.identity(),
-                        source,
-                        BusMsg::Info(InfoMsg::CheckpointEntry(entry)),
-                    )?;
+                    self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?;
                 } else {
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
+                    self.send_client_ctl(
+                        endpoints,
                         source,
                         BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,

@@ -314,7 +314,7 @@ fn attempt_transition_to_make_offer(
             // start a listener on the bind_addr
             match runtime.listen(bind_addr) {
                 Err(err) => {
-                    event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
                     })))?;
