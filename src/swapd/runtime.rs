@@ -51,7 +51,7 @@ use farcaster_core::{
     crypto::{CommitmentEngine, SharedKeyId},
     monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::{message::CoreArbitratingSetup, Offer, Parameters, PublicOffer},
+    swap::btcxmr::{Offer, Parameters, PublicOffer},
     swap::SwapId,
     transaction::TxLabel,
 };
@@ -785,15 +785,29 @@ impl Runtime {
                 }
             }
 
-            // A message crafted by wallet and forwarded to swap.
-            PeerMsg::CoreArbitratingSetup(core_arb_setup)
+            // Swap role: Bob, initiator of this message
+            // Message #1 after commit/reveal
+            //
+            // The Core Arbitrating Setup message is created by Bob's wallet and contains the core
+            // arbitrating transactions, i.e. the set of transactions used to drive the swap
+            // execution on the Arbitrating blockchain, Bitcoin in the case of Bitcoin<>Monero.
+            //
+            // Swap receives the message from Wallet, thus we are acting as Bob in the swap
+            // protocol. We need to
+            //  1. Save the current swap state
+            //  2. Register a watch task on syncer for
+            //    - Arbitrating lock
+            //    - Cancel
+            //    - Refund
+            //  3. Send the Core Arbitrating Setup message to counter-party
+            PeerMsg::CoreArbitratingSetup(setup)
                 if source == ServiceId::Wallet
                     && self.state.reveal()
                     && self.state.remote_params().is_some()
                     && self.state.local_params().is_some() =>
             {
                 // checkpoint swap pre lock bob
-                debug!("{} | checkpointing bob pre lock swapd state", self.swap_id);
+                debug!("{} | checkpointing bob pre lock state", self.swap_id);
                 if self.state.b_sup_checkpoint_pre_lock() {
                     checkpoint_send(
                         endpoints,
@@ -802,7 +816,7 @@ impl Runtime {
                         ServiceId::Database,
                         CheckpointState::CheckpointSwapd(CheckpointSwapd {
                             state: self.state.clone(),
-                            last_msg: PeerMsg::CoreArbitratingSetup(core_arb_setup.clone()),
+                            last_msg: PeerMsg::CoreArbitratingSetup(setup.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
@@ -813,18 +827,13 @@ impl Runtime {
                         }),
                     )?;
                 }
-                let CoreArbitratingSetup {
-                    swap_id: _,
-                    lock,
-                    cancel,
-                    refund,
-                    cancel_sig: _,
-                } = core_arb_setup.clone();
-                for (tx, tx_label) in [lock, cancel, refund].iter().zip([
+                // register a watch task for arb lock, cancel, and refund
+                for (&tx, tx_label) in [&setup.lock, &setup.cancel, &setup.refund].iter().zip([
                     TxLabel::Lock,
                     TxLabel::Cancel,
                     TxLabel::Refund,
                 ]) {
+                    debug!("{} | register watch {} tx", self.swap_id, tx_label);
                     if !self.syncer_state.is_watched_tx(&tx_label) {
                         let txid = tx.clone().extract_tx().txid();
                         let task = self.syncer_state.watch_tx_btc(txid, tx_label);
@@ -836,8 +845,10 @@ impl Runtime {
                         )?;
                     }
                 }
-                trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
-                self.send_peer(endpoints, PeerMsg::CoreArbitratingSetup(core_arb_setup))?;
+                // send the message to counter-party
+                debug!("{} | send core arb setup to peer", self.swap_id);
+                self.send_peer(endpoints, PeerMsg::CoreArbitratingSetup(setup))?;
+                // transition to new state
                 let next_state = State::Bob(BobState::CorearbB {
                     received_refund_procedure_signatures: false,
                     local_params: self.state.local_params().cloned().unwrap(),
@@ -850,24 +861,31 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            // alice receives, bob sends
+            // Swap role: Alice, target of this message
+            // Message #1 after commit/reveal
+            //
+            // The Core Arbitrating Setup is created by Bob and sent to Alice. The message contains
+            // the set of transactions used on the Arbitrating blockchain, i.e. Bitcoin in
+            // Bitcoin<>Monero.
+            //
+            // When Alice's swap receives the message from Bob she needs to
+            //  1. Register a watch task on syncer for
+            //    - Arbitrating lock
+            //    - Cancel
+            //    - Refund
+            //  2. Send the Core Arbitrating Setup message to her Wallet
             PeerMsg::CoreArbitratingSetup(setup)
                 if self.state.swap_role() == SwapRole::Alice && self.state.reveal() =>
             {
+                // register a watch task for arb lock, cancel, and refund
                 for (&tx, tx_label) in [&setup.lock, &setup.cancel, &setup.refund].iter().zip([
                     TxLabel::Lock,
                     TxLabel::Cancel,
                     TxLabel::Refund,
                 ]) {
-                    let tx = tx.clone().extract_tx();
-                    let txid = tx.txid();
-                    debug!(
-                        "tx_label: {}, vsize: {}, outs: {}",
-                        tx_label,
-                        tx.vsize(),
-                        tx.output.len()
-                    );
+                    debug!("{} | register watch {} tx", self.swap_id, tx_label);
                     if !self.syncer_state.is_watched_tx(&tx_label) {
+                        let txid = tx.clone().extract_tx().txid();
                         let task = self.syncer_state.watch_tx_btc(txid, tx_label);
                         endpoints.send_to(
                             ServiceBus::Sync,
@@ -877,6 +895,8 @@ impl Runtime {
                         )?;
                     }
                 }
+                // forward the core arbitrating setup message to her wallet
+                debug!("{} | forward core arb setup to wallet", self.swap_id);
                 self.send_wallet(
                     ServiceBus::Msg,
                     endpoints,
@@ -884,7 +904,18 @@ impl Runtime {
                 )?;
             }
 
-            // A message crafted by wallet and forwarded to swap.
+            // Swap role: Alice, initiator of this message
+            // Message #2 after commit/reveal
+            //
+            // The Refund Procedure Signature is a message created by Alice in reaction to Bob's
+            // Core Arbitrating Setup message that contains the necessary signatures on cancel and
+            // refund arbitrating transactions. These signature are needed to Bob to safely lock
+            // his funds.
+            //
+            // Swap receives the message from Wallet, thus we are acting as Alice in the swap
+            // protocol. We need to
+            //  1. Save the current swap state
+            //  2. Send the Refund Procedure Signature message to counter-party
             PeerMsg::RefundProcedureSignatures(refund_proc_sigs)
                 if source == ServiceId::Wallet
                     && self.state.reveal()
@@ -892,10 +923,7 @@ impl Runtime {
                     && self.state.local_params().is_some() =>
             {
                 // checkpoint alice pre lock bob
-                debug!(
-                    "{} | checkpointing alice pre lock swapd state",
-                    self.swap_id
-                );
+                debug!("{} | checkpointing alice pre lock state", self.swap_id);
                 if self.state.a_sup_checkpoint_pre_lock() {
                     checkpoint_send(
                         endpoints,
@@ -915,12 +943,13 @@ impl Runtime {
                         }),
                     )?;
                 }
-
+                // send refund procedure signature message to counter-party
+                debug!("{} | send refund proc sig to peer", self.swap_id);
                 self.send_peer(
                     endpoints,
                     PeerMsg::RefundProcedureSignatures(refund_proc_sigs),
                 )?;
-                trace!("sent peer RefundProcedureSignatures msg");
+                // transition to new state
                 let next_state = State::Alice(AliceState::RefundSigA {
                     last_checkpoint_type: SwapCheckpointType::CheckpointAlicePreLock,
                     local_params: self.state.local_params().cloned().unwrap(),
@@ -936,8 +965,14 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
 
-            // bob receives, alice sends
+            // Swap role: Bob, target of this message
+            // Message #2 after commit/reveal
+            //
+            // The Refund Procedure Signature message is created by Alice and sent to Bob. Bob
+            // needs this message to safely lock his funds. Uppon reception we need to
+            //  1. Forward the Refund Procedure Signature message to Wallet
             PeerMsg::RefundProcedureSignatures(refund_proc) if self.state.b_core_arb() => {
+                debug!("{} | forward refund proc sig to wallet", self.swap_id);
                 self.state.sup_received_refund_procedure_signatures();
                 self.send_wallet(
                     ServiceBus::Msg,
@@ -946,7 +981,15 @@ impl Runtime {
                 )?;
             }
 
-            // A message crafted by wallet and forwarded to swap.
+            // Swap role: Bob, initiator of this message
+            // Message #3 after commit/reveal
+            //
+            // The Buy Procedure Signature is a message created by Bob and sent to Alice in
+            // reaction to Alice's Refund Procedure Signature once all funds are locked.
+            //
+            // Uppon reception of this message from Bob's Wallet we need to
+            //  1. Save the current swap state
+            //  2. Register a watch task for the Buy transaction
             PeerMsg::BuyProcedureSignature(ref buy_proc_sig)
                 if source == ServiceId::Wallet
                     && self.state.b_core_arb()
@@ -973,15 +1016,11 @@ impl Runtime {
                         }),
                     )?;
                 }
-
-                debug!("subscribing with syncer for receiving raw buy tx ");
-
-                let buy_tx = buy_proc_sig.buy.clone().extract_tx();
-                let txid = buy_tx.txid();
-                // register Buy tx task
-                let tx_label = TxLabel::Buy;
-                if !self.syncer_state.is_watched_tx(&tx_label) {
-                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                // register a watch task for buy
+                debug!("{} | register watch buy tx", self.swap_id);
+                if !self.syncer_state.is_watched_tx(&TxLabel::Buy) {
+                    let buy_tx = buy_proc_sig.buy.clone().extract_tx();
+                    let task = self.syncer_state.watch_tx_btc(buy_tx.txid(), TxLabel::Buy);
                     endpoints.send_to(
                         ServiceBus::Sync,
                         self.identity(),
@@ -989,8 +1028,9 @@ impl Runtime {
                         BusMsg::Sync(SyncMsg::Task(task)),
                     )?;
                 }
-                // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
-                self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
+                // send the message to counter-party when predicate is reached later when:
+                //  - Arb Lock is final
+                //  - Acc Lock is final
                 self.pending_requests.defer_request(
                     self.syncer_state.monero_syncer(),
                     PendingRequest::new(
@@ -1002,24 +1042,19 @@ impl Runtime {
                 );
             }
 
-            // alice receives, bob sends
+            // Swap role: Alice, target of this message
+            // Message #3 after commit/reveal
+            //
+            // The Buy Procedure Signature is received by Alice when Bob acted the correct funding
+            // on both sides. This message allows Alice to trigger the swap execution on-chain.
+            //
+            // Uppon reception of this message Alice needs to
+            //  1. Save the current swap state
+            //  2. Register a watch task for the Buy transaction
+            //  3. Forward the Buy Procedure Signature to her wallet
             PeerMsg::BuyProcedureSignature(buy_proc_sig)
                 if self.state.a_refundsig() && !self.state.a_overfunded() =>
             {
-                // Alice verifies that she has sent refund procedure signatures before
-                // processing the buy signatures from Bob
-                let tx_label = TxLabel::Buy;
-                if !self.syncer_state.is_watched_tx(&tx_label) {
-                    let txid = buy_proc_sig.buy.clone().extract_tx().txid();
-                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                    endpoints.send_to(
-                        ServiceBus::Sync,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(task)),
-                    )?;
-                }
-
                 // checkpoint swap alice pre buy
                 debug!("{} | checkpointing alice pre buy swapd state", self.swap_id);
                 if self.state.a_sup_checkpoint_pre_buy() {
@@ -1041,12 +1076,25 @@ impl Runtime {
                         }),
                     )?;
                 }
-
+                // register a watch task for buy
+                debug!("{} | register watch buy tx", self.swap_id);
+                if !self.syncer_state.is_watched_tx(&TxLabel::Buy) {
+                    let txid = buy_proc_sig.buy.clone().extract_tx().txid();
+                    let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
+                    endpoints.send_to(
+                        ServiceBus::Sync,
+                        self.identity(),
+                        self.syncer_state.bitcoin_syncer(),
+                        BusMsg::Sync(SyncMsg::Task(task)),
+                    )?;
+                }
+                // forward the received buy procedure signature message to wallet
+                debug!("{} | forward buy proc sig to wallet", self.swap_id);
                 self.send_wallet(
                     ServiceBus::Msg,
                     endpoints,
                     BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_proc_sig)),
-                )?
+                )?;
             }
 
             // bob and alice
