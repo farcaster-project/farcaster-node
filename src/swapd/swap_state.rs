@@ -1,4 +1,7 @@
-use farcaster_core::role::{SwapRole, TradeRole};
+use farcaster_core::{
+    role::{SwapRole, TradeRole},
+    swap::btcxmr::message::BuyProcedureSignature,
+};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::ctl::Params;
@@ -82,6 +85,7 @@ pub enum BobState {
         local_params: Params,
         b_address: bitcoin::Address,
         buy_tx_seen: bool,
+        buy_proc: Option<BuyProcedureSignature>,
     }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
     BuySigB {
@@ -715,6 +719,14 @@ impl State {
         } else {
             error!("Not on CoreArbB state");
             false
+        }
+    }
+
+    /// Get the buy procedure signature message contained in Bob CoreArb state if any.
+    pub fn get_bob_buy_proc(&self) -> Option<BuyProcedureSignature> {
+        match self {
+            Self::Bob(BobState::CorearbB { buy_proc, .. }) => buy_proc.clone(),
+            _ => None,
         }
     }
 }

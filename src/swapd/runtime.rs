@@ -534,6 +534,36 @@ impl Runtime {
         )?)
     }
 
+    /// Checkpoint the state before executing the buy procedure signature
+    fn try_checkpoint_bob_pre_buy(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        if let Some(buy_proc) = self.state.get_bob_buy_proc() {
+            if self.txs.contains_key(&TxLabel::Cancel)
+                && self.txs.contains_key(&TxLabel::Refund)
+                && self.state.b_sup_checkpoint_pre_buy()
+            {
+                debug!("{} | checkpointing bob pre buy swapd state", self.swap_id);
+                checkpoint_send(
+                    endpoints,
+                    self.swap_id,
+                    self.identity(),
+                    ServiceId::Database,
+                    CheckpointState::CheckpointSwapd(CheckpointSwapd {
+                        state: self.state.clone(),
+                        last_msg: PeerMsg::BuyProcedureSignature(buy_proc),
+                        enquirer: self.enquirer.clone(),
+                        temporal_safety: self.temporal_safety.clone(),
+                        txs: self.txs.clone(),
+                        txids: self.syncer_state.tasks.txids.clone(),
+                        pending_requests: self.pending_requests().clone(),
+                        pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
+                        xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                    }),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
@@ -857,6 +887,7 @@ impl Runtime {
                     b_address: self.state.b_address().cloned().unwrap(),
                     last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
                     buy_tx_seen: false,
+                    buy_proc: None,
                 });
                 self.state_update(endpoints, next_state)?;
             }
@@ -988,34 +1019,24 @@ impl Runtime {
             // reaction to Alice's Refund Procedure Signature once all funds are locked.
             //
             // Uppon reception of this message from Bob's Wallet we need to
-            //  1. Save the current swap state
+            //  1. Save the current swap state; this message arrived after Tx::Cancel & Tx::Refund
+            //    - yes; we have all data needed, save the state now
+            //    - no; we will save the state when Tx::Cancel & Tx::Refund arrive
             //  2. Register a watch task for the Buy transaction
             PeerMsg::BuyProcedureSignature(ref buy_proc_sig)
                 if source == ServiceId::Wallet
                     && self.state.b_core_arb()
                     && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
             {
-                // checkpoint bob pre buy
-                debug!("{} | checkpointing bob pre buy swapd state", self.swap_id);
-                if self.state.b_sup_checkpoint_pre_buy() {
-                    checkpoint_send(
-                        endpoints,
-                        self.swap_id,
-                        self.identity(),
-                        ServiceId::Database,
-                        CheckpointState::CheckpointSwapd(CheckpointSwapd {
-                            state: self.state.clone(),
-                            last_msg: PeerMsg::BuyProcedureSignature(buy_proc_sig.clone()),
-                            enquirer: self.enquirer.clone(),
-                            temporal_safety: self.temporal_safety.clone(),
-                            txs: self.txs.clone(),
-                            txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests().clone(),
-                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
-                            xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
-                        }),
-                    )?;
+                // This message can arrive in any order between the pair (Tx::Cancel, Tx::Refund)
+                // control messages. Only save the state if the Tx Ctl message already arrived.
+                //
+                // Destructure state and register the buy procedure signature message
+                if let State::Bob(BobState::CorearbB { buy_proc, .. }) = &mut self.state {
+                    *buy_proc = Some(buy_proc_sig.clone());
                 }
+                // try checkpointing the state; only if txs arrived already
+                self.try_checkpoint_bob_pre_buy(endpoints)?;
                 // register a watch task for buy
                 debug!("{} | register watch buy tx", self.swap_id);
                 if !self.syncer_state.is_watched_tx(&TxLabel::Buy) {
@@ -1346,6 +1367,8 @@ impl Runtime {
                     Tx::Funding(_) => unreachable!("not handled in swapd"),
                     Tx::Lock(_) => unreachable!("handled above"),
                 }
+                // try checkpointing bob state; only if buy proc sig arrived already
+                self.try_checkpoint_bob_pre_buy(endpoints)?;
                 // replay last tx confirmation event received from syncer, recursing
                 let source = self.syncer_state.bitcoin_syncer();
                 match transaction {
