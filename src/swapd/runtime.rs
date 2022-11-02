@@ -1007,6 +1007,7 @@ impl Runtime {
                     refund_seen: false,
                     remote_params: self.state.remote_params().unwrap(),
                     required_funding_amount: None,
+                    funding_info: None,
                     overfunded: false,
                 });
                 self.state_update(endpoints, next_state)?;
@@ -1997,6 +1998,41 @@ impl Runtime {
                             self.txs.remove(&TxLabel::Punish);
                         }
                     }
+                    Event::Empty(id) => {
+                        debug!("task with id {} has produced no events yet", id);
+                        if self.state.swap_role() == SwapRole::Alice
+                            && self.syncer_state.tasks.watched_addrs.contains_key(id)
+                            && !self.state.a_xmr_locked()
+                            && self.syncer_state.tasks.watched_addrs.get(id).unwrap()
+                                == &TxLabel::AccLock
+                        {
+                            if let Some(monero_funding_info) = self.state.a_funding_info() {
+                                info!(
+                                    "{} | Send {} to {}",
+                                    self.swap_id.bright_blue_italic(),
+                                    monero_funding_info.amount.bright_green_bold(),
+                                    monero_funding_info.address.addr(),
+                                );
+                                let funding_request = BusMsg::Ctl(CtlMsg::FundingInfo(
+                                    FundingInfo::Monero(monero_funding_info),
+                                ));
+                                self.syncer_state.awaiting_funding = true;
+                                if let Some(enquirer) = self.enquirer.clone() {
+                                    endpoints.send_to(
+                                        ServiceBus::Ctl,
+                                        self.identity(),
+                                        enquirer,
+                                        funding_request,
+                                    )?
+                                }
+                            } else {
+                                warn!("Expected alice's state to contain existing monero funding info");
+                            }
+                        } else {
+                            debug!("Received Empty event with unknown purpose");
+                        }
+                    }
+
                     event => {
                         error!("event not handled {}", event)
                     }
@@ -2026,6 +2062,7 @@ impl Runtime {
                             {
                                 log_tx_seen(self.swap_id, txlabel, &tx.txid());
                                 self.syncer_state.awaiting_funding = false;
+                                self.state.a_sup_funding_info(None);
                                 // If the bitcoin amount does not match the expected funding amount, abort the swap
                                 let amount = bitcoin::Amount::from_sat(*amount);
                                 let required_funding_amount =
@@ -2197,29 +2234,13 @@ impl Runtime {
                                     );
                                     let swap_id = self.swap_id();
                                     let amount = self.syncer_state.monero_amount;
-                                    info!(
-                                        "{} | Send {} to {}",
-                                        swap_id.swap_id(),
-                                        amount.bright_green_bold(),
-                                        address.addr(),
-                                    );
                                     self.state.a_sup_required_funding_amount(amount);
-                                    let funding_request = BusMsg::Ctl(CtlMsg::FundingInfo(
-                                        FundingInfo::Monero(MoneroFundingInfo {
-                                            swap_id,
-                                            address,
-                                            amount,
-                                        }),
-                                    ));
-                                    self.syncer_state.awaiting_funding = true;
-                                    if let Some(enquirer) = self.enquirer.clone() {
-                                        endpoints.send_to(
-                                            ServiceBus::Ctl,
-                                            self.identity(),
-                                            enquirer,
-                                            funding_request,
-                                        )?
-                                    }
+                                    self.state.a_sup_funding_info(Some(MoneroFundingInfo {
+                                        swap_id,
+                                        address,
+                                        amount,
+                                    }));
+
                                     let txlabel = TxLabel::AccLock;
                                     if !self.syncer_state.is_watched_addr(&txlabel) {
                                         let watch_addr_task = self
@@ -2280,6 +2301,7 @@ impl Runtime {
                                             .state
                                             .last_checkpoint_type()
                                             .unwrap(),
+                                        funding_info: None,
                                         required_funding_amount,
                                         overfunded,
                                     });
@@ -2648,7 +2670,7 @@ impl Runtime {
                             }
                         }
                     }
-                    Event::Empty(id) => debug!("task with id {} has produced no events yet", id),
+                    Event::Empty(_) => debug!("empty event not handled for Bitcoin"),
                 }
             }
 
