@@ -641,15 +641,15 @@ impl Runtime {
                 // parameter reveal forward is triggered. If Alice, send immediately.
                 match self.state.swap_role() {
                     SwapRole::Bob => {
-                        let pending_request = PendingRequest::new(
-                            self.identity(),
+                        self.pending_requests.defer_request(
                             ServiceId::Wallet,
-                            ServiceBus::Msg,
-                            BusMsg::P2p(request),
+                            PendingRequest::new(
+                                self.identity(),
+                                ServiceId::Wallet,
+                                ServiceBus::Msg,
+                                BusMsg::P2p(request),
+                            ),
                         );
-
-                        self.pending_requests
-                            .defer_request(ServiceId::Wallet, pending_request);
                     }
                     SwapRole::Alice => {
                         debug!("Alice: forwarding reveal");
@@ -678,14 +678,15 @@ impl Runtime {
                     "Deferring request {} for when btc_fee_estimate available, then recurse in the runtime",
                     &request
                 );
-                let pending_req = PendingRequest::new(
-                    source,
-                    self.identity(),
-                    ServiceBus::Msg,
-                    BusMsg::P2p(request),
+                self.pending_requests.defer_request(
+                    self.syncer_state.bitcoin_syncer(),
+                    PendingRequest::new(
+                        source,
+                        self.identity(),
+                        ServiceBus::Msg,
+                        BusMsg::P2p(request),
+                    ),
                 );
-                self.pending_requests
-                    .defer_request(self.syncer_state.bitcoin_syncer(), pending_req);
             }
 
             // bob and alice
@@ -749,14 +750,15 @@ impl Runtime {
                         // sending this request will initialize the
                         // arbitrating setup, that can be only performed
                         // after the funding tx was seen
-                        let pending_req = PendingRequest::new(
-                            self.identity(),
+                        self.pending_requests.defer_request(
                             ServiceId::Wallet,
-                            ServiceBus::Msg,
-                            BusMsg::P2p(PeerMsg::Reveal(reveal)),
+                            PendingRequest::new(
+                                self.identity(),
+                                ServiceId::Wallet,
+                                ServiceBus::Msg,
+                                BusMsg::P2p(PeerMsg::Reveal(reveal)),
+                            ),
                         );
-                        self.pending_requests
-                            .defer_request(ServiceId::Wallet, pending_req);
                     }
                     _ => unreachable!(
                         "Bob btc_fee_estimate_sat_per_kvb.is_none() was handled previously"
@@ -992,14 +994,15 @@ impl Runtime {
                 }
                 // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
                 self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
-                let pending_request = PendingRequest::new(
-                    self.identity(),
-                    self.peer_service.clone(),
-                    ServiceBus::Msg,
-                    BusMsg::P2p(request),
+                self.pending_requests.defer_request(
+                    self.syncer_state.monero_syncer(),
+                    PendingRequest::new(
+                        self.identity(),
+                        self.peer_service.clone(),
+                        ServiceBus::Msg,
+                        BusMsg::P2p(request),
+                    ),
                 );
-                self.pending_requests
-                    .defer_request(self.syncer_state.monero_syncer(), pending_request);
             }
 
             // alice receives, bob sends
@@ -1357,15 +1360,15 @@ impl Runtime {
                         "Peerd might crash, just ignore it, counterparty closed\
                                connection but you don't need it anymore!"
                     );
-                    let request = BusMsg::Sync(SyncMsg::Task(task));
-                    let dest = self.syncer_state.monero_syncer();
-                    let pending_request = PendingRequest::new(
-                        self.identity(),
-                        dest.clone(),
-                        ServiceBus::Sync,
-                        request,
+                    self.pending_requests.defer_request(
+                        self.syncer_state.monero_syncer(),
+                        PendingRequest::new(
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            ServiceBus::Sync,
+                            BusMsg::Sync(SyncMsg::Task(task)),
+                        ),
                     );
-                    self.pending_requests.defer_request(dest, pending_request);
                 }
             },
 
