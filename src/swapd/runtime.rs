@@ -876,9 +876,6 @@ impl Runtime {
                             BusMsg::Sync(SyncMsg::Task(task)),
                         )?;
                     }
-                    if tx_label == TxLabel::Refund {
-                        self.syncer_state.tasks.txids.insert(TxLabel::Refund, txid);
-                    }
                 }
                 self.send_wallet(
                     ServiceBus::Msg,
