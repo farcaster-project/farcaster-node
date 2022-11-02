@@ -2648,6 +2648,7 @@ impl Runtime {
                             }
                         }
                     }
+                    Event::Empty(id) => debug!("task with id {} has produced no events yet", id),
                 }
             }
 
