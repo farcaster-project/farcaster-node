@@ -154,6 +154,7 @@ pub struct SwapdRunning {
 
 impl StateMachine<Runtime, Error> for TradeStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
+        info!("Checking event request {} for state transition", event.request);
         match self {
             TradeStateMachine::StartTaker => attempt_transition_to_take_offer(event, runtime),
             TradeStateMachine::StartMaker => attempt_transition_to_make_offer(event, runtime),
@@ -544,6 +545,10 @@ fn attempt_transition_to_taker_committed(
             if public_offer == taker_commit.public_offer {
                 let source = event.source.clone();
                 let swap_id = taker_commit.swap_id();
+                info!(
+                    "Received TakerCommit for swap {} - forwarding to walletd",
+                    swap_id,
+                );
                 event.send_ctl_service(
                     ServiceId::Wallet,
                     CtlMsg::TakerCommitted(TakerCommitted {
