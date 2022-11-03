@@ -455,6 +455,15 @@ fn sweep_address(
         .ceil() as u64;
     let fee = p2wpkh_signed_tx_fee(fee_sat_per_kvb, unsigned_tx.vsize(), unspent_txs.len());
 
+    // 546 is the dust limit for a p2pkh output. This covers both cases for when
+    // a users provides a p2wpkh or p2pkh address
+    if in_amount.checked_sub(fee).unwrap_or(0) <= 546 {
+        warn!(
+            "Amount is too close to being dust for address: {}, with total in amount {} and total fee {} ({} satoshi/kvb)",
+            source_address, in_amount, fee, fee_sat_per_kvb,
+        );
+        return Ok(vec![]);
+    }
     unsigned_tx.output[0].value = in_amount - fee;
     let mut psbt = bitcoin::util::psbt::PartiallySignedTransaction::from_unsigned_tx(unsigned_tx)
         .map_err(|_| Error::Syncer(SyncerError::InvalidPsbt))?;
