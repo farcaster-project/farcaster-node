@@ -1,4 +1,5 @@
 use crate::bus::bridge::BridgeMsg;
+use crate::bus::ctl::FundingInfo;
 use crate::bus::ctl::ProtoPublicOffer;
 use crate::bus::ctl::PubOffer;
 use crate::bus::info::Address;
@@ -664,10 +665,25 @@ impl Farcaster for FarcasterService {
             .await?;
 
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::String(infos))) => {
+            Ok(BusMsg::Info(InfoMsg::FundingInfos(infos))) => {
                 let reply = NeedsFundingResponse {
                     id,
-                    funding_infos: infos,
+                    funding_infos: infos
+                        .swaps_need_funding
+                        .iter()
+                        .map(|info| match info {
+                            FundingInfo::Bitcoin(b_info) => farcaster::FundingInfo {
+                                swap_id: b_info.swap_id.to_string(),
+                                address: b_info.address.to_string(),
+                                amount: b_info.amount.as_sat(),
+                            },
+                            FundingInfo::Monero(m_info) => farcaster::FundingInfo {
+                                swap_id: m_info.swap_id.to_string(),
+                                address: m_info.address.to_string(),
+                                amount: m_info.amount.as_pico(),
+                            },
+                        })
+                        .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }

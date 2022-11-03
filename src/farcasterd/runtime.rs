@@ -13,8 +13,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::{BitcoinFundingInfo, CtlMsg, GetKeys, MoneroFundingInfo};
-use crate::bus::p2p::{PeerMsg, TakerCommit};
+use crate::bus::ctl::FundingInfo;
+use crate::bus::ctl::{CtlMsg, GetKeys};
+use crate::bus::info::FundingInfos;
+use crate::bus::p2p::PeerMsg;
+use crate::bus::p2p::TakerCommit;
 use crate::bus::sync::SyncMsg;
 use crate::bus::{BusMsg, List, ServiceBus};
 use crate::event::StateMachineExecutor;
@@ -594,45 +597,29 @@ impl Runtime {
             }
 
             InfoMsg::NeedsFunding(Blockchain::Monero) => {
-                let funding_infos: Vec<MoneroFundingInfo> = self
+                let swaps_need_funding: Vec<FundingInfo> = self
                     .trade_state_machines
                     .iter()
-                    .filter_map(|tsm| tsm.needs_funding_monero())
+                    .filter_map(|tsm| tsm.needs_funding_monero().map(|f| FundingInfo::Monero(f)))
                     .collect();
-                let len = funding_infos.len();
-                let res = funding_infos
-                    .iter()
-                    .enumerate()
-                    .map(|(i, funding_info)| {
-                        let mut res = format!("{}", funding_info);
-                        if i < len - 1 {
-                            res.push('\n');
-                        }
-                        res
-                    })
-                    .collect();
-                self.send_client_info(endpoints, source, InfoMsg::String(res))?;
+                self.send_client_info(
+                    endpoints,
+                    source,
+                    InfoMsg::FundingInfos(FundingInfos { swaps_need_funding }),
+                )?;
             }
 
             InfoMsg::NeedsFunding(Blockchain::Bitcoin) => {
-                let funding_infos: Vec<BitcoinFundingInfo> = self
+                let swaps_need_funding: Vec<FundingInfo> = self
                     .trade_state_machines
                     .iter()
-                    .filter_map(|tsm| tsm.needs_funding_bitcoin())
+                    .filter_map(|tsm| tsm.needs_funding_bitcoin().map(|f| FundingInfo::Bitcoin(f)))
                     .collect();
-                let len = funding_infos.len();
-                let res = funding_infos
-                    .iter()
-                    .enumerate()
-                    .map(|(i, funding_info)| {
-                        let mut res = format!("{}", funding_info);
-                        if i < len - 1 {
-                            res.push('\n');
-                        }
-                        res
-                    })
-                    .collect();
-                self.send_client_info(endpoints, source, InfoMsg::String(res))?;
+                self.send_client_info(
+                    endpoints,
+                    source,
+                    InfoMsg::FundingInfos(FundingInfos { swaps_need_funding }),
+                )?;
             }
 
             req => {

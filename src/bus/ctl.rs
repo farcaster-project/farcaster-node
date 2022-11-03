@@ -236,18 +236,31 @@ fn format_keys(keys: &Keys) -> String {
     format!("sk: {}, pk: {}", keys.0.display_secret(), keys.1,)
 }
 
-#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum FundingInfo {
-    #[display("bitcoin(..)")]
+    #[display("{0}")]
     Bitcoin(BitcoinFundingInfo),
-    #[display("monero(..)")]
+    #[display("{0}")]
     Monero(MoneroFundingInfo),
 }
 
-#[derive(Clone, Debug, NetworkDecode, NetworkEncode)]
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, Debug, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct BitcoinFundingInfo {
     pub swap_id: SwapId,
     pub address: bitcoin::Address,
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub amount: bitcoin::Amount,
 }
 
@@ -274,9 +287,16 @@ impl fmt::Display for BitcoinFundingInfo {
     }
 }
 
-#[derive(Clone, Debug, NetworkEncode, NetworkDecode)]
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, Debug, Eq, PartialEq, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct MoneroFundingInfo {
     pub swap_id: SwapId,
+    #[serde(with = "monero::util::amount::serde::as_xmr")]
     pub amount: monero::Amount,
     pub address: monero::Address,
 }
