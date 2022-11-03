@@ -629,6 +629,12 @@ impl Runtime {
             PeerMsg::TakerCommit(_) => {
                 let swap_id = request.swap_id();
                 let msg_type = request.get_type();
+                info!(
+                    "{} | Received the {} protocol message",
+                    swap_id.swap_id(),
+                    request.label()
+                );
+
                 endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
