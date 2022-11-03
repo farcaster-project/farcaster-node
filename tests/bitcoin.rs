@@ -827,6 +827,7 @@ fn bitcoin_syncer_broadcast_tx_test() {
         task: Task::BroadcastTransaction(BroadcastTransaction {
             id: TaskId(0),
             tx: transaction.hex,
+            broadcast_after_height: None,
         }),
         source: SOURCE1.clone(),
     };
@@ -870,6 +871,7 @@ fn bitcoin_syncer_broadcast_tx_test() {
         task: Task::BroadcastTransaction(BroadcastTransaction {
             id: TaskId(0),
             tx: signed_tx.hex,
+            broadcast_after_height: None,
         }),
         source: SOURCE1.clone(),
     };

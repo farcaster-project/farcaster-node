@@ -124,6 +124,7 @@ pub struct WatchTransaction {
 pub struct BroadcastTransaction {
     pub id: TaskId,
     pub tx: Vec<u8>,
+    pub broadcast_after_height: Option<u64>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

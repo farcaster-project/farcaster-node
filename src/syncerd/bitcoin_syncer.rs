@@ -31,7 +31,7 @@ use internet2::DuplexConnection;
 use internet2::Encrypt;
 use internet2::PlainTranscoder;
 use internet2::TypedEnum;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
 use std::time::Duration;
@@ -569,10 +569,17 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::BroadcastTransaction(task) => {
                             debug!("trying to broadcast tx: {:?}", task.tx.to_hex());
-                            transaction_broadcast_tx
-                                .send((task, syncerd_task.source))
-                                .await
-                                .expect("failed on transaction_broadcast_tx sender");
+                            if task.broadcast_after_height.is_some() {
+                                let mut state_guard = state.lock().await;
+                                state_guard
+                                    .pending_broadcasts
+                                    .insert((task, syncerd_task.source));
+                            } else {
+                                transaction_broadcast_tx
+                                    .send((task, syncerd_task.source))
+                                    .await
+                                    .expect("failed on transaction_broadcast_tx sender");
+                            }
                         }
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Bitcoin(_) => {
@@ -709,6 +716,7 @@ fn height_polling(
     state: Arc<Mutex<SyncerState>>,
     electrum_server: String,
     proxy_address: Option<String>,
+    transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         // outer loop ensures the polling restarts if there is an error
@@ -759,6 +767,30 @@ fn height_polling(
 
                 // if the blocks changed, query transactions
                 if block_change {
+                    let state_guard = state.lock().await;
+                    let height = state_guard.block_height();
+                    let pending_broadcasts: HashSet<(BroadcastTransaction, ServiceId)> =
+                        state_guard
+                            .pending_broadcasts
+                            .iter()
+                            .filter(|(task, _)| {
+                                if let Some(after_height) = task.broadcast_after_height {
+                                    after_height < height
+                                } else {
+                                    false
+                                }
+                            })
+                            .cloned()
+                            .collect();
+                    drop(state_guard);
+                    for pending in pending_broadcasts {
+                        if let Err(err) = transaction_broadcast_tx.send(pending.clone()).await {
+                            error!("error sending through transaction_broadcast_tx {}", err);
+                        }
+                        let mut state_guard = state.lock().await;
+                        state_guard.pending_broadcasts.remove(&pending);
+                        drop(state_guard);
+                    }
                     rpc.query_transactions(Arc::clone(&state), false).await;
                 }
 
@@ -1094,7 +1126,7 @@ impl Synclet for BitcoinSyncer {
                     run_syncerd_task_receiver(
                         receive_task_channel,
                         Arc::clone(&state),
-                        transaction_broadcast_tx,
+                        transaction_broadcast_tx.clone(),
                         transaction_get_tx,
                         terminate_tx,
                     )
@@ -1111,6 +1143,7 @@ impl Synclet for BitcoinSyncer {
                         Arc::clone(&state),
                         electrum_server.clone(),
                         proxy_address.clone(),
+                        transaction_broadcast_tx,
                     );
 
                     let unseen_transaction_handle = unseen_transaction_polling(
