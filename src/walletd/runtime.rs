@@ -942,6 +942,7 @@ impl Runtime {
                 accordant_addr,
                 taker_commit,
             }) => {
+                info!("{} | Received TakerCommitted", swap_id.swap_id());
                 if self.btc_addrs.insert(swap_id, arbitrating_addr).is_some() {
                     error!(
                         "{} | Bitcoin address replaced accidentally",

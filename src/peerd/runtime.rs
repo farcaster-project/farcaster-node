@@ -566,7 +566,7 @@ impl Runtime {
             }
 
             PeerMsg::PeerReceiverRuntimeShutdown => {
-                warn!("Exiting peerd receiver runtime");
+                warn!("{} | Exiting peerd receiver runtime", self.identity());
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
