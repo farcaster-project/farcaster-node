@@ -66,12 +66,6 @@ impl Client {
         self.identity.clone()
     }
 
-    pub fn request(&mut self, daemon: ServiceId, req: BusMsg) -> Result<(), Error> {
-        debug!("Executing {}", req);
-        self.esb.send_to(ServiceBus::Info, daemon, req)?;
-        Ok(())
-    }
-
     pub fn request_info(&mut self, daemon: ServiceId, req: InfoMsg) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb
