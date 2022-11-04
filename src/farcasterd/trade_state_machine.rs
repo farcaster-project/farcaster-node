@@ -142,7 +142,7 @@ pub struct RestoringSwapd {
 }
 
 pub struct SwapdRunning {
-    peerd: ServiceId,
+    peerd: Option<ServiceId>,
     public_offer: PublicOffer,
     arbitrating_syncer: ServiceId,
     accordant_syncer: ServiceId,
@@ -271,7 +271,7 @@ impl TradeStateMachine {
             TradeStateMachine::TakeOffer(TakeOffer { peerd, .. }) => Some(peerd.clone()),
             TradeStateMachine::TakerCommit(TakerCommit { peerd, .. }) => Some(peerd.clone()),
             TradeStateMachine::SwapdLaunched(SwapdLaunched { peerd, .. }) => Some(peerd.clone()),
-            TradeStateMachine::SwapdRunning(SwapdRunning { peerd, .. }) => Some(peerd.clone()),
+            TradeStateMachine::SwapdRunning(SwapdRunning { peerd, .. }) => peerd.clone(),
             _ => None,
         }
     }
@@ -788,7 +788,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         };
         event.complete_ctl_service(ServiceId::Swap(swap_id), init_swap_req)?;
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
-            peerd,
+            peerd: Some(peerd),
             swap_id,
             accordant_syncer,
             arbitrating_syncer,
@@ -839,7 +839,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         {
             arbitrating_syncer_up = Some(source);
         }
-        (BusMsg::Ctl(Ctl::Hello), source)
+        (BusMsg::Ctl(CtlMsg::Hello), source)
             if ServiceId::Peer(node_addr_from_public_offer(&public_offer)) == source
                 && trade_role == TradeRole::Taker =>
         {
@@ -864,9 +864,9 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         )?;
 
         let peerd = if connected && trade_role == TradeRole::Taker {
-            ServiceId::Peer(node_addr_from_public_offer(&public_offer))
+            Some(ServiceId::Peer(node_addr_from_public_offer(&public_offer)))
         } else {
-            ServiceId::Loopback
+            None
         };
 
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
@@ -908,7 +908,9 @@ fn attempt_transition_to_end(
         auto_funded,
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
-        (BusMsg::Ctl(CtlMsg::Hello), source) if source == peerd => {
+        (BusMsg::Ctl(CtlMsg::Hello), source)
+            if source == peerd.clone().unwrap_or(ServiceId::Loopback) =>
+        {
             let swap_service_id = ServiceId::Swap(swap_id);
             debug!("Letting {} know of peer reconnection.", swap_service_id);
             event.complete_ctl_service(
