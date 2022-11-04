@@ -958,8 +958,36 @@ impl Runtime {
             }
             Ok(())
         } else {
-            warn!("Received request {}, but did not process it", request);
-            Ok(())
+            match request {
+                BusMsg::Ctl(Ctl::RevokeOffer(..)) => {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        BusMsg::Ctl(Ctl::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: "Offer to revoke not found.".to_string(),
+                        })),
+                    )?;
+                    Ok(())
+                }
+                BusMsg::Ctl(Ctl::Connect(..)) => {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        BusMsg::Ctl(Ctl::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: "Swap to connect not found.".to_string(),
+                        })),
+                    )?;
+                    Ok(())
+                }
+                _ => {
+                    warn!("Received request {}, but did not process it", request);
+                    Ok(())
+                }
+            }
         }
     }
 
