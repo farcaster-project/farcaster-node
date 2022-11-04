@@ -744,7 +744,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offer: &PublicOffer) -> bool {
+    pub fn consumed_offers_contains(&self, offer: &PublicOffer) -> bool {
         self.trade_state_machines
             .iter()
             .filter_map(|tsm| tsm.consumed_offer())

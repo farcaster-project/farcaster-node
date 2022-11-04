@@ -17,7 +17,7 @@ use bitcoin::hashes::hex::ToHex;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::role::TradeRole;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
-use internet2::addr::NodeId;
+use internet2::addr::{NodeAddr, NodeId};
 use microservices::esb::Handler;
 use std::str::FromStr;
 
@@ -60,7 +60,7 @@ pub enum TradeStateMachine {
 
     /// StartRestore - transitions to RestoringSwapd on cli request or None on
     /// failure. Transition to RestoringSwapd triggers launching swapd and
-    /// syncers, sends reply to cli.
+    /// syncers, and peerd connect if we are the taker - sends reply to cli.
     #[display("Start Restore")]
     StartRestore,
 
@@ -138,6 +138,7 @@ pub struct RestoringSwapd {
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
     trade_role: TradeRole,
+    connected: bool,
 }
 
 pub struct SwapdRunning {
@@ -371,13 +372,8 @@ fn attempt_transition_to_take_offer(
             external_address,
             internal_address,
         })) => {
-            if runtime.trade_state_machines.iter().any(|tsm| {
-                if let Some(tsm_public_offer) = tsm.consumed_offer() {
-                    tsm_public_offer == public_offer
-                } else {
-                    false
-                }
-            }) || runtime.public_offers.contains(&public_offer)
+            if runtime.consumed_offers_contains(&public_offer)
+                || runtime.public_offers.contains(&public_offer)
             {
                 let msg = format!(
                     "{} already exists or was already taken, ignoring request",
@@ -390,17 +386,8 @@ fn attempt_transition_to_take_offer(
                 })))?;
                 return Ok(None);
             }
-            let PublicOffer {
-                version: _,
-                offer: _,
-                node_id,      // bitcoin::Pubkey
-                peer_address, // InetSocketAddr
-            } = public_offer;
 
-            let peer_node_addr = internet2::addr::NodeAddr {
-                id: NodeId::from(node_id.clone()), // checked above
-                addr: peer_address,
-            };
+            let peer_node_addr = node_addr_from_public_offer(&public_offer);
             // connect to the remote peer
             match runtime.connect_peer(&peer_node_addr) {
                 Err(err) => {
@@ -481,6 +468,14 @@ fn attempt_transition_to_restoring_swapd(
                 return Ok(None);
             }
 
+            // We only try to re-establish a connection if we are the Taker
+            if trade_role == TradeRole::Taker {
+                let peer_node_addr = node_addr_from_public_offer(&public_offer);
+                if let Err(err) = runtime.connect_peer(&peer_node_addr) {
+                    warn!("failed to reconnect to peer on restore: {}", err);
+                }
+            }
+
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
@@ -515,6 +510,7 @@ fn attempt_transition_to_restoring_swapd(
                 arbitrating_syncer_up,
                 accordant_syncer_up,
                 swapd_up: false,
+                connected: false,
                 trade_role,
             })))
         }
@@ -826,6 +822,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut arbitrating_syncer_up,
         mut accordant_syncer_up,
         mut swapd_up,
+        mut connected,
         trade_role,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
@@ -841,6 +838,12 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             if ServiceId::Syncer(Blockchain::Bitcoin, public_offer.offer.network) == source =>
         {
             arbitrating_syncer_up = Some(source);
+        }
+        (BusMsg::Ctl(Ctl::Hello), source)
+            if ServiceId::Peer(node_addr_from_public_offer(&public_offer)) == source
+                && trade_role == TradeRole::Taker =>
+        {
+            connected = true;
         }
         _ => {}
     }
@@ -860,13 +863,19 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             })),
         )?;
 
+        let peerd = if connected && trade_role == TradeRole::Taker {
+            ServiceId::Peer(node_addr_from_public_offer(&public_offer))
+        } else {
+            ServiceId::Loopback
+        };
+
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
-            peerd: ServiceId::Loopback, // TODO: Move this from the dummy value to the actual peerd once we handle reconnect
+            peerd,
             swap_id,
             accordant_syncer,
             arbitrating_syncer,
             public_offer,
-            connected: true,
+            connected,
             auto_funded: false,
             funding_info: None,
         })))
@@ -877,6 +886,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             arbitrating_syncer_up,
             accordant_syncer_up,
             swapd_up,
+            connected,
             trade_role,
         })))
     }
@@ -1209,5 +1219,12 @@ fn attempt_transition_to_end(
                 auto_funded,
             })))
         }
+    }
+}
+
+fn node_addr_from_public_offer(public_offer: &PublicOffer) -> NodeAddr {
+    NodeAddr {
+        id: NodeId::from(public_offer.node_id.clone()), // node_id is bitcoin::Pubkey
+        addr: public_offer.peer_address,                // peer_address is InetSocketAddr
     }
 }
