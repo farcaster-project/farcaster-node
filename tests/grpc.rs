@@ -9,7 +9,6 @@ use crate::farcaster::{
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
-use farcaster_node::bus::ctl::BitcoinFundingInfo;
 use std::{str::FromStr, sync::Arc, time};
 use tonic::transport::Endpoint;
 use utils::fc::*;
