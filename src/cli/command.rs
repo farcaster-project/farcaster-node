@@ -172,6 +172,11 @@ impl Exec for Command {
                 }
             }
 
+            Command::Connect { swap_id } => {
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::Connect(swap_id))?;
+                runtime.report_response_or_fail()?;
+            }
+
             Command::Make {
                 network,
                 arbitrating_blockchain,

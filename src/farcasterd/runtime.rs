@@ -874,6 +874,17 @@ impl Runtime {
             (BusMsg::Ctl(CtlMsg::RestoreCheckpoint(..)), _) => {
                 Ok(Some(TradeStateMachine::StartRestore))
             }
+            (BusMsg::Ctl(CtlMsg::Connect(swap_id)), _) => Ok(self
+                .trade_state_machines
+                .iter()
+                .position(|tsm| {
+                    if let Some(tsm_swap_id) = tsm.swap_id() {
+                        tsm_swap_id == swap_id
+                    } else {
+                        false
+                    }
+                })
+                .map(|pos| self.trade_state_machines.remove(pos))),
             (BusMsg::Ctl(CtlMsg::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
             (BusMsg::Ctl(CtlMsg::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
             (BusMsg::P2p(PeerMsg::TakerCommit(TakeCommit { public_offer, .. })), _)

@@ -147,7 +147,6 @@ pub struct SwapdRunning {
     arbitrating_syncer: ServiceId,
     accordant_syncer: ServiceId,
     swap_id: SwapId,
-    connected: bool,
     funding_info: Option<FundingInfo>,
     auto_funded: bool,
 }
@@ -793,7 +792,6 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             accordant_syncer,
             arbitrating_syncer,
             public_offer,
-            connected: true,
             funding_info: None,
             auto_funded: false,
         })))
@@ -875,7 +873,6 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             accordant_syncer,
             arbitrating_syncer,
             public_offer,
-            connected,
             auto_funded: false,
             funding_info: None,
         })))
@@ -901,7 +898,6 @@ fn attempt_transition_to_end(
         peerd,
         public_offer,
         swap_id,
-        connected,
         arbitrating_syncer,
         accordant_syncer,
         funding_info,
@@ -921,7 +917,6 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: true,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info,
@@ -985,7 +980,6 @@ fn attempt_transition_to_end(
                                 peerd,
                                 public_offer,
                                 swap_id,
-                                connected: true,
                                 arbitrating_syncer,
                                 accordant_syncer,
                                 funding_info: Some(info),
@@ -1002,7 +996,6 @@ fn attempt_transition_to_end(
                                 peerd,
                                 public_offer,
                                 swap_id,
-                                connected: true,
                                 arbitrating_syncer,
                                 accordant_syncer,
                                 funding_info: Some(info),
@@ -1015,7 +1008,6 @@ fn attempt_transition_to_end(
                         peerd,
                         public_offer,
                         swap_id,
-                        connected: true,
                         arbitrating_syncer,
                         accordant_syncer,
                         funding_info: Some(info.clone()),
@@ -1082,7 +1074,6 @@ fn attempt_transition_to_end(
                              peerd,
                              public_offer,
                              swap_id,
-                             connected: true,
                              arbitrating_syncer,
                              accordant_syncer,
                              funding_info: Some(info),
@@ -1094,7 +1085,6 @@ fn attempt_transition_to_end(
                         peerd,
                         public_offer,
                         swap_id,
-                        connected: true,
                         arbitrating_syncer,
                         accordant_syncer,
                         funding_info: Some(info),
@@ -1115,7 +1105,6 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: true,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info: None,
@@ -1134,7 +1123,42 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: true,
+                arbitrating_syncer,
+                accordant_syncer,
+                funding_info: None,
+                auto_funded,
+            })))
+        }
+
+        (BusMsg::Ctl(CtlMsg::Connect(connect_swap_id)), _) if connect_swap_id == swap_id => {
+            let mut new_peerd = peerd.clone();
+            if let Some(peerd) = peerd {
+                event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    code: FailureCode::Unknown,
+                    info: format!(
+                        "The swap already has a dedicated connection daemon {}",
+                        peerd
+                    ),
+                })))?;
+            } else {
+                let peer_node_addr = node_addr_from_public_offer(&public_offer);
+                match runtime.connect_peer(&peer_node_addr) {
+                    Err(err) => {
+                        event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: err.to_string(),
+                        })))?;
+                    }
+                    Ok(peerd) => {
+                        new_peerd = Some(peerd);
+                        event.complete_ctl(BusMsg::Ctl(CtlMsg::ConnectSuccess))?;
+                    }
+                }
+            }
+            Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
+                peerd: new_peerd,
+                public_offer,
+                swap_id,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info: None,
@@ -1159,7 +1183,6 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: false,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info,
@@ -1214,7 +1237,6 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info,

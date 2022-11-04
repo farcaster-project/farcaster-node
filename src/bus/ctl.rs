@@ -72,6 +72,12 @@ pub enum CtlMsg {
     #[display("re-connected")]
     Reconnected,
 
+    #[display("connect({0})")]
+    Connect(SwapId),
+
+    #[display("Connect success")]
+    ConnectSuccess,
+
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(CheckpointEntry),
 
