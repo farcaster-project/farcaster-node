@@ -559,7 +559,23 @@ impl Runtime {
                         xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                     }),
                 )?;
+            } else {
+                debug!(
+                    "{} | trying checkpoint Bob pre buy but txs not received yet",
+                    self.swap_id,
+                );
+                if !self.state.b_sup_checkpoint_pre_buy() {
+                    warn!(
+                        "{} | trying checkpoint Bob pre buy but incorrect state: {}",
+                        self.swap_id, self.state,
+                    );
+                }
             }
+        } else {
+            debug!(
+                "{} | trying checkpoint Bob pre buy but Buy Procedure Signature not received yet",
+                self.swap_id,
+            );
         }
         Ok(())
     }
