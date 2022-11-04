@@ -840,7 +840,7 @@ impl Runtime {
             //
             // Swap receives the message from Wallet, thus we are acting as Bob in the swap
             // protocol. We need to
-            //  1. Save the current swap state
+            //  1. Checkpoint the current swap state
             //  2. Register a watch task on syncer for
             //    - Arbitrating lock
             //    - Cancel
@@ -961,7 +961,7 @@ impl Runtime {
             //
             // Swap receives the message from Wallet, thus we are acting as Alice in the swap
             // protocol. We need to
-            //  1. Save the current swap state
+            //  1. Checkpoint the current swap state
             //  2. Send the Refund Procedure Signature message to counter-party
             PeerMsg::RefundProcedureSignatures(refund_proc_sigs)
                 if source == ServiceId::Wallet
@@ -1016,7 +1016,7 @@ impl Runtime {
             // Message #2 after commit/reveal
             //
             // The Refund Procedure Signature message is created by Alice and sent to Bob. Bob
-            // needs this message to safely lock his funds. Uppon reception we need to
+            // needs this message to safely lock his funds. Upon reception we need to
             //  1. Forward the Refund Procedure Signature message to Wallet
             PeerMsg::RefundProcedureSignatures(refund_proc) if self.state.b_core_arb() => {
                 debug!("{} | forward refund proc sig to wallet", self.swap_id);
@@ -1034,8 +1034,8 @@ impl Runtime {
             // The Buy Procedure Signature is a message created by Bob and sent to Alice in
             // reaction to Alice's Refund Procedure Signature once all funds are locked.
             //
-            // Uppon reception of this message from Bob's Wallet we need to
-            //  1. Save the current swap state; this message arrived after Tx::Cancel & Tx::Refund
+            // Upon reception of this message from Bob's Wallet we need to
+            //  1. Checkpoint the current swap state; this message arrived after Tx::Cancel & Tx::Refund
             //    - yes; we have all data needed, save the state now
             //    - no; we will save the state when Tx::Cancel & Tx::Refund arrive
             //  2. Register a watch task for the Buy transaction
@@ -1082,11 +1082,11 @@ impl Runtime {
             // Swap role: Alice, target of this message
             // Message #3 after commit/reveal
             //
-            // The Buy Procedure Signature is received by Alice when Bob acted the correct funding
-            // on both sides. This message allows Alice to trigger the swap execution on-chain.
+            // The Buy Procedure Signature is received by Alice when Bob validated Alice's funding
+            // on-chain. This message allows Alice to trigger the swap execution on-chain.
             //
-            // Uppon reception of this message Alice needs to
-            //  1. Save the current swap state
+            // Upon reception of this message Alice needs to
+            //  1. Checkpoint the current swap state
             //  2. Register a watch task for the Buy transaction
             //  3. Forward the Buy Procedure Signature to her wallet
             PeerMsg::BuyProcedureSignature(buy_proc_sig)
