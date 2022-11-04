@@ -66,9 +66,8 @@ pub enum TradeStateMachine {
 
     /// MakeOffer state - transitions to TakerCommit once TakerCommit is
     /// received from a counterpary or None if RevokeOffer is received from the
-    /// user. Transition to TakerCommit triggers sending Bitcoin and Monero
-    /// addresses to walletd as well as forwarding TakerCommit to walletd and
-    /// sending SetOfferStatus to databased.
+    /// user. Transition to TakerCommit triggers sending TakerCommited to walletd
+    /// and sending SetOfferStatus to databased.
     #[display("Make Offer")]
     MakeOffer(MakeOffer),
 
