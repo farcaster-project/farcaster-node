@@ -19,7 +19,7 @@ pub trait StateMachineExecutor<
         request: BusMsg,
         sm: T,
     ) -> Result<Option<T>, Error> {
-        let event = Event::with(endpoints, runtime.identity(), source, request);
+        let event = Event::with(endpoints, runtime.identity(), source, request.clone());
         let sm_display = sm.to_string();
         let sm_name = sm.name();
         debug!(
