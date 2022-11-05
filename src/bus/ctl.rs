@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug};
 use std::str::FromStr;
 
+use farcaster_core::blockchain::Network;
 use farcaster_core::{
     blockchain::Blockchain,
     role::TradeRole,
@@ -18,7 +19,7 @@ use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
 };
 use crate::swapd::CheckpointSwapd;
-use crate::syncerd::SweepAddressAddendum;
+use crate::syncerd::{Health, SweepAddressAddendum};
 use crate::walletd::runtime::CheckpointWallet;
 use crate::{Error, ServiceId};
 
@@ -158,6 +159,12 @@ pub enum CtlMsg {
 
     #[display("connect failed")]
     ConnectFailed,
+
+    #[display("health_check({0} {1})")]
+    HealthCheck(Blockchain, Network),
+
+    #[display("health_result({0})")]
+    HealthResult(Health),
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]

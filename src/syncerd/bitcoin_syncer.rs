@@ -7,7 +7,6 @@ use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
-use crate::syncerd::BroadcastTransaction;
 use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
 use crate::syncerd::FeeEstimations;
@@ -15,6 +14,7 @@ use crate::syncerd::GetTx;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::TransactionRetrieved;
+use crate::syncerd::{BroadcastTransaction, Health};
 use crate::{error::Error, syncerd::syncer_state::create_set};
 use crate::{LogStyle, ServiceId};
 use bitcoin::hashes::{hex::ToHex, Hash};
@@ -40,6 +40,8 @@ use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
 use hex;
+
+use super::HealthCheck;
 
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
@@ -526,6 +528,8 @@ async fn run_syncerd_bridge_event_sender(
 }
 
 async fn run_syncerd_task_receiver(
+    electrum_server: String,
+    proxy_address: Option<String>,
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
     transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
@@ -615,6 +619,23 @@ async fn run_syncerd_task_receiver(
                                 .send(())
                                 .await
                                 .expect("terminating, don't care if we panic");
+                        }
+                        Task::HealthCheck(HealthCheck { id }) => {
+                            debug!("performing health check");
+                            let health =
+                                match ElectrumRpc::new(&electrum_server, proxy_address.clone())
+                                    .and_then(|client| {
+                                        client.client.ping()?;
+                                        Ok(())
+                                    }) {
+                                    Err(err) => Health::FaultyElectrum(err.to_string()),
+                                    Ok(_) => Health::Healthy,
+                                };
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .health_result(id, health, syncerd_task.source)
+                                .await;
+                            drop(state_guard);
                         }
                     }
                     continue;
@@ -1101,6 +1122,8 @@ impl Synclet for BitcoinSyncer {
                     )));
 
                     run_syncerd_task_receiver(
+                        electrum_server.clone(),
+                        proxy_address.clone(),
                         receive_task_channel,
                         Arc::clone(&state),
                         transaction_broadcast_tx,

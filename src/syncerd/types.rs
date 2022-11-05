@@ -237,6 +237,17 @@ pub struct WatchEstimateFee {
     pub lifetime: u64,
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub struct HealthCheck {
+    pub id: TaskId,
+}
+
 /// Tasks created by the daemon and handle by syncers to process a blockchain
 /// and generate [`Event`] back to the syncer.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -255,6 +266,7 @@ pub enum Task {
     SweepAddress(SweepAddress),
     GetTx(GetTx),
     WatchEstimateFee(WatchEstimateFee),
+    HealthCheck(HealthCheck),
     Terminate,
 }
 
@@ -334,6 +346,28 @@ pub enum FeeEstimations {
     },
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+pub struct HealthResult {
+    pub id: TaskId,
+    pub health: Health,
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub enum Health {
+    Healthy,
+    FaultyElectrum(String),
+    FaultyMoneroDaemon(String),
+    FaultyMoneroRpcWallet(String),
+    ConfigUnavailable(String),
+}
+
 /// Events returned by syncers to the daemon to update the blockchain states.
 /// Events are identified with a unique 32-bits integer that match the [`Task`]
 /// id.
@@ -353,4 +387,5 @@ pub enum Event {
     FeeEstimation(FeeEstimation),
     /// Empty event to signify that a task with a certain id has not produced an initial result
     Empty(TaskId),
+    HealthResult(HealthResult),
 }

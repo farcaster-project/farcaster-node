@@ -9,10 +9,10 @@ use crate::syncerd::syncer_state::create_set;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
-use crate::syncerd::Event;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
+use crate::syncerd::{Event, Health};
 use farcaster_core::blockchain::{Blockchain, Network};
 use internet2::zeromq::{Connection, ZmqSocketType};
 use internet2::DuplexConnection;
@@ -34,6 +34,8 @@ use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
 use hex;
+
+use super::HealthCheck;
 
 #[derive(Debug, Clone)]
 pub struct MoneroRpc {
@@ -381,6 +383,7 @@ impl MoneroSyncer {
 }
 
 async fn run_syncerd_task_receiver(
+    syncer_servers: MoneroSyncerServers,
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
     tx_event: TokioSender<BridgeEvent>,
@@ -457,6 +460,35 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::Terminate => {
                             debug!("unimplemented");
+                        }
+                        Task::HealthCheck(HealthCheck { id }) => {
+                            debug!("performing health check");
+                            let mut health = match monero_rpc::RpcClient::new(
+                                syncer_servers.monero_daemon.clone(),
+                            )
+                            .daemon()
+                            .get_block_count()
+                            .await
+                            {
+                                Ok(_) => Health::Healthy,
+                                Err(err) => Health::FaultyMoneroDaemon(err.to_string()),
+                            };
+
+                            health = match monero_rpc::RpcClient::new(
+                                syncer_servers.monero_rpc_wallet.clone(),
+                            )
+                            .wallet()
+                            .get_version()
+                            .await
+                            {
+                                Ok(_) => health,
+                                Err(err) => Health::FaultyMoneroRpcWallet(err.to_string()),
+                            };
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .health_result(id, health, syncerd_task.source)
+                                .await;
+                            drop(state_guard);
                         }
                     }
                     continue;
@@ -816,6 +848,7 @@ impl Synclet for MoneroSyncer {
                         )));
 
                         run_syncerd_task_receiver(
+                            syncer_servers.clone(),
                             receive_task_channel,
                             Arc::clone(&state),
                             event_tx.clone(),

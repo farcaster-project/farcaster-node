@@ -2563,6 +2563,10 @@ impl Runtime {
                         }
                     }
                     Event::Empty(_) => debug!("empty event not handled for Bitcoin"),
+
+                    Event::HealthResult(_) => {
+                        debug!("ignoring health result in swapd")
+                    }
                 }
             }
 
