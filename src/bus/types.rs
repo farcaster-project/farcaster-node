@@ -150,11 +150,14 @@ pub struct Failure {
 pub enum FailureCode {
     /// Catch-all: TODO: Expand
     Unknown = 0xFFF,
+
+    TargetServiceNotFound = 0xFFE,
 }
 
 impl From<u16> for FailureCode {
     fn from(value: u16) -> Self {
         match value {
+            0xFFE => FailureCode::TargetServiceNotFound,
             _ => FailureCode::Unknown,
         }
     }
