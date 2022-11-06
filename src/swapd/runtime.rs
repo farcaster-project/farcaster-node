@@ -590,19 +590,34 @@ impl Runtime {
         // Peer messages should only come from wallet (crafted internally and forwarded here) or
         // peer (received by counterpart)
         if !matches!(source, ServiceId::Wallet | ServiceId::Peer(_)) {
-            return Err(Error::Farcaster(format!(
+            let msg = format!(
                 "Incorrect request sender: expected {} or {}",
                 ServiceId::Wallet.label(),
                 self.peer_service.label(),
-            )));
+            );
+            error!("{}", msg);
+            return Err(Error::Farcaster(msg));
         } else {
             // Check if message are from consistent peer source
             if matches!(source, ServiceId::Peer(_)) && self.peer_service != source {
-                return Err(Error::Farcaster(format!(
+                let msg = format!(
                     "Incorrect peer connection: expected {}, found {}",
                     self.peer_service, source
-                )));
+                );
+                error!("{}", msg);
+                return Err(Error::Farcaster(msg));
             }
+        }
+
+        if request.swap_id() != self.swap_id() {
+            let msg = format!(
+                "{} | Incorrect swap_id: expected {}, found {}",
+                self.swap_id.bright_blue_italic(),
+                self.swap_id(),
+                request.swap_id(),
+            );
+            error!("{}", msg);
+            return Err(Error::Farcaster(msg));
         }
 
         // check if message swap id matches internal swap id

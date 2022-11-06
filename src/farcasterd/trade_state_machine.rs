@@ -138,6 +138,7 @@ pub struct RestoringSwapd {
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
     trade_role: TradeRole,
+    expect_connection: bool,
     connected: bool,
 }
 
@@ -468,12 +469,17 @@ fn attempt_transition_to_restoring_swapd(
             }
 
             // We only try to re-establish a connection if we are the Taker
-            if trade_role == TradeRole::Taker {
+            let expect_connection = if trade_role == TradeRole::Taker {
                 let peer_node_addr = node_addr_from_public_offer(&public_offer);
                 if let Err(err) = runtime.connect_peer(&peer_node_addr) {
                     warn!("failed to reconnect to peer on restore: {}", err);
+                    false
+                } else {
+                    true
                 }
-            }
+            } else {
+                false
+            };
 
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
@@ -510,6 +516,7 @@ fn attempt_transition_to_restoring_swapd(
                 accordant_syncer_up,
                 swapd_up: false,
                 connected: false,
+                expect_connection,
                 trade_role,
             })))
         }
@@ -810,7 +817,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
 }
 
 fn attempt_transition_from_restoring_swapd_to_swapd_running(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     restoring_swapd: RestoringSwapd,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -821,6 +828,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut accordant_syncer_up,
         mut swapd_up,
         mut connected,
+        expect_connection,
         trade_role,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
@@ -841,17 +849,34 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             if ServiceId::Peer(node_addr_from_public_offer(&public_offer)) == source
                 && trade_role == TradeRole::Taker =>
         {
+            info!(
+                "{} | Peerd connected for restored swap",
+                swap_id.bright_blue_italic()
+            );
             connected = true;
         }
         _ => {}
     }
-    if let (Some(accordant_syncer), Some(arbitrating_syncer), true) = (
+    if let (Some(accordant_syncer), Some(arbitrating_syncer), true, true) = (
         accordant_syncer_up.clone(),
         arbitrating_syncer_up.clone(),
         swapd_up,
+        (!expect_connection || expect_connection && connected), // expect_connection implies connected
     ) {
         info!("Restoring swap {}", swap_id.swap_id());
         runtime.stats.incr_initiated();
+
+        let peerd = if connected && trade_role == TradeRole::Taker {
+            let peerd = ServiceId::Peer(node_addr_from_public_offer(&public_offer));
+            event.send_ctl_service(
+                ServiceId::Swap(swap_id),
+                BusMsg::Ctl(CtlMsg::PeerdReconnected(peerd.clone())),
+            )?;
+            Some(peerd)
+        } else {
+            None
+        };
+
         event.complete_ctl_service(
             ServiceId::Database,
             BusMsg::Ctl(CtlMsg::RestoreCheckpoint(CheckpointEntry {
@@ -860,12 +885,6 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
                 trade_role,
             })),
         )?;
-
-        let peerd = if connected && trade_role == TradeRole::Taker {
-            Some(ServiceId::Peer(node_addr_from_public_offer(&public_offer)))
-        } else {
-            None
-        };
 
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
             peerd,
@@ -884,6 +903,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             accordant_syncer_up,
             swapd_up,
             connected,
+            expect_connection,
             trade_role,
         })))
     }

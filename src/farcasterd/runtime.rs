@@ -959,24 +959,24 @@ impl Runtime {
             Ok(())
         } else {
             match request {
-                BusMsg::Ctl(Ctl::RevokeOffer(..)) => {
+                BusMsg::Ctl(CtlMsg::RevokeOffer(..)) => {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        BusMsg::Ctl(Ctl::Failure(Failure {
+                        BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: "Offer to revoke not found.".to_string(),
                         })),
                     )?;
                     Ok(())
                 }
-                BusMsg::Ctl(Ctl::Connect(..)) => {
+                BusMsg::Ctl(CtlMsg::Connect(..)) => {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
                         source,
-                        BusMsg::Ctl(Ctl::Failure(Failure {
+                        BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: "Swap to connect not found.".to_string(),
                         })),
