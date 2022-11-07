@@ -39,7 +39,9 @@ fn main() {
     let mut client = Client::with(service_config).expect("Error initializing client");
 
     trace!("Executing command: {:?}", opts.command);
-    opts.command
-        .exec(&mut client)
-        .unwrap_or_else(|err| eprintln!("{} {}", "error:".err(), err.err()));
+
+    if let Err(err) = opts.command.exec(&mut client) {
+        eprintln!("{} {}", "error:".err(), err.err());
+        std::process::exit(1);
+    }
 }
