@@ -2,6 +2,9 @@ title Farcaster node
 // to display the diagram, go to sequencediagram.org
 // dashed lines, not yet implemented
 
+// `activate` and `deactivate` are used on swap services to signify the list of
+// actions/messages done/sent upon above message reception
+
 participant t_syncer
 participant t_wallet
 participant t_swap
@@ -129,6 +132,10 @@ activate t_swap
 t_swap -> t_syncer: Sync Task(Broadcast Arbitrating Lock)
 t_swap -> t_syncer : Sync Task(Watch Accordant Lock)
 deactivate t_swap
+// messages below are grouped in "sync messages" and crossover to signify that
+// ordering of the Msg BuyProcedureSignature wrt the other two messages on the
+// Ctl bus is not guaranteed and the implementation must sync them before
+// proceeding
 group sync messages
 t_wallet -> t_swap: Ctl Tx::Cancel
 t_wallet ->(6) t_swap: Ctl Tx::Refund
