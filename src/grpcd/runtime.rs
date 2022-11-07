@@ -30,7 +30,7 @@ use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::bus::{ctl::CtlMsg, info::InfoMsg};
+use crate::bus::{ctl::CtlMsg, info::InfoMsg, info::SwapInfo};
 use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
@@ -287,18 +287,22 @@ impl Farcaster for FarcasterService {
             }))
             .await?;
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::SwapInfo(info))) => {
+            Ok(BusMsg::Info(InfoMsg::SwapInfo(SwapInfo {
+                swap_id: _,
+                connection,
+                connected,
+                state: _,
+                uptime,
+                since,
+                public_offer,
+            }))) => {
                 let reply = SwapInfoResponse {
                     id,
-                    maker_peer: info
-                        .maker_peer
-                        .into_iter()
-                        .next()
-                        .map(|p| p.to_string())
-                        .unwrap_or("".to_string()),
-                    uptime: info.uptime.as_secs(),
-                    since: info.since,
-                    public_offer: info.public_offer.to_string(),
+                    maker_peer: connection.map(|p| p.to_string()).unwrap_or("".to_string()),
+                    connected,
+                    uptime: uptime.as_secs(),
+                    since: since,
+                    public_offer: public_offer.to_string(),
                 };
                 Ok(GrpcResponse::new(reply))
             }

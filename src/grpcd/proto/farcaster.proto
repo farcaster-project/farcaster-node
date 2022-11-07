@@ -42,6 +42,7 @@ message SwapInfoResponse {
     uint64 uptime = 3;
     uint64 since= 4;
     string public_offer = 5;
+    bool connected = 6;
 }
 
 message OfferInfoRequest {
