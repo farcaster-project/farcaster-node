@@ -564,7 +564,7 @@ impl Runtime {
                     "{} | trying checkpoint Bob pre buy but txs not received yet",
                     self.swap_id,
                 );
-                if !self.state.b_sup_checkpoint_pre_buy() {
+                if !self.state.get_is_checkpoint_pre_buy_ready() {
                     warn!(
                         "{} | trying checkpoint Bob pre buy but incorrect state: {}",
                         self.swap_id, self.state,

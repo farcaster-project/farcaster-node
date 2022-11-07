@@ -729,4 +729,15 @@ impl State {
             _ => None,
         }
     }
+
+    /// Get the boolean result of `b_sup_checkpoint_pre_buy` without mutating the sate.
+    pub fn get_is_checkpoint_pre_buy_ready(&self) -> bool {
+        matches!(
+            self,
+            State::Bob(BobState::CorearbB {
+                last_checkpoint_type: SwapCheckpointType::CheckpointBobPreLock,
+                ..
+            })
+        )
+    }
 }
