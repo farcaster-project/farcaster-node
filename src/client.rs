@@ -18,7 +18,7 @@ use std::time::Duration;
 use internet2::ZmqSocketType;
 use microservices::esb;
 
-use crate::bus::{ctl::Ctl, rpc::Rpc, BusMsg, ServiceBus};
+use crate::bus::{ctl::CtlMsg, info::InfoMsg, BusMsg, ServiceBus};
 use crate::service::Endpoints;
 use crate::service::ServiceConfig;
 use crate::{Error, LogStyle, ServiceId};
@@ -41,8 +41,8 @@ impl Client {
                     ZmqSocketType::RouterConnect,
                     Some(ServiceId::router())
                 ),
-                ServiceBus::Rpc => esb::BusConfig::with_addr(
-                    config.rpc_endpoint,
+                ServiceBus::Info => esb::BusConfig::with_addr(
+                    config.info_endpoint,
                     ZmqSocketType::RouterConnect,
                     Some(ServiceId::router()),
                 )
@@ -66,20 +66,14 @@ impl Client {
         self.identity.clone()
     }
 
-    pub fn request(&mut self, daemon: ServiceId, req: BusMsg) -> Result<(), Error> {
-        debug!("Executing {}", req);
-        self.esb.send_to(ServiceBus::Rpc, daemon, req)?;
-        Ok(())
-    }
-
-    pub fn request_rpc(&mut self, daemon: ServiceId, req: Rpc) -> Result<(), Error> {
+    pub fn request_info(&mut self, daemon: ServiceId, req: InfoMsg) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb
-            .send_to(ServiceBus::Rpc, daemon, BusMsg::Rpc(req))?;
+            .send_to(ServiceBus::Info, daemon, BusMsg::Info(req))?;
         Ok(())
     }
 
-    pub fn request_ctl(&mut self, daemon: ServiceId, req: Ctl) -> Result<(), Error> {
+    pub fn request_ctl(&mut self, daemon: ServiceId, req: CtlMsg) -> Result<(), Error> {
         debug!("Executing {}", req);
         self.esb
             .send_to(ServiceBus::Ctl, daemon, BusMsg::Ctl(req))?;
@@ -100,7 +94,7 @@ impl Client {
 
     pub fn report_failure(&mut self) -> Result<BusMsg, Error> {
         match self.response()? {
-            BusMsg::Ctl(Ctl::Failure(fail)) => Err(Error::Farcaster(fail.info)),
+            BusMsg::Ctl(CtlMsg::Failure(fail)) => Err(Error::Farcaster(fail.info)),
             resp => Ok(resp),
         }
     }
@@ -124,7 +118,7 @@ impl Client {
                 {
                     break Err(e)
                 }
-                Ok(BusMsg::Ctl(Ctl::Success(s))) => {
+                Ok(BusMsg::Ctl(CtlMsg::Success(s))) => {
                     println!("{}", s.bright_green_bold());
                     // terminate on success
                     break Ok(());

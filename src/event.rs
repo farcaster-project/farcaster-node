@@ -102,10 +102,10 @@ impl<'esb> Event<'esb> {
             .send_to(ServiceBus::Ctl, self.service, self.source, request)
     }
 
-    /// Finalizes event processing by sending reply request via RPC message bus
-    pub fn complete_rpc(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
+    /// Finalizes event processing by sending reply request via INFO message bus
+    pub fn complete_info(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
-            .send_to(ServiceBus::Rpc, self.service, self.source, request)
+            .send_to(ServiceBus::Info, self.service, self.source, request)
     }
 
     /// Finalizes event processing by sending reply request via CTL message bus to a specific
@@ -141,15 +141,15 @@ impl<'esb> Event<'esb> {
             .send_to(ServiceBus::Ctl, self.service.clone(), service, request)
     }
 
-    /// Sends reply request via RPC message bus to a specific service (different from the event
+    /// Sends reply request via INFO message bus to a specific service (different from the event
     /// originating service).
-    pub fn send_rpc_service(
+    pub fn send_info_service(
         &mut self,
         service: ServiceId,
         request: BusMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
-            .send_to(ServiceBus::Rpc, self.service.clone(), service, request)
+            .send_to(ServiceBus::Info, self.service.clone(), service, request)
     }
 
     /// Send reply request via MSG message bus to a specific service (different from the event originating service)

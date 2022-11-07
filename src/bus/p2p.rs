@@ -14,7 +14,7 @@ use strict_encoding::{StrictDecode, StrictEncode};
 #[api(encoding = "strict")]
 #[display(inner)]
 #[non_exhaustive]
-pub enum Msg {
+pub enum PeerMsg {
     #[api(type = 33701)]
     #[display("{0} maker commit")]
     MakerCommit(Commit),
@@ -64,28 +64,30 @@ pub enum Msg {
     PeerReceiverRuntimeShutdown,
 }
 
-impl Msg {
+impl PeerMsg {
     pub fn swap_id(&self) -> SwapId {
         match self {
-            Msg::MakerCommit(m) => match m {
+            PeerMsg::MakerCommit(m) => match m {
                 Commit::AliceParameters(n) => n.swap_id,
                 Commit::BobParameters(n) => n.swap_id,
             },
-            Msg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
-            Msg::Reveal(m) => match m {
+            PeerMsg::TakerCommit(TakeCommit { swap_id, .. }) => *swap_id,
+            PeerMsg::Reveal(m) => match m {
                 Reveal::AliceParameters(n) => n.swap_id,
                 Reveal::BobParameters(n) => n.swap_id,
                 Reveal::Proof(n) => n.swap_id,
             },
-            Msg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => *swap_id,
-            Msg::Abort(Abort { swap_id, .. }) => *swap_id,
-            Msg::CoreArbitratingSetup(CoreArbitratingSetup { swap_id, .. }) => *swap_id,
-            Msg::BuyProcedureSignature(BuyProcedureSignature { swap_id, .. }) => *swap_id,
-            Msg::Ping(_)
-            | Msg::Pong(_)
-            | Msg::PingPeer
-            | Msg::PeerReceiverRuntimeShutdown
-            | Msg::Identity(_) => {
+            PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => {
+                *swap_id
+            }
+            PeerMsg::Abort(Abort { swap_id, .. }) => *swap_id,
+            PeerMsg::CoreArbitratingSetup(CoreArbitratingSetup { swap_id, .. }) => *swap_id,
+            PeerMsg::BuyProcedureSignature(BuyProcedureSignature { swap_id, .. }) => *swap_id,
+            PeerMsg::Ping(_)
+            | PeerMsg::Pong(_)
+            | PeerMsg::PingPeer
+            | PeerMsg::PeerReceiverRuntimeShutdown
+            | PeerMsg::Identity(_) => {
                 unreachable!(
                     "Ping, Pong, PingPeer, PeerdShutdown and Identity do not contain swapid"
                 )
@@ -96,26 +98,26 @@ impl Msg {
     pub fn on_receiver_whitelist(&self) -> bool {
         matches!(
             self,
-            Msg::MakerCommit(_)
-                | Msg::TakerCommit(_)
-                | Msg::Reveal(_)
-                | Msg::RefundProcedureSignatures(_)
-                | Msg::CoreArbitratingSetup(_)
-                | Msg::BuyProcedureSignature(_)
-                | Msg::Ping(_)
-                | Msg::Pong(_)
+            PeerMsg::MakerCommit(_)
+                | PeerMsg::TakerCommit(_)
+                | PeerMsg::Reveal(_)
+                | PeerMsg::RefundProcedureSignatures(_)
+                | PeerMsg::CoreArbitratingSetup(_)
+                | PeerMsg::BuyProcedureSignature(_)
+                | PeerMsg::Ping(_)
+                | PeerMsg::Pong(_)
         )
     }
 
     pub fn is_protocol(&self) -> bool {
         matches!(
             self,
-            Msg::MakerCommit(_)
-                | Msg::TakerCommit(_)
-                | Msg::Reveal(_)
-                | Msg::RefundProcedureSignatures(_)
-                | Msg::CoreArbitratingSetup(_)
-                | Msg::BuyProcedureSignature(_)
+            PeerMsg::MakerCommit(_)
+                | PeerMsg::TakerCommit(_)
+                | PeerMsg::Reveal(_)
+                | PeerMsg::RefundProcedureSignatures(_)
+                | PeerMsg::CoreArbitratingSetup(_)
+                | PeerMsg::BuyProcedureSignature(_)
         )
     }
 }
@@ -127,7 +129,7 @@ pub enum Reveal {
     #[display("Bob parameters")]
     BobParameters(RevealBobParameters),
     #[display("proof")]
-    Proof(RevealProof), // FIXME should be Msg::RevealProof(..)
+    Proof(RevealProof),
 }
 
 #[derive(Clone, Debug, Display, From, StrictDecode, StrictEncode)]

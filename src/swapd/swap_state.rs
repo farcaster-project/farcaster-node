@@ -1,8 +1,11 @@
-use farcaster_core::role::{SwapRole, TradeRole};
+use farcaster_core::{
+    role::{SwapRole, TradeRole},
+    swap::btcxmr::message::BuyProcedureSignature,
+};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::ctl::Params;
-use crate::bus::msg::Commit;
+use crate::bus::p2p::Commit;
 use crate::bus::Outcome;
 
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
@@ -82,6 +85,7 @@ pub enum BobState {
         local_params: Params,
         b_address: bitcoin::Address,
         buy_tx_seen: bool,
+        buy_proc: Option<BuyProcedureSignature>,
     }, // lock (not signed), cancel_seen, remote
     #[display("BuySig")]
     BuySigB {
@@ -716,5 +720,24 @@ impl State {
             error!("Not on CoreArbB state");
             false
         }
+    }
+
+    /// Get the buy procedure signature message contained in Bob CoreArb state if any.
+    pub fn get_bob_buy_proc(&self) -> Option<BuyProcedureSignature> {
+        match self {
+            Self::Bob(BobState::CorearbB { buy_proc, .. }) => buy_proc.clone(),
+            _ => None,
+        }
+    }
+
+    /// Get the boolean result of `b_sup_checkpoint_pre_buy` without mutating the sate.
+    pub fn get_is_checkpoint_pre_buy_ready(&self) -> bool {
+        matches!(
+            self,
+            State::Bob(BobState::CorearbB {
+                last_checkpoint_type: SwapCheckpointType::CheckpointBobPreLock,
+                ..
+            })
+        )
     }
 }

@@ -18,7 +18,7 @@ use crate::syncerd::runtime::SyncerdTask;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
-pub enum Rpc {
+pub enum InfoMsg {
     //
     // QUERIES
     //

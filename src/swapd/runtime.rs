@@ -25,11 +25,11 @@ use crate::syncerd::types::{AddressTransaction, Boolean, Event, Task, Transactio
 use crate::syncerd::{FeeEstimation, FeeEstimations, SweepAddressAddendum};
 use crate::{
     bus::ctl::{
-        BitcoinFundingInfo, Checkpoint, CheckpointState, Ctl, FundingInfo, InitSwap,
+        BitcoinFundingInfo, Checkpoint, CheckpointState, CtlMsg, FundingInfo, InitSwap,
         MoneroFundingInfo, Params, Tx,
     },
-    bus::msg::{Commit, Msg, Reveal, TakeCommit},
-    bus::rpc::{Rpc, SwapInfo},
+    bus::info::{InfoMsg, SwapInfo},
+    bus::p2p::{Commit, PeerMsg, Reveal, TakeCommit},
     bus::sync::SyncMsg,
     bus::{BusMsg, Failure, FailureCode, Outcome, ServiceBus},
     syncerd::{
@@ -51,7 +51,7 @@ use farcaster_core::{
     crypto::{CommitmentEngine, SharedKeyId},
     monero::SHARED_VIEW_KEY_ID,
     role::{SwapRole, TradeRole},
-    swap::btcxmr::{message::CoreArbitratingSetup, Offer, Parameters, PublicOffer},
+    swap::btcxmr::{Offer, Parameters, PublicOffer},
     swap::SwapId,
     transaction::TxLabel,
 };
@@ -167,7 +167,7 @@ pub struct Runtime {
     syncer_state: SyncerState,
     temporal_safety: TemporalSafety,
     pending_requests: PendingRequests,
-    pending_peer_request: Vec<Msg>, // Peer requests that failed and are waiting for reconnection
+    pending_peer_request: Vec<PeerMsg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     public_offer: PublicOffer,
 }
@@ -188,39 +188,42 @@ impl PendingRequestsT for PendingRequests {
     ) -> bool {
         let success = if let Some(pending_reqs) = runtime.pending_requests.remove(&key) {
             let len0 = pending_reqs.len();
-            let remaining_pending_reqs: Vec<_> =
-                pending_reqs
-                    .into_iter()
-                    .filter_map(|r| {
-                        if predicate(&r) {
-                            if let Ok(_) = match (&r.bus_id, &r.request) {
-                                (ServiceBus::Ctl, _) if &r.dest == &runtime.identity => runtime
-                                    .handle_ctl(endpoints, r.source.clone(), r.request.clone()),
-                                (ServiceBus::Msg, _) if &r.dest == &runtime.identity => runtime
-                                    .handle_msg(endpoints, r.source.clone(), r.request.clone()),
-                                (ServiceBus::Sync, BusMsg::Sync(sync))
-                                    if &r.dest == &runtime.identity =>
-                                {
-                                    runtime.handle_sync(endpoints, r.source.clone(), sync.clone())
-                                }
-                                (_, _) => endpoints
-                                    .send_to(
-                                        r.bus_id.clone(),
-                                        r.source.clone(),
-                                        r.dest.clone(),
-                                        r.request.clone(),
-                                    )
-                                    .map_err(Into::into),
-                            } {
-                                None
-                            } else {
-                                Some(r)
+            let remaining_pending_reqs: Vec<_> = pending_reqs
+                .into_iter()
+                .filter_map(|r| {
+                    if predicate(&r) {
+                        if let Ok(_) = match (&r.bus_id, &r.request) {
+                            (ServiceBus::Ctl, BusMsg::Ctl(ctl)) if &r.dest == &runtime.identity => {
+                                runtime.handle_ctl(endpoints, r.source.clone(), ctl.clone())
                             }
+                            (ServiceBus::Msg, BusMsg::P2p(peer))
+                                if &r.dest == &runtime.identity =>
+                            {
+                                runtime.handle_msg(endpoints, r.source.clone(), peer.clone())
+                            }
+                            (ServiceBus::Sync, BusMsg::Sync(sync))
+                                if &r.dest == &runtime.identity =>
+                            {
+                                runtime.handle_sync(endpoints, r.source.clone(), sync.clone())
+                            }
+                            (_, _) => endpoints
+                                .send_to(
+                                    r.bus_id.clone(),
+                                    r.source.clone(),
+                                    r.dest.clone(),
+                                    r.request.clone(),
+                                )
+                                .map_err(Into::into),
+                        } {
+                            None
                         } else {
                             Some(r)
                         }
-                    })
-                    .collect();
+                    } else {
+                        Some(r)
+                    }
+                })
+                .collect();
             let len1 = remaining_pending_reqs.len();
             runtime.pending_requests.insert(key, remaining_pending_reqs);
             if len0 - len1 > 1 {
@@ -297,7 +300,7 @@ impl StrictDecode for PendingRequest {
 #[display("checkpoint-swapd")]
 pub struct CheckpointSwapd {
     pub state: State,
-    pub last_msg: Msg,
+    pub last_msg: PeerMsg,
     pub enquirer: Option<ServiceId>,
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub temporal_safety: TemporalSafety,
@@ -368,7 +371,7 @@ impl StrictEncode for CheckpointSwapd {
 impl StrictDecode for CheckpointSwapd {
     fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
         let state = State::strict_decode(&mut d)?;
-        let last_msg = Msg::strict_decode(&mut d)?;
+        let last_msg = PeerMsg::strict_decode(&mut d)?;
         let enquirer = Option::<ServiceId>::strict_decode(&mut d)?;
         let xmr_addr_addendum = Option::<XmrAddressAddendum>::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
@@ -438,16 +441,16 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            // Peer-to-peer message bus
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
-            // Control bus for issuing control commands
-            (ServiceBus::Ctl, request) => self.handle_ctl(endpoints, source, request),
-            // RPC command bus, only accept BusMsg::Rpc
-            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
-            // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
+            // Peer-to-peer message bus, only accept peer message
+            (ServiceBus::Msg, BusMsg::P2p(req)) => self.handle_msg(endpoints, source, req),
+            // Control bus for issuing control commands, only accept Ctl message
+            (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
+            // Info command bus, only accept Info message
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
+            // Syncer event bus for blockchain tasks and events, only accept Sync message
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
             // All other pairs are not supported
-            (_, request) => Err(Error::NotSupported(bus, request.to_string())),
+            (bus, req) => Err(Error::NotSupported(bus, req.to_string())),
         }
     }
 
@@ -460,13 +463,13 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: Msg) -> Result<(), Error> {
+    fn send_peer(&mut self, endpoints: &mut Endpoints, msg: PeerMsg) -> Result<(), Error> {
         trace!("sending peer message {} to {}", msg, self.peer_service);
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
             self.peer_service.clone(), // ServiceId::Loopback if not initiailized
-            BusMsg::Msg(msg.clone()),
+            BusMsg::P2p(msg.clone()),
         ) {
             error!(
                 "could not send message {} to {} due to {}",
@@ -477,7 +480,7 @@ impl Runtime {
                 ServiceBus::Ctl,
                 self.identity(),
                 ServiceId::Farcasterd,
-                BusMsg::Ctl(Ctl::PeerdUnreachable(self.peer_service.clone())),
+                BusMsg::Ctl(CtlMsg::PeerdUnreachable(self.peer_service.clone())),
             )?;
             self.pending_peer_request.push(msg);
         }
@@ -531,41 +534,89 @@ impl Runtime {
         )?)
     }
 
+    /// Checkpoint the state before executing the buy procedure signature
+    fn try_checkpoint_bob_pre_buy(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        if let Some(buy_proc) = self.state.get_bob_buy_proc() {
+            if self.txs.contains_key(&TxLabel::Cancel)
+                && self.txs.contains_key(&TxLabel::Refund)
+                && self.state.b_sup_checkpoint_pre_buy()
+            {
+                debug!("{} | checkpointing bob pre buy swapd state", self.swap_id);
+                checkpoint_send(
+                    endpoints,
+                    self.swap_id,
+                    self.identity(),
+                    ServiceId::Database,
+                    CheckpointState::CheckpointSwapd(CheckpointSwapd {
+                        state: self.state.clone(),
+                        last_msg: PeerMsg::BuyProcedureSignature(buy_proc),
+                        enquirer: self.enquirer.clone(),
+                        temporal_safety: self.temporal_safety.clone(),
+                        txs: self.txs.clone(),
+                        txids: self.syncer_state.tasks.txids.clone(),
+                        pending_requests: self.pending_requests().clone(),
+                        pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
+                        xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                    }),
+                )?;
+            } else {
+                debug!(
+                    "{} | trying checkpoint Bob pre buy but txs not received yet",
+                    self.swap_id,
+                );
+                if !self.state.get_is_checkpoint_pre_buy_ready() {
+                    warn!(
+                        "{} | trying checkpoint Bob pre buy but incorrect state: {}",
+                        self.swap_id, self.state,
+                    );
+                }
+            }
+        } else {
+            debug!(
+                "{} | trying checkpoint Bob pre buy but Buy Procedure Signature not received yet",
+                self.swap_id,
+            );
+        }
+        Ok(())
+    }
+
     fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: PeerMsg,
     ) -> Result<(), Error> {
-        if self.peer_service != source {
+        // Peer messages should only come from wallet (crafted internally and forwarded here) or
+        // peer (received by counterpart)
+        if !matches!(source, ServiceId::Wallet | ServiceId::Peer(_)) {
             return Err(Error::Farcaster(format!(
-                "{}: expected {}, found {}",
-                "Incorrect peer connection", self.peer_service, source
+                "Incorrect request sender: expected {} or {}",
+                ServiceId::Wallet.label(),
+                self.peer_service.label(),
+            )));
+        } else {
+            // Check if message are from consistent peer source
+            if matches!(source, ServiceId::Peer(_)) && self.peer_service != source {
+                return Err(Error::Farcaster(format!(
+                    "Incorrect peer connection: expected {}, found {}",
+                    self.peer_service, source
+                )));
+            }
+        }
+
+        // check if message swap id matches internal swap id
+        if request.swap_id() != self.swap_id() {
+            return Err(Error::Farcaster(format!(
+                "Incorrect swap id: expected {}, found {}",
+                self.swap_id(),
+                request.swap_id(),
             )));
         }
-        let msg = match &request {
-            BusMsg::Msg(msg) => {
-                if msg.swap_id() != self.swap_id() {
-                    return Err(Error::Farcaster(format!(
-                        "{}: expected {}, found {}",
-                        "Incorrect swap_id ",
-                        self.swap_id(),
-                        msg.swap_id(),
-                    )));
-                } else {
-                    msg
-                }
-            }
-            _ => {
-                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.to_string()));
-            }
-        };
-        let msg_bus = ServiceBus::Msg;
-        match &msg {
+
+        match request {
             // we are taker and the maker committed, now we reveal after checking
             // whether we're Bob or Alice and that we're on a compatible state
-            Msg::MakerCommit(remote_commit)
+            PeerMsg::MakerCommit(remote_commit)
                 if self.state.commit()
                     && self.state.trade_role() == Some(TradeRole::Taker)
                     && self.state.remote_commit().is_none() =>
@@ -591,28 +642,60 @@ impl Runtime {
                     }
                 }
 
-                self.send_wallet(msg_bus, endpoints, request)?;
+                self.send_wallet(
+                    ServiceBus::Msg,
+                    endpoints,
+                    BusMsg::P2p(PeerMsg::MakerCommit(remote_commit)),
+                )?;
             }
-            Msg::TakerCommit(_) => {
-                unreachable!(
-                    "msg handled by farcasterd/walletd, and indirectly here by \
-                             Ctl BusMsg::MakeSwap"
-                )
+
+            PeerMsg::TakerCommit(_) => {
+                // handled by farcasterd/walletd, and indirectly here by CtlMsg::MakeSwap
+                unreachable!()
             }
-            Msg::Reveal(Reveal::Proof(_)) => {
+
+            // A message sent from wallet that contains the reveal peer message for the
+            // zero-knowledge proof
+            PeerMsg::Reveal(Reveal::Proof(reveal))
+                if source == ServiceId::Wallet
+                    && self.state.commit()
+                    && self.state.remote_commit().is_some() =>
+            {
+                let swap_id = self.swap_id();
+                self.send_peer(endpoints, PeerMsg::Reveal(Reveal::Proof(reveal)))?;
+                trace!("sent reveal_proof to peerd");
+                let local_params = self
+                    .state
+                    .local_params()
+                    .expect("commit state has local_params");
+                let reveal_params = match (swap_id, local_params.clone()) {
+                    (swap_id, Params::Alice(params)) => {
+                        Reveal::AliceParameters(params.reveal_alice(swap_id))
+                    }
+                    (swap_id, Params::Bob(params)) => {
+                        Reveal::BobParameters(params.reveal_bob(swap_id))
+                    }
+                };
+                self.send_peer(endpoints, PeerMsg::Reveal(reveal_params))?;
+                trace!("sent reveal_proof to peerd");
+                let next_state = self.state.clone().sup_commit_to_reveal();
+                self.state_update(endpoints, next_state)?;
+            }
+
+            PeerMsg::Reveal(Reveal::Proof(_)) => {
                 // These messages are saved as pending if Bob and then forwarded once the
                 // parameter reveal forward is triggered. If Alice, send immediately.
                 match self.state.swap_role() {
                     SwapRole::Bob => {
-                        let pending_request = PendingRequest::new(
-                            self.identity(),
+                        self.pending_requests.defer_request(
                             ServiceId::Wallet,
-                            ServiceBus::Msg,
-                            request,
+                            PendingRequest::new(
+                                self.identity(),
+                                ServiceId::Wallet,
+                                ServiceBus::Msg,
+                                BusMsg::P2p(request),
+                            ),
                         );
-
-                        self.pending_requests
-                            .defer_request(ServiceId::Wallet, pending_request);
                     }
                     SwapRole::Alice => {
                         debug!("Alice: forwarding reveal");
@@ -622,11 +705,12 @@ impl Runtime {
                             &ServiceId::Wallet,
                             &ServiceBus::Msg
                         );
-                        self.send_wallet(msg_bus, endpoints, request)?
+                        self.send_wallet(ServiceBus::Msg, endpoints, BusMsg::P2p(request))?
                     }
                 }
             }
-            Msg::Reveal(Reveal::AliceParameters(..))
+
+            PeerMsg::Reveal(Reveal::AliceParameters(_))
                 if self.state.swap_role() == SwapRole::Bob
                     && (self.state.b_address().is_none()
                         || self.syncer_state.btc_fee_estimate_sat_per_kvb.is_none()) =>
@@ -640,14 +724,21 @@ impl Runtime {
                     "Deferring request {} for when btc_fee_estimate available, then recurse in the runtime",
                     &request
                 );
-                let pending_req = PendingRequest::new(source, self.identity(), msg_bus, request);
-                self.pending_requests
-                    .defer_request(self.syncer_state.bitcoin_syncer(), pending_req);
+                self.pending_requests.defer_request(
+                    self.syncer_state.bitcoin_syncer(),
+                    PendingRequest::new(
+                        source,
+                        self.identity(),
+                        ServiceBus::Msg,
+                        BusMsg::P2p(request),
+                    ),
+                );
             }
+
             // bob and alice
             // store parameters from counterparty if we have not received them yet.
             // if we're maker, also reveal to taker if their commitment is valid.
-            Msg::Reveal(reveal)
+            PeerMsg::Reveal(reveal)
                 if self.state.remote_commit().is_some()
                     && (self.state.commit() || self.state.reveal())
                     && {
@@ -667,7 +758,7 @@ impl Runtime {
 
                 let remote_commit = self.state.remote_commit().cloned().unwrap();
 
-                if let Ok(remote_params_candidate) = remote_params_candidate(reveal, remote_commit)
+                if let Ok(remote_params_candidate) = remote_params_candidate(&reveal, remote_commit)
                 {
                     debug!("{:?} sets remote_params", self.state.swap_role());
                     self.state.sup_remote_params(remote_params_candidate);
@@ -683,12 +774,16 @@ impl Runtime {
                         // Alice already sends RevealProof immediately, so only have to
                         // forward Reveal now
                         trace!(
-                            "sending request {} to {} on bus {}",
-                            &request,
+                            "sending request PeerMsg::Reveal({}) to {} on bus {}",
+                            &reveal,
                             &ServiceId::Wallet,
                             &ServiceBus::Msg
                         );
-                        self.send_wallet(msg_bus, endpoints, request)?
+                        self.send_wallet(
+                            ServiceBus::Msg,
+                            endpoints,
+                            BusMsg::P2p(PeerMsg::Reveal(reveal)),
+                        )?
                     }
                     SwapRole::Bob
                         if self.syncer_state.btc_fee_estimate_sat_per_kvb.is_some()
@@ -701,14 +796,15 @@ impl Runtime {
                         // sending this request will initialize the
                         // arbitrating setup, that can be only performed
                         // after the funding tx was seen
-                        let pending_req = PendingRequest::new(
-                            self.identity(),
+                        self.pending_requests.defer_request(
                             ServiceId::Wallet,
-                            msg_bus,
-                            request,
+                            PendingRequest::new(
+                                self.identity(),
+                                ServiceId::Wallet,
+                                ServiceBus::Msg,
+                                BusMsg::P2p(PeerMsg::Reveal(reveal)),
+                            ),
                         );
-                        self.pending_requests
-                            .defer_request(ServiceId::Wallet, pending_req);
                     }
                     _ => unreachable!(
                         "Bob btc_fee_estimate_sat_per_kvb.is_none() was handled previously"
@@ -734,67 +830,31 @@ impl Runtime {
                     }
                 }
             }
-            // alice receives, bob sends
-            Msg::CoreArbitratingSetup(CoreArbitratingSetup {
-                lock,
-                cancel,
-                refund,
-                ..
-            }) if self.state.swap_role() == SwapRole::Alice && self.state.reveal() => {
-                for (&tx, tx_label) in [lock, cancel, refund].iter().zip([
-                    TxLabel::Lock,
-                    TxLabel::Cancel,
-                    TxLabel::Refund,
-                ]) {
-                    let tx = tx.clone().extract_tx();
-                    let txid = tx.txid();
-                    debug!(
-                        "tx_label: {}, vsize: {}, outs: {}",
-                        tx_label,
-                        tx.vsize(),
-                        tx.output.len()
-                    );
-                    if !self.syncer_state.is_watched_tx(&tx_label) {
-                        let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                        endpoints.send_to(
-                            ServiceBus::Sync,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            BusMsg::Sync(SyncMsg::Task(task)),
-                        )?;
-                    }
-                    if tx_label == TxLabel::Refund {
-                        self.syncer_state.tasks.txids.insert(TxLabel::Refund, txid);
-                    }
-                }
-                self.send_wallet(msg_bus, endpoints, request)?;
-            }
-            // bob receives, alice sends
-            Msg::RefundProcedureSignatures(_) if self.state.b_core_arb() => {
-                self.state.sup_received_refund_procedure_signatures();
-                self.send_wallet(msg_bus, endpoints, request)?;
-            }
-            // alice receives, bob sends
-            Msg::BuyProcedureSignature(buy_proc_sig)
-                if self.state.a_refundsig() && !self.state.a_overfunded() =>
-            {
-                // Alice verifies that she has sent refund procedure signatures before
-                // processing the buy signatures from Bob
-                let tx_label = TxLabel::Buy;
-                if !self.syncer_state.is_watched_tx(&tx_label) {
-                    let txid = buy_proc_sig.buy.clone().extract_tx().txid();
-                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                    endpoints.send_to(
-                        ServiceBus::Sync,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(task)),
-                    )?;
-                }
 
-                // checkpoint swap alice pre buy
-                debug!("{} | checkpointing alice pre buy swapd state", self.swap_id);
-                if self.state.a_sup_checkpoint_pre_buy() {
+            // Swap role: Bob, initiator of this message
+            // Message #1 after commit/reveal
+            //
+            // The Core Arbitrating Setup message is created by Bob's wallet and contains the core
+            // arbitrating transactions, i.e. the set of transactions used to drive the swap
+            // execution on the Arbitrating blockchain, Bitcoin in the case of Bitcoin<>Monero.
+            //
+            // Swap receives the message from Wallet, thus we are acting as Bob in the swap
+            // protocol. We need to
+            //  1. Checkpoint the current swap state
+            //  2. Register a watch task on syncer for
+            //    - Arbitrating lock
+            //    - Cancel
+            //    - Refund
+            //  3. Send the Core Arbitrating Setup message to counter-party
+            PeerMsg::CoreArbitratingSetup(setup)
+                if source == ServiceId::Wallet
+                    && self.state.reveal()
+                    && self.state.remote_params().is_some()
+                    && self.state.local_params().is_some() =>
+            {
+                // checkpoint swap pre lock bob
+                debug!("{} | checkpointing bob pre lock state", self.swap_id);
+                if self.state.b_sup_checkpoint_pre_lock() {
                     checkpoint_send(
                         endpoints,
                         self.swap_id,
@@ -802,7 +862,7 @@ impl Runtime {
                         ServiceId::Database,
                         CheckpointState::CheckpointSwapd(CheckpointSwapd {
                             state: self.state.clone(),
-                            last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
+                            last_msg: PeerMsg::CoreArbitratingSetup(setup.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
                             txs: self.txs.clone(),
@@ -813,20 +873,284 @@ impl Runtime {
                         }),
                     )?;
                 }
+                // register a watch task for arb lock, cancel, and refund
+                for (&tx, tx_label) in [&setup.lock, &setup.cancel, &setup.refund].iter().zip([
+                    TxLabel::Lock,
+                    TxLabel::Cancel,
+                    TxLabel::Refund,
+                ]) {
+                    debug!("{} | register watch {} tx", self.swap_id, tx_label);
+                    if !self.syncer_state.is_watched_tx(&tx_label) {
+                        let txid = tx.clone().extract_tx().txid();
+                        let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                        endpoints.send_to(
+                            ServiceBus::Sync,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            BusMsg::Sync(SyncMsg::Task(task)),
+                        )?;
+                    }
+                }
+                // send the message to counter-party
+                debug!("{} | send core arb setup to peer", self.swap_id);
+                self.send_peer(endpoints, PeerMsg::CoreArbitratingSetup(setup))?;
+                // transition to new state
+                let next_state = State::Bob(BobState::CorearbB {
+                    received_refund_procedure_signatures: false,
+                    local_params: self.state.local_params().cloned().unwrap(),
+                    cancel_seen: false,
+                    remote_params: self.state.remote_params().unwrap(),
+                    b_address: self.state.b_address().cloned().unwrap(),
+                    last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
+                    buy_tx_seen: false,
+                    buy_proc: None,
+                });
+                self.state_update(endpoints, next_state)?;
+            }
 
-                self.send_wallet(msg_bus, endpoints, request)?
+            // Swap role: Alice, target of this message
+            // Message #1 after commit/reveal
+            //
+            // The Core Arbitrating Setup is created by Bob and sent to Alice. The message contains
+            // the set of transactions used on the Arbitrating blockchain, i.e. Bitcoin in
+            // Bitcoin<>Monero.
+            //
+            // When Alice's swap receives the message from Bob she needs to
+            //  1. Register a watch task on syncer for
+            //    - Arbitrating lock
+            //    - Cancel
+            //    - Refund
+            //  2. Send the Core Arbitrating Setup message to her Wallet
+            PeerMsg::CoreArbitratingSetup(setup)
+                if self.state.swap_role() == SwapRole::Alice && self.state.reveal() =>
+            {
+                // register a watch task for arb lock, cancel, and refund
+                for (&tx, tx_label) in [&setup.lock, &setup.cancel, &setup.refund].iter().zip([
+                    TxLabel::Lock,
+                    TxLabel::Cancel,
+                    TxLabel::Refund,
+                ]) {
+                    debug!("{} | register watch {} tx", self.swap_id, tx_label);
+                    if !self.syncer_state.is_watched_tx(&tx_label) {
+                        let txid = tx.clone().extract_tx().txid();
+                        let task = self.syncer_state.watch_tx_btc(txid, tx_label);
+                        endpoints.send_to(
+                            ServiceBus::Sync,
+                            self.identity(),
+                            self.syncer_state.bitcoin_syncer(),
+                            BusMsg::Sync(SyncMsg::Task(task)),
+                        )?;
+                    }
+                }
+                // forward the core arbitrating setup message to her wallet
+                debug!("{} | forward core arb setup to wallet", self.swap_id);
+                self.send_wallet(
+                    ServiceBus::Msg,
+                    endpoints,
+                    BusMsg::P2p(PeerMsg::CoreArbitratingSetup(setup)),
+                )?;
+            }
+
+            // Swap role: Alice, initiator of this message
+            // Message #2 after commit/reveal
+            //
+            // The Refund Procedure Signature is a message created by Alice in reaction to Bob's
+            // Core Arbitrating Setup message that contains the necessary signatures on cancel and
+            // refund arbitrating transactions. These signature are needed to Bob to safely lock
+            // his funds.
+            //
+            // Swap receives the message from Wallet, thus we are acting as Alice in the swap
+            // protocol. We need to
+            //  1. Checkpoint the current swap state
+            //  2. Send the Refund Procedure Signature message to counter-party
+            PeerMsg::RefundProcedureSignatures(refund_proc_sigs)
+                if source == ServiceId::Wallet
+                    && self.state.reveal()
+                    && self.state.remote_params().is_some()
+                    && self.state.local_params().is_some() =>
+            {
+                // checkpoint alice pre lock bob
+                debug!("{} | checkpointing alice pre lock state", self.swap_id);
+                if self.state.a_sup_checkpoint_pre_lock() {
+                    checkpoint_send(
+                        endpoints,
+                        self.swap_id,
+                        self.identity(),
+                        ServiceId::Database,
+                        CheckpointState::CheckpointSwapd(CheckpointSwapd {
+                            state: self.state.clone(),
+                            last_msg: PeerMsg::RefundProcedureSignatures(refund_proc_sigs.clone()),
+                            enquirer: self.enquirer.clone(),
+                            temporal_safety: self.temporal_safety.clone(),
+                            txs: self.txs.clone(),
+                            txids: self.syncer_state.tasks.txids.clone(),
+                            pending_requests: self.pending_requests().clone(),
+                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
+                            xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                        }),
+                    )?;
+                }
+                // send refund procedure signature message to counter-party
+                debug!("{} | send refund proc sig to peer", self.swap_id);
+                self.send_peer(
+                    endpoints,
+                    PeerMsg::RefundProcedureSignatures(refund_proc_sigs),
+                )?;
+                // transition to new state
+                let next_state = State::Alice(AliceState::RefundSigA {
+                    last_checkpoint_type: SwapCheckpointType::CheckpointAlicePreLock,
+                    local_params: self.state.local_params().cloned().unwrap(),
+                    btc_locked: false,
+                    xmr_locked: false,
+                    buy_published: false,
+                    cancel_seen: false,
+                    refund_seen: false,
+                    remote_params: self.state.remote_params().unwrap(),
+                    required_funding_amount: None,
+                    overfunded: false,
+                });
+                self.state_update(endpoints, next_state)?;
+            }
+
+            // Swap role: Bob, target of this message
+            // Message #2 after commit/reveal
+            //
+            // The Refund Procedure Signature message is created by Alice and sent to Bob. Bob
+            // needs this message to safely lock his funds. Upon reception we need to
+            //  1. Forward the Refund Procedure Signature message to Wallet
+            PeerMsg::RefundProcedureSignatures(refund_proc) if self.state.b_core_arb() => {
+                debug!("{} | forward refund proc sig to wallet", self.swap_id);
+                self.state.sup_received_refund_procedure_signatures();
+                self.send_wallet(
+                    ServiceBus::Msg,
+                    endpoints,
+                    BusMsg::P2p(PeerMsg::RefundProcedureSignatures(refund_proc)),
+                )?;
+            }
+
+            // Swap role: Bob, initiator of this message
+            // Message #3 after commit/reveal
+            //
+            // The Buy Procedure Signature is a message created by Bob and sent to Alice in
+            // reaction to Alice's Refund Procedure Signature once all funds are locked.
+            //
+            // Upon reception of this message from Bob's Wallet we need to
+            //  1. Checkpoint the current swap state; this message arrived after Tx::Cancel & Tx::Refund
+            //    - yes; we have all data needed, save the state now
+            //    - no; we will save the state when Tx::Cancel & Tx::Refund arrive
+            //  2. Register a watch task for the Buy transaction
+            PeerMsg::BuyProcedureSignature(ref buy_proc_sig)
+                if source == ServiceId::Wallet
+                    && self.state.b_core_arb()
+                    && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
+            {
+                // This message can arrive in any order between the pair (Tx::Cancel, Tx::Refund)
+                // control messages. Only save the state if the Tx Ctl message already arrived.
+                //
+                // Destructure state and register the buy procedure signature message
+                if let State::Bob(BobState::CorearbB { buy_proc, .. }) = &mut self.state {
+                    *buy_proc = Some(buy_proc_sig.clone());
+                }
+                // try checkpointing the state; only if txs arrived already
+                self.try_checkpoint_bob_pre_buy(endpoints)?;
+                // register a watch task for buy
+                debug!("{} | register watch buy tx", self.swap_id);
+                if !self.syncer_state.is_watched_tx(&TxLabel::Buy) {
+                    let buy_tx = buy_proc_sig.buy.clone().extract_tx();
+                    let task = self.syncer_state.watch_tx_btc(buy_tx.txid(), TxLabel::Buy);
+                    endpoints.send_to(
+                        ServiceBus::Sync,
+                        self.identity(),
+                        self.syncer_state.bitcoin_syncer(),
+                        BusMsg::Sync(SyncMsg::Task(task)),
+                    )?;
+                }
+                // send the message to counter-party when predicate is reached later when:
+                //  - Arb Lock is final
+                //  - Acc Lock is final
+                self.pending_requests.defer_request(
+                    self.syncer_state.monero_syncer(),
+                    PendingRequest::new(
+                        self.identity(),
+                        self.peer_service.clone(),
+                        ServiceBus::Msg,
+                        BusMsg::P2p(request),
+                    ),
+                );
+            }
+
+            // Swap role: Alice, target of this message
+            // Message #3 after commit/reveal
+            //
+            // The Buy Procedure Signature is received by Alice when Bob validated Alice's funding
+            // on-chain. This message allows Alice to trigger the swap execution on-chain.
+            //
+            // Upon reception of this message Alice needs to
+            //  1. Checkpoint the current swap state
+            //  2. Register a watch task for the Buy transaction
+            //  3. Forward the Buy Procedure Signature to her wallet
+            PeerMsg::BuyProcedureSignature(buy_proc_sig)
+                if self.state.a_refundsig() && !self.state.a_overfunded() =>
+            {
+                // checkpoint swap alice pre buy
+                debug!("{} | checkpointing alice pre buy swapd state", self.swap_id);
+                if self.state.a_sup_checkpoint_pre_buy() {
+                    checkpoint_send(
+                        endpoints,
+                        self.swap_id,
+                        self.identity(),
+                        ServiceId::Database,
+                        CheckpointState::CheckpointSwapd(CheckpointSwapd {
+                            state: self.state.clone(),
+                            last_msg: PeerMsg::BuyProcedureSignature(buy_proc_sig.clone()),
+                            enquirer: self.enquirer.clone(),
+                            temporal_safety: self.temporal_safety.clone(),
+                            txs: self.txs.clone(),
+                            txids: self.syncer_state.tasks.txids.clone(),
+                            pending_requests: self.pending_requests().clone(),
+                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
+                            xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                        }),
+                    )?;
+                }
+                // register a watch task for buy
+                debug!("{} | register watch buy tx", self.swap_id);
+                if !self.syncer_state.is_watched_tx(&TxLabel::Buy) {
+                    let txid = buy_proc_sig.buy.clone().extract_tx().txid();
+                    let task = self.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
+                    endpoints.send_to(
+                        ServiceBus::Sync,
+                        self.identity(),
+                        self.syncer_state.bitcoin_syncer(),
+                        BusMsg::Sync(SyncMsg::Task(task)),
+                    )?;
+                }
+                // forward the received buy procedure signature message to wallet
+                debug!("{} | forward buy proc sig to wallet", self.swap_id);
+                self.send_wallet(
+                    ServiceBus::Msg,
+                    endpoints,
+                    BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_proc_sig)),
+                )?;
             }
 
             // bob and alice
-            Msg::Abort(_) => return Err(Error::Farcaster("Abort not yet supported".to_string())),
-            Msg::Ping(_) | Msg::Pong(_) | Msg::PingPeer => {
+            PeerMsg::Abort(_) => {
+                return Err(Error::Farcaster("Abort not yet supported".to_string()))
+            }
+
+            PeerMsg::Ping(_) | PeerMsg::Pong(_) | PeerMsg::PingPeer => {
                 unreachable!("ping/pong must remain in peerd, and unreachable in swapd")
             }
-            request => error!(
-                "request {} not supported at msg bus at state {}",
-                request, self.state
+
+            req => error!(
+                "{} | Request {} not supported at state {}",
+                self.swap_id.swap_id(),
+                req,
+                self.state
             ),
         }
+
         Ok(())
     }
 
@@ -834,10 +1158,10 @@ impl Runtime {
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: BusMsg,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (BusMsg::Ctl(Ctl::Hello), _) => {
+            (CtlMsg::Hello, _) => {
                 info!(
                     "{} | Service {} daemon is now {}",
                     self.swap_id.swap_id(),
@@ -853,7 +1177,7 @@ impl Runtime {
                 | ServiceId::Wallet
                 | ServiceId::Database
             ) => {}
-            (BusMsg::Ctl(Ctl::AbortSwap), ServiceId::Client(_)) => {}
+            (CtlMsg::AbortSwap, ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
                 "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
                     .to_string(),
@@ -861,7 +1185,7 @@ impl Runtime {
         };
 
         match request {
-            BusMsg::Ctl(Ctl::Terminate) if source == ServiceId::Farcasterd => {
+            CtlMsg::Terminate if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
                     self.swap_id.swap_id(),
@@ -870,14 +1194,15 @@ impl Runtime {
                 std::process::exit(0);
             }
 
-            BusMsg::Ctl(Ctl::TakeSwap(InitSwap {
+            // The first message received on the taker swap side.
+            CtlMsg::TakeSwap(InitSwap {
                 peerd,
                 report_to,
                 local_params,
                 swap_id,
                 remote_commit: None,
                 funding_address, // Some(_) for Bob, None for Alice
-            })) if self.state.start() => {
+            }) if self.state.start() => {
                 if ServiceId::Swap(swap_id) != self.identity {
                     error!(
                         "{}: {}",
@@ -917,43 +1242,19 @@ impl Runtime {
                     public_offer: self.public_offer.clone(),
                     swap_id,
                 };
-                self.send_peer(endpoints, Msg::TakerCommit(take_swap))?;
+                self.send_peer(endpoints, PeerMsg::TakerCommit(take_swap))?;
                 self.state_update(endpoints, next_state)?;
             }
 
-            BusMsg::Msg(Msg::Reveal(Reveal::Proof(proof)))
-                if self.state.commit() && self.state.remote_commit().is_some() =>
-            {
-                let reveal_proof = Msg::Reveal(Reveal::Proof(proof));
-                let swap_id = reveal_proof.swap_id();
-                self.send_peer(endpoints, reveal_proof)?;
-                trace!("sent reveal_proof to peerd");
-                let local_params = self
-                    .state
-                    .local_params()
-                    .expect("commit state has local_params");
-                let reveal_params = match (swap_id, local_params.clone()) {
-                    (swap_id, Params::Alice(params)) => {
-                        Reveal::AliceParameters(params.reveal_alice(swap_id))
-                    }
-                    (swap_id, Params::Bob(params)) => {
-                        Reveal::BobParameters(params.reveal_bob(swap_id))
-                    }
-                };
-                self.send_peer(endpoints, Msg::Reveal(reveal_params))?;
-                trace!("sent reveal_proof to peerd");
-                let next_state = self.state.clone().sup_commit_to_reveal();
-                self.state_update(endpoints, next_state)?;
-            }
-
-            BusMsg::Ctl(Ctl::MakeSwap(InitSwap {
+            // The first message received on the maker swap side.
+            CtlMsg::MakeSwap(InitSwap {
                 peerd,
                 report_to,
                 local_params,
                 swap_id,
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
-            })) if self.state.start() => {
+            }) if self.state.start() => {
                 self.syncer_state.watch_fee_and_height(endpoints)?;
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
@@ -980,11 +1281,11 @@ impl Runtime {
                 );
 
                 trace!("sending peer MakerCommit msg {}", &local_commit);
-                self.send_peer(endpoints, Msg::MakerCommit(local_commit))?;
+                self.send_peer(endpoints, PeerMsg::MakerCommit(local_commit))?;
                 self.state_update(endpoints, next_state)?;
             }
 
-            BusMsg::Ctl(Ctl::FundingUpdated)
+            CtlMsg::FundingUpdated
                 if source == ServiceId::Wallet
                     && ((self.state.trade_role() == Some(TradeRole::Taker)
                         && self.state.reveal())
@@ -1007,7 +1308,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: BusMsg::Msg(Msg::Reveal(Reveal::Proof(_))),
+                                request: BusMsg::P2p(PeerMsg::Reveal(Reveal::Proof(_))),
                                 ..
                             }
                         )
@@ -1024,7 +1325,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: BusMsg::Msg(Msg::Reveal(Reveal::AliceParameters(_))),
+                                request: BusMsg::P2p(PeerMsg::Reveal(Reveal::AliceParameters(_))),
                                 ..
                             }
                         )
@@ -1034,70 +1335,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Msg(Msg::CoreArbitratingSetup(core_arb_setup))
-                if self.state.reveal()
-                    && self.state.remote_params().is_some()
-                    && self.state.local_params().is_some() =>
-            {
-                // checkpoint swap pre lock bob
-                debug!("{} | checkpointing bob pre lock swapd state", self.swap_id);
-                if self.state.b_sup_checkpoint_pre_lock() {
-                    checkpoint_send(
-                        endpoints,
-                        self.swap_id,
-                        self.identity(),
-                        ServiceId::Database,
-                        CheckpointState::CheckpointSwapd(CheckpointSwapd {
-                            state: self.state.clone(),
-                            last_msg: Msg::CoreArbitratingSetup(core_arb_setup.clone()),
-                            enquirer: self.enquirer.clone(),
-                            temporal_safety: self.temporal_safety.clone(),
-                            txs: self.txs.clone(),
-                            txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests().clone(),
-                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
-                            xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
-                        }),
-                    )?;
-                }
-                let CoreArbitratingSetup {
-                    swap_id: _,
-                    lock,
-                    cancel,
-                    refund,
-                    cancel_sig: _,
-                } = core_arb_setup.clone();
-                for (tx, tx_label) in [lock, cancel, refund].iter().zip([
-                    TxLabel::Lock,
-                    TxLabel::Cancel,
-                    TxLabel::Refund,
-                ]) {
-                    if !self.syncer_state.is_watched_tx(&tx_label) {
-                        let txid = tx.clone().extract_tx().txid();
-                        let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                        endpoints.send_to(
-                            ServiceBus::Sync,
-                            self.identity(),
-                            self.syncer_state.bitcoin_syncer(),
-                            BusMsg::Sync(SyncMsg::Task(task)),
-                        )?;
-                    }
-                }
-                trace!("sending peer CoreArbitratingSetup msg: {}", &core_arb_setup);
-                self.send_peer(endpoints, Msg::CoreArbitratingSetup(core_arb_setup))?;
-                let next_state = State::Bob(BobState::CorearbB {
-                    received_refund_procedure_signatures: false,
-                    local_params: self.state.local_params().cloned().unwrap(),
-                    cancel_seen: false,
-                    remote_params: self.state.remote_params().unwrap(),
-                    b_address: self.state.b_address().cloned().unwrap(),
-                    last_checkpoint_type: self.state.last_checkpoint_type().unwrap(),
-                    buy_tx_seen: false,
-                });
-                self.state_update(endpoints, next_state)?;
-            }
-
-            BusMsg::Ctl(Ctl::Tx(Tx::Lock(btc_lock))) if self.state.b_core_arb() => {
+            CtlMsg::Tx(Tx::Lock(btc_lock)) if self.state.b_core_arb() => {
                 log_tx_received(self.swap_id, TxLabel::Lock);
                 self.broadcast(btc_lock, TxLabel::Lock, endpoints)?;
                 if let (Some(Params::Bob(bob_params)), Some(Params::Alice(alice_params))) =
@@ -1122,7 +1360,8 @@ impl Runtime {
                     )
                 }
             }
-            BusMsg::Ctl(Ctl::Tx(transaction)) => {
+
+            CtlMsg::Tx(transaction) => {
                 // update state
                 match transaction.clone() {
                     Tx::Cancel(tx) => {
@@ -1144,6 +1383,8 @@ impl Runtime {
                     Tx::Funding(_) => unreachable!("not handled in swapd"),
                     Tx::Lock(_) => unreachable!("handled above"),
                 }
+                // try checkpointing bob state; only if buy proc sig arrived already
+                self.try_checkpoint_bob_pre_buy(endpoints)?;
                 // replay last tx confirmation event received from syncer, recursing
                 let source = self.syncer_state.bitcoin_syncer();
                 match transaction {
@@ -1162,7 +1403,7 @@ impl Runtime {
                 }
             }
 
-            BusMsg::Ctl(Ctl::SweepAddress(sweep_address)) => match sweep_address {
+            CtlMsg::SweepAddress(sweep_address) => match sweep_address {
                 SweepAddressAddendum::Bitcoin(sweep_btc) => {
                     info!(
                         "{} | Sweeping source (funding) address: {} to destination address: {}",
@@ -1203,119 +1444,19 @@ impl Runtime {
                         "Peerd might crash, just ignore it, counterparty closed\
                                connection but you don't need it anymore!"
                     );
-                    let request = BusMsg::Sync(SyncMsg::Task(task));
-                    let dest = self.syncer_state.monero_syncer();
-                    let pending_request = PendingRequest::new(
-                        self.identity(),
-                        dest.clone(),
-                        ServiceBus::Sync,
-                        request,
+                    self.pending_requests.defer_request(
+                        self.syncer_state.monero_syncer(),
+                        PendingRequest::new(
+                            self.identity(),
+                            self.syncer_state.monero_syncer(),
+                            ServiceBus::Sync,
+                            BusMsg::Sync(SyncMsg::Task(task)),
+                        ),
                     );
-                    self.pending_requests.defer_request(dest, pending_request);
                 }
             },
 
-            BusMsg::Msg(Msg::RefundProcedureSignatures(refund_proc_sigs))
-                if self.state.reveal()
-                    && self.state.remote_params().is_some()
-                    && self.state.local_params().is_some() =>
-            {
-                // checkpoint alice pre lock bob
-                debug!(
-                    "{} | checkpointing alice pre lock swapd state",
-                    self.swap_id
-                );
-                if self.state.a_sup_checkpoint_pre_lock() {
-                    checkpoint_send(
-                        endpoints,
-                        self.swap_id,
-                        self.identity(),
-                        ServiceId::Database,
-                        CheckpointState::CheckpointSwapd(CheckpointSwapd {
-                            state: self.state.clone(),
-                            last_msg: Msg::RefundProcedureSignatures(refund_proc_sigs.clone()),
-                            enquirer: self.enquirer.clone(),
-                            temporal_safety: self.temporal_safety.clone(),
-                            txs: self.txs.clone(),
-                            txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests().clone(),
-                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
-                            xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
-                        }),
-                    )?;
-                }
-
-                self.send_peer(endpoints, Msg::RefundProcedureSignatures(refund_proc_sigs))?;
-                trace!("sent peer RefundProcedureSignatures msg");
-                let next_state = State::Alice(AliceState::RefundSigA {
-                    last_checkpoint_type: SwapCheckpointType::CheckpointAlicePreLock,
-                    local_params: self.state.local_params().cloned().unwrap(),
-                    btc_locked: false,
-                    xmr_locked: false,
-                    buy_published: false,
-                    cancel_seen: false,
-                    refund_seen: false,
-                    remote_params: self.state.remote_params().unwrap(),
-                    required_funding_amount: None,
-                    overfunded: false,
-                });
-                self.state_update(endpoints, next_state)?;
-            }
-
-            BusMsg::Msg(Msg::BuyProcedureSignature(ref buy_proc_sig))
-                if self.state.b_core_arb()
-                    && !self.syncer_state.tasks.txids.contains_key(&TxLabel::Buy) =>
-            {
-                // checkpoint bob pre buy
-                debug!("{} | checkpointing bob pre buy swapd state", self.swap_id);
-                if self.state.b_sup_checkpoint_pre_buy() {
-                    checkpoint_send(
-                        endpoints,
-                        self.swap_id,
-                        self.identity(),
-                        ServiceId::Database,
-                        CheckpointState::CheckpointSwapd(CheckpointSwapd {
-                            state: self.state.clone(),
-                            last_msg: Msg::BuyProcedureSignature(buy_proc_sig.clone()),
-                            enquirer: self.enquirer.clone(),
-                            temporal_safety: self.temporal_safety.clone(),
-                            txs: self.txs.clone(),
-                            txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests().clone(),
-                            pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
-                            xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
-                        }),
-                    )?;
-                }
-
-                debug!("subscribing with syncer for receiving raw buy tx ");
-
-                let buy_tx = buy_proc_sig.buy.clone().extract_tx();
-                let txid = buy_tx.txid();
-                // register Buy tx task
-                let tx_label = TxLabel::Buy;
-                if !self.syncer_state.is_watched_tx(&tx_label) {
-                    let task = self.syncer_state.watch_tx_btc(txid, tx_label);
-                    endpoints.send_to(
-                        ServiceBus::Sync,
-                        self.identity(),
-                        self.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(task)),
-                    )?;
-                }
-                // set external eddress: needed to subscribe for buy tx (bob) or refund (alice)
-                self.syncer_state.tasks.txids.insert(TxLabel::Buy, txid);
-                let pending_request = PendingRequest::new(
-                    self.identity(),
-                    self.peer_service.clone(),
-                    ServiceBus::Msg,
-                    request,
-                );
-                self.pending_requests
-                    .defer_request(self.syncer_state.monero_syncer(), pending_request);
-            }
-
-            BusMsg::Ctl(Ctl::AbortSwap)
+            CtlMsg::AbortSwap
                 if self.state.a_start()
                     || self.state.a_commit()
                     || self.state.a_reveal()
@@ -1328,11 +1469,12 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::String("Aborted swap".to_string())),
+                        BusMsg::Info(InfoMsg::String("Aborted swap".to_string())),
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::AbortSwap) if self.state.b_start() => {
+
+            CtlMsg::AbortSwap if self.state.b_start() => {
                 // just cancel the swap, no additional logic required, since funding was not yet retrieved
                 self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Abort)))?;
                 self.abort_swap(endpoints)?;
@@ -1340,11 +1482,12 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::String("Aborted swap".to_string())),
+                        BusMsg::Info(InfoMsg::String("Aborted swap".to_string())),
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::AbortSwap)
+
+            CtlMsg::AbortSwap
                 if self.state.b_commit()
                     || self.state.b_reveal()
                     || (!self.state.b_received_refund_procedure_signatures()
@@ -1353,7 +1496,7 @@ impl Runtime {
                 self.send_ctl(
                     endpoints,
                     ServiceId::Wallet,
-                    BusMsg::Ctl(Ctl::GetSweepBitcoinAddress(
+                    BusMsg::Ctl(CtlMsg::GetSweepBitcoinAddress(
                         self.state.b_address().cloned().unwrap(),
                     )),
                 )?;
@@ -1363,13 +1506,14 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::String(
+                        BusMsg::Info(InfoMsg::String(
                             "Aborting swap, checking if funds can be sweeped.".to_string(),
                         )),
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::AbortSwap) => {
+
+            CtlMsg::AbortSwap => {
                 let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
                 warn!("{} | {}", self.swap_id.swap_id(), msg);
 
@@ -1377,14 +1521,15 @@ impl Runtime {
                     self.send_ctl(
                         endpoints,
                         source,
-                        BusMsg::Rpc(Rpc::Failure(Failure {
+                        BusMsg::Info(InfoMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: msg,
                         })),
                     )?;
                 }
             }
-            BusMsg::Ctl(Ctl::PeerdReconnected(service_id)) => {
+
+            CtlMsg::PeerdReconnected(service_id) => {
                 // set the reconnected service id, if it is not set yet. This
                 // can happen if this is a maker launched swap after restoration
                 // and the taker reconnects
@@ -1397,7 +1542,7 @@ impl Runtime {
                 self.pending_peer_request.clear();
             }
 
-            BusMsg::Ctl(Ctl::Checkpoint(Checkpoint { swap_id, state })) => match state {
+            CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => match state {
                 CheckpointState::CheckpointSwapd(CheckpointSwapd {
                     state,
                     last_msg,
@@ -1478,31 +1623,33 @@ impl Runtime {
                     }
                     let msg = format!("Restored swap at state {}", self.state);
                     let _ = self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg);
-
-                    self.handle_ctl(endpoints, ServiceId::Database, BusMsg::Msg(last_msg))?;
+                    // Simulate message from wallet to trigger last message process handling
+                    self.handle_msg(endpoints, ServiceId::Wallet, last_msg)?;
                 }
                 s => {
                     error!("Checkpoint {} not supported in swapd", s);
                 }
             },
 
-            _ => {
-                error!("BusMsg is not supported by the CTL interface {}", request);
-                return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
+            req => {
+                error!(
+                    "BusMsg {} is not supported by the CTL interface",
+                    req.to_string()
+                );
             }
         }
 
         Ok(())
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
         match request {
-            Rpc::GetInfo => {
+            InfoMsg::GetInfo => {
                 let swap_id = if self.swap_id() == zero!() {
                     None
                 } else {
@@ -1522,11 +1669,14 @@ impl Runtime {
                         .as_secs(),
                     public_offer: self.public_offer.clone(),
                 };
-                self.send_client_rpc(endpoints, source, Rpc::SwapInfo(info))?;
+                self.send_client_info(endpoints, source, InfoMsg::SwapInfo(info))?;
             }
 
             req => {
-                warn!("Ignoring request: {}", req.err());
+                error!(
+                    "BusMsg {} is not supported by the INFO interface",
+                    req.to_string()
+                );
             }
         }
 
@@ -1597,7 +1747,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Monero)),
+                                    BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Monero)),
                                 )?;
                                 self.syncer_state.awaiting_funding = false;
                             }
@@ -1734,7 +1884,7 @@ impl Runtime {
                                     r,
                                     &PendingRequest {
                                         bus_id: ServiceBus::Msg,
-                                        request: BusMsg::Msg(Msg::BuyProcedureSignature(_)),
+                                        request: BusMsg::P2p(PeerMsg::BuyProcedureSignature(_)),
                                         ..
                                     }
                                 )
@@ -1799,7 +1949,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Monero)),
+                                        BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Monero)),
                                     )?;
                                 }
                                 SwapRole::Bob => {
@@ -1807,7 +1957,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Bitcoin)),
+                                        BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Bitcoin)),
                                     )?;
                                 }
                             }
@@ -1845,7 +1995,7 @@ impl Runtime {
                             None
                         };
                         if let Some(success) = success {
-                            let swap_success_req = BusMsg::Ctl(Ctl::SwapOutcome(success));
+                            let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(success));
                             self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
                             self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
                             // remove txs to invalidate outdated states
@@ -1899,11 +2049,7 @@ impl Runtime {
                                         msg,
                                     )?;
                                     // FIXME: syncer shall not have permission to AbortSwap, replace source by identity?
-                                    self.handle_ctl(
-                                        endpoints,
-                                        source,
-                                        BusMsg::Ctl(Ctl::AbortSwap),
-                                    )?;
+                                    self.handle_ctl(endpoints, source, CtlMsg::AbortSwap)?;
                                     return Ok(());
                                 } else {
                                     // funding completed, amount is correct
@@ -1911,12 +2057,12 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCompleted(Blockchain::Bitcoin)),
+                                        BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Bitcoin)),
                                     )?;
                                 }
 
                                 // forward tx to wallet
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Funding(tx)));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Funding(tx)));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?;
                             }
 
@@ -1946,13 +2092,13 @@ impl Runtime {
                             TxLabel::Buy if self.state.b_buy_sig() => {
                                 log_tx_seen(self.swap_id, &txlabel, &tx.txid());
                                 self.state.b_sup_buy_tx_seen();
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Buy(tx.clone())));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Buy(tx.clone())));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?
                             }
                             TxLabel::Buy if self.state.b_core_arb() => {
                                 log_tx_seen(self.swap_id, &txlabel, &tx.txid());
                                 self.state.b_sup_buy_tx_seen();
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Buy(tx.clone())));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Buy(tx.clone())));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?;
 
                                 // The buy transaction is received in Corearb state, go straight to buy state
@@ -1978,7 +2124,7 @@ impl Runtime {
                                 =>
                             {
                                 log_tx_seen(self.swap_id, &txlabel, &tx.txid());
-                                let req = BusMsg::Ctl(Ctl::Tx(Tx::Refund(tx.clone())));
+                                let req = BusMsg::Ctl(CtlMsg::Tx(Tx::Refund(tx.clone())));
                                 self.send_wallet(ServiceBus::Ctl, endpoints, req)?
                             }
                             txlabel => {
@@ -2066,7 +2212,7 @@ impl Runtime {
                                         address.addr(),
                                     );
                                     self.state.a_sup_required_funding_amount(amount);
-                                    let funding_request = BusMsg::Ctl(Ctl::FundingInfo(
+                                    let funding_request = BusMsg::Ctl(CtlMsg::FundingInfo(
                                         FundingInfo::Monero(MoneroFundingInfo {
                                             swap_id,
                                             address,
@@ -2170,7 +2316,7 @@ impl Runtime {
                                     ServiceBus::Ctl,
                                     self.identity(),
                                     ServiceId::Farcasterd,
-                                    BusMsg::Ctl(Ctl::FundingCanceled(Blockchain::Monero)),
+                                    BusMsg::Ctl(CtlMsg::FundingCanceled(Blockchain::Monero)),
                                 )?
                             }
 
@@ -2223,7 +2369,7 @@ impl Runtime {
                                         ServiceBus::Ctl,
                                         self.identity(),
                                         ServiceId::Farcasterd,
-                                        BusMsg::Ctl(Ctl::FundingCanceled(Blockchain::Monero)),
+                                        BusMsg::Ctl(CtlMsg::FundingCanceled(Blockchain::Monero)),
                                     )?;
                                     self.syncer_state.awaiting_funding = false;
                                 }
@@ -2248,7 +2394,7 @@ impl Runtime {
                                     BusMsg::Sync(SyncMsg::Task(abort_all)),
                                 )?;
                                 let swap_success_req =
-                                    BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Refund));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Refund));
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     endpoints,
@@ -2287,7 +2433,8 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     BusMsg::Sync(SyncMsg::Task(abort_all)),
                                 )?;
-                                let swap_success_req = BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Buy));
+                                let swap_success_req =
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Buy));
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     endpoints,
@@ -2352,7 +2499,7 @@ impl Runtime {
                                     State::Bob(BobState::FinishB(Outcome::Refund)),
                                 )?;
                                 let swap_success_req =
-                                    BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Refund));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Refund));
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Wallet,
@@ -2396,7 +2543,7 @@ impl Runtime {
                                     }
                                 }
                                 let swap_success_req =
-                                    BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Punish));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Punish));
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Wallet,
@@ -2453,7 +2600,7 @@ impl Runtime {
                             ServiceBus::Ctl,
                             self.identity(),
                             ServiceId::Farcasterd,
-                            BusMsg::Ctl(Ctl::FundingCanceled(Blockchain::Bitcoin)),
+                            BusMsg::Ctl(CtlMsg::FundingCanceled(Blockchain::Bitcoin)),
                         )?;
                         self.abort_swap(endpoints)?;
                     }
@@ -2493,7 +2640,7 @@ impl Runtime {
                                         &i,
                                         &PendingRequest {
                                             bus_id: ServiceBus::Msg,
-                                            request: BusMsg::Msg(Msg::Reveal(
+                                            request: BusMsg::P2p(PeerMsg::Reveal(
                                                 Reveal::AliceParameters(..)
                                             )),
                                             dest: ServiceId::Swap(..),
@@ -2512,8 +2659,11 @@ impl Runtime {
                 }
             }
 
-            _ => {
-                warn!("BusMsg is not handled by the SYNC interface {}", request);
+            req => {
+                error!(
+                    "BusMsg {} is not supported by the SYNC interface",
+                    req.to_string()
+                );
             }
         }
 
@@ -2542,11 +2692,13 @@ impl Runtime {
             total_fees.label(),
         );
         self.state.b_sup_required_funding_amount(amount);
-        let req = BusMsg::Ctl(Ctl::FundingInfo(FundingInfo::Bitcoin(BitcoinFundingInfo {
-            swap_id,
-            address,
-            amount,
-        })));
+        let req = BusMsg::Ctl(CtlMsg::FundingInfo(FundingInfo::Bitcoin(
+            BitcoinFundingInfo {
+                swap_id,
+                address,
+                amount,
+            },
+        )));
         self.syncer_state.awaiting_funding = true;
 
         if let Some(enquirer) = self.enquirer.clone() {
@@ -2624,7 +2776,7 @@ impl Runtime {
     }
 
     fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        let swap_success_req = BusMsg::Ctl(Ctl::SwapOutcome(Outcome::Abort));
+        let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Abort));
         self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
         self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
         info!("{} | Aborted swap.", self.swap_id.swap_id());

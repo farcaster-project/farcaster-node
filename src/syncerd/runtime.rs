@@ -13,8 +13,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::bus::{
-    ctl::Ctl,
-    rpc::{Rpc, SyncerInfo},
+    ctl::CtlMsg,
+    info::{InfoMsg, SyncerInfo},
     sync::SyncMsg,
     BusMsg, ServiceBus,
 };
@@ -118,15 +118,13 @@ impl esb::Handler<ServiceBus> for Runtime {
         request: BusMsg,
     ) -> Result<(), Self::Error> {
         match (bus, request) {
-            // FIXME: to be removed
-            (ServiceBus::Msg, request) => self.handle_msg(endpoints, source, request),
-            // Control bus for issuing control commands, only accept BusMsg::Ctl
+            // Control bus for issuing control commands, only accept Ctl message
             (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
-            // RPC command bus, only accept BusMsg::Rpc
-            (ServiceBus::Rpc, BusMsg::Rpc(req)) => self.handle_rpc(endpoints, source, req),
-            // Syncer event bus for blockchain tasks and events, only accept BusMsg::Sync
+            // Info command bus, only accept Info message
+            (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
+            // Syncer event bus for blockchain tasks and events, only accept Sync message
             (ServiceBus::Sync, BusMsg::Sync(req)) => self.handle_sync(endpoints, source, req),
-            // Internal syncer bridge for inner communication, only accept BusMsg::Sync
+            // Internal syncer bridge for inner communication, only accept Sync message
             (ServiceBus::Bridge, BusMsg::Sync(req)) => self.handle_bridge(endpoints, source, req),
             // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
@@ -142,33 +140,14 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    fn handle_msg(
-        &mut self,
-        _endpoints: &mut Endpoints,
-        _source: ServiceId,
-        request: BusMsg,
-    ) -> Result<(), Error> {
-        match request {
-            BusMsg::Ctl(Ctl::Hello) => {
-                // Ignoring; this is used to set remote identity at ZMQ level
-            }
-
-            _ => {
-                error!("MSG RPC can be only used for forwarding farcaster protocol messages");
-                return Err(Error::NotSupported(ServiceBus::Msg, request.to_string()));
-            }
-        }
-        Ok(())
-    }
-
     fn handle_ctl(
         &mut self,
         _endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Ctl,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         match (&request, &source) {
-            (Ctl::Hello, _) => {
+            (CtlMsg::Hello, _) => {
                 // Ignoring; this is used to set remote identity at ZMQ level
                 info!(
                     "Service {} daemon is now {}",
@@ -177,7 +156,7 @@ impl Runtime {
                 );
             }
 
-            (Ctl::Terminate, ServiceId::Farcasterd) => {
+            (CtlMsg::Terminate, ServiceId::Farcasterd) => {
                 // terminate all runtimes
                 info!("Received terminate on {}", self.identity());
                 std::process::exit(0);
@@ -197,18 +176,18 @@ impl Runtime {
         Ok(())
     }
 
-    fn handle_rpc(
+    fn handle_info(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
         match request {
-            Rpc::GetInfo => {
-                self.send_client_rpc(
+            InfoMsg::GetInfo => {
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::SyncerInfo(SyncerInfo {
+                    InfoMsg::SyncerInfo(SyncerInfo {
                         syncer: self.identity().to_string(),
                         uptime: SystemTime::now()
                             .duration_since(self.started)
@@ -223,11 +202,11 @@ impl Runtime {
                 )?;
             }
 
-            Rpc::ListTasks => {
-                self.send_client_rpc(
+            InfoMsg::ListTasks => {
+                self.send_client_info(
                     endpoints,
                     source,
-                    Rpc::TaskList(self.tasks.iter().cloned().collect()),
+                    InfoMsg::TaskList(self.tasks.iter().cloned().collect()),
                 )?;
             }
 

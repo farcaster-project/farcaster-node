@@ -13,7 +13,7 @@ use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
-use crate::bus::msg::Commit;
+use crate::bus::p2p::{Commit, TakeCommit};
 use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
 };
@@ -24,7 +24,7 @@ use crate::{Error, ServiceId};
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
-pub enum Ctl {
+pub enum CtlMsg {
     #[display("hello()")]
     Hello,
 
@@ -41,12 +41,16 @@ pub enum Ctl {
     #[display(inner)]
     Progress(Progress),
 
+    /// A message sent from farcaster to maker swap service to begin the swap.
     #[display("make_swap({0})")]
     MakeSwap(InitSwap),
 
+    /// A message sent from farcaster to taker swap service to begin the swap.
     #[display("take_swap({0})")]
     TakeSwap(InitSwap),
 
+    /// A message sent from the wallet to notify farcaster the successful initialisation of the
+    /// maker/taker wallet.
     #[display("launch_swap({0})")]
     LaunchSwap(LaunchSwap),
 
@@ -65,11 +69,19 @@ pub enum Ctl {
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(CheckpointEntry),
 
+    /// A message sent from a client to farcaster to register a new offer a boostrap all necessary
+    /// services on farcaster side.
     #[display("make_offer({0})")]
     MakeOffer(ProtoPublicOffer),
 
+    /// A message sent from farcaster to wallet to trigger the creation of the taker wallet.
     #[display("take_offer({0}))")]
     TakeOffer(PubOffer),
+
+    /// A message sent from farcaster to wallet to trigger the creation of the maker wallet after a
+    /// taker commit message is received.
+    #[display("taker_commited({0}))")]
+    TakerCommitted(TakerCommitted),
 
     #[display("get_keys({0})")]
     GetKeys(GetKeys),
@@ -318,4 +330,13 @@ pub enum Tx {
     Refund(Transaction),
     #[display("punish(..)")]
     Punish(Transaction),
+}
+
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
+#[display("taker_commited")]
+pub struct TakerCommitted {
+    pub swap_id: SwapId,
+    pub arbitrating_addr: bitcoin::Address,
+    pub accordant_addr: monero::Address,
+    pub taker_commit: TakeCommit,
 }

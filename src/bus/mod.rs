@@ -13,8 +13,8 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 pub mod ctl;
-pub mod msg;
-pub mod rpc;
+pub mod info;
+pub mod p2p;
 pub mod sync;
 mod types;
 
@@ -24,9 +24,9 @@ pub use types::*;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 
-use crate::bus::ctl::Ctl;
-use crate::bus::msg::Msg;
-use crate::bus::rpc::Rpc;
+use crate::bus::ctl::CtlMsg;
+use crate::bus::info::InfoMsg;
+use crate::bus::p2p::PeerMsg;
 use crate::bus::sync::SyncMsg;
 use crate::ServiceId;
 
@@ -46,9 +46,9 @@ pub enum ServiceBus {
     #[display("CTL")]
     Ctl,
 
-    /// RPC interface, from client to node
-    #[display("RPC")]
-    Rpc,
+    /// Info interface, from client to node to read data
+    #[display("INFO")]
+    Info,
 
     /// Syncer interface, for syncer's tasks and events
     #[display("SYNC")]
@@ -72,19 +72,19 @@ pub enum BusMsg {
     #[api(type = 1)]
     #[display(inner)]
     #[from]
-    Msg(Msg),
+    P2p(PeerMsg),
 
     /// Wrapper for inner type of control messages to be transmitted over the control bus
     #[api(type = 2)]
     #[display(inner)]
     #[from]
-    Ctl(Ctl),
+    Ctl(CtlMsg),
 
-    /// Wrapper for inner type of RPC messages to be transmitted over the rpc bus
+    /// Wrapper for inner type of info messages to be transmitted over the info bus
     #[api(type = 3)]
     #[display(inner)]
     #[from]
-    Rpc(Rpc),
+    Info(InfoMsg),
 
     /// Wrapper for inner type of syncer messages to be transmitted over the syncer bus
     #[api(type = 4)]
@@ -97,7 +97,7 @@ impl microservices::rpc::Request for BusMsg {}
 
 impl From<crate::Error> for BusMsg {
     fn from(err: crate::Error) -> Self {
-        BusMsg::Ctl(Ctl::Failure(Failure {
+        BusMsg::Ctl(CtlMsg::Failure(Failure {
             code: FailureCode::Unknown,
             info: err.to_string(),
         }))

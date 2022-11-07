@@ -2,8 +2,8 @@ use bitcoin::hashes::{hex::ToHex, Hash};
 use farcaster_core::blockchain::{Blockchain, Network};
 
 use crate::{
-    bus::ctl::Ctl,
-    bus::rpc::Rpc,
+    bus::ctl::CtlMsg,
+    bus::info::InfoMsg,
     bus::sync::SyncMsg,
     bus::BusMsg,
     error::Error,
@@ -120,7 +120,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
 ) -> Result<Option<SyncerStateMachine>, Error> {
     let source = event.source.clone();
     match event.request.clone() {
-        BusMsg::Ctl(Ctl::SweepAddress(sweep_address)) => {
+        BusMsg::Ctl(CtlMsg::SweepAddress(sweep_address)) => {
             let (blockchain, network) = match sweep_address.clone() {
                 SweepAddressAddendum::Monero(addendum) => {
                     let blockchain = Blockchain::Monero;
@@ -202,7 +202,7 @@ fn attempt_transition_to_awaiting_syncer_request(
         syncer_task_id,
     } = awaiting_syncer;
     match (event.request.clone(), event.source.clone()) {
-        (BusMsg::Ctl(Ctl::Hello), syncer_id) if syncer == syncer_id => {
+        (BusMsg::Ctl(CtlMsg::Hello), syncer_id) if syncer == syncer_id => {
             event
                 .complete_sync_service(syncer.clone(), BusMsg::Sync(SyncMsg::Task(syncer_task)))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
@@ -214,7 +214,7 @@ fn attempt_transition_to_awaiting_syncer_request(
             )))
         }
         (req, source) => {
-            if let BusMsg::Ctl(Ctl::Hello) = req {
+            if let BusMsg::Ctl(CtlMsg::Hello) = req {
                 trace!(
                     "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,
@@ -256,17 +256,17 @@ fn attempt_transition_to_end(
                 .pop()
                 .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
             {
-                event.send_rpc_service(
+                event.send_info_service(
                     source,
-                    BusMsg::Rpc(Rpc::String(format!(
+                    BusMsg::Info(InfoMsg::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
                         txid.to_hex()
                     ))),
                 )?;
             } else {
-                event.send_rpc_service(
+                event.send_info_service(
                     source,
-                    BusMsg::Rpc(Rpc::String("Nothing to sweep.".to_string())),
+                    BusMsg::Info(InfoMsg::String("Nothing to sweep.".to_string())),
                 )?;
             }
 
@@ -279,7 +279,7 @@ fn attempt_transition_to_end(
                         if !runtime.syncer_has_client(service) {
                             info!("Terminating {}", service);
                             event
-                                .send_ctl_service(service.clone(), BusMsg::Ctl(Ctl::Terminate))
+                                .send_ctl_service(service.clone(), BusMsg::Ctl(CtlMsg::Terminate))
                                 .is_err()
                         } else {
                             true
@@ -292,7 +292,7 @@ fn attempt_transition_to_end(
             Ok(None)
         }
         (req, source) => {
-            if let BusMsg::Ctl(Ctl::Hello) = req {
+            if let BusMsg::Ctl(CtlMsg::Hello) = req {
                 trace!(
                     "BusMsg {} from {} invalid for state awaiting syncer.",
                     req,

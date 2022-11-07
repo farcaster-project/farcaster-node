@@ -12,8 +12,6 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::{rpc::Address, AddressSecretKey};
-use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use farcaster_core::swap::btcxmr::Offer;
 use std::io::{self, Read};
 use std::str::FromStr;
@@ -35,10 +33,12 @@ use farcaster_core::{
 use super::Command;
 use crate::bus::BusMsg;
 use crate::bus::{
-    ctl::{self, Ctl},
-    rpc::Rpc,
+    ctl::{self, CtlMsg},
+    info::{Address, InfoMsg},
+    AddressSecretKey,
 };
 use crate::client::Client;
+use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{Error, LogStyle, ServiceId};
 
 impl Exec for Command {
@@ -55,13 +55,13 @@ impl Exec for Command {
                         .err()
                 );
                 match subject.len() {
-                    0 => runtime.request_rpc(ServiceId::Farcasterd, Rpc::GetInfo)?,
+                    0 => runtime.request_info(ServiceId::Farcasterd, InfoMsg::GetInfo)?,
                     1 => {
                         let subj = subject.get(0).expect("vec of lenght 1");
                         if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                            runtime.request_rpc(ServiceId::Peer(node_addr), Rpc::GetInfo)?;
+                            runtime.request_info(ServiceId::Peer(node_addr), InfoMsg::GetInfo)?;
                         } else if let Ok(swap_id) = SwapId::from_str(&subj) {
-                            runtime.request_rpc(ServiceId::Swap(swap_id), Rpc::GetInfo)?;
+                            runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
                         } else {
                             return Err(Error::Other(err));
                         }
@@ -70,16 +70,18 @@ impl Exec for Command {
                         let blockchain =
                             Blockchain::from_str(&subject.get(0).expect("vec of lenght 2"))?;
                         let network = Network::from_str(&subject.get(1).expect("vec of lenght 2"))?;
-                        runtime
-                            .request_rpc(ServiceId::Syncer(blockchain, network), Rpc::GetInfo)?;
+                        runtime.request_info(
+                            ServiceId::Syncer(blockchain, network),
+                            InfoMsg::GetInfo,
+                        )?;
                     }
                     _ => return Err(Error::Other(err)),
                 }
                 match runtime.response()? {
-                    BusMsg::Rpc(Rpc::NodeInfo(info)) => println!("{}", info),
-                    BusMsg::Rpc(Rpc::PeerInfo(info)) => println!("{}", info),
-                    BusMsg::Rpc(Rpc::SwapInfo(info)) => println!("{}", info),
-                    BusMsg::Rpc(Rpc::SyncerInfo(info)) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::NodeInfo(info)) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::PeerInfo(info)) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::SwapInfo(info)) => println!("{}", info),
+                    BusMsg::Info(InfoMsg::SyncerInfo(info)) => println!("{}", info),
                     _ => {
                         return Err(Error::Other(
                             "Server returned unrecognizable response".to_string(),
@@ -89,18 +91,18 @@ impl Exec for Command {
             }
 
             Command::Peers => {
-                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListPeers)?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListPeers)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListSwaps => {
-                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListSwaps)?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListSwaps)?;
                 runtime.report_response_or_fail()?;
             }
 
             // TODO: only list offers matching list of OfferIds
             Command::ListOffers { select } => {
-                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListOffers(select.into()))?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListOffers(select.into()))?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -108,24 +110,24 @@ impl Exec for Command {
                 blockchain,
                 network,
             } => {
-                runtime.request_rpc(ServiceId::Syncer(blockchain, network), Rpc::ListTasks)?;
+                runtime.request_info(ServiceId::Syncer(blockchain, network), InfoMsg::ListTasks)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListListens => {
-                runtime.request_rpc(ServiceId::Farcasterd, Rpc::ListListens)?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::ListListens)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::ListCheckpoints => {
-                runtime.request_rpc(ServiceId::Database, Rpc::RetrieveAllCheckpointInfo)?;
+                runtime.request_info(ServiceId::Database, InfoMsg::RetrieveAllCheckpointInfo)?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::RestoreCheckpoint { swap_id } => {
-                runtime.request_rpc(ServiceId::Database, Rpc::GetCheckpointEntry(swap_id))?;
-                if let BusMsg::Rpc(Rpc::CheckpointEntry(entry)) = runtime.report_failure()? {
-                    runtime.request_ctl(ServiceId::Farcasterd, Ctl::RestoreCheckpoint(entry))?;
+                runtime.request_info(ServiceId::Database, InfoMsg::GetCheckpointEntry(swap_id))?;
+                if let BusMsg::Info(InfoMsg::CheckpointEntry(entry)) = runtime.report_failure()? {
+                    runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RestoreCheckpoint(entry))?;
                     runtime.report_response_or_fail()?;
                 } else {
                     return Err(Error::Farcaster("Received unexpected response".to_string()));
@@ -209,7 +211,7 @@ impl Exec for Command {
                     arbitrating_addr,
                     accordant_addr,
                 };
-                runtime.request_ctl(ServiceId::Farcasterd, Ctl::MakeOffer(proto_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::MakeOffer(proto_offer))?;
                 // report success or failure of the request to cli
                 runtime.report_response_or_fail()?;
             }
@@ -299,7 +301,7 @@ impl Exec for Command {
                     // pass offer to farcasterd to initiate the swap
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Ctl::TakeOffer(ctl::PubOffer {
+                        CtlMsg::TakeOffer(ctl::PubOffer {
                             public_offer,
                             external_address: bitcoin_address,
                             internal_address: monero_address,
@@ -311,12 +313,12 @@ impl Exec for Command {
             }
 
             Command::RevokeOffer { public_offer } => {
-                runtime.request_ctl(ServiceId::Farcasterd, Ctl::RevokeOffer(public_offer))?;
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::RevokeOffer(public_offer))?;
                 runtime.report_response_or_fail()?;
             }
 
             Command::AbortSwap { swap_id } => {
-                runtime.request_ctl(ServiceId::Swap(swap_id), Ctl::AbortSwap)?;
+                runtime.request_ctl(ServiceId::Swap(swap_id), CtlMsg::AbortSwap)?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -324,23 +326,27 @@ impl Exec for Command {
                 if follow {
                     // subscribe to progress event and loop until Finish event is received or user
                     // ctrl-c the cli. Expect to recieve a stream of event responses
-                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::SubscribeProgress(swapid))?;
+                    runtime
+                        .request_info(ServiceId::Farcasterd, InfoMsg::SubscribeProgress(swapid))?;
                     let res = runtime.report_progress();
                     // if user didn't ctrl-c before that point we can cleanly unsubscribe the
                     // client from the notification stream and then return the result from report
                     // progress
-                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::UnsubscribeProgress(swapid))?;
+                    runtime.request_info(
+                        ServiceId::Farcasterd,
+                        InfoMsg::UnsubscribeProgress(swapid),
+                    )?;
                     return res;
                 } else {
                     // request a read progress response. Expect to recieve only one response and
                     // quit
-                    runtime.request_rpc(ServiceId::Farcasterd, Rpc::ReadProgress(swapid))?;
+                    runtime.request_info(ServiceId::Farcasterd, InfoMsg::ReadProgress(swapid))?;
                     runtime.report_response_or_fail()?;
                 }
             }
 
             Command::NeedsFunding { blockchain } => {
-                runtime.request_rpc(ServiceId::Farcasterd, Rpc::NeedsFunding(blockchain))?;
+                runtime.request_info(ServiceId::Farcasterd, InfoMsg::NeedsFunding(blockchain))?;
                 runtime.report_response_or_fail()?;
             }
 
@@ -348,18 +354,18 @@ impl Exec for Command {
                 source_address,
                 destination_address,
             } => {
-                runtime.request_rpc(
+                runtime.request_info(
                     ServiceId::Database,
-                    Rpc::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
+                    InfoMsg::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
-                if let BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Bitcoin {
+                if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
                     secret_key,
                     ..
                 })) = runtime.report_failure()?
                 {
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Ctl::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
+                        CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                             source_address,
                             source_secret_key: secret_key,
                             destination_address,
@@ -375,11 +381,11 @@ impl Exec for Command {
                 source_address,
                 destination_address,
             } => {
-                runtime.request_rpc(
+                runtime.request_info(
                     ServiceId::Database,
-                    Rpc::GetAddressSecretKey(Address::Monero(source_address)),
+                    InfoMsg::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
-                if let BusMsg::Rpc(Rpc::AddressSecretKey(AddressSecretKey::Monero {
+                if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
                     view,
                     spend,
                     ..
@@ -387,7 +393,7 @@ impl Exec for Command {
                 {
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
-                        Ctl::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
+                        CtlMsg::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
                             source_spend_key: spend,
                             source_view_key: view,
                             destination_address,

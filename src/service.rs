@@ -12,9 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::Ctl;
-use crate::bus::rpc::Rpc;
-use crate::bus::sync::SyncMsg;
+use crate::bus::ctl::CtlMsg;
+use crate::bus::info::InfoMsg;
 use crate::bus::BusMsg;
 use crate::bus::{Failure, Progress, ServiceBus};
 use std::fmt::{self, Display, Formatter};
@@ -106,8 +105,8 @@ pub struct ServiceConfig {
     /// ZMQ socket for internal service control bus
     pub ctl_endpoint: ServiceAddr,
 
-    /// ZMQ socket for remote procedure call bus
-    pub rpc_endpoint: ServiceAddr,
+    /// ZMQ socket for internal info service bus
+    pub info_endpoint: ServiceAddr,
 
     /// ZMQ socket for syncer events bus
     pub sync_endpoint: ServiceAddr,
@@ -119,7 +118,7 @@ impl From<Opts> for ServiceConfig {
         ServiceConfig {
             msg_endpoint: opts.msg_socket,
             ctl_endpoint: opts.ctl_socket,
-            rpc_endpoint: opts.rpc_socket,
+            info_endpoint: opts.info_socket,
             sync_endpoint: opts.sync_socket,
         }
     }
@@ -246,8 +245,8 @@ where
                 api_type,
                 router.clone()
             ),
-            ServiceBus::Rpc => esb::BusConfig::with_addr(
-                config.rpc_endpoint,
+            ServiceBus::Info => esb::BusConfig::with_addr(
+                config.info_endpoint,
                 api_type,
                 router.clone()
             ),
@@ -299,17 +298,7 @@ where
             self.esb.send_to(
                 ServiceBus::Ctl,
                 ServiceId::Farcasterd,
-                BusMsg::Ctl(Ctl::Hello),
-            )?;
-            self.esb.send_to(
-                ServiceBus::Msg,
-                ServiceId::Farcasterd,
-                BusMsg::Ctl(Ctl::Hello),
-            )?;
-            self.esb.send_to(
-                ServiceBus::Sync,
-                ServiceId::Farcasterd,
-                BusMsg::Sync(SyncMsg::Hello),
+                BusMsg::Ctl(CtlMsg::Hello),
             )?;
         }
 
@@ -362,7 +351,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Success(msg.map(|m| m.to_string()).into())),
+                BusMsg::Ctl(CtlMsg::Success(msg.map(|m| m.to_string()).into())),
             )?;
         }
         Ok(())
@@ -379,7 +368,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Progress(Progress::Message(msg.to_string()))),
+                BusMsg::Ctl(CtlMsg::Progress(Progress::Message(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -396,7 +385,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Progress(Progress::StateTransition(msg.to_string()))),
+                BusMsg::Ctl(CtlMsg::Progress(Progress::StateTransition(msg.to_string()))),
             )?;
         }
         Ok(())
@@ -414,7 +403,7 @@ where
                 ServiceBus::Ctl,
                 self.identity(),
                 dest,
-                BusMsg::Ctl(Ctl::Failure(failure.clone())),
+                BusMsg::Ctl(CtlMsg::Failure(failure.clone())),
             );
         }
         Error::Terminate(failure.to_string())
@@ -460,17 +449,17 @@ where
         Ok(())
     }
 
-    fn send_client_rpc(
+    fn send_client_info(
         &mut self,
         senders: &mut Endpoints,
         dest: ServiceId,
-        request: Rpc,
+        request: InfoMsg,
     ) -> Result<(), Error> {
-        let bus = ServiceBus::Rpc;
+        let bus = ServiceBus::Info;
         if let ServiceId::GrpcdClient(_) = dest {
-            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Rpc(request))?;
+            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Info(request))?;
         } else {
-            senders.send_to(bus, self.identity(), dest, BusMsg::Rpc(request))?;
+            senders.send_to(bus, self.identity(), dest, BusMsg::Info(request))?;
         }
         Ok(())
     }
