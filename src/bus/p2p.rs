@@ -26,7 +26,6 @@ pub enum PeerMsg {
     //#[api(type = 33703)]
     //#[display("reveal {0}")]
     //Reveal(Reveal),
-
     #[api(type = 33704)]
     #[display("reveal {0}")]
     Reveal2(Reveal2),

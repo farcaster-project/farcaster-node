@@ -754,9 +754,8 @@ impl Runtime {
                                 // 3. watch the arbitrating address to receive an event on funding
                                 debug!("Bob: watch the arbitrating address to receive an event on funding");
                                 if !self.syncer_state.is_watched_addr(&TxLabel::Funding) {
-                                    let watch_addr_task = self
-                                        .syncer_state
-                                        .watch_addr_btc(address, TxLabel::Funding);
+                                    let watch_addr_task =
+                                        self.syncer_state.watch_addr_btc(address, TxLabel::Funding);
                                     endpoints.send_to(
                                         ServiceBus::Sync,
                                         self.identity(),
@@ -1111,7 +1110,6 @@ impl Runtime {
                 }
             }
             */
-
             // Swap role: Bob, initiator of this message
             // Message #1 after commit/reveal
             //

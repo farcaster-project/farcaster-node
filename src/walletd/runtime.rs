@@ -608,7 +608,6 @@ impl Runtime {
                 }
             }
             */
-
             PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures {
                 swap_id: _,
                 cancel_sig: alice_cancel_sig,
