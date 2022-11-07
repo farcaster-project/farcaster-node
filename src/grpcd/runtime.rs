@@ -439,7 +439,9 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
+                Err(Status::internal(info))
+            }
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -494,7 +496,9 @@ impl Farcaster for FarcasterService {
                 let reply = farcaster::AbortSwapResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
+                Err(Status::internal(info))
+            }
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -525,7 +529,9 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
+                Err(Status::internal(info))
+            }
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -558,7 +564,9 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
+                Err(Status::internal(info))
+            }
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
@@ -586,7 +594,7 @@ impl Farcaster for FarcasterService {
             match oneshot_rx.await {
                 Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
                     secret_key,
-                    ..
+                    address: _,
                 }))) => {
                     let oneshot_rx = self
                         .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
@@ -605,7 +613,7 @@ impl Farcaster for FarcasterService {
                             let reply = SweepAddressResponse { id, message };
                             Ok(GrpcResponse::new(reply))
                         }
-                        Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => {
+                        Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
                             Err(Status::internal(info))
                         }
                         _ => Err(Status::internal(format!("Received invalid response"))),
@@ -630,7 +638,7 @@ impl Farcaster for FarcasterService {
                 Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
                     view,
                     spend,
-                    ..
+                    address: _,
                 }))) => {
                     let oneshot_rx = self
                         .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
@@ -650,7 +658,7 @@ impl Farcaster for FarcasterService {
                             let reply = SweepAddressResponse { id, message };
                             Ok(GrpcResponse::new(reply))
                         }
-                        Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => {
+                        Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
                             Err(Status::internal(info))
                         }
                         _ => Err(Status::internal(format!("Received invalid response"))),
@@ -743,7 +751,9 @@ impl Farcaster for FarcasterService {
                 let reply = farcaster::TakeResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
+                Err(Status::internal(info))
+            }
             _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
