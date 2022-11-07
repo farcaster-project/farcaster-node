@@ -1313,16 +1313,13 @@ impl Runtime {
 
             CtlMsg::GetSweepBitcoinAddress(source_address) => {
                 let swap_id = get_swap_id(&source)?;
-                if let Some(Wallet::Bob(BobState { key_manager, .. })) =
-                    self.wallets.get_mut(&swap_id)
+                if let Some(Wallet::Bob(BobState {
+                    key_manager, bob, ..
+                })) = self.wallets.get_mut(&swap_id)
                 {
                     let source_secret_key =
                         key_manager.get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?;
-                    let destination_address = self
-                        .btc_addrs
-                        .get(&swap_id)
-                        .expect("checked at start of swap")
-                        .clone();
+                    let destination_address = bob.refund_address.clone();
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         ServiceId::Wallet,
