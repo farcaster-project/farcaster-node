@@ -10,6 +10,8 @@ use internet2::addr::NodeId;
 use microservices::rpc;
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
+use crate::swapd::StateReport;
+
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{swap_id}, {public_offer}")]
 #[cfg_attr(
@@ -71,7 +73,7 @@ pub struct OfferStatusPair {
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferStatusPair {}
 
-#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -92,7 +94,20 @@ pub enum Outcome {
 #[display(inner)]
 pub enum Progress {
     Message(String),
-    StateTransition(String),
+    StateUpdate(StateReport),
+    StateTransition(StateTransition),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display("State transition: {old_state} -> {new_state}")]
+pub struct StateTransition {
+    pub old_state: StateReport,
+    pub new_state: StateReport,
 }
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, NetworkEncode, NetworkDecode)]

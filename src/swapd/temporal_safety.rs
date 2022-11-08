@@ -49,10 +49,16 @@ impl TemporalSafety {
         self.final_tx(lock_confirmations, Blockchain::Bitcoin)
             && lock_confirmations > (self.cancel_timelock - self.race_thr + 1)
     }
+    pub fn blocks_until_stop_funding(&self, lock_confirmations: u32) -> i64 {
+        self.cancel_timelock as i64 - (self.race_thr as i64 + 1 + lock_confirmations as i64)
+    }
     /// lock must be final, valid after lock_minedblock + cancel_timelock
     pub fn valid_cancel(&self, lock_confirmations: u32) -> bool {
         self.final_tx(lock_confirmations, Blockchain::Bitcoin)
             && lock_confirmations >= self.cancel_timelock
+    }
+    pub fn blocks_until_cancel(&self, lock_confirmations: u32) -> i64 {
+        self.cancel_timelock as i64 - lock_confirmations as i64
     }
     /// lock must be final, but buy shall not be raced with cancel
     pub fn safe_buy(&self, lock_confirmations: u32) -> bool {
@@ -67,5 +73,8 @@ impl TemporalSafety {
     pub fn valid_punish(&self, cancel_confirmations: u32) -> bool {
         self.final_tx(cancel_confirmations, Blockchain::Bitcoin)
             && cancel_confirmations >= self.punish_timelock
+    }
+    pub fn blocks_until_punish_after_cancel(&self, cancel_confirmations: u32) -> i64 {
+        self.punish_timelock as i64 - cancel_confirmations as i64
     }
 }

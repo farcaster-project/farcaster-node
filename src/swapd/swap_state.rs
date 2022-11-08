@@ -9,6 +9,7 @@ use crate::bus::p2p::Commit;
 use crate::bus::Outcome;
 
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
+
 pub enum AliceState {
     // #[display("Start: {0:#?} {1:#?}")]
     #[display("Start")]

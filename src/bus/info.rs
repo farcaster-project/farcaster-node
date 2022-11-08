@@ -15,9 +15,11 @@ use crate::bus::{
 };
 use crate::cli::OfferSelector;
 use crate::farcasterd::stats::Stats;
+use crate::swapd::StateReport;
 use crate::syncerd::runtime::SyncerdTask;
 
 use super::ctl::FundingInfo;
+use super::StateTransition;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -332,8 +334,9 @@ pub struct FundingInfos {
 pub enum ProgressEvent {
     #[serde(rename = "message")]
     Message(String),
+    StateUpdate(StateReport),
     #[serde(rename = "transition")]
-    StateTransition(String),
+    StateTransition(StateTransition),
     #[serde(rename = "success")]
     Success(OptionDetails),
     #[serde(rename = "failure")]
