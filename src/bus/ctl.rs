@@ -13,7 +13,7 @@ use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
-use crate::bus::p2p::{Commit, TakeCommit};
+use crate::bus::p2p::{Commit, PeerMsg, TakeCommit};
 use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
 };
@@ -140,6 +140,9 @@ pub enum CtlMsg {
 
     #[display("transaction({0})")]
     Tx(Tx),
+
+    #[display("failed peer message")]
+    FailedPeerMessage(PeerMsg),
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]

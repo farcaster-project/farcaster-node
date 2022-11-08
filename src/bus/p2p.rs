@@ -62,6 +62,10 @@ pub enum PeerMsg {
     #[api(type = 33801)]
     #[display("error_shutdown()")]
     PeerReceiverRuntimeShutdown,
+
+    #[api(type = 33802)]
+    #[display("msg_receipt {0}")]
+    MsgReceipt(Receipt),
 }
 
 impl PeerMsg {
@@ -83,6 +87,7 @@ impl PeerMsg {
             PeerMsg::Abort(Abort { swap_id, .. }) => *swap_id,
             PeerMsg::CoreArbitratingSetup(CoreArbitratingSetup { swap_id, .. }) => *swap_id,
             PeerMsg::BuyProcedureSignature(BuyProcedureSignature { swap_id, .. }) => *swap_id,
+            PeerMsg::MsgReceipt(Receipt { swap_id, .. }) => *swap_id,
             PeerMsg::Ping(_)
             | PeerMsg::Pong(_)
             | PeerMsg::PingPeer
@@ -106,6 +111,7 @@ impl PeerMsg {
                 | PeerMsg::BuyProcedureSignature(_)
                 | PeerMsg::Ping(_)
                 | PeerMsg::Pong(_)
+                | PeerMsg::MsgReceipt(_)
         )
     }
 
@@ -146,4 +152,11 @@ pub enum Commit {
     AliceParameters(CommitAliceParameters),
     #[display("Bob")]
     BobParameters(CommitBobParameters),
+}
+
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
+#[display("receipt")]
+pub struct Receipt {
+    pub swap_id: SwapId,
+    pub msg_type: internet2::TypeId,
 }
