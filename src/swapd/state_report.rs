@@ -16,11 +16,14 @@ use super::{
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-#[display(Debug)]
 pub enum StateReport {
+    #[display("StartA")]
     StartA,
+    #[display("CommitA")]
     CommitA,
+    #[display("RevealA")]
     RevealA,
+    #[display(Debug)]
     RefundSigA {
         arb_block_height: u64,
         acc_block_height: u64,
@@ -37,11 +40,16 @@ pub enum StateReport {
         blocks_until_punish_possible: Option<i64>,
         blocks_until_safe_buy: Option<u32>,
     },
+    #[display("{0}")]
     FinishA(Outcome),
+    #[display("StartB")]
     StartB,
+    #[display("CommitB")]
     CommitB,
+    #[display("RevealB")]
     RevealB,
-    CorearbB {
+    #[display(Debug)]
+    CoreArbB {
         arb_block_height: u64,
         acc_block_height: u64,
         arb_locked: bool,
@@ -55,6 +63,7 @@ pub enum StateReport {
         blocks_until_refund: Option<i64>,
         blocks_until_punish_possible: Option<i64>,
     },
+    #[display(Debug)]
     BuySigB {
         arb_block_height: u64,
         acc_block_height: u64,
@@ -67,6 +76,7 @@ pub enum StateReport {
         blocks_until_punish_possible: Option<i64>,
         blocks_until_safe_monero_buy_sweep: Option<u32>,
     },
+    #[display("{0}")]
     FinishB(Outcome),
 }
 
@@ -114,7 +124,7 @@ impl StateReport {
             State::Bob(BobState::StartB { .. }) => StateReport::StartB,
             State::Bob(BobState::CommitB { .. }) => StateReport::CommitB,
             State::Bob(BobState::RevealB { .. }) => StateReport::RevealB,
-            State::Bob(BobState::CorearbB { buy_tx_seen, .. }) => StateReport::CorearbB {
+            State::Bob(BobState::CorearbB { buy_tx_seen, .. }) => StateReport::CoreArbB {
                 buy_published: *buy_tx_seen,
                 arb_block_height: syncer_state.bitcoin_height,
                 acc_block_height: syncer_state.monero_height,

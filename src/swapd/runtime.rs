@@ -1472,7 +1472,7 @@ impl Runtime {
                     || (self.state.a_refundsig() && !self.state.a_btc_locked()) =>
             {
                 // just cancel the swap, no additional logic required
-                self.state_update(State::Alice(AliceState::FinishA(Outcome::Abort)))?;
+                self.state_update(State::Alice(AliceState::FinishA(Outcome::FailureAbort)))?;
                 self.abort_swap(endpoints)?;
                 self.send_client_info(
                     endpoints,
@@ -1483,7 +1483,7 @@ impl Runtime {
 
             CtlMsg::AbortSwap if self.state.b_start() => {
                 // just cancel the swap, no additional logic required, since funding was not yet retrieved
-                self.state_update(State::Bob(BobState::FinishB(Outcome::Abort)))?;
+                self.state_update(State::Bob(BobState::FinishB(Outcome::FailureAbort)))?;
                 self.abort_swap(endpoints)?;
                 self.send_client_info(
                     endpoints,
@@ -1506,7 +1506,7 @@ impl Runtime {
                     )),
                 )?;
                 // cancel the swap to invalidate its state
-                self.state_update(State::Bob(BobState::FinishB(Outcome::Abort)))?;
+                self.state_update(State::Bob(BobState::FinishB(Outcome::FailureAbort)))?;
                 self.send_client_info(
                     endpoints,
                     source,
@@ -2000,11 +2000,13 @@ impl Runtime {
                             BusMsg::Sync(SyncMsg::Task(abort_all)),
                         )?;
                         let success = if self.state.b_buy_sig() {
-                            self.state_update(State::Bob(BobState::FinishB(Outcome::Buy)))?;
-                            Some(Outcome::Buy)
+                            self.state_update(State::Bob(BobState::FinishB(Outcome::SuccessSwap)))?;
+                            Some(Outcome::SuccessSwap)
                         } else if self.state.a_refund_seen() {
-                            self.state_update(State::Alice(AliceState::FinishA(Outcome::Refund)))?;
-                            Some(Outcome::Refund)
+                            self.state_update(State::Alice(AliceState::FinishA(
+                                Outcome::FailureRefund,
+                            )))?;
+                            Some(Outcome::FailureRefund)
                         } else {
                             error!("Unexpected sweeping state, not sending finalization commands to wallet and farcasterd");
                             None
@@ -2410,7 +2412,7 @@ impl Runtime {
                                     self.syncer_state.awaiting_funding = false;
                                 }
                                 self.state_update(State::Alice(AliceState::FinishA(
-                                    Outcome::Refund,
+                                    Outcome::FailureRefund,
                                 )))?;
                                 let abort_all = Task::Abort(Abort {
                                     task_target: TaskTarget::AllTasks,
@@ -2429,7 +2431,7 @@ impl Runtime {
                                     BusMsg::Sync(SyncMsg::Task(abort_all)),
                                 )?;
                                 let swap_success_req =
-                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Refund));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailureRefund));
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     endpoints,
@@ -2448,7 +2450,9 @@ impl Runtime {
                             {
                                 // FIXME: swap ends here for alice
                                 // wallet + farcaster
-                                self.state_update(State::Alice(AliceState::FinishA(Outcome::Buy)))?;
+                                self.state_update(State::Alice(AliceState::FinishA(
+                                    Outcome::SuccessSwap,
+                                )))?;
                                 let abort_all = Task::Abort(Abort {
                                     task_target: TaskTarget::AllTasks,
                                     respond: Boolean::False,
@@ -2466,7 +2470,7 @@ impl Runtime {
                                     BusMsg::Sync(SyncMsg::Task(abort_all)),
                                 )?;
                                 let swap_success_req =
-                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Buy));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::SuccessSwap));
                                 self.send_wallet(
                                     ServiceBus::Ctl,
                                     endpoints,
@@ -2526,9 +2530,11 @@ impl Runtime {
                                     self.syncer_state.bitcoin_syncer(),
                                     BusMsg::Sync(SyncMsg::Task(abort_all)),
                                 )?;
-                                self.state_update(State::Bob(BobState::FinishB(Outcome::Refund)))?;
+                                self.state_update(State::Bob(BobState::FinishB(
+                                    Outcome::FailureRefund,
+                                )))?;
                                 let swap_success_req =
-                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Refund));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailureRefund));
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Wallet,
@@ -2560,17 +2566,17 @@ impl Runtime {
                                 )?;
                                 match self.state.swap_role() {
                                     SwapRole::Alice => self.state_update(State::Alice(
-                                        AliceState::FinishA(Outcome::Punish),
+                                        AliceState::FinishA(Outcome::FailurePunish),
                                     ))?,
                                     SwapRole::Bob => {
                                         warn!("{}", "You were punished!".err());
                                         self.state_update(State::Bob(BobState::FinishB(
-                                            Outcome::Punish,
+                                            Outcome::FailurePunish,
                                         )))?
                                     }
                                 }
                                 let swap_success_req =
-                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Punish));
+                                    BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailurePunish));
                                 self.send_ctl(
                                     endpoints,
                                     ServiceId::Wallet,
@@ -2619,7 +2625,7 @@ impl Runtime {
                             && self.syncer_state.tasks.sweeping_addr.is_some()
                             && &self.syncer_state.tasks.sweeping_addr.unwrap() == id =>
                     {
-                        self.state_update(State::Bob(BobState::FinishB(Outcome::Abort)))?;
+                        self.state_update(State::Bob(BobState::FinishB(Outcome::FailureAbort)))?;
                         endpoints.send_to(
                             ServiceBus::Ctl,
                             self.identity(),
@@ -2818,7 +2824,7 @@ impl Runtime {
     }
 
     fn abort_swap(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
-        let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::Abort));
+        let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::FailureAbort));
         self.send_ctl(endpoints, ServiceId::Wallet, swap_success_req.clone())?;
         self.send_ctl(endpoints, ServiceId::Farcasterd, swap_success_req)?;
         info!("{} | Aborted swap.", self.swap_id.swap_id());

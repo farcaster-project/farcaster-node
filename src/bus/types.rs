@@ -80,14 +80,14 @@ impl ToYamlString for OfferStatusPair {}
     serde(crate = "serde_crate")
 )]
 pub enum Outcome {
-    #[display("Success(Swapped)")]
-    Buy,
-    #[display("Failure(Refunded)")]
-    Refund,
-    #[display("Failure(Punished)")]
-    Punish,
-    #[display("Failure(Aborted)")]
-    Abort,
+    #[display("Success Swap")]
+    SuccessSwap,
+    #[display("Failure Refund")]
+    FailureRefund,
+    #[display("Failure Punish")]
+    FailurePunish,
+    #[display("Failure Abort")]
+    FailureAbort,
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
