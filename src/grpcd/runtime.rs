@@ -813,8 +813,13 @@ fn response_loop(
 
 fn server_loop(service: FarcasterService, addr: SocketAddr) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
+        let web_service = tonic_web::config()
+            .allow_all_origins()
+            .enable(FarcasterServer::new(service));
+
         Server::builder()
-            .add_service(FarcasterServer::new(service))
+            .accept_http1(true)
+            .add_service(web_service)
             .serve(addr)
             .await
             .expect("error running grpc server");
