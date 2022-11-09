@@ -53,6 +53,8 @@ use self::farcaster::MakeRequest;
 use self::farcaster::MakeResponse;
 use self::farcaster::NeedsFundingRequest;
 use self::farcaster::NeedsFundingResponse;
+use self::farcaster::OfferInfoRequest;
+use self::farcaster::OfferInfoResponse;
 use self::farcaster::PeersRequest;
 use self::farcaster::PeersResponse;
 use self::farcaster::ProgressRequest;
@@ -61,6 +63,8 @@ use self::farcaster::RestoreCheckpointRequest;
 use self::farcaster::RestoreCheckpointResponse;
 use self::farcaster::RevokeOfferRequest;
 use self::farcaster::RevokeOfferResponse;
+use self::farcaster::SwapInfoRequest;
+use self::farcaster::SwapInfoResponse;
 use self::farcaster::SweepAddressRequest;
 use self::farcaster::SweepAddressResponse;
 use self::farcaster::TakeRequest;
@@ -88,6 +92,15 @@ impl From<farcaster::SwapRole> for SwapRole {
     }
 }
 
+impl From<SwapRole> for farcaster::SwapRole {
+    fn from(t: SwapRole) -> farcaster::SwapRole {
+        match t {
+            SwapRole::Alice => farcaster::SwapRole::Alice,
+            SwapRole::Bob => farcaster::SwapRole::Bob,
+        }
+    }
+}
+
 impl From<farcaster::Network> for Network {
     fn from(t: farcaster::Network) -> Network {
         match t {
@@ -98,11 +111,30 @@ impl From<farcaster::Network> for Network {
     }
 }
 
+impl From<Network> for farcaster::Network {
+    fn from(t: Network) -> farcaster::Network {
+        match t {
+            Network::Mainnet => farcaster::Network::Mainnet,
+            Network::Testnet => farcaster::Network::Testnet,
+            Network::Local => farcaster::Network::Local,
+        }
+    }
+}
+
 impl From<farcaster::Blockchain> for Blockchain {
     fn from(t: farcaster::Blockchain) -> Blockchain {
         match t {
             farcaster::Blockchain::Monero => Blockchain::Monero,
             farcaster::Blockchain::Bitcoin => Blockchain::Bitcoin,
+        }
+    }
+}
+
+impl From<Blockchain> for farcaster::Blockchain {
+    fn from(t: Blockchain) -> farcaster::Blockchain {
+        match t {
+            Blockchain::Monero => farcaster::Blockchain::Monero,
+            Blockchain::Bitcoin => farcaster::Blockchain::Bitcoin,
         }
     }
 }
@@ -235,6 +267,79 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
             _ => Err(Status::invalid_argument("received invalid response")),
         }
+    }
+
+    async fn swap_info(
+        &self,
+        request: GrpcRequest<SwapInfoRequest>,
+    ) -> Result<GrpcResponse<SwapInfoResponse>, Status> {
+        debug!("Received a grpc peer request: {:?}", request);
+        let SwapInfoRequest {
+            id,
+            swap_id: string_swap_id,
+        } = request.into_inner();
+        let swap_id = SwapId::from_str(&string_swap_id)
+            .map_err(|_| Status::internal(format!("Invalid or malformed swap id")))?;
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::GetInfo,
+                service_id: ServiceId::Swap(swap_id),
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::SwapInfo(info))) => {
+                let reply = SwapInfoResponse {
+                    id,
+                    maker_peer: info
+                        .maker_peer
+                        .into_iter()
+                        .next()
+                        .map(|p| p.to_string())
+                        .unwrap_or("".to_string()),
+                    uptime: info.uptime.as_secs(),
+                    since: info.since,
+                    public_offer: info.public_offer.to_string(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Err(error) => Err(Status::internal(format!("{}", error))),
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            _ => Err(Status::invalid_argument("received invalid response")),
+        }
+    }
+
+    async fn offer_info(
+        &self,
+        request: GrpcRequest<OfferInfoRequest>,
+    ) -> Result<GrpcResponse<OfferInfoResponse>, Status> {
+        debug!("Received a grpc peer request: {:?}", request);
+        let OfferInfoRequest {
+            id,
+            public_offer: string_public_offer,
+        } = request.into_inner();
+        let public_offer = PublicOffer::from_str(&string_public_offer)
+            .map_err(|_| Status::invalid_argument("public offer malformed"))?;
+
+        let reply = OfferInfoResponse {
+            id,
+            arbitrating_amount: public_offer.offer.arbitrating_amount.as_sat(),
+            accordant_amount: public_offer.offer.accordant_amount.as_pico(),
+            cancel_timelock: public_offer.offer.cancel_timelock.as_u32(),
+            punish_timelock: public_offer.offer.punish_timelock.as_u32(),
+            fee_strategy: public_offer.offer.fee_strategy.to_string(),
+            maker_role: farcaster::SwapRole::from(public_offer.offer.maker_role).into(),
+            uuid: public_offer.offer.uuid.to_string(),
+            network: farcaster::Network::from(public_offer.offer.network).into(),
+            arbitrating_blockchain: farcaster::Blockchain::from(
+                public_offer.offer.arbitrating_blockchain,
+            )
+            .into(),
+            accordant_blockchain: farcaster::Blockchain::from(
+                public_offer.offer.accordant_blockchain,
+            )
+            .into(),
+        };
+        Ok(GrpcResponse::new(reply))
     }
 
     async fn checkpoints(

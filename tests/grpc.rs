@@ -3,8 +3,9 @@ extern crate log;
 
 use crate::farcaster::{
     farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointsRequest, InfoResponse,
-    MakeRequest, NeedsFundingRequest, PeersRequest, ProgressRequest, RestoreCheckpointRequest,
-    RevokeOfferRequest, SweepAddressRequest, TakeRequest,
+    MakeRequest, NeedsFundingRequest, OfferInfoRequest, PeersRequest, ProgressRequest,
+    RestoreCheckpointRequest, RevokeOfferRequest, SwapInfoRequest, SweepAddressRequest,
+    TakeRequest,
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
@@ -101,6 +102,14 @@ async fn grpc_server_functional_test() {
     let (xmr_address, _xmr_address_wallet_name) =
         monero_new_dest_address(Arc::clone(&monero_wallet)).await;
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+
+    // Test Offer info
+    let offer_info_request = tonic::Request::new(OfferInfoRequest {
+        id: 21,
+        public_offer: offer.clone().to_string(),
+    });
+    let response = farcaster_client_2.offer_info(offer_info_request).await;
+    assert_eq!(response.unwrap().into_inner().id, 21);
 
     // Test take offer
     let take_request = TakeRequest {
@@ -224,6 +233,14 @@ async fn grpc_server_functional_test() {
             None,
         )
         .unwrap();
+
+    // test swap info
+    let request = tonic::Request::new(SwapInfoRequest {
+        id: 20,
+        swap_id: swap_id.clone(),
+    });
+    let response = farcaster_client_1.swap_info(request).await;
+    assert_eq!(response.unwrap().into_inner().id, 20);
     // wait for lock
     tokio::time::sleep(time::Duration::from_secs(5)).await;
     kill_all();

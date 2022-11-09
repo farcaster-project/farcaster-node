@@ -4,6 +4,8 @@ package farcaster;
 service Farcaster {
     rpc Info(InfoRequest) returns (InfoResponse){}
     rpc Peers(PeersRequest) returns (PeersResponse){}
+    rpc SwapInfo(SwapInfoRequest) returns (SwapInfoResponse){}
+    rpc OfferInfo(OfferInfoRequest) returns (OfferInfoResponse){}
     rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
     rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
     rpc Make(MakeRequest) returns (MakeResponse){}
@@ -27,6 +29,38 @@ message InfoResponse {
     repeated string peers = 6;
     repeated string swaps = 7;
     repeated string offers = 8;
+}
+
+message SwapInfoRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message SwapInfoResponse {
+    uint32 id = 1;
+    string maker_peer = 2;
+    uint64 uptime = 3;
+    uint64 since= 4;
+    string public_offer = 5;
+}
+
+message OfferInfoRequest {
+    uint32 id = 1;
+    string public_offer = 2;
+}
+
+message OfferInfoResponse {
+    uint32 id = 1;
+    uint64 arbitrating_amount = 2;
+    uint64 accordant_amount = 3;
+    uint32 cancel_timelock = 4;
+    uint32 punish_timelock = 5;
+    string fee_strategy = 6;
+    SwapRole maker_role = 7;
+    string uuid = 8;
+    Network network = 9;
+    Blockchain arbitrating_blockchain = 10;
+    Blockchain accordant_blockchain = 11;
 }
 
 message PeersRequest {
