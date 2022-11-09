@@ -147,7 +147,6 @@ impl Exec for Command {
                 fee_strategy,
                 maker_role,
                 public_ip_addr,
-                bind_ip_addr,
                 port,
             } => {
                 // Monero local address types are mainnet address types
@@ -203,11 +202,9 @@ impl Exec for Command {
                     maker_role,
                 };
                 let public_addr = InetSocketAddr::socket(public_ip_addr, port);
-                let bind_addr = InetSocketAddr::socket(bind_ip_addr, port);
                 let proto_offer = ctl::ProtoPublicOffer {
                     offer,
                     public_addr,
-                    bind_addr,
                     arbitrating_addr,
                     accordant_addr,
                 };

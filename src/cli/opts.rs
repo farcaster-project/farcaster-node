@@ -181,10 +181,6 @@ pub enum Command {
         #[clap(short = 'I', long, default_value = "127.0.0.1")]
         public_ip_addr: IpAddr,
 
-        /// IPv4 or IPv6 address to bind to, listening for takers.
-        #[clap(short, long, default_value = "0.0.0.0")]
-        bind_ip_addr: IpAddr,
-
         /// Port to use; defaults to the native LN port.
         #[clap(short, long, default_value = "9735")]
         port: u16,

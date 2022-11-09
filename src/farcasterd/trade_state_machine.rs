@@ -308,10 +308,19 @@ fn attempt_transition_to_make_offer(
             arbitrating_addr,
             accordant_addr,
             public_addr,
-            bind_addr,
             ..
         })) => {
             // start a listener on the bind_addr
+            let bind_addr = match runtime.config.get_bind_addr() {
+                Err(err) => {
+                    event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        code: FailureCode::Unknown,
+                        info: err.to_string(),
+                    })))?;
+                    return Ok(None);
+                }
+                Ok(bind_addr) => bind_addr,
+            };
             match runtime.listen(bind_addr) {
                 Err(err) => {
                     event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {

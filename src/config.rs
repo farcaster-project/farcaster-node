@@ -14,9 +14,11 @@
 
 use crate::Error;
 use farcaster_core::blockchain::Network;
+use internet2::addr::InetSocketAddr;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +29,8 @@ pub const FARCASTER_MAINNET_MONERO_RPC_WALLET: &str = "http://localhost:18083";
 pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993";
 pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.community.rino.io:38081";
 pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
+
+pub const FARCASTER_BIND_ADDR: &str = "0.0.0.0:9735";
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
@@ -43,7 +47,7 @@ impl Config {
         match &self.farcasterd {
             Some(FarcasterdConfig {
                 auto_funding: Some(AutoFundingConfig { auto_fund, .. }),
-                grpc: _,
+                ..
             }) => *auto_fund,
             _ => false,
         }
@@ -53,8 +57,8 @@ impl Config {
     pub fn is_grpc_enable(&self) -> bool {
         match &self.farcasterd {
             Some(FarcasterdConfig {
-                auto_funding: _,
                 grpc: Some(GrpcConfig { use_grpc, .. }),
+                ..
             }) => *use_grpc,
             _ => false,
         }
@@ -72,7 +76,7 @@ impl Config {
                         testnet,
                         local,
                     }),
-                grpc: _,
+                ..
             }) if *auto_fund => match network {
                 Network::Mainnet => mainnet.clone(),
                 Network::Testnet => testnet.clone(),
@@ -80,6 +84,19 @@ impl Config {
             },
             _ => None,
         }
+    }
+
+    pub fn get_bind_addr(&self) -> Result<InetSocketAddr, Error> {
+        let addr = InetSocketAddr::from_str(
+            &self
+                .farcasterd
+                .clone()
+                .ok_or(Error::Farcaster("Failed to parse bind address".to_string()))?
+                .bind_addr
+                .clone(),
+        )
+        .map_err(|err| Error::Farcaster(err.to_string()))?;
+        Ok(addr)
     }
 
     pub fn get_syncer_servers(&self, network: Network) -> Option<SyncerServers> {
@@ -94,19 +111,21 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            farcasterd: None,
+            farcasterd: Some(FarcasterdConfig::default()),
             syncers: Some(SyncersConfig::default()),
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
     /// Sets the grpc server port, if none is given, no grpc server is run
     pub grpc: Option<GrpcConfig>,
+    /// Sets the bind addresss for potential makers
+    pub bind_addr: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -194,6 +213,16 @@ impl Default for SyncersConfig {
     }
 }
 
+impl Default for FarcasterdConfig {
+    fn default() -> Self {
+        FarcasterdConfig {
+            auto_funding: None,
+            grpc: None,
+            bind_addr: FARCASTER_BIND_ADDR.to_string(),
+        }
+    }
+}
+
 pub fn parse_config(path: &str) -> Result<Config, Error> {
     if Path::new(path).exists() {
         let config_file = path;
@@ -205,6 +234,7 @@ pub fn parse_config(path: &str) -> Result<Config, Error> {
         info!("No configuration file found, generating default config");
         let config = Config::default();
         let mut file = File::create(path)?;
+        info!("config: {:?}", config);
         file.write_all(toml::to_vec(&config).unwrap().as_ref())?;
         Ok(config)
     }
