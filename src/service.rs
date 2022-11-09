@@ -438,13 +438,13 @@ where
         &mut self,
         senders: &mut Endpoints,
         dest: ServiceId,
-        request: BusMsg,
+        request: CtlMsg,
     ) -> Result<(), Error> {
         let bus = ServiceBus::Ctl;
         if let ServiceId::GrpcdClient(_) = dest {
-            senders.send_to(bus, dest, ServiceId::Grpcd, request)?;
+            senders.send_to(bus, dest, ServiceId::Grpcd, BusMsg::Ctl(request))?;
         } else {
-            senders.send_to(bus, self.identity(), dest, request)?;
+            senders.send_to(bus, self.identity(), dest, BusMsg::Ctl(request))?;
         }
         Ok(())
     }

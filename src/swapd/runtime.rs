@@ -1514,10 +1514,10 @@ impl Runtime {
                 self.send_client_ctl(
                     endpoints,
                     source,
-                    BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: msg,
-                    })),
+                    }),
                 )?;
             }
 
