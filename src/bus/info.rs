@@ -289,7 +289,6 @@ pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub connection: Option<NodeAddr>,
     pub connected: bool,
-    pub state: String,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
@@ -297,6 +296,7 @@ pub struct SwapInfo {
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub connected_counterparty_node_id: Option<NodeId>,
+    pub state: StateReport,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]

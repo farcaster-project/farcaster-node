@@ -1674,9 +1674,9 @@ impl Runtime {
                 let connection = self.peer_service.node_addr();
                 let info = SwapInfo {
                     swap_id,
-                    state: self.state.to_string(),
                     connection,
                     connected: self.connected,
+                    state: self.latest_state_report.clone(),
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or_else(|_| Duration::from_secs(0)),
