@@ -678,7 +678,7 @@ impl Database {
     }
 
     fn delete_checkpoint_info(&mut self, key: SwapId) -> Result<(), lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
+        let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let mut tx = self.0.begin_rw_txn()?;
         tx.del(db, &key.as_bytes(), None)?;
         tx.commit()?;
@@ -715,6 +715,13 @@ fn test_lmdb_state() {
     database.delete_checkpoint_state(key2.clone()).unwrap();
     let res = database.get_checkpoint_state(&key2);
     assert!(res.is_err());
+
+    let key_info = SwapId::random();
+    let val_info = vec![0, 1, 2];
+    database.set_checkpoint_info(&key_info, &val_info).unwrap();
+    let res = database.get_checkpoint_info(&key_info).unwrap();
+    assert_eq!(val_info, res);
+    database.delete_checkpoint_info(key_info).unwrap();
 
     let sk = SecretKey::new(&mut bitcoin::secp256k1::rand::thread_rng());
     let private_key =
