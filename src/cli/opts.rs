@@ -252,6 +252,13 @@ pub enum Command {
         blockchain: Blockchain,
     },
 
+    /// Returns previously created funding addresses for blockchain.
+    #[display("list-funding-address<{blockchain}>")]
+    ListFundingAddresses {
+        /// Retrieve funding addresses for a particular blockchain.
+        blockchain: Blockchain,
+    },
+
     /// Attempts to sweep any funds on a given bitcoin funding address
     #[display("sweep-bitcoin-address<{source_address} {destination_address}>")]
     SweepBitcoinAddress {

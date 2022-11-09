@@ -484,6 +484,11 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
+            Command::ListFundingAddresses { blockchain } => {
+                runtime.request_info(ServiceId::Database, InfoMsg::GetAddresses(blockchain))?;
+                runtime.report_response_or_fail()?;
+            }
+
             Command::SweepBitcoinAddress {
                 source_address,
                 destination_address,

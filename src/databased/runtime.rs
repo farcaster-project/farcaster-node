@@ -366,21 +366,19 @@ impl Runtime {
 
             InfoMsg::GetAddresses(Blockchain::Bitcoin) => {
                 let addresses = self.database.get_all_bitcoin_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    ServiceId::Database,
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::BitcoinAddressList(addresses.into())),
+                    InfoMsg::BitcoinAddressList(addresses.into()),
                 )?;
             }
 
             InfoMsg::GetAddresses(Blockchain::Monero) => {
                 let addresses = self.database.get_all_monero_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    ServiceId::Database,
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::MoneroAddressList(addresses.into())),
+                    InfoMsg::MoneroAddressList(addresses.into()),
                 )?;
             }
 
