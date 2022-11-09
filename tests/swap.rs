@@ -1844,7 +1844,8 @@ async fn make_and_take_offer(
     let btc_addr = btc_address.to_string();
     let xmr_addr = xmr_address.to_string();
 
-    let (stdout, _stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
+    let (stdout, stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
+    info!("stderrr: {:?}", stderr);
     let previous_swap_ids: HashSet<SwapId> =
         cli_output_to_node_info(stdout).swaps.drain(..).collect();
 
@@ -2624,10 +2625,8 @@ fn make_offer_args(
             "1 satoshi/vByte".to_string(),
             "--public-ip-addr".to_string(),
             "127.0.0.1".to_string(),
-            "--bind-ip-addr".to_string(),
-            "0.0.0.0".to_string(),
             "--port".to_string(),
-            "9376".to_string(),
+            "9735".to_string(),
         ])
         .collect()
 }
@@ -2722,6 +2721,7 @@ fn restore_checkpoint_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String
 }
 
 fn cli_output_to_node_info(stdout: Vec<String>) -> NodeInfo {
+    info!("{:?}", stdout);
     serde_yaml::from_str(
         &stdout
             .iter()
@@ -2733,7 +2733,8 @@ fn cli_output_to_node_info(stdout: Vec<String>) -> NodeInfo {
 
 async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
     for _ in 0..ALLOWED_RETRIES {
-        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+        let (stdout, stderr) = run("../swap-cli", args.clone()).unwrap();
+        info!("{:?}", stderr);
         let offers: Vec<String> = cli_output_to_node_info(stdout)
             .offers
             .iter()

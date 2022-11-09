@@ -2,6 +2,9 @@
 use_grpc = true
 port = 23432
 
+[farcasterd]
+bind_addr = "0.0.0.0:9735"
+
 [syncers.local]
 electrum_server = "tcp://electrs:60401"
 monero_daemon = "http://monerod:18081"
