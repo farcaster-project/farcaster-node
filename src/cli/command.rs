@@ -7,6 +7,7 @@
 use farcaster_core::swap::btcxmr::{Deal, DealParameters};
 use farcaster_core::Uuid;
 use std::io::{self, Read};
+
 use std::str::FromStr;
 
 use internet2::addr::{InetSocketAddr, NodeAddr};

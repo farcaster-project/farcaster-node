@@ -9,6 +9,7 @@ mod opts;
 mod runtime;
 pub mod stats;
 mod syncer_state_machine;
+mod tor_control;
 mod trade_state_machine;
 
 #[cfg(feature = "shell")]

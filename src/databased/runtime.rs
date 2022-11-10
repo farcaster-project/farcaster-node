@@ -4,13 +4,17 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use crate::bus::{HiddenServiceInfo, WrapOnionAddressV3};
 use farcaster_core::swap::btcxmr::Deal;
 use farcaster_core::swap::SwapId;
 use farcaster_core::{blockchain::Blockchain, role::TradeRole};
+use internet2::addr::InetSocketAddr;
 use lmdb::{Cursor, Transaction as LMDBTransaction};
+use std::convert::TryInto;
 use std::io::Cursor as IoCursor;
 use std::path::PathBuf;
 use strict_encoding::{StrictDecode, StrictEncode};
+use torut::onion::{OnionAddressV3, TorPublicKeyV3};
 
 use crate::bus::{
     ctl::{Checkpoint, CtlMsg},
@@ -212,6 +216,23 @@ impl Runtime {
                     })?;
             }
 
+            CtlMsg::SetHiddenServiceInfo(HiddenServiceInfo {
+                onion_address,
+                bind_address,
+            }) => {
+                self.database
+                    .set_hidden_service_info(&onion_address.0, &bind_address)?;
+            }
+
+            CtlMsg::DeleteHiddenServiceInfo(onion_address) => {
+                if let Err(err) = self.database.delete_hidden_service_info(&onion_address.0) {
+                    warn!(
+                        "Did not delete hidden service info: {} due to {}",
+                        onion_address, err
+                    );
+                }
+            }
+
             _ => {
                 error!("BusMsg {} is not supported by the CTL interface", request);
             }
@@ -253,6 +274,16 @@ impl Runtime {
                         )?;
                     }
                 };
+            }
+
+            InfoMsg::GetAllHiddenServiceInfo => {
+                let hidden_service_infos = self.database.get_all_hidden_service_info()?.into();
+                endpoints.send_to(
+                    ServiceBus::Info,
+                    self.identity(),
+                    source,
+                    BusMsg::Info(InfoMsg::HiddenServiceInfoList(hidden_service_infos)),
+                )?;
             }
 
             InfoMsg::GetCheckpointEntry(swap_id) => {
@@ -400,6 +431,7 @@ const LMDB_CHECKPOINT_INFOS: &str = "checkpoint_infos";
 const LMDB_BITCOIN_ADDRESSES: &str = "bitcoin_addresses";
 const LMDB_MONERO_ADDRESSES: &str = "monero_addresses";
 const LMDB_DEAL_HISTORY: &str = "deal_history";
+const LMDB_HIDDEN_SERVICE_INFO: &str = "hidden_service_info";
 
 impl Database {
     fn new(path: PathBuf) -> Result<Database, lmdb::Error> {
@@ -412,6 +444,7 @@ impl Database {
         env.create_db(Some(LMDB_BITCOIN_ADDRESSES), lmdb::DatabaseFlags::empty())?;
         env.create_db(Some(LMDB_DEAL_HISTORY), lmdb::DatabaseFlags::empty())?;
         env.create_db(Some(LMDB_MONERO_ADDRESSES), lmdb::DatabaseFlags::empty())?;
+        env.create_db(Some(LMDB_HIDDEN_SERVICE_INFO), lmdb::DatabaseFlags::empty())?;
         Ok(Database(env))
     }
 
@@ -642,6 +675,52 @@ impl Database {
         drop(cursor);
         tx.abort();
         res
+    }
+
+    fn set_hidden_service_info(
+        &mut self,
+        onion_address: &OnionAddressV3,
+        socket_address: &InetSocketAddr,
+    ) -> Result<(), Error> {
+        let db = self.0.open_db(Some(LMDB_HIDDEN_SERVICE_INFO))?;
+        let mut tx = self.0.begin_rw_txn()?;
+        let key_bytes = onion_address.get_public_key().to_bytes();
+        if tx.get(db, &key_bytes).is_ok() {
+            tx.del(db, &key_bytes, None)?;
+        }
+        let mut val = vec![];
+        socket_address.strict_encode(&mut val)?;
+        tx.put(db, &key_bytes, &val, lmdb::WriteFlags::empty())?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn get_all_hidden_service_info(&mut self) -> Result<Vec<HiddenServiceInfo>, Error> {
+        let db = self.0.open_db(Some(LMDB_HIDDEN_SERVICE_INFO))?;
+        let tx = self.0.begin_ro_txn()?;
+        let mut cursor = tx.open_ro_cursor(db)?;
+        let res = cursor
+            .iter()
+            .map(|(key, value)| {
+                Ok(HiddenServiceInfo {
+                    onion_address: WrapOnionAddressV3(OnionAddressV3::from(
+                        &TorPublicKeyV3::from_bytes(key.try_into().unwrap()).unwrap(),
+                    )),
+                    bind_address: InetSocketAddr::strict_decode(std::io::Cursor::new(value))?,
+                })
+            })
+            .collect();
+        drop(cursor);
+        tx.abort();
+        res
+    }
+
+    fn delete_hidden_service_info(&mut self, key: &OnionAddressV3) -> Result<(), lmdb::Error> {
+        let db = self.0.open_db(Some(LMDB_HIDDEN_SERVICE_INFO))?;
+        let mut tx = self.0.begin_rw_txn()?;
+        tx.del(db, &key.get_public_key().as_bytes(), None)?;
+        tx.commit()?;
+        Ok(())
     }
 
     fn get_checkpoint_state(&mut self, checkpoint_key: &CheckpointKey) -> Result<Vec<u8>, Error> {
