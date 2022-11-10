@@ -99,6 +99,7 @@ tokio = { version = "1.18.2", features = ["full"] }
 toml = { version = "0.5", optional = true }
 tonic = "0.7.2"
 zmq = { package = "zmq2", version = "0.5.0" }
+socks = "0.3.4"
 
 [build-dependencies]
 farcaster_core = "0.5.1"

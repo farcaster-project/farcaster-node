@@ -1050,6 +1050,7 @@ dependencies = [
  "serde_yaml",
  "shellexpand",
  "slip132",
+ "socks",
  "strict_encoding",
  "strip-ansi-escapes",
  "sysinfo",
@@ -3021,6 +3022,17 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66d72b759436ae32898a2af0a14218dbf55efde3feeb170eb623637db85ee1e0"
 dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
+name = "socks"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0c3dbbd9ae980613c6dd8e28a9407b50509d3803b57624d5dfe8315218cd58b"
+dependencies = [
+ "byteorder",
  "libc",
  "winapi",
 ]
