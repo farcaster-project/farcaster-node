@@ -61,6 +61,8 @@ message OfferInfoResponse {
     Network network = 9;
     Blockchain arbitrating_blockchain = 10;
     Blockchain accordant_blockchain = 11;
+    string node_id = 12;
+    string peer_address = 13;
 }
 
 message PeersRequest {

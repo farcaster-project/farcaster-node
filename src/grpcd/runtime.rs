@@ -338,6 +338,8 @@ impl Farcaster for FarcasterService {
                 public_offer.offer.accordant_blockchain,
             )
             .into(),
+            node_id: public_offer.node_id.to_string(),
+            peer_address: public_offer.peer_address.to_string(),
         };
         Ok(GrpcResponse::new(reply))
     }
