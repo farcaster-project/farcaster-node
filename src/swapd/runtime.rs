@@ -55,7 +55,10 @@ use farcaster_core::{
     swap::SwapId,
     transaction::TxLabel,
 };
-use internet2::{addr::NodeAddr, CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller};
+use internet2::{
+    addr::{NodeAddr, NodeId},
+    CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller,
+};
 use microservices::esb::{self, Handler};
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -81,8 +84,12 @@ pub fn run(
     };
 
     let init_state = match local_swap_role {
-        SwapRole::Alice => State::Alice(AliceState::StartA { local_trade_role }),
-        SwapRole::Bob => State::Bob(BobState::StartB { local_trade_role }),
+        SwapRole::Alice => State::Alice(AliceState::StartA {
+            local_trade_role: local_trade_role.clone(),
+        }),
+        SwapRole::Bob => State::Bob(BobState::StartB {
+            local_trade_role: local_trade_role.clone(),
+        }),
     };
     let sweep_monero_thr = 10;
     info!(
@@ -149,6 +156,7 @@ pub fn run(
         pending_peer_request: none!(),
         txs: none!(),
         public_offer,
+        local_trade_role,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -170,6 +178,7 @@ pub struct Runtime {
     pending_peer_request: Vec<PeerMsg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     public_offer: PublicOffer,
+    local_trade_role: TradeRole,
 }
 
 // FIXME Something more meaningful than ServiceId to index
@@ -1593,6 +1602,9 @@ impl Runtime {
                         .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
                     public_offer: self.public_offer.clone(),
+                    local_trade_role: self.local_trade_role.clone(),
+                    local_swap_role: self.public_offer.swap_role(&self.local_trade_role),
+                    connected_counterparty_node_id: get_node_id(&self.peer_service),
                 };
                 self.send_client_info(endpoints, source, InfoMsg::SwapInfo(info))?;
             }
@@ -2734,6 +2746,14 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
         Ok(*swap_id)
     } else {
         Err(Error::Farcaster("Not swapd".to_string()))
+    }
+}
+
+pub fn get_node_id(service: &ServiceId) -> Option<NodeId> {
+    if let ServiceId::Peer(addr) = service {
+        Some(addr.id)
+    } else {
+        None
     }
 }
 
