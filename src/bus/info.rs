@@ -334,6 +334,7 @@ pub struct FundingInfos {
 pub enum ProgressEvent {
     #[serde(rename = "message")]
     Message(String),
+    #[serde(rename = "update")]
     StateUpdate(StateReport),
     #[serde(rename = "transition")]
     StateTransition(StateTransition),
