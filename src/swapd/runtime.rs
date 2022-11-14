@@ -1176,6 +1176,8 @@ impl Runtime {
                 ServiceId::Farcasterd
                 | ServiceId::Wallet
                 | ServiceId::Database
+                | ServiceId::GrpcdClient(_)
+                | ServiceId::Grpcd
             ) => {}
             (CtlMsg::AbortSwap, ServiceId::Client(_)) => {}
             _ => return Err(Error::Farcaster(
@@ -1465,26 +1467,22 @@ impl Runtime {
                 // just cancel the swap, no additional logic required
                 self.state_update(endpoints, State::Alice(AliceState::FinishA(Outcome::Abort)))?;
                 self.abort_swap(endpoints)?;
-                if let ServiceId::Client(_) = source {
-                    self.send_ctl(
-                        endpoints,
-                        source,
-                        BusMsg::Info(InfoMsg::String("Aborted swap".to_string())),
-                    )?;
-                }
+                self.send_client_info(
+                    endpoints,
+                    source,
+                    InfoMsg::String("Aborted swap".to_string()),
+                )?;
             }
 
             CtlMsg::AbortSwap if self.state.b_start() => {
                 // just cancel the swap, no additional logic required, since funding was not yet retrieved
                 self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Abort)))?;
                 self.abort_swap(endpoints)?;
-                if let ServiceId::Client(_) = source {
-                    self.send_ctl(
-                        endpoints,
-                        source,
-                        BusMsg::Info(InfoMsg::String("Aborted swap".to_string())),
-                    )?;
-                }
+                self.send_client_info(
+                    endpoints,
+                    source,
+                    InfoMsg::String("Aborted swap".to_string()),
+                )?;
             }
 
             CtlMsg::AbortSwap
@@ -1502,31 +1500,25 @@ impl Runtime {
                 )?;
                 // cancel the swap to invalidate its state
                 self.state_update(endpoints, State::Bob(BobState::FinishB(Outcome::Abort)))?;
-                if let ServiceId::Client(_) = source {
-                    self.send_ctl(
-                        endpoints,
-                        source,
-                        BusMsg::Info(InfoMsg::String(
-                            "Aborting swap, checking if funds can be sweeped.".to_string(),
-                        )),
-                    )?;
-                }
+                self.send_client_info(
+                    endpoints,
+                    source,
+                    InfoMsg::String("Aborting swap, checking if funds can be sweeped.".to_string()),
+                )?;
             }
 
             CtlMsg::AbortSwap => {
                 let msg = "Swap is already locked-in, cannot manually abort anymore.".to_string();
                 warn!("{} | {}", self.swap_id.swap_id(), msg);
 
-                if let ServiceId::Client(_) = source {
-                    self.send_ctl(
-                        endpoints,
-                        source,
-                        BusMsg::Info(InfoMsg::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: msg,
-                        })),
-                    )?;
-                }
+                self.send_client_ctl(
+                    endpoints,
+                    source,
+                    BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        code: FailureCode::Unknown,
+                        info: msg,
+                    })),
+                )?;
             }
 
             CtlMsg::PeerdReconnected(service_id) => {

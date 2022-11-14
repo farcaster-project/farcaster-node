@@ -573,12 +573,7 @@ impl Runtime {
                         res
                     })
                     .collect();
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    source,
-                    BusMsg::Info(InfoMsg::String(res)),
-                )?;
+                self.send_client_info(endpoints, source, InfoMsg::String(res))?;
             }
 
             InfoMsg::NeedsFunding(Blockchain::Bitcoin) => {
@@ -599,12 +594,7 @@ impl Runtime {
                         res
                     })
                     .collect();
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    source,
-                    BusMsg::Info(InfoMsg::String(res)),
-                )?;
+                self.send_client_info(endpoints, source, InfoMsg::String(res))?;
             }
 
             req => {
@@ -619,12 +609,7 @@ impl Runtime {
                     continue;
                 }
                 trace!("(#{}) Respond to {}: {}", i, respond_to, resp,);
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    respond_to,
-                    BusMsg::Info(resp),
-                )?;
+                self.send_client_info(endpoints, respond_to, resp)?;
             }
         }
         trace!("Processed all cli notifications");

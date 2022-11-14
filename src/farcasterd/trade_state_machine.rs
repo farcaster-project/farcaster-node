@@ -314,7 +314,7 @@ fn attempt_transition_to_make_offer(
             // start a listener on the bind_addr
             match runtime.listen(bind_addr) {
                 Err(err) => {
-                    event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
                     })))?;
@@ -335,7 +335,7 @@ fn attempt_transition_to_make_offer(
                             status: OfferStatus::Open,
                         })),
                     )?;
-                    event.complete_info(BusMsg::Info(InfoMsg::MadeOffer(MadeOffer {
+                    event.complete_client_info(BusMsg::Info(InfoMsg::MadeOffer(MadeOffer {
                         message: msg,
                         offer_info: OfferInfo {
                             offer: public_offer.to_string(),
@@ -384,7 +384,7 @@ fn attempt_transition_to_take_offer(
                     &public_offer.to_string()
                 );
                 warn!("{}", msg.err());
-                event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: msg,
                 })))?;
@@ -404,7 +404,7 @@ fn attempt_transition_to_take_offer(
             // connect to the remote peer
             match runtime.connect_peer(&peer_node_addr) {
                 Err(err) => {
-                    event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
                     })))?;
@@ -426,7 +426,7 @@ fn attempt_transition_to_take_offer(
                             internal_address,
                         })),
                     )?;
-                    event.complete_info(BusMsg::Info(InfoMsg::TookOffer(TookOffer {
+                    event.complete_client_info(BusMsg::Info(InfoMsg::TookOffer(TookOffer {
                         offerid: public_offer.id(),
                         message: offer_registered,
                     })))?;
@@ -462,13 +462,10 @@ fn attempt_transition_to_restoring_swapd(
             trade_role,
         })) => {
             if let Err(err) = runtime.services_ready() {
-                event.send_ctl_service(
-                    event.source.clone(),
-                    BusMsg::Ctl(CtlMsg::Failure(Failure {
-                        code: FailureCode::Unknown,
-                        info: err.to_string(),
-                    })),
-                )?;
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    code: FailureCode::Unknown,
+                    info: err.to_string(),
+                })))?;
                 return Ok(None);
             }
 
@@ -477,7 +474,7 @@ fn attempt_transition_to_restoring_swapd(
                 .send_ctl_service(ServiceId::Swap(swap_id), BusMsg::Ctl(CtlMsg::Hello))
                 .is_ok()
             {
-                event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: "Cannot restore a checkpoint into a running swap.".to_string(),
                 })))?;
@@ -508,7 +505,7 @@ fn attempt_transition_to_restoring_swapd(
                 ],
             )?;
 
-            event.complete_info(BusMsg::Info(InfoMsg::String(
+            event.complete_client_info(BusMsg::Info(InfoMsg::String(
                 "Restoring checkpoint.".to_string(),
             )))?;
 
@@ -580,14 +577,14 @@ fn attempt_transition_to_taker_committed(
             debug!("attempting to revoke {}", public_offer);
             if revoke_public_offer == public_offer {
                 info!("Revoked offer {}", public_offer.label());
-                event.complete_info(BusMsg::Info(InfoMsg::String(
+                event.complete_client_info(BusMsg::Info(InfoMsg::String(
                     "Successfully revoked offer.".to_string(),
                 )))?;
                 Ok(None)
             } else {
                 let msg = "Cannot revoke offer, it does not exist".to_string();
                 error!("{}", msg);
-                event.complete_info(BusMsg::Info(InfoMsg::String(msg)))?;
+                event.complete_client_info(BusMsg::Info(InfoMsg::String(msg)))?;
                 Ok(Some(TradeStateMachine::MakeOffer(MakeOffer {
                     public_offer,
                     arb_addr,
