@@ -123,7 +123,7 @@ async fn grpc_server_functional_test() {
     assert_eq!(response.unwrap().into_inner().id, 5);
 
     // Wait for and retrieve swap id
-    tokio::time::sleep(time::Duration::from_secs(5)).await;
+    tokio::time::sleep(time::Duration::from_secs(15)).await;
 
     let request = tonic::Request::new(InfoRequest { id: 6 });
     let InfoResponse { swaps, .. } = farcaster_client_2.info(request).await.unwrap().into_inner();
