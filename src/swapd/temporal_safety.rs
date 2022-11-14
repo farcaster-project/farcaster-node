@@ -49,6 +49,7 @@ impl TemporalSafety {
         self.final_tx(lock_confirmations, Blockchain::Bitcoin)
             && lock_confirmations > (self.cancel_timelock - self.race_thr + 1)
     }
+    // blocks remaining until funding will be stopped for safety, because it is too close to cancel. Adds the same +1 offset as in stop_funding_before_cancel
     pub fn blocks_until_stop_funding(&self, lock_confirmations: u32) -> i64 {
         self.cancel_timelock as i64 - (self.race_thr as i64 + 1 + lock_confirmations as i64)
     }
@@ -57,6 +58,7 @@ impl TemporalSafety {
         self.final_tx(lock_confirmations, Blockchain::Bitcoin)
             && lock_confirmations >= self.cancel_timelock
     }
+    /// blocks remaining until cancel, copies logic from valid_cancel
     pub fn blocks_until_cancel(&self, lock_confirmations: u32) -> i64 {
         self.cancel_timelock as i64 - lock_confirmations as i64
     }
@@ -70,10 +72,12 @@ impl TemporalSafety {
         self.final_tx(cancel_confirmations, Blockchain::Bitcoin)
             && cancel_confirmations <= (self.punish_timelock - self.race_thr)
     }
+    /// cancel must be final, valid after cancel_confirmations > punish_timelock
     pub fn valid_punish(&self, cancel_confirmations: u32) -> bool {
         self.final_tx(cancel_confirmations, Blockchain::Bitcoin)
             && cancel_confirmations >= self.punish_timelock
     }
+    /// blocks remaning until punish, copies logic from valid_punish
     pub fn blocks_until_punish_after_cancel(&self, cancel_confirmations: u32) -> i64 {
         self.punish_timelock as i64 - cancel_confirmations as i64
     }
