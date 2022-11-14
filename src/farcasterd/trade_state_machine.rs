@@ -164,18 +164,29 @@ pub struct RestoringSwapd {
     swapd_up: bool,
     expect_connection: bool,
     peerd: Option<ServiceId>,
+    listening: bool,
 }
 
 pub struct SwapdRunning {
+    // Peerd is some, if the running swap has a connection through this peerd.
+    // It can change values for listener-spawned connections.
+    // Peerd is None, in case of a restored swap. It can change to some either
+    // through the Connect command or by registering an incoming connection with
+    // an expected counterparty node id.
     peerd: Option<ServiceId>,
     public_offer: PublicOffer,
     arbitrating_syncer: ServiceId,
     accordant_syncer: ServiceId,
     swap_id: SwapId,
+    // This is Some if funding is required for this swap, None if not.
     funding_info: Option<FundingInfo>,
+    // Tracks the auto-funding status of the swap.
     auto_funded: bool,
+    // A list of clients to report back to on Connect success.
     clients_awaiting_connect_result: Vec<ServiceId>,
     trade_role: TradeRole,
+    // Some for a restore Maker swap, None otherwise.
+    expected_counterparty_node_id: Option<NodeId>,
 }
 
 #[derive(Clone)]
@@ -624,6 +635,14 @@ fn attempt_transition_to_restoring_swapd(
                 public_offer.offer.accordant_blockchain.try_into()?,
                 public_offer.offer.network,
             )?;
+            let listening =
+                if let Err(err) = runtime.listen(runtime.config.get_bind_addr().unwrap()) {
+                    warn!("failed to re-listen on restore: {}", err);
+                    false
+                } else {
+                    true
+                };
+
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
@@ -652,6 +671,7 @@ fn attempt_transition_to_restoring_swapd(
                 swapd_up: false,
                 peerd: None,
                 expect_connection,
+                listening,
             })))
         }
         req => {
@@ -1095,6 +1115,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             auto_funded: false,
             clients_awaiting_connect_result: vec![],
             trade_role: consumed_offer_role.into(),
+            expected_counterparty_node_id: None,
         })))
     } else {
         debug!(
@@ -1137,6 +1158,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut swapd_up,
         mut peerd,
         mut expect_connection,
+        listening,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
@@ -1170,6 +1192,22 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         {
             runtime.handle_failed_connection(event.endpoints, source.clone())?;
             expect_connection = false;
+        }
+        (BusMsg::Ctl(CtlMsg::Hello), source) if trade_role == TradeRole::Maker => {
+            if let Some(node_id) = expected_counterparty_node_id {
+                if source.node_addr()
+                    == Some(NodeAddr::new(
+                        node_id,
+                        runtime.config.get_bind_addr().unwrap(),
+                    ))
+                {
+                    info!(
+                        "{} | Peerd connection for restored swap",
+                        swap_id.bright_blue_italic()
+                    );
+                    peerd = Some(source);
+                }
+            }
         }
         _ => {}
     }
@@ -1206,6 +1244,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             funding_info: None,
             clients_awaiting_connect_result: vec![],
             trade_role,
+            expected_counterparty_node_id,
         })))
     } else {
         Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
@@ -1218,6 +1257,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             swapd_up,
             peerd,
             expect_connection,
+            listening,
         })))
     }
 }
@@ -1237,6 +1277,7 @@ fn attempt_transition_to_end(
         auto_funded,
         mut clients_awaiting_connect_result,
         trade_role,
+        expected_counterparty_node_id,
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
@@ -1258,6 +1299,31 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
+            })))
+        }
+
+        (BusMsg::Ctl(CtlMsg::Hello), source)
+            if peerd.is_none()
+                && expected_counterparty_node_id == source.node_addr().map(|a| a.id) =>
+        {
+            let swap_service_id = ServiceId::Swap(swap_id);
+            debug!(
+                "{} | Letting you know of peer reconnection.",
+                swap_service_id
+            );
+            event.complete_ctl_service(swap_service_id, CtlMsg::PeerdReconnected(source))?;
+            Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
+                peerd,
+                public_offer,
+                swap_id,
+                arbitrating_syncer,
+                accordant_syncer,
+                funding_info,
+                auto_funded,
+                clients_awaiting_connect_result,
+                trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1323,6 +1389,7 @@ fn attempt_transition_to_end(
                                 auto_funded: true,
                                 clients_awaiting_connect_result,
                                 trade_role,
+                                expected_counterparty_node_id,
                             })))
                         }
                         Err(err) => {
@@ -1341,6 +1408,7 @@ fn attempt_transition_to_end(
                                 auto_funded: false,
                                 clients_awaiting_connect_result,
                                 trade_role,
+                                expected_counterparty_node_id,
                             })))
                         }
                     }
@@ -1355,6 +1423,7 @@ fn attempt_transition_to_end(
                         auto_funded: false,
                         clients_awaiting_connect_result,
                         trade_role,
+                        expected_counterparty_node_id,
                     })))
                 }
             }
@@ -1423,6 +1492,7 @@ fn attempt_transition_to_end(
                              auto_funded,
                              clients_awaiting_connect_result,
                              trade_role,
+                             expected_counterparty_node_id,
                          })))
                     })
                 } else {
@@ -1436,6 +1506,7 @@ fn attempt_transition_to_end(
                         auto_funded: false,
                         clients_awaiting_connect_result,
                         trade_role,
+                        expected_counterparty_node_id,
                     })))
                 }
             }
@@ -1458,6 +1529,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1478,6 +1550,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1518,6 +1591,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1539,6 +1613,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result: vec![],
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1566,6 +1641,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result: vec![],
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1592,6 +1668,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1648,6 +1725,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
     }
