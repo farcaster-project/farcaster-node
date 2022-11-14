@@ -2,6 +2,8 @@
 use serde_with::DisplayFromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
 
+use crate::bus::{info::Address, AddressSecretKey};
+
 #[derive(
     Clone, Copy, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Ord, PartialOrd, Hash,
 )]
@@ -249,6 +251,18 @@ pub struct HealthCheck {
     pub id: TaskId,
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(Debug)]
+pub struct GetAddressBalance {
+    pub id: TaskId,
+    pub address_secret_key: AddressSecretKey,
+}
+
 /// Tasks created by the daemon and handle by syncers to process a blockchain
 /// and generate [`Event`] back to the syncer.
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -266,6 +280,7 @@ pub enum Task {
     BroadcastTransaction(BroadcastTransaction),
     SweepAddress(SweepAddress),
     GetTx(GetTx),
+    GetAddressBalance(GetAddressBalance),
     WatchEstimateFee(WatchEstimateFee),
     HealthCheck(HealthCheck),
     Terminate,
@@ -369,6 +384,16 @@ pub enum Health {
     ConfigUnavailable(String),
 }
 
+#[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
+#[display(Debug)]
+// the sats per kvB is because we need u64 for Eq, PartialEq and Hash
+pub struct AddressBalance {
+    pub id: TaskId,
+    pub address: Address,
+    pub balance: u64,
+    pub err: Option<String>,
+}
+
 /// Events returned by syncers to the daemon to update the blockchain states.
 /// Events are identified with a unique 32-bits integer that match the [`Task`]
 /// id.
@@ -389,4 +414,5 @@ pub enum Event {
     /// Empty event to signify that a task with a certain id has not produced an initial result
     Empty(TaskId),
     HealthResult(HealthResult),
+    AddressBalance(AddressBalance),
 }

@@ -583,6 +583,24 @@ impl Exec for Command {
                 }
             }
 
+            Command::GetBalance { address } => {
+                runtime.request_info(ServiceId::Database, InfoMsg::GetAddressSecretKey(address))?;
+                if let BusMsg::Info(InfoMsg::AddressSecretKey(address_secret_key)) =
+                    runtime.report_failure()?
+                {
+                    runtime.request_ctl(
+                        ServiceId::Farcasterd,
+                        CtlMsg::GetBalance(address_secret_key),
+                    )?;
+                    runtime.report_response_or_fail()?;
+                } else {
+                    return Err(Error::Farcaster(
+                        "Can only get balance for old funding addresses. Address not found"
+                            .to_string(),
+                    ));
+                }
+            }
+
             Command::SweepMoneroAddress {
                 source_address,
                 destination_address,

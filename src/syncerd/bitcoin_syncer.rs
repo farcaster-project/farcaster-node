@@ -1,5 +1,6 @@
+use crate::bus::info::Address;
 use crate::bus::sync::{BridgeEvent, SyncMsg};
-use crate::bus::BusMsg;
+use crate::bus::{AddressSecretKey, BusMsg};
 use crate::error::SyncerError;
 use crate::syncerd::opts::Opts;
 use crate::syncerd::runtime::SyncerdTask;
@@ -11,10 +12,11 @@ use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
 use crate::syncerd::FeeEstimations;
 use crate::syncerd::GetTx;
+use crate::syncerd::Health;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::TransactionRetrieved;
-use crate::syncerd::{BroadcastTransaction, Health};
+use crate::syncerd::{AddressBalance, BroadcastTransaction};
 use crate::{error::Error, syncerd::syncer_state::create_set};
 use crate::{LogStyle, ServiceId};
 use bitcoin::hashes::{hex::ToHex, Hash};
@@ -29,6 +31,7 @@ use farcaster_core::blockchain::{Blockchain, Network};
 use internet2::session::LocalSession;
 use internet2::zeromq::ZmqSocketType;
 use internet2::SendRecvMessage;
+use hex;
 use internet2::TypedEnum;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -38,8 +41,7 @@ use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
-use hex;
-
+use super::GetAddressBalance;
 use super::HealthCheck;
 
 const RETRY_TIMEOUT: u64 = 5;
@@ -530,6 +532,7 @@ async fn run_syncerd_task_receiver(
     state: Arc<Mutex<SyncerState>>,
     transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
     transaction_get_tx: TokioSender<(GetTx, ServiceId)>,
+    balance_get_tx: TokioSender<(GetAddressBalance, ServiceId)>,
     terminate_tx: TokioSender<()>,
 ) {
     tokio::spawn(async move {
@@ -544,6 +547,12 @@ async fn run_syncerd_task_receiver(
                                 .send((task, syncerd_task.source))
                                 .await
                                 .expect("failed on transaction_get sender");
+                        }
+                        Task::GetAddressBalance(task) => {
+                            balance_get_tx
+                                .send((task, syncerd_task.source))
+                                .await
+                                .expect("failed on balance_get sender");
                         }
                         Task::WatchEstimateFee(task) => {
                             let mut state_guard = state.lock().await;
@@ -1099,7 +1108,79 @@ fn transaction_fetcher(
                         })
                         .await
                         .expect("error sending transaction retrieved event");
-                    debug!("failed to retrieved tx: {:?}", e);
+                    debug!("failed to retrieve tx: {:?}", e);
+                }
+            }
+        }
+    })
+}
+
+fn balance_fetcher(
+    electrum_server: String,
+    proxy_address: Option<String>,
+    mut balance_get_rx: TokioReceiver<(GetAddressBalance, ServiceId)>,
+    tx_event: TokioSender<BridgeEvent>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        while let Some((get_balance, source)) = balance_get_rx.recv().await {
+            let address = match get_balance.address_secret_key {
+                AddressSecretKey::Monero { address, .. } => {
+                    tx_event
+                        .send(BridgeEvent {
+                            event: Event::AddressBalance(AddressBalance {
+                                address: Address::Monero(address),
+                                id: get_balance.id,
+                                balance: 0,
+                                err: Some(
+                                    "Sent monero address balance to bitcoin syncer".to_string(),
+                                ),
+                            }),
+                            source,
+                        })
+                        .await
+                        .expect("error sending address balance event");
+                    warn!("Received monero address balance task in bitcoin syncer");
+                    continue;
+                }
+                AddressSecretKey::Bitcoin { address, .. } => address,
+            };
+
+            debug!("creating balance fetcher electrum client");
+
+            match create_electrum_client(&electrum_server, proxy_address.clone()).and_then(
+                |transaction_client| {
+                    transaction_client.script_get_balance(&address.script_pubkey())
+                },
+            ) {
+                Ok(balance) => {
+                    tx_event
+                        .send(BridgeEvent {
+                            event: Event::AddressBalance(AddressBalance {
+                                id: get_balance.id,
+                                address: Address::Bitcoin(address),
+                                balance: balance.unconfirmed.unsigned_abs(),
+                                err: None,
+                            }),
+                            source,
+                        })
+                        .await
+                        .expect("error sending address balance event");
+                    debug!("successfully retrieved address balance: {:?}", balance);
+                }
+                Err(e) => {
+                    tx_event
+                        .send(BridgeEvent {
+                            event: Event::AddressBalance(AddressBalance {
+                                id: get_balance.id,
+                                address: Address::Bitcoin(address),
+                                balance: 0,
+                                err: Some(e.to_string()),
+                            }),
+                            source,
+                        })
+                        .await
+                        .expect("error sending address balance event");
+                    debug!("failed to retrieve address balance: {}", e);
                 }
             }
         }
@@ -1153,6 +1234,10 @@ impl Synclet for BitcoinSyncer {
                         TokioSender<(GetTx, ServiceId)>,
                         TokioReceiver<(GetTx, ServiceId)>,
                     ) = tokio::sync::mpsc::channel(200);
+                    let (balance_get_tx, balance_get_rx): (
+                        TokioSender<(GetAddressBalance, ServiceId)>,
+                        TokioReceiver<(GetAddressBalance, ServiceId)>,
+                    ) = tokio::sync::mpsc::channel(200);
                     let (terminate_tx, terminate_rx): (TokioSender<()>, TokioReceiver<()>) =
                         tokio::sync::mpsc::channel(1);
                     let state = Arc::new(Mutex::new(SyncerState::new(
@@ -1167,6 +1252,7 @@ impl Synclet for BitcoinSyncer {
                         Arc::clone(&state),
                         transaction_broadcast_tx.clone(),
                         transaction_get_tx,
+                        balance_get_tx,
                         terminate_tx,
                     )
                     .await;
@@ -1205,6 +1291,13 @@ impl Synclet for BitcoinSyncer {
                         event_tx.clone(),
                     );
 
+                    let balance_get_handle = balance_fetcher(
+                        electrum_server.clone(),
+                        proxy_address.clone(),
+                        balance_get_rx,
+                        event_tx.clone(),
+                    );
+
                     let estimate_fee_handle = estimate_fee_polling(
                         electrum_server.clone(),
                         proxy_address.clone(),
@@ -1226,6 +1319,7 @@ impl Synclet for BitcoinSyncer {
                         unseen_transaction_handle,
                         transaction_broadcast_handle,
                         transaction_get_handle,
+                        balance_get_handle,
                         estimate_fee_handle,
                         sweep_handle,
                         terminate_handle,

@@ -25,6 +25,7 @@ use farcaster_core::{
     swap::{btcxmr::PublicOffer, SwapId},
 };
 
+use crate::bus::info::Address;
 use crate::bus::HealthCheckSelector;
 
 /// Command-line tool for working with Farcaster node
@@ -292,6 +293,13 @@ pub enum Command {
         source_address: XmrAddress,
         /// The destination address receiving the coins.
         destination_address: XmrAddress,
+    },
+
+    /// Returns the balance for a given address. The needs to be a previous funding address
+    #[display("get-balance<{address}>")]
+    GetBalance {
+        /// Address for which the balance should be retrieved.
+        address: Address,
     },
 
     /// Output shell completion code for the specified shell (bash, zsh or fish)

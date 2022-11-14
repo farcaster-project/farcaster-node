@@ -23,6 +23,7 @@ use crate::farcasterd::stats::Stats;
 use crate::farcasterd::syncer_state_machine::{SyncerStateMachine, SyncerStateMachineExecutor};
 use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachineExecutor};
 use crate::farcasterd::Opts;
+use crate::syncerd::AddressBalance;
 use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, ProgressStack, Token},
@@ -902,15 +903,23 @@ impl Runtime {
         source: &ServiceId,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
-            (BusMsg::Ctl(CtlMsg::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
-            (BusMsg::Ctl(CtlMsg::HealthCheck(..)), _) => Ok(Some(SyncerStateMachine::Start)),
+            (BusMsg::Ctl(CtlMsg::SweepAddress(..)), _)
+            | (BusMsg::Ctl(CtlMsg::HealthCheck(..)), _)
+            | (BusMsg::Ctl(CtlMsg::GetBalance(..)), _) => Ok(Some(SyncerStateMachine::Start)),
             (
                 BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
                     id, ..
                 }))),
                 _,
-            ) => Ok(self.syncer_state_machines.remove(id)),
-            (
+            )
+            | (
+                BusMsg::Sync(SyncMsg::Event(SyncerEvent::AddressBalance(AddressBalance {
+                    id,
+                    ..
+                }))),
+                _,
+            )
+            | (
                 BusMsg::Sync(SyncMsg::Event(SyncerEvent::HealthResult(HealthResult {
                     id, ..
                 }))),

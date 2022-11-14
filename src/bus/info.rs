@@ -17,6 +17,7 @@ use crate::cli::OfferSelector;
 use crate::farcasterd::stats::Stats;
 use crate::swapd::StateReport;
 use crate::syncerd::runtime::SyncerdTask;
+use crate::Error;
 
 use super::ctl::FundingInfo;
 use super::StateTransition;
@@ -368,12 +369,24 @@ pub enum ProgressEvent {
     Failure(Failure),
 }
 
-#[derive(Eq, PartialEq, Clone, Debug, Display, NetworkDecode, NetworkEncode)]
+#[derive(Eq, PartialEq, Clone, Debug, Display, Hash, NetworkDecode, NetworkEncode)]
 pub enum Address {
     #[display("{0}")]
     Bitcoin(bitcoin::Address),
     #[display("{0}")]
     Monero(monero::Address),
+}
+
+impl FromStr for Address {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        bitcoin::Address::from_str(s)
+            .map(|a| Address::Bitcoin(a))
+            .map_err(|e| Error::Farcaster(e.to_string()))
+            .or(monero::Address::from_str(s)
+                .map(|a| Address::Monero(a))
+                .map_err(|e| Error::Farcaster(e.to_string())))
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]

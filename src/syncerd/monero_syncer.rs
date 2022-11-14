@@ -1,5 +1,6 @@
+use crate::bus::info::Address;
 use crate::bus::sync::{BridgeEvent, SyncMsg};
-use crate::bus::BusMsg;
+use crate::bus::{AddressSecretKey, BusMsg};
 use crate::error::{Error, SyncerError};
 use crate::service::LogStyle;
 use crate::syncerd::opts::Opts;
@@ -9,16 +10,19 @@ use crate::syncerd::syncer_state::create_set;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
+use crate::syncerd::AddressBalance;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
 use crate::syncerd::{Event, Health};
+use crate::ServiceId;
 use farcaster_core::blockchain::{Blockchain, Network};
 use internet2::session::LocalSession;
 use internet2::zeromq::ZmqSocketType;
 use internet2::SendRecvMessage;
+use hex;
 use internet2::TypedEnum;
-use monero::Hash;
+use monero::{Hash, PrivateKey};
 use monero_rpc::{
     GenerateFromKeysArgs, GetBlockHeaderSelector, GetTransfersCategory, GetTransfersSelector,
     PrivateKeyType,
@@ -32,8 +36,7 @@ use tokio::sync::mpsc::Receiver as TokioReceiver;
 use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
-use hex;
-
+use super::GetAddressBalance;
 use super::HealthCheck;
 
 #[derive(Debug, Clone)]
@@ -385,6 +388,7 @@ async fn run_syncerd_task_receiver(
     syncer_servers: MoneroSyncerServers,
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
+    balance_get_tx: TokioSender<(GetAddressBalance, ServiceId)>,
     tx_event: TokioSender<BridgeEvent>,
 ) {
     tokio::spawn(async move {
@@ -396,6 +400,12 @@ async fn run_syncerd_task_receiver(
                     match syncerd_task.task {
                         Task::GetTx(_) => {
                             error!("get tx not implemented for monero syncer");
+                        }
+                        Task::GetAddressBalance(task) => {
+                            balance_get_tx
+                                .send((task, syncerd_task.source))
+                                .await
+                                .expect("failed on balance_get sender");
                         }
                         Task::WatchEstimateFee(_) => {
                             error!("estimate fee not implemented for monero syncer");
@@ -791,6 +801,133 @@ async fn run_syncerd_bridge_event_sender(
     });
 }
 
+async fn fetch_balance(
+    wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
+    wallet_dir_path: Option<PathBuf>,
+    address: monero::Address,
+    viewkey: PrivateKey,
+) -> Result<monero::Amount, Error> {
+    let wallet_filename = format!("balance:{}", address);
+    let password = s!(" ");
+    debug!("creating balance fetcher wallet client");
+    let wallet = wallet_mutex.lock().await;
+    trace!("taking balance wallet lock");
+
+    while let Err(err) = wallet
+        .open_wallet(wallet_filename.clone(), Some(password.clone()))
+        .await
+    {
+        debug!(
+            "error opening to be sweeped wallet: {:?}, falling back to generating a new wallet",
+            err,
+        );
+        wallet
+            .generate_from_keys(GenerateFromKeysArgs {
+                restore_height: Some(0), // fixme
+                filename: wallet_filename.clone(),
+                address,
+                spendkey: None,
+                viewkey,
+                password: password.clone(),
+                autosave_current: Some(true),
+            })
+            .await?;
+    }
+
+    let (account, addrs) = (0, None);
+    wallet.refresh(Some(0)).await?; // fixme
+    let balance = wallet.get_balance(account, addrs).await?;
+
+    if let Some(path) = wallet_dir_path {
+        if let Some(raw_path) = path.to_str() {
+            if let Err(err) = fs::remove_file(raw_path.to_string() + &wallet_filename).and(
+                fs::remove_file(raw_path.to_string() + &wallet_filename + ".keys"),
+            ) {
+                warn!("Failed to clean balance wallet data after successful balance call. {}. The path used for the wallet directory is probably malformed", err);
+            } else {
+                info!("Successfully removed sweep wallet data after completed sweep.");
+            }
+        }
+    }
+
+    Ok(balance.balance)
+}
+
+fn balance_fetcher(
+    wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
+    wallet_dir_path: Option<PathBuf>,
+    mut balance_get_rx: TokioReceiver<(GetAddressBalance, ServiceId)>,
+    tx_event: TokioSender<BridgeEvent>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        while let Some((get_balance, source)) = balance_get_rx.recv().await {
+            match get_balance.address_secret_key {
+                AddressSecretKey::Monero {
+                    address,
+                    secret_key_info,
+                } => {
+                    match fetch_balance(
+                        Arc::clone(&wallet_mutex),
+                        wallet_dir_path.clone(),
+                        address,
+                        secret_key_info.view,
+                    )
+                    .await
+                    {
+                        Ok(balance) => {
+                            tx_event
+                                .send(BridgeEvent {
+                                    event: Event::AddressBalance(AddressBalance {
+                                        id: get_balance.id,
+                                        address: Address::Monero(address),
+                                        balance: balance.as_pico(),
+                                        err: None,
+                                    }),
+                                    source,
+                                })
+                                .await
+                                .expect("error sending address balance event");
+                        }
+                        Err(e) => {
+                            tx_event
+                                .send(BridgeEvent {
+                                    event: Event::AddressBalance(AddressBalance {
+                                        id: get_balance.id,
+                                        address: Address::Monero(address),
+                                        balance: 0,
+                                        err: Some(e.to_string()),
+                                    }),
+                                    source,
+                                })
+                                .await
+                                .expect("error sending address balance event");
+                            debug!("failed to retrieve address balance: {}", e);
+                        }
+                    }
+                }
+                AddressSecretKey::Bitcoin { address, .. } => {
+                    tx_event
+                        .send(BridgeEvent {
+                            event: Event::AddressBalance(AddressBalance {
+                                address: Address::Bitcoin(address),
+                                id: get_balance.id,
+                                balance: 0,
+                                err: Some(
+                                    "Sent monero address balance to bitcoin syncer".to_string(),
+                                ),
+                            }),
+                            source,
+                        })
+                        .await
+                        .expect("error sending address balance event");
+                    warn!("Received monero address balance task in bitcoin syncer");
+                    continue;
+                }
+            };
+        }
+    })
+}
+
 /// Specific Monero configuration
 #[derive(Default, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct MoneroSyncerServers {
@@ -836,6 +973,11 @@ impl Synclet for MoneroSyncer {
                             monero_rpc::RpcClient::new(syncer_servers.monero_rpc_wallet.clone())
                                 .wallet(),
                         ));
+                        let (balance_get_tx, balance_get_rx): (
+                            TokioSender<(GetAddressBalance, ServiceId)>,
+                            TokioReceiver<(GetAddressBalance, ServiceId)>,
+                        ) = tokio::sync::mpsc::channel(200);
+
                         let (event_tx, event_rx): (
                             TokioSender<BridgeEvent>,
                             TokioReceiver<BridgeEvent>,
@@ -849,6 +991,7 @@ impl Synclet for MoneroSyncer {
                             syncer_servers.clone(),
                             receive_task_channel,
                             Arc::clone(&state),
+                            balance_get_tx,
                             event_tx.clone(),
                         )
                         .await;
@@ -872,14 +1015,22 @@ impl Synclet for MoneroSyncer {
                             Arc::clone(&state),
                             Arc::clone(&wallet_mutex),
                             network,
+                            wallet_dir.clone(),
+                        );
+
+                        let balance_handle = balance_fetcher(
+                            Arc::clone(&wallet_mutex),
                             wallet_dir,
+                            balance_get_rx,
+                            event_tx,
                         );
 
                         let res = tokio::try_join!(
                             address_handle,
                             height_handle,
                             unseen_transaction_handle,
-                            sweep_handle
+                            sweep_handle,
+                            balance_handle,
                         );
                         debug!("exiting monero synclet run routine with: {:?}", res);
                     });

@@ -125,6 +125,8 @@ pub enum CtlMsg {
     #[display("set_address_secret_key")]
     SetAddressSecretKey(AddressSecretKey),
 
+    GetBalance(AddressSecretKey),
+
     #[display("funding_updated()")]
     FundingUpdated,
 
