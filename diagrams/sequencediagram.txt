@@ -70,7 +70,6 @@ end
 group for Bob swap role
 m_swap -> m_swap : ADD PENDING Msg Reveal
 m_swap -> m_farcasterd : Ctl FundingInfo
-
 m_swap -> m_syncer: Watch Arbitrating Funding Address
 m_swap <- m_syncer: Arbitrating Funding event
 m_farcasterd<-m_swap: Ctl FundingCompleted Bitcoin
