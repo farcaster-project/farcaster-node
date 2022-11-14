@@ -15,6 +15,7 @@ service Farcaster {
     rpc Progress(ProgressRequest) returns (ProgressResponse){}
     rpc NeedsFunding(NeedsFundingRequest) returns (NeedsFundingResponse){}
     rpc SweepAddress(SweepAddressRequest) returns (SweepAddressResponse){}
+    rpc ConnectSwap(ConnectSwapRequest) returns (ConnectSwapResponse){}
 }
 
 message InfoRequest {
@@ -165,6 +166,15 @@ message ProgressRequest {
 message ProgressResponse {
     uint32 id = 1;
     repeated string progress = 2;
+}
+
+message ConnectSwapRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message ConnectSwapResponse {
+    uint32 id = 1;
 }
 
 message NeedsFundingRequest {

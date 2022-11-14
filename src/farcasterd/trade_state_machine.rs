@@ -1154,7 +1154,7 @@ fn attempt_transition_to_end(
         (BusMsg::Ctl(CtlMsg::Connect(connect_swap_id)), _) if connect_swap_id == swap_id => {
             let mut new_peerd = peerd.clone();
             if let Some(peerd) = peerd {
-                event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                     code: FailureCode::Unknown,
                     info: format!(
                         "The swap already has a dedicated connection daemon {}",
@@ -1165,14 +1165,14 @@ fn attempt_transition_to_end(
                 let peer_node_addr = node_addr_from_public_offer(&public_offer);
                 match runtime.connect_peer(&peer_node_addr) {
                     Err(err) => {
-                        event.complete_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: err.to_string(),
                         })))?;
                     }
                     Ok(peerd) => {
                         new_peerd = Some(peerd);
-                        event.complete_ctl(BusMsg::Ctl(CtlMsg::ConnectSuccess))?;
+                        event.complete_client_ctl(BusMsg::Ctl(CtlMsg::ConnectSuccess))?;
                     }
                 }
             }
