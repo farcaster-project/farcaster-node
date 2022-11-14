@@ -160,7 +160,45 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
+    fn handle_err(
+        &mut self,
+        endpoints: &mut Endpoints,
+        err: esb::Error<ServiceId>,
+    ) -> Result<(), Error> {
+        // If the client routes through farcasterd, but the target daemon does not exist, send a response back to the client
+        match err {
+            esb::Error::Send(ServiceId::Client(client_id), target, ..) => {
+                debug!(
+                    "Target service {} not found while routing msg from {}",
+                    target,
+                    ServiceId::Client(client_id)
+                );
+                self.send_client_ctl(
+                    endpoints,
+                    ServiceId::Client(client_id),
+                    BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        code: FailureCode::TargetServiceNotFound,
+                        info: format!("The target service {} does not exist", target),
+                    })),
+                )?;
+            }
+            esb::Error::Send(ServiceId::GrpcdClient(client_id), target, ..) => {
+                debug!(
+                    "Target service {} not found while routing msg from grpc server",
+                    target
+                );
+                self.send_client_ctl(
+                    endpoints,
+                    ServiceId::GrpcdClient(client_id),
+                    BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        code: FailureCode::TargetServiceNotFound,
+                        info: format!("The target service {} does not exist", target),
+                    })),
+                )?;
+            }
+            _ => {}
+        }
+
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
