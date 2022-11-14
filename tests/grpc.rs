@@ -242,7 +242,7 @@ async fn grpc_server_functional_test() {
     let response = farcaster_client_1.swap_info(request).await;
     assert_eq!(response.unwrap().into_inner().id, 20);
     // wait for lock
-    tokio::time::sleep(time::Duration::from_secs(5)).await;
+    tokio::time::sleep(time::Duration::from_secs(15)).await;
     kill_all();
     let _ = setup_clients().await;
     tokio::time::sleep(time::Duration::from_secs(5)).await;
