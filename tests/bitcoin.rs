@@ -3,6 +3,7 @@ use bitcoin::hashes::Hash;
 use bitcoincore_rpc::RpcApi;
 use clap::Parser;
 use farcaster_core::blockchain::{Blockchain, Network};
+use farcaster_node::bus::{AddressSecretKey, BitcoinSecretKeyInfo};
 use farcaster_node::syncerd::bitcoin_syncer::BitcoinSyncer;
 use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
@@ -10,8 +11,8 @@ use farcaster_node::syncerd::types::{
     Abort, AddressAddendum, Boolean, BroadcastTransaction, BtcAddressAddendum, GetTx, SweepAddress,
     SweepAddressAddendum, Task, WatchAddress, WatchEstimateFee, WatchHeight, WatchTransaction,
 };
-use farcaster_node::syncerd::SweepBitcoinAddress;
 use farcaster_node::syncerd::{runtime::Synclet, TaskId, TaskTarget};
+use farcaster_node::syncerd::{GetAddressBalance, SweepBitcoinAddress};
 use farcaster_node::ServiceId;
 use microservices::ZMQ_CONTEXT;
 use ntest::timeout;
@@ -1063,6 +1064,50 @@ fn bitcoin_syncer_sweep_address_test() {
     .unwrap();
     let duration = std::time::Duration::from_secs(10);
     std::thread::sleep(duration);
+}
+
+#[test]
+#[timeout(600000)]
+#[ignore]
+fn bitcoin_syncer_address_balance_test() {
+    setup_logging();
+    let bitcoin_rpc = bitcoin_setup();
+    let (tx, rx_event) = create_bitcoin_syncer("sweep");
+
+    let target_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let target_secret_key = bitcoin_rpc.dump_private_key(&target_address).unwrap().inner;
+
+    // 294 Satoshi is the dust limit for a segwit transaction
+    let amount = bitcoin::Amount::ONE_SAT * 1000;
+    // send some coins to target_address
+    let _txid = bitcoin_rpc
+        .send_to_address(&target_address, amount, None, None, None, None, None, None)
+        .unwrap();
+
+    // allow some time for things to happen, like the electrum server catching up
+    let duration = std::time::Duration::from_secs(10);
+    std::thread::sleep(duration);
+
+    let task = SyncerdTask {
+        task: Task::GetAddressBalance(GetAddressBalance {
+            id: TaskId(0),
+            address_secret_key: AddressSecretKey::Bitcoin {
+                address: target_address,
+                secret_key_info: BitcoinSecretKeyInfo {
+                    swap_id: None,
+                    secret_key: target_secret_key,
+                },
+            },
+        }),
+        source: SOURCE1.clone(),
+    };
+    tx.send(task).unwrap();
+    // allow some time for things to happen, like the electrum server catching up
+    info!("waiting for address balance message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received address balance message");
+    let request = misc::get_request_from_message(message);
+    assert::address_balance(request, amount.as_sat());
 }
 
 // =========================

@@ -136,6 +136,38 @@ pub fn transaction_received(request: BusMsg, expected_txid: bitcoin::Txid) {
     }
 }
 
+pub fn address_balance(request: BusMsg, expected_balance: u64) {
+    match request {
+        BusMsg::Sync(SyncMsg::BridgeEvent(event)) => match event.event {
+            Event::AddressBalance(address_balance) => {
+                assert_eq!(address_balance.balance, expected_balance);
+            }
+            _ => {
+                panic!("expected address balance event");
+            }
+        },
+        _ => {
+            panic!("expected syncerd bridge event");
+        }
+    }
+}
+
+pub fn address_balance_min(request: BusMsg, min_balance: u64) {
+    match request {
+        BusMsg::Sync(SyncMsg::BridgeEvent(event)) => match event.event {
+            Event::AddressBalance(address_balance) => {
+                assert!(address_balance.balance >= min_balance);
+            }
+            _ => {
+                panic!("expected address balance event");
+            }
+        },
+        _ => {
+            panic!("expected syncerd bridge event");
+        }
+    }
+}
+
 pub fn fee_estimation_received(request: BusMsg) {
     match request {
         BusMsg::Sync(SyncMsg::BridgeEvent(BridgeEvent {
