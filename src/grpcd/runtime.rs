@@ -54,10 +54,13 @@ use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse,
 
 use self::farcaster::AbortSwapRequest;
 use self::farcaster::AbortSwapResponse;
+use self::farcaster::AddressSwapIdPair;
 use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
 use self::farcaster::ConnectSwapRequest;
 use self::farcaster::ConnectSwapResponse;
+use self::farcaster::FundingAddressesRequest;
+use self::farcaster::FundingAddressesResponse;
 use self::farcaster::HealthCheckRequest;
 use self::farcaster::HealthCheckResponse;
 use self::farcaster::ListOffersRequest;
@@ -653,6 +656,48 @@ impl Farcaster for FarcasterService {
                 }
             }
             res => process_error_response(res),
+        }
+    }
+
+    async fn funding_addresses(
+        &self,
+        request: GrpcRequest<FundingAddressesRequest>,
+    ) -> Result<GrpcResponse<FundingAddressesResponse>, Status> {
+        let FundingAddressesRequest {
+            id,
+            blockchain: grpc_blockchain,
+        } = request.into_inner();
+
+        let blockchain: Blockchain = farcaster::Blockchain::from_i32(grpc_blockchain)
+            .ok_or(Status::invalid_argument("arbitrating blockchain"))?
+            .into();
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::GetAddresses(blockchain),
+                service_id: ServiceId::Database,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::BitcoinAddressList(addresses))) => {
+                let reply = FundingAddressesResponse {
+                    id,
+                    addresses: addresses
+                        .iter()
+                        .map(|a| AddressSwapIdPair {
+                            address: a.address.to_string(),
+                            address_swap_id: a.swap_id.map(|c| {
+                                farcaster::address_swap_id_pair::AddressSwapId::SwapId(
+                                    c.to_string(),
+                                )
+                            }),
+                        })
+                        .collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
 
