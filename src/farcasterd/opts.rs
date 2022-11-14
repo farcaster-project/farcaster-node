@@ -38,6 +38,10 @@ pub struct Opts {
         value_hint = ValueHint::FilePath
     )]
     pub config: String,
+
+    /// Setting manual restore, blocks auto-restore of checkpoints on startup.
+    #[clap(short, long)]
+    pub manual_restore: bool,
 }
 
 impl Opts {

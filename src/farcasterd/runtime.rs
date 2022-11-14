@@ -59,7 +59,7 @@ use microservices::esb::{self, Handler};
 pub fn run(
     service_config: ServiceConfig,
     config: Config,
-    _opts: Opts,
+    opts: Opts,
     wallet_token: Token,
 ) -> Result<(), Error> {
     let _walletd = launch("walletd", &["--token", &wallet_token.to_string()])?;
@@ -102,6 +102,7 @@ pub fn run(
         syncer_task_counter: 0,
         trade_state_machines: vec![],
         syncer_state_machines: none!(),
+        opts,
     };
 
     let broker = true;
@@ -125,6 +126,7 @@ pub struct Runtime {
     pub syncer_task_counter: u32, // A strictly incrementing counter of issued syncer tasks
     pub trade_state_machines: Vec<TradeStateMachine>, // New trade state machines are inserted on creation and destroyed upon state machine end transitions
     syncer_state_machines: HashMap<TaskId, SyncerStateMachine>, // New syncer state machines are inserted by their syncer task id when sending a syncer request and destroyed upon matching syncer request receival
+    opts: Opts,
 }
 
 impl CtlServer for Runtime {}
@@ -248,6 +250,15 @@ impl Runtime {
                             ServiceId::Database,
                             BusMsg::Ctl(CtlMsg::CleanDanglingOffers),
                         )?;
+                        if !self.opts.manual_restore {
+                            // Retrieve all checkpoint info from farcasterd triggers restore of all checkpoints
+                            endpoints.send_to(
+                                ServiceBus::Ctl,
+                                self.identity(),
+                                ServiceId::Database,
+                                BusMsg::Info(InfoMsg::RetrieveAllCheckpointInfo),
+                            )?;
+                        }
                     }
                     ServiceId::Wallet => {
                         self.registered_services.insert(source.clone());
@@ -552,6 +563,16 @@ impl Runtime {
                             info,
                         }),
                     ));
+                }
+            }
+
+            InfoMsg::CheckpointList(list) => {
+                for checkpoint in list.iter() {
+                    self.handle_ctl(
+                        endpoints,
+                        self.identity(),
+                        CtlMsg::RestoreCheckpoint(checkpoint.clone()),
+                    )?;
                 }
             }
 
