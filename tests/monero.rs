@@ -398,12 +398,14 @@ async fn monero_syncer_address_test() {
         let (address5, view_key5) = new_address(&wallet).await;
         send_monero(&wallet, address5, 1).await;
         // this transaction should not generate an event, because the task's lifetime expired
-        send_monero(&wallet, address4, 1).await;
         let blocks = regtest
             .generate_blocks(10, address.address)
             .await
             .unwrap()
             .height;
+        std::thread::sleep(duration);
+
+        send_monero(&wallet, address4, 1).await;
 
         let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: address5.public_spend,
