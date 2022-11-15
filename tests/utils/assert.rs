@@ -19,6 +19,16 @@ pub fn address_transaction(request: BusMsg, expected_amount: u64, possible_txids
     }
 }
 
+pub fn empty_message(request: BusMsg) {
+    match request {
+        BusMsg::Sync(SyncMsg::BridgeEvent(event)) => match event.event {
+            Event::Empty(_) => (),
+            _ => panic!("expected empty bridge event"),
+        },
+        _ => panic!("expected empty bridge event"),
+    }
+}
+
 pub fn sweep_success(request: BusMsg, id: TaskId) {
     match request {
         BusMsg::Sync(SyncMsg::BridgeEvent(event)) => match event.event {

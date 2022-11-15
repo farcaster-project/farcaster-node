@@ -59,6 +59,7 @@ pub struct AddressTransactions {
     pub task: WatchAddress,
     known_txs: HashSet<AddressTx>,
     pub subscribed: bool,
+    pub initial_check_done: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -293,6 +294,7 @@ impl SyncerState {
             task,
             known_txs: none!(),
             subscribed: false,
+            initial_check_done: false,
         };
         self.addresses.insert(self.task_count.into(), address_txs);
     }
@@ -456,40 +458,36 @@ impl SyncerState {
             address_addendum: AddressAddendum,
             txs: HashSet<AddressTx>,
         ) {
-            let changes_detected: bool = addresses
-                .iter()
-                .find_map(|(_, addr)| {
-                    // let new_txs = txs.difference(&addr.known_txs).collect::<Vec<&_>>();
-                    if txs.difference(&addr.known_txs).next().is_some() {
-                        Some(true)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(false);
-
-            if !changes_detected {
-                trace!("no changes to process, skipping...");
-                return;
-            }
-
             *addresses = addresses
                 .drain()
-                .map(|(id, addr)| {
+                .map(|(id, mut addr)| {
                     trace!("processing taskid {} for address {:?}", id, addr);
                     if addr.task.addendum != address_addendum {
-                        trace!("address not changed or not address_addendum of interest");
+                        // not an address of interest
+                        return (id, addr);
+                    }
+                    let txs_diff: HashSet<&AddressTx> = txs.difference(&addr.known_txs).collect();
+                    // emit an empty event if no transactions have been found during the first query
+                    if txs_diff.is_empty() && !addr.initial_check_done {
+                        events.push((
+                            Event::Empty(addr.task.id),
+                            tasks_sources
+                                .get(&id)
+                                .cloned()
+                                .expect("task source missing"),
+                        ));
+                        addr.initial_check_done = true;
                         return (id, addr);
                     }
                     // create events for new transactions
-                    for new_tx in txs.difference(&addr.known_txs).cloned() {
+                    for new_tx in txs_diff {
                         debug!("new tx seen: {}", hex::encode(&new_tx.tx_id));
                         let address_transaction = AddressTransaction {
                             id: addr.task.id,
-                            hash: new_tx.tx_id,
+                            hash: new_tx.tx_id.clone(),
                             amount: new_tx.our_amount,
                             block: vec![], // eventually this should be removed from the event
-                            tx: new_tx.tx,
+                            tx: new_tx.tx.clone(),
                         };
                         events.push((
                             Event::AddressTransaction(address_transaction),
@@ -506,6 +504,7 @@ impl SyncerState {
                             task: addr.task,
                             known_txs: txs.clone(),
                             subscribed: addr.subscribed,
+                            initial_check_done: true,
                         },
                     )
                 })
@@ -927,6 +926,16 @@ async fn syncer_state_addresses() {
         include_tx: Boolean::False,
     };
     let source1 = ServiceId::Syncer(Blockchain::Bitcoin, Network::Mainnet);
+
+    state.watch_address(address_task.clone(), source1.clone());
+    state
+        .change_address(addendum.clone(), create_set(vec![]))
+        .await;
+    assert!(event_rx.try_recv().is_ok());
+    state
+        .abort(TaskTarget::TaskId(TaskId(0)), source1.clone(), true)
+        .await;
+    assert!(event_rx.try_recv().is_ok());
 
     state.watch_address(address_task_two.clone(), source1.clone());
     state
