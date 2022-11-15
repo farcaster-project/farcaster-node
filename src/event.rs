@@ -1,6 +1,6 @@
 use microservices::esb;
 
-use crate::bus::{BusMsg, ServiceBus};
+use crate::bus::{ctl, info, p2p, sync, BusMsg, ServiceBus};
 use crate::Endpoints;
 use crate::LogStyle;
 use crate::ServiceId;
@@ -97,39 +97,47 @@ impl<'esb> Event<'esb> {
     }
 
     /// Finalizes event processing by sending reply request via CTL message bus
-    pub fn complete_ctl(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
-        self.endpoints
-            .send_to(ServiceBus::Ctl, self.service, self.source, request)
+    pub fn complete_ctl(self, request: ctl::CtlMsg) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints.send_to(
+            ServiceBus::Ctl,
+            self.service,
+            self.source,
+            BusMsg::Ctl(request),
+        )
     }
 
     /// Finalizes event processing by sending reply request via CTL message bus to a client
-    pub fn complete_client_ctl(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
+    pub fn complete_client_ctl(self, request: ctl::CtlMsg) -> Result<(), esb::Error<ServiceId>> {
         let bus = ServiceBus::Ctl;
         if let ServiceId::GrpcdClient(_) = self.source {
             self.endpoints
-                .send_to(bus, self.source, ServiceId::Grpcd, request)?;
+                .send_to(bus, self.source, ServiceId::Grpcd, BusMsg::Ctl(request))?;
         } else {
             self.endpoints
-                .send_to(bus, self.service, self.source, request)?;
+                .send_to(bus, self.service, self.source, BusMsg::Ctl(request))?;
         }
         Ok(())
     }
 
     /// Finalizes event processing by sending reply request via RPC message bus
-    pub fn complete_info(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
-        self.endpoints
-            .send_to(ServiceBus::Info, self.service, self.source, request)
+    pub fn complete_info(self, request: info::InfoMsg) -> Result<(), esb::Error<ServiceId>> {
+        self.endpoints.send_to(
+            ServiceBus::Info,
+            self.service,
+            self.source,
+            BusMsg::Info(request),
+        )
     }
 
     /// Finalizes event processing by sending reply request via RPC message bus to a client
-    pub fn complete_client_info(self, request: BusMsg) -> Result<(), esb::Error<ServiceId>> {
+    pub fn complete_client_info(self, request: info::InfoMsg) -> Result<(), esb::Error<ServiceId>> {
         let bus = ServiceBus::Info;
         if let ServiceId::GrpcdClient(_) = self.source {
             self.endpoints
-                .send_to(bus, self.source, ServiceId::Grpcd, request)?;
+                .send_to(bus, self.source, ServiceId::Grpcd, BusMsg::Info(request))?;
         } else {
             self.endpoints
-                .send_to(bus, self.service, self.source, request)?;
+                .send_to(bus, self.service, self.source, BusMsg::Info(request))?;
         }
         Ok(())
     }
@@ -139,10 +147,10 @@ impl<'esb> Event<'esb> {
     pub fn complete_ctl_service(
         self,
         service: ServiceId,
-        request: BusMsg,
+        request: ctl::CtlMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints
-            .send_to(ServiceBus::Ctl, self.service, service, request)
+            .send_to(ServiceBus::Ctl, self.service, service, BusMsg::Ctl(request))
     }
 
     /// Finalizes event processing by sending reply request via SYNC message bus to a specific
@@ -150,10 +158,14 @@ impl<'esb> Event<'esb> {
     pub fn complete_sync_service(
         self,
         service: ServiceId,
-        request: BusMsg,
+        request: sync::SyncMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
-        self.endpoints
-            .send_to(ServiceBus::Sync, self.service, service, request)
+        self.endpoints.send_to(
+            ServiceBus::Sync,
+            self.service,
+            service,
+            BusMsg::Sync(request),
+        )
     }
 
     /// Sends reply request via CTL message bus to a specific service (different from the event
@@ -161,10 +173,14 @@ impl<'esb> Event<'esb> {
     pub fn send_ctl_service(
         &mut self,
         service: ServiceId,
-        request: BusMsg,
+        request: ctl::CtlMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
-        self.endpoints
-            .send_to(ServiceBus::Ctl, self.service.clone(), service, request)
+        self.endpoints.send_to(
+            ServiceBus::Ctl,
+            self.service.clone(),
+            service,
+            BusMsg::Ctl(request),
+        )
     }
 
     /// Sends reply request via INFO message bus to a specific service (different from the event
@@ -172,25 +188,29 @@ impl<'esb> Event<'esb> {
     pub fn send_info_service(
         &mut self,
         service: ServiceId,
-        request: BusMsg,
+        request: info::InfoMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
-        self.endpoints
-            .send_to(ServiceBus::Info, self.service.clone(), service, request)
+        self.endpoints.send_to(
+            ServiceBus::Info,
+            self.service.clone(),
+            service,
+            BusMsg::Info(request),
+        )
     }
 
     /// Finalizes event processing by sending reply request via RPC message bus to a client
     pub fn send_client_info(
         &mut self,
         service: ServiceId,
-        request: BusMsg,
+        request: info::InfoMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
         let bus = ServiceBus::Info;
         if let ServiceId::GrpcdClient(_) = service {
             self.endpoints
-                .send_to(bus, service, ServiceId::Grpcd, request)?;
+                .send_to(bus, service, ServiceId::Grpcd, BusMsg::Info(request))?;
         } else {
             self.endpoints
-                .send_to(bus, self.service.clone(), service, request)?;
+                .send_to(bus, self.service.clone(), service, BusMsg::Info(request))?;
         }
         Ok(())
     }
@@ -199,19 +219,13 @@ impl<'esb> Event<'esb> {
     pub fn send_msg_service(
         &mut self,
         service: ServiceId,
-        request: BusMsg,
+        request: p2p::PeerMsg,
     ) -> Result<(), esb::Error<ServiceId>> {
-        self.endpoints
-            .send_to(ServiceBus::Msg, self.service.clone(), service, request)
-    }
-
-    /// Forwards a request through bus to service (new source is the service forwarding)
-    pub fn forward_msg(&mut self, service: ServiceId) -> Result<(), esb::Error<ServiceId>> {
         self.endpoints.send_to(
             ServiceBus::Msg,
             self.service.clone(),
             service,
-            self.request.clone(),
+            BusMsg::P2p(request),
         )
     }
 }
