@@ -348,6 +348,50 @@ impl Runtime {
                 }
             }
 
+            // Notify all swapds in case of disconnect
+            CtlMsg::Disconnected => {
+                for swap_id in self.trade_state_machines.iter().filter_map(|tsm| {
+                    if let Some(peer) = tsm.get_connection() {
+                        if peer == source {
+                            tsm.swap_id()
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }) {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Swap(swap_id.clone()),
+                        BusMsg::Ctl(CtlMsg::Disconnected),
+                    )?;
+                }
+            }
+
+            // Notify all swapds in case of reconnect
+            CtlMsg::Reconnected => {
+                for swap_id in self.trade_state_machines.iter().filter_map(|tsm| {
+                    if let Some(peer) = tsm.get_connection() {
+                        if peer == source {
+                            tsm.swap_id()
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }) {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Swap(swap_id.clone()),
+                        BusMsg::Ctl(CtlMsg::Reconnected),
+                    )?;
+                }
+            }
+
             // Add progress in queues and forward to subscribed clients
             event @ (CtlMsg::Progress(..) | CtlMsg::Success(..) | CtlMsg::Failure(..)) => {
                 if !self.progress.contains_key(&source) {
@@ -744,7 +788,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn consumed_offers_contains(&self, offer: &PublicOffer) -> bool {
+    pub fn consumed_offers_contains(&self, offer: &PublicOffer) -> bool {
         self.trade_state_machines
             .iter()
             .filter_map(|tsm| tsm.consumed_offer())
@@ -859,6 +903,7 @@ impl Runtime {
             | (BusMsg::Ctl(CtlMsg::FundingInfo(..)), ServiceId::Swap(swap_id))
             | (BusMsg::Ctl(CtlMsg::FundingCanceled(..)), ServiceId::Swap(swap_id))
             | (BusMsg::Ctl(CtlMsg::FundingCompleted(..)), ServiceId::Swap(swap_id))
+            | (BusMsg::Ctl(CtlMsg::Connect(swap_id)), _)
             | (BusMsg::Ctl(CtlMsg::SwapOutcome(..)), ServiceId::Swap(swap_id)) => Ok(self
                 .trade_state_machines
                 .iter()
@@ -903,8 +948,36 @@ impl Runtime {
             }
             Ok(())
         } else {
-            warn!("Received request {}, but did not process it", request);
-            Ok(())
+            match request {
+                BusMsg::Ctl(CtlMsg::RevokeOffer(..)) => {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        BusMsg::Ctl(CtlMsg::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: "Offer to revoke not found.".to_string(),
+                        })),
+                    )?;
+                    Ok(())
+                }
+                BusMsg::Ctl(CtlMsg::Connect(..)) => {
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        source,
+                        BusMsg::Ctl(CtlMsg::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: "Swap to connect not found.".to_string(),
+                        })),
+                    )?;
+                    Ok(())
+                }
+                _ => {
+                    warn!("Received request {}, but did not process it", request);
+                    Ok(())
+                }
+            }
         }
     }
 

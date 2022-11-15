@@ -17,7 +17,7 @@ use bitcoin::hashes::hex::ToHex;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::role::TradeRole;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
-use internet2::addr::NodeId;
+use internet2::addr::{NodeAddr, NodeId};
 use microservices::esb::Handler;
 use std::str::FromStr;
 
@@ -60,7 +60,7 @@ pub enum TradeStateMachine {
 
     /// StartRestore - transitions to RestoringSwapd on cli request or None on
     /// failure. Transition to RestoringSwapd triggers launching swapd and
-    /// syncers, sends reply to cli.
+    /// syncers, and peerd connect if we are the taker - sends reply to cli.
     #[display("Start Restore")]
     StartRestore,
 
@@ -138,15 +138,16 @@ pub struct RestoringSwapd {
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
     trade_role: TradeRole,
+    expect_connection: bool,
+    connected: bool,
 }
 
 pub struct SwapdRunning {
-    peerd: ServiceId,
+    peerd: Option<ServiceId>,
     public_offer: PublicOffer,
     arbitrating_syncer: ServiceId,
     accordant_syncer: ServiceId,
     swap_id: SwapId,
-    connected: bool,
     funding_info: Option<FundingInfo>,
     auto_funded: bool,
 }
@@ -270,7 +271,7 @@ impl TradeStateMachine {
             TradeStateMachine::TakeOffer(TakeOffer { peerd, .. }) => Some(peerd.clone()),
             TradeStateMachine::TakerCommit(TakerCommit { peerd, .. }) => Some(peerd.clone()),
             TradeStateMachine::SwapdLaunched(SwapdLaunched { peerd, .. }) => Some(peerd.clone()),
-            TradeStateMachine::SwapdRunning(SwapdRunning { peerd, .. }) => Some(peerd.clone()),
+            TradeStateMachine::SwapdRunning(SwapdRunning { peerd, .. }) => peerd.clone(),
             _ => None,
         }
     }
@@ -314,6 +315,7 @@ fn attempt_transition_to_make_offer(
             // start a listener on the bind_addr
             match runtime.listen(bind_addr) {
                 Err(err) => {
+                    warn!("Failed to start peerd listen, cannot make offer: {}", err);
                     event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
                         code: FailureCode::Unknown,
                         info: err.to_string(),
@@ -371,13 +373,8 @@ fn attempt_transition_to_take_offer(
             external_address,
             internal_address,
         })) => {
-            if runtime.trade_state_machines.iter().any(|tsm| {
-                if let Some(tsm_public_offer) = tsm.consumed_offer() {
-                    tsm_public_offer == public_offer
-                } else {
-                    false
-                }
-            }) || runtime.public_offers.contains(&public_offer)
+            if runtime.consumed_offers_contains(&public_offer)
+                || runtime.public_offers.contains(&public_offer)
             {
                 let msg = format!(
                     "{} already exists or was already taken, ignoring request",
@@ -390,17 +387,8 @@ fn attempt_transition_to_take_offer(
                 })))?;
                 return Ok(None);
             }
-            let PublicOffer {
-                version: _,
-                offer: _,
-                node_id,      // bitcoin::Pubkey
-                peer_address, // InetSocketAddr
-            } = public_offer;
 
-            let peer_node_addr = internet2::addr::NodeAddr {
-                id: NodeId::from(node_id.clone()), // checked above
-                addr: peer_address,
-            };
+            let peer_node_addr = node_addr_from_public_offer(&public_offer);
             // connect to the remote peer
             match runtime.connect_peer(&peer_node_addr) {
                 Err(err) => {
@@ -481,6 +469,19 @@ fn attempt_transition_to_restoring_swapd(
                 return Ok(None);
             }
 
+            // We only try to re-establish a connection if we are the Taker
+            let expect_connection = if trade_role == TradeRole::Taker {
+                let peer_node_addr = node_addr_from_public_offer(&public_offer);
+                if let Err(err) = runtime.connect_peer(&peer_node_addr) {
+                    warn!("failed to reconnect to peer on restore: {}", err);
+                    false
+                } else {
+                    true
+                }
+            } else {
+                false
+            };
+
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
@@ -515,6 +516,8 @@ fn attempt_transition_to_restoring_swapd(
                 arbitrating_syncer_up,
                 accordant_syncer_up,
                 swapd_up: false,
+                connected: false,
+                expect_connection,
                 trade_role,
             })))
         }
@@ -792,12 +795,11 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         };
         event.complete_ctl_service(ServiceId::Swap(swap_id), init_swap_req)?;
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
-            peerd,
+            peerd: Some(peerd),
             swap_id,
             accordant_syncer,
             arbitrating_syncer,
             public_offer,
-            connected: true,
             funding_info: None,
             auto_funded: false,
         })))
@@ -816,7 +818,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
 }
 
 fn attempt_transition_from_restoring_swapd_to_swapd_running(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     restoring_swapd: RestoringSwapd,
 ) -> Result<Option<TradeStateMachine>, Error> {
@@ -826,6 +828,8 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut arbitrating_syncer_up,
         mut accordant_syncer_up,
         mut swapd_up,
+        mut connected,
+        expect_connection,
         trade_role,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
@@ -842,15 +846,38 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         {
             arbitrating_syncer_up = Some(source);
         }
+        (BusMsg::Ctl(CtlMsg::Hello), source)
+            if ServiceId::Peer(node_addr_from_public_offer(&public_offer)) == source
+                && trade_role == TradeRole::Taker =>
+        {
+            info!(
+                "{} | Peerd connected for restored swap",
+                swap_id.bright_blue_italic()
+            );
+            connected = true;
+        }
         _ => {}
     }
-    if let (Some(accordant_syncer), Some(arbitrating_syncer), true) = (
+    if let (Some(accordant_syncer), Some(arbitrating_syncer), true, true) = (
         accordant_syncer_up.clone(),
         arbitrating_syncer_up.clone(),
         swapd_up,
+        (!expect_connection || expect_connection && connected), // expect_connection implies connected
     ) {
         info!("Restoring swap {}", swap_id.swap_id());
         runtime.stats.incr_initiated();
+
+        let peerd = if connected && trade_role == TradeRole::Taker {
+            let peerd = ServiceId::Peer(node_addr_from_public_offer(&public_offer));
+            event.send_ctl_service(
+                ServiceId::Swap(swap_id),
+                BusMsg::Ctl(CtlMsg::PeerdReconnected(peerd.clone())),
+            )?;
+            Some(peerd)
+        } else {
+            None
+        };
+
         event.complete_ctl_service(
             ServiceId::Database,
             BusMsg::Ctl(CtlMsg::RestoreCheckpoint(CheckpointEntry {
@@ -861,12 +888,11 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         )?;
 
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
-            peerd: ServiceId::Loopback, // TODO: Move this from the dummy value to the actual peerd once we handle reconnect
+            peerd,
             swap_id,
             accordant_syncer,
             arbitrating_syncer,
             public_offer,
-            connected: true,
             auto_funded: false,
             funding_info: None,
         })))
@@ -877,6 +903,8 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             arbitrating_syncer_up,
             accordant_syncer_up,
             swapd_up,
+            connected,
+            expect_connection,
             trade_role,
         })))
     }
@@ -891,14 +919,15 @@ fn attempt_transition_to_end(
         peerd,
         public_offer,
         swap_id,
-        connected,
         arbitrating_syncer,
         accordant_syncer,
         funding_info,
         auto_funded,
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
-        (BusMsg::Ctl(CtlMsg::Hello), source) if source == peerd => {
+        (BusMsg::Ctl(CtlMsg::Hello), source)
+            if source == peerd.clone().unwrap_or(ServiceId::Loopback) =>
+        {
             let swap_service_id = ServiceId::Swap(swap_id);
             debug!("Letting {} know of peer reconnection.", swap_service_id);
             event.complete_ctl_service(
@@ -909,7 +938,6 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: true,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info,
@@ -973,7 +1001,6 @@ fn attempt_transition_to_end(
                                 peerd,
                                 public_offer,
                                 swap_id,
-                                connected: true,
                                 arbitrating_syncer,
                                 accordant_syncer,
                                 funding_info: Some(info),
@@ -990,7 +1017,6 @@ fn attempt_transition_to_end(
                                 peerd,
                                 public_offer,
                                 swap_id,
-                                connected: true,
                                 arbitrating_syncer,
                                 accordant_syncer,
                                 funding_info: Some(info),
@@ -1003,7 +1029,6 @@ fn attempt_transition_to_end(
                         peerd,
                         public_offer,
                         swap_id,
-                        connected: true,
                         arbitrating_syncer,
                         accordant_syncer,
                         funding_info: Some(info.clone()),
@@ -1070,7 +1095,6 @@ fn attempt_transition_to_end(
                              peerd,
                              public_offer,
                              swap_id,
-                             connected: true,
                              arbitrating_syncer,
                              accordant_syncer,
                              funding_info: Some(info),
@@ -1082,7 +1106,6 @@ fn attempt_transition_to_end(
                         peerd,
                         public_offer,
                         swap_id,
-                        connected: true,
                         arbitrating_syncer,
                         accordant_syncer,
                         funding_info: Some(info),
@@ -1103,7 +1126,6 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: true,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info: None,
@@ -1122,7 +1144,42 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: true,
+                arbitrating_syncer,
+                accordant_syncer,
+                funding_info: None,
+                auto_funded,
+            })))
+        }
+
+        (BusMsg::Ctl(CtlMsg::Connect(connect_swap_id)), _) if connect_swap_id == swap_id => {
+            let mut new_peerd = peerd.clone();
+            if let Some(peerd) = peerd {
+                event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    code: FailureCode::Unknown,
+                    info: format!(
+                        "The swap already has a dedicated connection daemon {}",
+                        peerd
+                    ),
+                })))?;
+            } else {
+                let peer_node_addr = node_addr_from_public_offer(&public_offer);
+                match runtime.connect_peer(&peer_node_addr) {
+                    Err(err) => {
+                        event.complete_client_ctl(BusMsg::Ctl(CtlMsg::Failure(Failure {
+                            code: FailureCode::Unknown,
+                            info: err.to_string(),
+                        })))?;
+                    }
+                    Ok(peerd) => {
+                        new_peerd = Some(peerd);
+                        event.complete_client_ctl(BusMsg::Ctl(CtlMsg::ConnectSuccess))?;
+                    }
+                }
+            }
+            Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
+                peerd: new_peerd,
+                public_offer,
+                swap_id,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info: None,
@@ -1147,7 +1204,6 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected: false,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info,
@@ -1202,12 +1258,18 @@ fn attempt_transition_to_end(
                 peerd,
                 public_offer,
                 swap_id,
-                connected,
                 arbitrating_syncer,
                 accordant_syncer,
                 funding_info,
                 auto_funded,
             })))
         }
+    }
+}
+
+fn node_addr_from_public_offer(public_offer: &PublicOffer) -> NodeAddr {
+    NodeAddr {
+        id: NodeId::from(public_offer.node_id.clone()), // node_id is bitcoin::Pubkey
+        addr: public_offer.peer_address,                // peer_address is InetSocketAddr
     }
 }

@@ -66,6 +66,18 @@ pub enum CtlMsg {
     #[display("peerd_terminated()")]
     PeerdTerminated,
 
+    #[display("disconnected")]
+    Disconnected,
+
+    #[display("re-connected")]
+    Reconnected,
+
+    #[display("connect({0})")]
+    Connect(SwapId),
+
+    #[display("Connect success")]
+    ConnectSuccess,
+
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(CheckpointEntry),
 
@@ -200,7 +212,7 @@ pub enum Params {
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display("{peerd}, {swap_id}, ..")]
+#[display("{swap_id}, ..")]
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,

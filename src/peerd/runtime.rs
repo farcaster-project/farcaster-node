@@ -358,6 +358,12 @@ impl Runtime {
         );
         self.messages_sent += 1;
         while let Err(err) = self.peer_sender.send_message(message.clone()) {
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                ServiceId::Farcasterd,
+                BusMsg::Ctl(CtlMsg::Disconnected),
+            )?;
             debug!("Error sending to remote peer in peerd runtime: {}", err);
             // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
             if self.forked_from_listener {
@@ -374,6 +380,12 @@ impl Runtime {
             while let Err(err) = self.reconnect_peer() {
                 warn!("error during reconnection attempt: {}", err);
             }
+            endpoints.send_to(
+                ServiceBus::Ctl,
+                self.identity(),
+                ServiceId::Farcasterd,
+                BusMsg::Ctl(CtlMsg::Reconnected),
+            )?;
         }
 
         if message.is_protocol() {
@@ -528,6 +540,12 @@ impl Runtime {
 
             BusMsg::P2p(PeerMsg::PeerReceiverRuntimeShutdown) => {
                 warn!("Exiting peerd receiver runtime");
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    BusMsg::Ctl(CtlMsg::Disconnected),
+                )?;
                 // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
                 if self.forked_from_listener {
                     endpoints.send_to(
@@ -543,6 +561,12 @@ impl Runtime {
                 while let Err(err) = self.reconnect_peer() {
                     warn!("error during reconnection attempt: {}", err);
                 }
+                endpoints.send_to(
+                    ServiceBus::Ctl,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    BusMsg::Ctl(CtlMsg::Reconnected),
+                )?;
             }
 
             // swap initiation message
