@@ -543,7 +543,7 @@ fn attempt_transition_to_taker_committed(
         (BusMsg::P2p(PeerMsg::TakerCommit(taker_commit)), ServiceId::Peer(..)) => {
             if public_offer == taker_commit.public_offer {
                 let source = event.source.clone();
-                let TakeCommit { swap_id, .. } = taker_commit;
+                let swap_id = taker_commit.swap_id();
                 event.send_ctl_service(
                     ServiceId::Wallet,
                     CtlMsg::TakerCommitted(TakerCommitted {

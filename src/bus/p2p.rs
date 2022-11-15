@@ -209,3 +209,4 @@ impl Commit {
 pub struct Receipt {
     pub swap_id: SwapId,
     pub msg_type: internet2::TypeId,
+}
