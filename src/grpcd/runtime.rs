@@ -587,16 +587,52 @@ impl Farcaster for FarcasterService {
         request: GrpcRequest<CheckpointsRequest>,
     ) -> Result<GrpcResponse<CheckpointsResponse>, Status> {
         debug!("Received a grpc checkpoints request: {:?}", request);
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Info {
-                request: InfoMsg::RetrieveAllCheckpointInfo,
-                service_id: ServiceId::Database,
-            }))
-            .await?;
+        let CheckpointsRequest { id, selector } = request.into_inner();
+
+        let selector = farcaster::CheckpointSelector::from_i32(selector)
+            .ok_or(Status::invalid_argument("selector"))?
+            .into();
+
+        let oneshot_rx = match selector {
+            farcaster::CheckpointSelector::AllCheckpoints => {
+                self.process_request(BusMsg::Bridge(BridgeMsg::Info {
+                    request: InfoMsg::RetrieveAllCheckpointInfo,
+                    service_id: ServiceId::Database,
+                }))
+                .await?
+            }
+            farcaster::CheckpointSelector::AvailableForRestore => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                        request: InfoMsg::RetrieveAllCheckpointInfo,
+                        service_id: ServiceId::Database,
+                    }))
+                    .await?;
+                match oneshot_rx.await {
+                    Ok(BusMsg::Info(InfoMsg::CheckpointList(checkpoint_entries))) => {
+                        self.process_request(BusMsg::Bridge(BridgeMsg::Info {
+                            request: InfoMsg::CheckpointList(checkpoint_entries),
+                            service_id: ServiceId::Farcasterd,
+                        }))
+                        .await?
+                    }
+                    Err(error) => {
+                        return Err(Status::internal(format!("{}", error)));
+                    }
+                    Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => {
+                        return Err(Status::internal(info));
+                    }
+                    _ => {
+                        return Err(Status::invalid_argument("received invalid response"));
+                    }
+                }
+            }
+        };
+
         match oneshot_rx.await {
             Ok(BusMsg::Info(InfoMsg::CheckpointList(checkpoint_entries))) => {
                 let reply = farcaster::CheckpointsResponse {
-                    id: request.into_inner().id,
+                    id,
                     checkpoint_entries: checkpoint_entries
                         .iter()
                         .map(|entry| farcaster::CheckpointEntry {

@@ -115,11 +115,17 @@ message ListOffersResponse {
 
 message CheckpointsRequest {
     uint32 id = 1;
+    CheckpointSelector selector = 2;
 }
 
 message CheckpointsResponse {
     uint32 id = 1;
     repeated CheckpointEntry checkpoint_entries = 2;
+}
+
+enum CheckpointSelector {
+    ALL_CHECKPOINTS = 0;
+    AVAILABLE_FOR_RESTORE = 1;
 }
 
 message CheckpointEntry {

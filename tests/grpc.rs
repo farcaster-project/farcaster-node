@@ -2,10 +2,10 @@
 extern crate log;
 
 use crate::farcaster::{
-    farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointsRequest, InfoResponse,
-    ListOffersRequest, MakeRequest, NeedsFundingRequest, OfferInfoRequest, OfferSelector,
-    PeersRequest, ProgressRequest, RestoreCheckpointRequest, RevokeOfferRequest, SwapInfoRequest,
-    SweepAddressRequest, TakeRequest,
+    farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointSelector, CheckpointsRequest,
+    InfoResponse, ListOffersRequest, MakeRequest, NeedsFundingRequest, OfferInfoRequest,
+    OfferSelector, PeersRequest, ProgressRequest, RestoreCheckpointRequest, RevokeOfferRequest,
+    SwapInfoRequest, SweepAddressRequest, TakeRequest,
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
@@ -56,7 +56,10 @@ async fn grpc_server_functional_test() {
     assert_eq!(response.unwrap().into_inner().id, 1);
 
     // Test list checkpoints
-    let request = tonic::Request::new(CheckpointsRequest { id: 2 });
+    let request = tonic::Request::new(CheckpointsRequest {
+        id: 2,
+        selector: CheckpointSelector::AllCheckpoints.into(),
+    });
     let response = farcaster_client_1.checkpoints(request).await;
     assert_eq!(response.unwrap().into_inner().id, 2);
 

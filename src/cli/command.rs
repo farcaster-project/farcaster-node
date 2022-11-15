@@ -37,6 +37,7 @@ use crate::bus::{
     AddressSecretKey,
 };
 use crate::bus::{BusMsg, Failure, FailureCode, HealthReport};
+use crate::cli::opts::CheckpointSelector;
 use crate::client::Client;
 use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{Error, LogStyle, ServiceId};
@@ -158,8 +159,33 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::ListCheckpoints => {
-                runtime.request_info(ServiceId::Database, InfoMsg::RetrieveAllCheckpointInfo)?;
+            Command::ListCheckpoints { select } => {
+                match select {
+                    CheckpointSelector::All => {
+                        runtime.request_info(
+                            ServiceId::Database,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                    }
+                    CheckpointSelector::AvailableForRestore => {
+                        runtime.request_info(
+                            ServiceId::Farcasterd,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                        if let BusMsg::Info(InfoMsg::CheckpointList(list)) =
+                            runtime.report_failure()?
+                        {
+                            runtime.request_info(
+                                ServiceId::Farcasterd,
+                                InfoMsg::CheckpointList(list),
+                            )?;
+                        } else {
+                            return Err(Error::Farcaster(
+                                "Received unexpected response".to_string(),
+                            ));
+                        }
+                    }
+                }
                 runtime.report_response_or_fail()?;
             }
 

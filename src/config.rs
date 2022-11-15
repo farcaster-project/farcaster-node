@@ -72,6 +72,17 @@ impl Config {
         }
     }
 
+    /// Returns if manual restore is set
+    pub fn manual_restore(&self) -> bool {
+        match &self.farcasterd {
+            Some(FarcasterdConfig {
+                manual_restore: Some(b),
+                ..
+            }) => *b,
+            _ => false,
+        }
+    }
+
     /// Returns the auto-funding configuration for a given network if enable, if None no
     /// configuration is found
     pub fn get_auto_funding_config(&self, network: Network) -> Option<AutoFundingServers> {
@@ -118,6 +129,8 @@ impl Default for Config {
 pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
+    /// Whether checkpoints should be restored manually, or not
+    pub manual_restore: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
