@@ -1558,6 +1558,14 @@ impl Runtime {
                 self.pending_peer_request.clear();
             }
 
+            CtlMsg::FailedPeerMessage(msg) => {
+                warn!(
+                    "{} | Sending the peer message {} failed. Adding to pending peer requests",
+                    self.swap_id, msg
+                );
+                self.pending_peer_request.push(msg);
+            }
+
             CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => match state {
                 CheckpointState::CheckpointSwapd(CheckpointSwapd {
                     state,

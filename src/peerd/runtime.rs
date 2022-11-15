@@ -12,9 +12,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
+use farcaster_core::swap::SwapId;
 use internet2::addr::LocalNode;
 use microservices::peer::PeerReceiver;
 use microservices::peer::RecvMessage;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::spawn;
 use std::time::{Duration, SystemTime};
@@ -33,6 +35,7 @@ use microservices::node::TryService;
 use microservices::peer::{self, PeerConnection, PeerSender, SendMessage};
 use microservices::ZMQ_CONTEXT;
 
+use crate::bus::p2p::Receipt;
 use crate::bus::{
     ctl::CtlMsg,
     info::{InfoMsg, PeerInfo},
@@ -149,6 +152,7 @@ pub fn run(
         messages_received: 0,
         awaited_pong: None,
         thread_flag_tx,
+        unchecked_msg_cache: empty!(),
     };
     let mut service = Service::service(config, runtime)?;
     service.add_bridge_service_bus(rx)?;
@@ -286,6 +290,8 @@ pub struct Runtime {
     messages_received: usize,
     awaited_pong: Option<u16>,
 
+    unchecked_msg_cache: HashMap<(SwapId, internet2::TypeId), PeerMsg>,
+
     thread_flag_tx: std::sync::mpsc::Sender<()>,
 }
 
@@ -326,8 +332,8 @@ impl esb::Handler<ServiceBus> for Runtime {
             (ServiceBus::Ctl, BusMsg::Ctl(req)) => self.handle_ctl(endpoints, source, req),
             // RPC command bus, only accept BusMsg::Info
             (ServiceBus::Info, BusMsg::Info(req)) => self.handle_info(endpoints, source, req),
-            // Internal peerd bridge for inner communication, accept all type of request
-            (ServiceBus::Bridge, request) => self.handle_bridge(endpoints, source, request),
+            // Internal peerd bridge for inner communication, only accept BusMsg::P2p
+            (ServiceBus::Bridge, BusMsg::P2p(req)) => self.handle_bridge(endpoints, source, req),
             // All other pairs are not supported
             (_, request) => Err(Error::NotSupported(bus, request.to_string())),
         }
@@ -343,7 +349,7 @@ impl esb::Handler<ServiceBus> for Runtime {
 }
 
 impl Runtime {
-    /// send messages over the bridge
+    /// send messages over the peer connection
     fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
@@ -367,6 +373,15 @@ impl Runtime {
             debug!("Error sending to remote peer in peerd runtime: {}", err);
             // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
             if self.forked_from_listener {
+                for (_, cached_msg) in self.unchecked_msg_cache.drain() {
+                    // Draining cached messages to the various running swaps
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity.clone(),
+                        ServiceId::Swap(cached_msg.swap_id()),
+                        BusMsg::Ctl(CtlMsg::FailedPeerMessage(cached_msg)),
+                    )?;
+                }
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
@@ -386,7 +401,21 @@ impl Runtime {
                 ServiceId::Farcasterd,
                 BusMsg::Ctl(CtlMsg::Reconnected),
             )?;
+
+            for cached_msg in self.unchecked_msg_cache.values() {
+                if let Err(err) = self.peer_sender.send_message(cached_msg.clone()) {
+                    debug!(
+                        "Error re-sending cache messages to remote peer in peerd runtime: {}",
+                        err
+                    );
+                    break;
+                }
+            }
         }
+
+        // add the message to the unchecked cache
+        self.unchecked_msg_cache
+            .insert((message.swap_id(), message.get_type()), message.clone());
 
         if message.is_protocol() {
             let swap_id = message.swap_id();
@@ -510,24 +539,22 @@ impl Runtime {
     fn handle_bridge(
         &mut self,
         endpoints: &mut Endpoints,
-        _source: ServiceId,
-        request: BusMsg,
+        source: ServiceId,
+        request: PeerMsg,
     ) -> Result<(), Error> {
         debug!("BRIDGE RPC request: {}", request);
 
-        if let BusMsg::P2p(_) = request {
-            self.messages_received += 1;
-        }
+        self.messages_received += 1;
 
         match &request {
-            BusMsg::P2p(PeerMsg::PingPeer) => self.ping()?,
+            PeerMsg::PingPeer => self.ping()?,
 
-            BusMsg::P2p(PeerMsg::Ping(pong_size)) => {
+            PeerMsg::Ping(pong_size) => {
                 debug!("receiving ping, ponging back");
                 self.pong(*pong_size)?
             }
 
-            BusMsg::P2p(PeerMsg::Pong(noise)) => {
+            PeerMsg::Pong(noise) => {
                 match self.awaited_pong {
                     None => error!("Unexpected pong from the remote peer"),
                     Some(len) if len as usize != noise.len() => {
@@ -538,7 +565,7 @@ impl Runtime {
                 self.awaited_pong = None;
             }
 
-            BusMsg::P2p(PeerMsg::PeerReceiverRuntimeShutdown) => {
+            PeerMsg::PeerReceiverRuntimeShutdown => {
                 warn!("Exiting peerd receiver runtime");
                 endpoints.send_to(
                     ServiceBus::Ctl,
@@ -554,6 +581,19 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         BusMsg::Ctl(CtlMsg::PeerdTerminated),
                     )?;
+                    for ((swap_id, _), cached_msg) in self.unchecked_msg_cache.drain() {
+                        // Draining cached messages to the various running swaps
+                        debug!(
+                            "Returning cache message {} back to swap {}",
+                            cached_msg, swap_id
+                        );
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity.clone(),
+                            ServiceId::Swap(swap_id),
+                            BusMsg::Ctl(CtlMsg::FailedPeerMessage(cached_msg)),
+                        )?;
+                    }
                     warn!("Exiting peerd");
                     std::process::exit(0);
                 }
@@ -567,19 +607,51 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     BusMsg::Ctl(CtlMsg::Reconnected),
                 )?;
+                for cached_msg in self.unchecked_msg_cache.values() {
+                    info!("re-emitting cached message after reconnect: {}", cached_msg);
+                    if let Err(err) = self.peer_sender.send_message(cached_msg.clone()) {
+                        debug!(
+                            "Error re-sending cache messages to remote peer in peerd runtime: {}",
+                            err
+                        );
+                        break;
+                    }
+                }
+            }
+
+            PeerMsg::MsgReceipt(receipt) => {
+                debug!("received receipt: {:?}", receipt);
+                self.unchecked_msg_cache
+                    .remove(&(receipt.swap_id, receipt.msg_type));
             }
 
             // swap initiation message
-            BusMsg::P2p(PeerMsg::TakerCommit(_)) => {
+            PeerMsg::TakerCommit(_) => {
+                // send a receipt back to the remote peer
+                self.handle_msg(
+                    endpoints,
+                    source,
+                    PeerMsg::MsgReceipt(Receipt {
+                        swap_id: request.swap_id(),
+                        msg_type: request.get_type(),
+                    }),
+                )?;
+
                 endpoints.send_to(
                     ServiceBus::Msg,
                     self.identity(),
                     ServiceId::Farcasterd,
-                    request,
+                    BusMsg::P2p(request),
                 )?;
             }
 
-            BusMsg::P2p(msg) => {
+            msg => {
+                // send a receipt back to the remote peer
+                self.peer_sender.send_message(PeerMsg::MsgReceipt(Receipt {
+                    swap_id: request.swap_id(),
+                    msg_type: request.get_type(),
+                }))?;
+
                 let swap_id = msg.swap_id();
                 info!(
                     "{} | Received the {} protocol message",
@@ -590,14 +662,8 @@ impl Runtime {
                     ServiceBus::Msg,
                     self.identity(),
                     ServiceId::Swap(swap_id),
-                    request,
+                    BusMsg::P2p(request),
                 )?;
-            }
-
-            other => {
-                error!("BusMsg is not supported by the BRIDGE interface");
-                dbg!(other);
-                return Err(Error::NotSupported(ServiceBus::Bridge, request.to_string()));
             }
         }
         Ok(())
