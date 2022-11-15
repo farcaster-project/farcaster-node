@@ -627,6 +627,12 @@ impl Runtime {
 
             // swap initiation message
             PeerMsg::TakerCommit(_) => {
+                let swap_id = request.swap_id();
+                info!(
+                    "{} | Received the {} protocol message",
+                    swap_id.swap_id(),
+                    request.label()
+                );
                 // send a receipt back to the remote peer
                 self.handle_msg(
                     endpoints,

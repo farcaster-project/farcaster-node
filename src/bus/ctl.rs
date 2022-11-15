@@ -13,7 +13,7 @@ use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
-use crate::bus::p2p::{Commit, PeerMsg, TakeCommit};
+use crate::bus::p2p::{Commit, PeerMsg, TakerCommit};
 use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
 };
@@ -353,5 +353,5 @@ pub struct TakerCommitted {
     pub swap_id: SwapId,
     pub arbitrating_addr: bitcoin::Address,
     pub accordant_addr: monero::Address,
-    pub taker_commit: TakeCommit,
+    pub taker_commit: TakerCommit,
 }

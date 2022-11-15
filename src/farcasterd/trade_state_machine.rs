@@ -3,7 +3,7 @@ use crate::bus::ctl::{
     ProtoPublicOffer, PubOffer, TakerCommitted,
 };
 use crate::bus::info::{InfoMsg, MadeOffer, OfferInfo, TookOffer};
-use crate::bus::p2p::{PeerMsg, TakeCommit};
+use crate::bus::p2p::PeerMsg;
 use crate::bus::{CheckpointEntry, Failure, FailureCode, OfferStatus, OfferStatusPair};
 use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;

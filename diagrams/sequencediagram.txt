@@ -19,6 +19,7 @@ participant m_swap
 participant m_wallet
 participant m_syncer
 
+entryspacing 0.5
 ==Start farcaster - same for Maker and Taker==
 m_farcasterd -> m_farcasterd : launch farcasterd\nmanually
 m_farcasterd -> m_farcasterd : launch walletd
@@ -56,42 +57,43 @@ m_swap -> peerd : Msg MakerCommit
 t_swap <- peerd : Msg MakerCommit
 // TODO: verify that swapd launches no matter what
 m_farcasterd<-m_syncer:Ctl Hello [from Syncer Bitcoin (if newly launched) OR Swapd (if syncer reused)]
-t_syncer <- t_swap : if Bob, Watch Arbitrating Funding Address
+group for Bob swap role
+t_syncer <- t_swap : Watch Arbitrating Funding Address
+end
 t_swap -> t_wallet : Msg MakerCommit
-t_wallet -> t_swap : Msg RevealProof (taker is sender)
-t_swap -> peerd : Msg RevealProof (taker is sender)
+t_wallet -> t_swap : Msg Reveal (taker is sender)
 t_swap -> peerd : Msg Reveal (taker is sender)
-peerd -> m_swap : Msg RevealProof (taker is sender)
-m_swap -> m_wallet : if Alice, Msg RevealProof (taker is sender)
-m_swap -> m_swap : if Bob, ADD PENDING Msg RevealProof
 peerd -> m_swap : Msg Reveal (taker is sender)
-m_swap -> m_farcasterd : if Bob, Ctl FundingInfo
-m_swap -> m_swap : if Bob, ADD PENDING Msg Reveal
-m_swap -> m_wallet : if Alice, Msg Reveal (taker is sender)
+group for Alice swap role
+m_swap -> m_wallet : Msg Reveal (taker is sender)
+end
+group for Bob swap role
+m_swap -> m_swap : ADD PENDING Msg Reveal
+m_swap -> m_farcasterd : Ctl FundingInfo
 
-m_swap -> m_syncer:if Bob, Watch Arbitrating Funding Address
-m_swap <- m_syncer:If Bob, Arbitrating Funding event
-m_farcasterd<-m_swap:Ctl FundingCompleted Bitcoin
-m_swap->m_wallet:if Bob, Ctl Tx::Funding
-m_swap<-m_wallet:If Bob, Ctl FundingUpdated
-m_swap -> m_wallet : if Bob, SEND PENDING Msg RevealProof (taker is sender)
-m_swap -> m_wallet : if Bob, SEND PENDING Msg Reveal (taker is sender)
-m_wallet -> m_swap : Msg RevealProof (maker is sender)
+m_swap -> m_syncer: Watch Arbitrating Funding Address
+m_swap <- m_syncer: Arbitrating Funding event
+m_farcasterd<-m_swap: Ctl FundingCompleted Bitcoin
+m_swap->m_wallet: Ctl Tx::Funding
+m_swap<-m_wallet: Ctl FundingUpdated
+m_swap -> m_wallet : SEND PENDING Msg Reveal (taker is sender)
+end
+m_wallet -> m_swap : Msg Reveal (maker is sender)
 peerd <- m_swap : Msg RevealProof (maker is sender)
 peerd <- m_swap : Msg Reveal (maker is sender)
-peerd -> t_swap : Msg RevealProof (maker is sender)
-t_swap -> t_wallet : if Alice, Msg RevealProof (maker is sender)
-t_swap -> t_swap : if Bob, ADD PENDING Msg RevealProof
 peerd -> t_swap : Msg Reveal (maker is sender)
-t_swap -> t_farcasterd : if Bob, Ctl FundingInfo
-t_swap -> t_swap : if Bob, ADD PENDING Msg Reveal
-t_swap -> t_wallet : if Alice, Msg Reveal (maker is sender)
-t_syncer -> t_swap:If Bob, Arbitrating Funding event
-t_swap->t_farcasterd:Ctl FundingCompleted Bitcoin
-t_swap->t_wallet:if Bob, Ctl Tx::Funding
-t_swap<-t_wallet:If Bob, Ctl FundingUpdated
-t_swap -> t_wallet : if Bob, SEND PENDING Msg RevealProof (maker is sender)
-t_swap -> t_wallet : if Bob, SEND PENDING Msg Reveal (maker is sender)
+group for Alice swap role
+t_swap -> t_wallet : Msg Reveal (maker is sender)
+end
+group for Bob swap role
+t_swap -> t_swap : ADD PENDING Msg Reveal
+t_swap -> t_farcasterd : Ctl FundingInfo
+t_syncer -> t_swap: Arbitrating Funding event
+t_swap->t_farcasterd: Ctl FundingCompleted Bitcoin
+t_swap->t_wallet: Ctl Tx::Funding
+t_swap<-t_wallet: Ctl FundingUpdated
+t_swap -> t_wallet : SEND PENDING Msg Reveal (maker is sender)
+end
 ==Commit-Reveal Complete==
 ==Changing semantics: On Commit-Reveal, Maker and Taker were the key roles. From now on Bob or Alice are the key roles. Now t_ is bob_ on the left and m_ is alice_ on the right.==
 ==Swap setup: Bob is left, Alice right==
@@ -139,9 +141,9 @@ deactivate t_swap
 group sync messages
 t_wallet -> t_swap: Ctl Tx::Cancel
 t_wallet ->(6) t_swap: Ctl Tx::Refund
-space -6
+space -5
 t_wallet -> t_swap : Msg BuyProcedureSignature
-space 1
+space 2
 activate t_swap
 end
 t_swap -> t_database : Ctl CheckpointSwapBobPreBuySig
