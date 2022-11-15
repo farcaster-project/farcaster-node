@@ -33,7 +33,10 @@ use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::bus::{ctl::CtlMsg, info::InfoMsg};
+use crate::bus::{
+    ctl::CtlMsg,
+    info::{InfoMsg, SwapInfo},
+};
 use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
@@ -308,18 +311,31 @@ impl Farcaster for FarcasterService {
             }))
             .await?;
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::SwapInfo(info))) => {
+            Ok(BusMsg::Info(InfoMsg::SwapInfo(SwapInfo {
+                swap_id: _,
+                maker_peer,
+                uptime,
+                since,
+                public_offer,
+                local_trade_role,
+                local_swap_role,
+                connected_counterparty_node_id,
+            }))) => {
                 let reply = SwapInfoResponse {
                     id,
-                    maker_peer: info
-                        .maker_peer
+                    maker_peer: maker_peer
                         .into_iter()
                         .next()
                         .map(|p| p.to_string())
                         .unwrap_or("".to_string()),
-                    uptime: info.uptime.as_secs(),
-                    since: info.since,
-                    public_offer: info.public_offer.to_string(),
+                    uptime: uptime.as_secs(),
+                    since: since,
+                    public_offer: public_offer.to_string(),
+                    trade_role: farcaster::TradeRole::from(local_trade_role).into(),
+                    swap_role: farcaster::SwapRole::from(local_swap_role).into(),
+                    connected_counterparty_node_id: connected_counterparty_node_id
+                        .map(|n| n.to_string())
+                        .unwrap_or("".to_string()),
                 };
                 Ok(GrpcResponse::new(reply))
             }

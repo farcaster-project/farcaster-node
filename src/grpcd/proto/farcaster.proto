@@ -43,6 +43,9 @@ message SwapInfoResponse {
     uint64 uptime = 3;
     uint64 since= 4;
     string public_offer = 5;
+    TradeRole trade_role = 6;
+    SwapRole swap_role = 7;
+    string connected_counterparty_node_id = 8;
 }
 
 message OfferInfoRequest {
