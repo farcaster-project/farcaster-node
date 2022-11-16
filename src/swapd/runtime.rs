@@ -1308,17 +1308,24 @@ impl Runtime {
                 }
                 SweepAddressAddendum::Monero(sweep_xmr) => {
                     let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
-                    let acc_confs_needs = self.temporal_safety.sweep_monero_thr
-                        - self.temporal_safety.xmr_finality_thr;
+                    let acc_confs_needs = self
+                        .syncer_state
+                        .get_confs(TxLabel::AccLock)
+                        .map(|c| {
+                            self.temporal_safety
+                                .sweep_monero_thr
+                                .checked_sub(c)
+                                .unwrap_or(0)
+                        })
+                        .unwrap_or(self.temporal_safety.sweep_monero_thr);
                     let sweep_block =
                         self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
                     info!(
-                        "{} | Tx {} needs {}, and has {} {}",
+                        "{} | Tx {} needs {} confirmations, and has {} confirmations",
                         self.swap_id.swap_id(),
                         TxLabel::AccLock.label(),
-                        "10 confirmations".bright_green_bold(),
-                        (10 - acc_confs_needs).bright_green_bold(),
-                        "confirmations".bright_green_bold(),
+                        acc_confs_needs.bright_green_bold(),
+                        self.syncer_state.get_confs(TxLabel::AccLock).unwrap_or(0),
                     );
                     info!(
                         "{} | {} reaches your address {} around block {}",
