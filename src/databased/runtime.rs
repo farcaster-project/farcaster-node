@@ -97,7 +97,7 @@ impl Runtime {
                         };
                         debug!("setting checkpoint info entry");
                         let mut info_encoded = vec![];
-                        let _info_size = info.strict_encode(&mut info_encoded);
+                        info.strict_encode(&mut info_encoded)?;
                         self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
 
                         debug!("setting swap checkpoint");
@@ -108,7 +108,7 @@ impl Runtime {
                     service_id: source,
                 };
                 let mut state_encoded = vec![];
-                let _state_size = state.strict_encode(&mut state_encoded);
+                state.strict_encode(&mut state_encoded)?;
                 self.database.set_checkpoint_state(&key, &state_encoded)?;
                 debug!("checkpoint set");
             }
@@ -435,20 +435,16 @@ impl Database {
         Ok(Database(env))
     }
 
-    fn set_offer_status(
-        &mut self,
-        offer: &PublicOffer,
-        status: &OfferStatus,
-    ) -> Result<(), lmdb::Error> {
+    fn set_offer_status(&mut self, offer: &PublicOffer, status: &OfferStatus) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
-        let _key_size = offer.strict_encode(&mut key);
+        offer.strict_encode(&mut key)?;
         if tx.get(db, &key).is_ok() {
-            tx.del(db, &key.clone(), None)?;
+            tx.del(db, &key, None)?;
         }
         let mut val = vec![];
-        let _key_size = status.strict_encode(&mut val);
+        status.strict_encode(&mut val)?;
         tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         tx.commit()?;
         Ok(())
@@ -488,11 +484,11 @@ impl Database {
         &mut self,
         address: &bitcoin::Address,
         secret_key: &SecretKey,
-    ) -> Result<(), lmdb::Error> {
+    ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
-        let _key_size = address.strict_encode(&mut key);
+        address.strict_encode(&mut key)?;
         if tx.get(db, &key).is_err() {
             tx.put(
                 db,
@@ -513,11 +509,11 @@ impl Database {
     fn get_bitcoin_address_secret_key(
         &mut self,
         address: &bitcoin::Address,
-    ) -> Result<SecretKey, lmdb::Error> {
+    ) -> Result<SecretKey, Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut key = vec![];
-        let _key_size = address.strict_encode(&mut key);
+        address.strict_encode(&mut key)?;
         let val = SecretKey::from_slice(tx.get(db, &key)?)
             .expect("we only insert private keys, so retrieving one should not fail");
         tx.abort();

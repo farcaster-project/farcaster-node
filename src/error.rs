@@ -100,6 +100,10 @@ pub enum Error {
 
     /// BitcoinSecp256k1
     BitcoinSecp256k1(bitcoin::secp256k1::Error),
+
+    /// StrictEncoding
+    #[from(strict_encoding::Error)]
+    StrictEncoding(strict_encoding::Error),
 }
 
 #[derive(Debug, Display)]
