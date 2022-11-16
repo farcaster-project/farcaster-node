@@ -2,6 +2,7 @@ use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::ProtoPublicOffer;
 use crate::bus::ctl::PubOffer;
 use crate::bus::info::Address;
+use crate::bus::info::OfferStatusSelector;
 use crate::bus::AddressSecretKey;
 use crate::bus::Failure;
 use crate::service::Endpoints;
@@ -49,6 +50,8 @@ use self::farcaster::AbortSwapRequest;
 use self::farcaster::AbortSwapResponse;
 use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
+use self::farcaster::ListOffersRequest;
+use self::farcaster::ListOffersResponse;
 use self::farcaster::MakeRequest;
 use self::farcaster::MakeResponse;
 use self::farcaster::NeedsFundingRequest;
@@ -135,6 +138,17 @@ impl From<Blockchain> for farcaster::Blockchain {
         match t {
             Blockchain::Monero => farcaster::Blockchain::Monero,
             Blockchain::Bitcoin => farcaster::Blockchain::Bitcoin,
+        }
+    }
+}
+
+impl From<farcaster::OfferSelector> for OfferStatusSelector {
+    fn from(t: farcaster::OfferSelector) -> OfferStatusSelector {
+        match t {
+            farcaster::OfferSelector::All => OfferStatusSelector::All,
+            farcaster::OfferSelector::Open => OfferStatusSelector::Open,
+            farcaster::OfferSelector::InProgress => OfferStatusSelector::InProgress,
+            farcaster::OfferSelector::Ended => OfferStatusSelector::Ended,
         }
     }
 }
@@ -299,6 +313,45 @@ impl Farcaster for FarcasterService {
                     uptime: info.uptime.as_secs(),
                     since: info.since,
                     public_offer: info.public_offer.to_string(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Err(error) => Err(Status::internal(format!("{}", error))),
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            _ => Err(Status::invalid_argument("received invalid response")),
+        }
+    }
+
+    async fn list_offers(
+        &self,
+        request: GrpcRequest<ListOffersRequest>,
+    ) -> Result<GrpcResponse<ListOffersResponse>, Status> {
+        debug!("Received a grpc request: {:?}", request);
+        let ListOffersRequest {
+            id,
+            selector: grpc_offer_selector,
+        } = request.into_inner();
+        let selector = farcaster::OfferSelector::from_i32(grpc_offer_selector)
+            .ok_or(Status::invalid_argument("selector"))?
+            .into();
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::ListOffers(selector),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::OfferList(mut offers))) => {
+                let reply = ListOffersResponse {
+                    id,
+                    public_offers: offers.drain(..).map(|o| o.offer).collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Ok(BusMsg::Info(InfoMsg::OfferStatusList(mut offers))) => {
+                let reply = ListOffersResponse {
+                    id,
+                    public_offers: offers.drain(..).map(|o| o.offer.to_string()).collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
