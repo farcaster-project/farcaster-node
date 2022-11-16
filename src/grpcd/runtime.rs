@@ -805,7 +805,7 @@ impl Farcaster for FarcasterService {
                 .await?;
             match oneshot_rx.await {
                 Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
-                    secret_key,
+                    secret_key_info,
                     address: _,
                 }))) => {
                     let oneshot_rx = self
@@ -813,7 +813,7 @@ impl Farcaster for FarcasterService {
                             request: CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(
                                 SweepBitcoinAddress {
                                     source_address,
-                                    source_secret_key: secret_key,
+                                    source_secret_key: secret_key_info.secret_key,
                                     destination_address,
                                 },
                             )),
@@ -842,16 +842,15 @@ impl Farcaster for FarcasterService {
                 .await?;
             match oneshot_rx.await {
                 Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
-                    view,
-                    spend,
+                    secret_key_info,
                     address: _,
                 }))) => {
                     let oneshot_rx = self
                         .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
                             request: CtlMsg::SweepAddress(SweepAddressAddendum::Monero(
                                 SweepMoneroAddress {
-                                    source_spend_key: spend,
-                                    source_view_key: view,
+                                    source_spend_key: secret_key_info.spend,
+                                    source_view_key: secret_key_info.view,
                                     destination_address,
                                     minimum_balance: monero::Amount::from_pico(0),
                                 },

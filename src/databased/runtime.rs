@@ -1,3 +1,4 @@
+use crate::bus::{BitcoinSecretKeyInfo, MoneroSecretKeyInfo};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
@@ -6,15 +7,13 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::Endpoints;
-use bitcoin::secp256k1::SecretKey;
-
 use crate::bus::{
     ctl::{Checkpoint, CheckpointState, CtlMsg},
     info::{Address, InfoMsg, OfferStatusSelector},
     AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
     OfferStatusPair, ServiceBus,
 };
+use crate::Endpoints;
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use microservices::esb::{self};
 
@@ -206,18 +205,18 @@ impl Runtime {
 
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                 address,
-                secret_key,
+                secret_key_info,
             }) => {
-                self.database.set_bitcoin_address(&address, &secret_key)?;
+                self.database
+                    .set_bitcoin_address(&address, &secret_key_info)?;
             }
 
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                 address,
-                view,
-                spend,
+                secret_key_info,
             }) => {
                 self.database
-                    .set_monero_address(&address, &monero::KeyPair { view, spend })?;
+                    .set_monero_address(&address, &secret_key_info)?;
             }
 
             CtlMsg::SetOfferStatus(OfferStatusPair { offer, status }) => {
@@ -302,14 +301,13 @@ impl Runtime {
                             }),
                         )?;
                     }
-                    Ok(secret_key_pair) => {
+                    Ok(secret_key_info) => {
                         self.send_client_info(
                             endpoints,
                             source,
                             InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
                                 address,
-                                view: secret_key_pair.view.as_bytes().try_into().unwrap(),
-                                spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
+                                secret_key_info,
                             }),
                         )?;
                     }
@@ -326,13 +324,13 @@ impl Runtime {
                             info: format!("Could not retrieve secret key for address {}", address),
                         }),
                     )?,
-                    Ok(secret_key) => {
+                    Ok(secret_key_info) => {
                         self.send_client_info(
                             endpoints,
                             source,
                             InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
                                 address,
-                                secret_key,
+                                secret_key_info,
                             }),
                         )?;
                     }
@@ -483,19 +481,16 @@ impl Database {
     fn set_bitcoin_address(
         &mut self,
         address: &bitcoin::Address,
-        secret_key: &SecretKey,
+        secret_key_info: &BitcoinSecretKeyInfo,
     ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
         address.strict_encode(&mut key)?;
+        let mut val = vec![];
+        secret_key_info.strict_encode(&mut val)?;
         if tx.get(db, &key).is_err() {
-            tx.put(
-                db,
-                &key,
-                &secret_key.secret_bytes(),
-                lmdb::WriteFlags::empty(),
-            )?;
+            tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         } else {
             warn!(
                 "address {} was already persisted with its secret key",
@@ -509,13 +504,12 @@ impl Database {
     fn get_bitcoin_address_secret_key(
         &mut self,
         address: &bitcoin::Address,
-    ) -> Result<SecretKey, Error> {
+    ) -> Result<BitcoinSecretKeyInfo, Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut key = vec![];
         address.strict_encode(&mut key)?;
-        let val = SecretKey::from_slice(tx.get(db, &key)?)
-            .expect("we only insert private keys, so retrieving one should not fail");
+        let val = BitcoinSecretKeyInfo::strict_decode(tx.get(db, &key)?)?;
         tx.abort();
         Ok(val)
     }
@@ -538,13 +532,13 @@ impl Database {
     fn set_monero_address(
         &mut self,
         address: &monero::Address,
-        secret_keys: &monero::KeyPair,
-    ) -> Result<(), lmdb::Error> {
+        secret_key_info: &MoneroSecretKeyInfo,
+    ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let key = address.as_bytes();
-        let mut val = secret_keys.spend.as_bytes().to_vec();
-        val.append(&mut secret_keys.view.as_bytes().to_vec());
+        let mut val = vec![];
+        secret_key_info.strict_encode(&mut val)?;
         if tx.get(db, &key).is_err() {
             tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         } else {
@@ -560,19 +554,13 @@ impl Database {
     fn get_monero_address_secret_key(
         &mut self,
         address: &monero::Address,
-    ) -> Result<monero::KeyPair, lmdb::Error> {
+    ) -> Result<MoneroSecretKeyInfo, Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let key = address.as_bytes();
-        let val: [u8; 64] = tx
-            .get(db, &key)?
-            .try_into()
-            .expect("every monero address should have a keypair");
+        let val = MoneroSecretKeyInfo::strict_decode(tx.get(db, &key)?)?;
         tx.abort();
-        Ok(monero::KeyPair {
-            spend: val[0..32].try_into().expect("unable to decode spend key"),
-            view: val[32..64].try_into().expect("unable to decode view key"),
-        })
+        Ok(val)
     }
 
     fn get_all_monero_addresses(&mut self) -> Result<Vec<String>, lmdb::Error> {
@@ -660,6 +648,7 @@ impl Database {
 #[test]
 fn test_lmdb_state() {
     use crate::bus::Outcome;
+    use bitcoin::secp256k1::SecretKey;
     use std::str::FromStr;
 
     let val1 = vec![0, 1];
@@ -699,12 +688,15 @@ fn test_lmdb_state() {
         bitcoin::PrivateKey::from_slice(&sk.secret_bytes(), bitcoin::Network::Testnet).unwrap();
     let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &private_key);
     let addr = bitcoin::Address::p2wpkh(&pk, bitcoin::Network::Testnet).unwrap();
-    database.set_bitcoin_address(&addr, &sk).unwrap();
+    let addr_info = BitcoinSecretKeyInfo {
+        swap_id: None,
+        secret_key: sk,
+    };
+    database.set_bitcoin_address(&addr, &addr_info).unwrap();
     let val_retrieved = database.get_bitcoin_address_secret_key(&addr).unwrap();
-    assert_eq!(sk, val_retrieved);
+    assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_bitcoin_addresses().unwrap();
     assert!(addrs.contains(&addr));
-
     let key_pair = monero::KeyPair {
         spend: monero::PrivateKey::from_str(
             "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -715,10 +707,17 @@ fn test_lmdb_state() {
         )
         .unwrap(),
     };
+    let addr_info = MoneroSecretKeyInfo {
+        swap_id: None,
+        creation_height: None,
+        view: key_pair.view,
+        spend: key_pair.spend,
+    };
+
     let addr = monero::Address::from_keypair(monero::Network::Stagenet, &key_pair);
-    database.set_monero_address(&addr, &key_pair).unwrap();
+    database.set_monero_address(&addr, &addr_info).unwrap();
     let val_retrieved = database.get_monero_address_secret_key(&addr).unwrap();
-    assert_eq!(key_pair, val_retrieved);
+    assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_monero_addresses().unwrap();
     assert!(addrs.contains(&addr.to_string()));
 
