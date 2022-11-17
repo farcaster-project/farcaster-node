@@ -2309,11 +2309,16 @@ impl Runtime {
                             }
 
                             TxLabel::Cancel
-                                if self.temporal_safety.safe_refund(*confirmations)
+                                if self
+                                    .temporal_safety
+                                    .final_tx(*confirmations, Blockchain::Bitcoin)
                                     && (self.state.b_buy_sig() || self.state.b_core_arb())
                                     && self.txs.contains_key(&TxLabel::Refund) =>
                             {
                                 trace!("here Bob publishes refund tx");
+                                if !self.temporal_safety.safe_refund(*confirmations) {
+                                    warn!("Publishing refund tx, but we might already have been punished");
+                                }
                                 let (tx_label, refund_tx) =
                                     self.txs.remove_entry(&TxLabel::Refund).unwrap();
                                 self.broadcast(refund_tx, tx_label, endpoints)?;
