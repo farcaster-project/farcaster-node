@@ -1351,14 +1351,14 @@ impl Runtime {
                         self.syncer_state.get_confs(TxLabel::AccLock).unwrap_or(0),
                     );
                     info!(
-                        "{} | {} reaches your address {} around block {}",
+                        "{} | {} reaches your address {} after block {}",
                         self.swap_id.swap_id(),
                         Blockchain::Monero.label(),
                         sweep_xmr.destination_address.addr(),
                         sweep_block.bright_blue_bold(),
                     );
                     warn!(
-                        "Peerd might crash, just ignore it, counterparty closed\
+                        "Peerd might crash, just ignore it, counterparty closed \
                                connection but you don't need it anymore!"
                     );
                     self.pending_requests.defer_request(
