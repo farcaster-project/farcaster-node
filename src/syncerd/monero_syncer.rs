@@ -202,7 +202,7 @@ impl MoneroRpc {
                 debug!("Watch wallet opened successfully");
             }
             Ok(_) => {
-                debug!("Watch wallet opened successfully")
+                debug!("Watch wallet opened successfully");
             }
         }
 
@@ -436,6 +436,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Monero(_) => {
+                                debug!("received new task: {:?}", task);
                                 let mut state_guard = state.lock().await;
                                 state_guard.watch_address(task, syncerd_task.source);
                             }
@@ -452,6 +453,7 @@ async fn run_syncerd_task_receiver(
                             state_guard.watch_height(task, syncerd_task.source).await;
                         }
                         Task::WatchTransaction(task) => {
+                            debug!("received new task: {:?}", task);
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                         }
