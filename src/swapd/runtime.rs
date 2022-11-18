@@ -1096,8 +1096,8 @@ impl Runtime {
         source: ServiceId,
         request: CtlMsg,
     ) -> Result<(), Error> {
-        match (&request, &source) {
-            (CtlMsg::Hello, _) => {
+        match request {
+            CtlMsg::Hello => {
                 info!(
                     "{} | Service {} daemon is now {}",
                     self.swap_id.swap_id(),
@@ -1105,25 +1105,6 @@ impl Runtime {
                     "connected"
                 );
             }
-            (_, ServiceId::Syncer(..)) if self.syncer_state.any_syncer(&source) => {
-            }
-            (
-                _,
-                ServiceId::Farcasterd
-                | ServiceId::Wallet
-                | ServiceId::Database
-                | ServiceId::GrpcdClient(_)
-                | ServiceId::Grpcd
-            ) => {}
-            (CtlMsg::AbortSwap, ServiceId::Client(_)) => {}
-            _ => return Err(Error::Farcaster(
-                "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
-                    .to_string(),
-            )),
-        };
-
-        match request {
-            // Terminate this service.
             CtlMsg::Terminate if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
