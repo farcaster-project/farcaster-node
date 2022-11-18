@@ -154,7 +154,11 @@ pub struct SwapdRunning {
 
 impl StateMachine<Runtime, Error> for TradeStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
-        info!("Checking event request {} for state transition", event.request);
+        info!(
+            "{} | Checking event request {} for state transition",
+            self.swap_id().map_or("…".to_string(), |s| s.to_string()),
+            event.request
+        );
         match self {
             TradeStateMachine::StartTaker => attempt_transition_to_take_offer(event, runtime),
             TradeStateMachine::StartMaker => attempt_transition_to_make_offer(event, runtime),

@@ -213,7 +213,10 @@ impl Runtime {
         source: ServiceId,
         request: PeerMsg,
     ) -> Result<(), Error> {
-        info!("{} received {} from peer - processing with sms", self.identity, request);
+        info!(
+            "{} received {} from peer - processing with sms",
+            self.identity, request
+        );
         self.process_request_with_state_machines(BusMsg::P2p(request), source, endpoints)
     }
 
