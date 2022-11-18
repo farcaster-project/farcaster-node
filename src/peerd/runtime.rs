@@ -44,15 +44,126 @@ use crate::bus::{
 };
 use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
+pub fn start_connect_peer_listener_runtime(
+    remote_node_addr: NodeAddr,
+    local_node: LocalNode,
+) -> Result<(PeerSender, std::sync::mpsc::Sender<()>), Error> {
+    let connection = PeerConnection::connect_brontozaur(local_node, remote_node_addr)?;
+    debug!("Conected to remote peer: {}", remote_node_addr);
+
+    debug!("Splitting connection into receiver and sender parts");
+    let (mut peer_receiver, mut peer_sender) = connection.split();
+
+    // this is hella hacky, but it serves the purpose of keeping peerd's service
+    // id constant across reconnects: <REMOTE_NODE_ID>:<REMOTE_ADDR> for taker,
+    // <REMOTE_NODE_ID>:<LOCAL_ADDR> for maker
+    // TODO: It is privacy/security critical that once the
+    // connection is encrypted, this should be replaced by a proper handshake.
+    peer_sender.send_message(PeerMsg::Identity(local_node.node_id()))?;
+    debug!(
+        "sent message with local node id {} to the maker",
+        local_node.node_id()
+    );
+    let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
+    let msg: &PeerMsg = &*peer_receiver
+        .recv_message(&unmarshaller)?;
+    match msg {
+        PeerMsg::Pong(id) => {
+            debug!("Received the following pong from the maker {:?}", id);
+        }
+        _ => {
+            return Err(Error::Peer(presentation::Error::UnknownDataType));
+        }
+    };
+
+    let internal_identity = ServiceId::Peer(remote_node_addr);
+
+    let tx = ZMQ_CONTEXT.socket(zmq::PUSH)?;
+    tx.connect("inproc://bridge")?;
+
+    let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
+
+    debug!("Starting thread listening for messages from the remote peer");
+    let bridge_handler = PeerReceiverRuntime {
+        internal_identity: internal_identity.clone(),
+        bridge: esb::Controller::with(
+            map! {
+                ServiceBus::Bridge => esb::BusConfig {
+                    carrier: Carrier::Socket(tx),
+                    router: None,
+                    queued: true,
+                    api_type: ZmqSocketType::Rep,
+                    topic: None,
+                }
+            },
+            BridgeHandler,
+        )?,
+        _thread_flag_rx,
+        awaiting_pong: false,
+    };
+    let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
+    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, PeerMsg>::with(
+        peer_receiver,
+        bridge_handler,
+        unmarshaller,
+    );
+    // We use the _thread_flag_rx to determine when the thread had terminated
+    spawn(move || {
+        if let Err(err) = peer_receiver_runtime.try_run_loop() {
+            error!(
+                "Error encountered in peer receiver runtime, receiver runtime is stopped: {}",
+                err
+            );
+        }
+    });
+
+    Ok((peer_sender, thread_flag_tx))
+}
+
+pub fn run_from_connect(
+    config: ServiceConfig,
+    remote_node_addr: NodeAddr,
+    local_socket: Option<InetSocketAddr>,
+    local_node: LocalNode,
+    // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
+) -> Result<(), Error> {
+    debug!("Opening bridge between runtime and peer receiver threads");
+    let rx = ZMQ_CONTEXT.socket(zmq::PULL)?;
+    rx.bind("inproc://bridge")?;
+
+    let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
+
+    debug!(
+        "Starting main service runtime with identity: {}",
+        ServiceId::Peer(remote_node_addr)
+    );
+    let runtime = Runtime {
+        identity: ServiceId::Peer(remote_node_addr),
+        remote_node_addr: Some(remote_node_addr),
+        local_socket,
+        local_node,
+        peer_sender: None, // As connector we create the sender on is_ready
+        forked_from_listener: false,
+        started: SystemTime::now(),
+        messages_sent: 0,
+        messages_received: 0,
+        awaited_pong: None,
+        thread_flag_tx,
+        unchecked_msg_cache: empty!(),
+    };
+    let mut service = Service::service(config, runtime)?;
+    service.add_bridge_service_bus(rx)?;
+    service.run_loop()?;
+    unreachable!()
+}
+
 #[allow(clippy::too_many_arguments)]
-pub fn run(
+pub fn run_from_listener(
     config: ServiceConfig,
     connection: PeerConnection,
     remote_node_addr: Option<NodeAddr>,
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
-    // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
-    forked_from_listener: bool,
 ) -> Result<(), Error> {
     debug!("Splitting connection into receiver and sender parts");
     let (mut peer_receiver, mut peer_sender) = connection.split();
@@ -62,37 +173,22 @@ pub fn run(
     // <REMOTE_NODE_ID>:<LOCAL_ADDR> for maker
     // TODO: It is privacy/security critical that once the
     // connection is encrypted, this should be replaced by a proper handshake.
-    let internal_identity = if !forked_from_listener {
-        // taker's case
-        peer_sender
-            .send_message(PeerMsg::Identity(local_node.node_id()))
-            .expect("failed to send taker identity to maker");
-        debug!(
-            "sent message with local node id {} to the maker",
-            local_node.node_id()
-        );
-        ServiceId::Peer(
-            remote_node_addr
-                .expect("remote node addr should never be None in taker (connect) case"),
-        )
-    } else {
-        // maker's case
-        let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
-        let msg: &PeerMsg = &*peer_receiver
-            .recv_message(&unmarshaller)
-            .expect("failed to receive identity message from maker");
-        let id = match msg {
-            PeerMsg::Identity(id) => {
-                debug!("Received the following local node id from the taker {}", id);
-                Some(id)
-            }
-            _ => None,
-        };
-        ServiceId::Peer(NodeAddr {
-            id: *id.expect("remote id should always be some in maker's case"),
-            addr: local_socket.unwrap(),
-        })
+    let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
+    let msg: &PeerMsg = &*peer_receiver
+        .recv_message(&unmarshaller)
+        .expect("failed to receive identity message from taker");
+    let id = match msg {
+        PeerMsg::Identity(id) => {
+            debug!("Received the following local node id from the taker {}", id);
+            Some(id)
+        }
+        _ => None,
     };
+    peer_sender.send_message(PeerMsg::Pong(vec![0])).expect("Failed to send handshake pong");
+    let internal_identity = ServiceId::Peer(NodeAddr {
+        id: *id.expect("remote id should always be some in maker's case"),
+        addr: local_socket.expect("Checked for listener"),
+    });
 
     debug!("Opening bridge between runtime and peer receiver threads");
     let rx = ZMQ_CONTEXT.socket(zmq::PULL)?;
@@ -145,8 +241,8 @@ pub fn run(
         remote_node_addr,
         local_socket,
         local_node,
-        peer_sender,
-        forked_from_listener,
+        peer_sender: Some(peer_sender),
+        forked_from_listener: true,
         started: SystemTime::now(),
         messages_sent: 0,
         messages_received: 0,
@@ -281,7 +377,7 @@ pub struct Runtime {
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
 
-    peer_sender: PeerSender,
+    peer_sender: Option<PeerSender>,
     // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
     forked_from_listener: bool,
 
@@ -305,9 +401,43 @@ impl esb::Handler<ServiceBus> for Runtime {
         self.identity.clone()
     }
 
-    fn on_ready(&mut self, _endpoints: &mut Endpoints) -> Result<(), Error> {
+    fn on_ready(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
         // log iff taker
         if !self.forked_from_listener {
+            let (peer_sender, thread_flag_tx) = match start_connect_peer_listener_runtime(
+                self.remote_node_addr
+                    .clone()
+                    .expect("Checked for connecter"),
+                self.local_node,
+            ) {
+                Ok(val) => {
+                    info!(
+                        "Successfully connected to remote peer: {}",
+                        self.remote_node_addr.expect("Checked for connecter")
+                    );
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Farcasterd,
+                        BusMsg::Ctl(CtlMsg::ConnectSuccess),
+                    )?;
+                    val
+                }
+                Err(err) => {
+                    error!("Failed to connect to remote peer: {}, exiting", err);
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity(),
+                        ServiceId::Farcasterd,
+                        BusMsg::Ctl(CtlMsg::ConnectFailed),
+                    )?;
+                    // Exit the connecting peerd
+                    std::process::exit(0);
+                }
+            };
+
+            self.peer_sender = Some(peer_sender);
+            self.thread_flag_tx = thread_flag_tx;
             info!(
                 "{} with the remote peer {}",
                 "Initializing connection".bright_blue_bold(),
@@ -363,7 +493,12 @@ impl Runtime {
             &message.get_type()
         );
         self.messages_sent += 1;
-        while let Err(err) = self.peer_sender.send_message(message.clone()) {
+        while let Err(err) = self
+            .peer_sender
+            .as_mut()
+            .expect("should be connected")
+            .send_message(message.clone())
+        {
             endpoints.send_to(
                 ServiceBus::Ctl,
                 self.identity(),
@@ -403,7 +538,12 @@ impl Runtime {
             )?;
 
             for cached_msg in self.unchecked_msg_cache.values() {
-                if let Err(err) = self.peer_sender.send_message(cached_msg.clone()) {
+                if let Err(err) = self
+                    .peer_sender
+                    .as_mut()
+                    .expect("should be connected")
+                    .send_message(cached_msg.clone())
+                {
                     debug!(
                         "Error re-sending cache messages to remote peer in peerd runtime: {}",
                         err
@@ -413,11 +553,9 @@ impl Runtime {
             }
         }
 
-        // add the message to the unchecked cache
-        self.unchecked_msg_cache
-            .insert((message.swap_id(), message.get_type()), message.clone());
-
         if message.is_protocol() {
+            self.unchecked_msg_cache
+                .insert((message.swap_id(), message.get_type()), message.clone());
             let swap_id = message.swap_id();
             info!(
                 "{} | Sent the {} protocol message",
@@ -514,9 +652,11 @@ impl Runtime {
             );
         }
         let (peer_receiver, peer_sender) = connection.expect("checked with is_err()").split();
-        self.peer_sender = peer_sender;
+        self.peer_sender = Some(peer_sender);
         // send the local id to the maker(listener) again
         self.peer_sender
+            .as_mut()
+            .expect("should be connected")
             .send_message(PeerMsg::Identity(self.local_node.node_id()))?;
 
         let identity = self.identity.clone();
@@ -609,7 +749,12 @@ impl Runtime {
                 )?;
                 for cached_msg in self.unchecked_msg_cache.values() {
                     info!("re-emitting cached message after reconnect: {}", cached_msg);
-                    if let Err(err) = self.peer_sender.send_message(cached_msg.clone()) {
+                    if let Err(err) = self
+                        .peer_sender
+                        .as_mut()
+                        .expect("should be connected")
+                        .send_message(cached_msg.clone())
+                    {
                         debug!(
                             "Error re-sending cache messages to remote peer in peerd runtime: {}",
                             err
@@ -652,10 +797,13 @@ impl Runtime {
 
             msg => {
                 // send a receipt back to the remote peer
-                self.peer_sender.send_message(PeerMsg::MsgReceipt(Receipt {
-                    swap_id: request.swap_id(),
-                    msg_type: request.get_type(),
-                }))?;
+                self.peer_sender
+                    .as_mut()
+                    .expect("should be connected")
+                    .send_message(PeerMsg::MsgReceipt(Receipt {
+                        swap_id: request.swap_id(),
+                        msg_type: request.get_type(),
+                    }))?;
 
                 let swap_id = msg.swap_id();
                 info!(
@@ -682,7 +830,10 @@ impl Runtime {
         rng.fill_bytes(&mut noise);
         let pong_size = rng.gen_range(4, 32);
         self.messages_sent += 1;
-        self.peer_sender.send_message(PeerMsg::Ping(pong_size))?;
+        self.peer_sender
+            .as_mut()
+            .expect("should be connected")
+            .send_message(PeerMsg::Ping(pong_size))?;
         self.awaited_pong = Some(pong_size);
         Ok(())
     }
@@ -695,7 +846,10 @@ impl Runtime {
             .map(|_| rng.gen())
             .collect();
         self.messages_sent += 1;
-        self.peer_sender.send_message(PeerMsg::Pong(noise))?;
+        self.peer_sender
+            .as_mut()
+            .expect("should be connected")
+            .send_message(PeerMsg::Pong(noise))?;
         Ok(())
     }
 }
