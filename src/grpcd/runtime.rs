@@ -256,7 +256,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<PeersRequest>,
     ) -> Result<GrpcResponse<PeersResponse>, Status> {
-        debug!("Received a grpc peer request: {:?}", request);
+        debug!("Received a grpc peers request: {:?}", request);
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
                 request: InfoMsg::ListPeers,
@@ -279,7 +279,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<SwapInfoRequest>,
     ) -> Result<GrpcResponse<SwapInfoResponse>, Status> {
-        debug!("Received a grpc peer request: {:?}", request);
+        debug!("Received a grpc swap info request: {:?}", request);
         let SwapInfoRequest {
             id,
             swap_id: string_swap_id,
@@ -316,7 +316,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<OfferInfoRequest>,
     ) -> Result<GrpcResponse<OfferInfoResponse>, Status> {
-        debug!("Received a grpc peer request: {:?}", request);
+        debug!("Received a grpc offer info request: {:?}", request);
         let OfferInfoRequest {
             id,
             public_offer: string_public_offer,
@@ -552,6 +552,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<RevokeOfferRequest>,
     ) -> Result<GrpcResponse<RevokeOfferResponse>, Status> {
+        debug!("Received a grpc revoke offer request: {:?}", request);
         let RevokeOfferRequest {
             id,
             public_offer: str_public_offer,
@@ -579,6 +580,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<AbortSwapRequest>,
     ) -> Result<GrpcResponse<AbortSwapResponse>, Status> {
+        debug!("Received a grpc abort swap request: {:?}", request);
         let AbortSwapRequest {
             id,
             swap_id: str_swap_id,
@@ -605,6 +607,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<ProgressRequest>,
     ) -> Result<GrpcResponse<ProgressResponse>, Status> {
+        debug!("Received a grpc progress request: {:?}", request);
         let ProgressRequest {
             id,
             swap_id: str_swap_id,
@@ -635,6 +638,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<NeedsFundingRequest>,
     ) -> Result<GrpcResponse<NeedsFundingResponse>, Status> {
+        debug!("Received a grpc needs funding request: {:?}", request);
         let NeedsFundingRequest {
             id,
             blockchain: int_blockchain,
@@ -667,6 +671,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<SweepAddressRequest>,
     ) -> Result<GrpcResponse<SweepAddressResponse>, Status> {
+        debug!("Received a grpc sweep address request: {:?}", request);
         let SweepAddressRequest {
             id,
             source_address: str_source_address,
@@ -758,6 +763,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<TakeRequest>,
     ) -> Result<GrpcResponse<TakeResponse>, Status> {
+        debug!("Received a grpc take request: {:?}", request);
         let TakeRequest {
             id,
             public_offer: str_public_offer,
