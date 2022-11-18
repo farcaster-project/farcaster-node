@@ -22,6 +22,12 @@ pub trait StateMachineExecutor<
         let event = Event::with(endpoints, runtime.identity(), source, request);
         let sm_display = sm.to_string();
         let sm_name = sm.name();
+        debug!(
+            "{} state trying transition for swap {}",
+            sm_name,
+            // this will match sm_name unless sm_name is empty
+            event.request.swap_id()
+        );
         if let Some(new_sm) = sm.next(event, runtime)? {
             let new_sm_display = new_sm.to_string();
             // relegate state transitions staying the same to debug
