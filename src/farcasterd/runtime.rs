@@ -256,18 +256,26 @@ impl Runtime {
                         )?;
                     }
                     ServiceId::Peer(connection_id) => {
-                        self.spawning_services.remove(&source);
-                        if self.registered_services.insert(source.clone()) {
-                            info!(
-                                "Connection {} is registered; total {} connections are known",
-                                connection_id.bright_blue_italic(),
-                                self.count_connections().bright_blue_bold(),
-                            );
+                        if self
+                            .trade_state_machines
+                            .iter()
+                            .any(|tsm| tsm.awaiting_connect_from() == Some(source.clone()))
+                        {
+                            info!("Received hello from awaited peerd connection {}, will continue processing once Connected.", source);
                         } else {
-                            warn!(
-                                "Connection {} was already registered; the service probably was relaunched",
-                                connection_id.bright_blue_italic()
-                            );
+                            self.spawning_services.remove(&source);
+                            if self.registered_services.insert(source.clone()) {
+                                info!(
+                                    "Connection {} is registered; total {} connections are known",
+                                    connection_id.bright_blue_italic(),
+                                    self.count_connections().bright_blue_bold(),
+                                );
+                            } else {
+                                warn!(
+                                    "Connection {} was already registered; the service probably was relaunched",
+                                    connection_id.bright_blue_italic()
+                                );
+                            }
                         }
                     }
                     ServiceId::Swap(_) => {
@@ -832,7 +840,7 @@ impl Runtime {
             .any(|client_connection| client_connection == *peerd)
     }
 
-    fn count_connections(&self) -> usize {
+    pub fn count_connections(&self) -> usize {
         self.registered_services
             .iter()
             .filter(|s| matches!(s, ServiceId::Peer(..)))
@@ -898,6 +906,18 @@ impl Runtime {
                 .position(|tsm| {
                     if let Some(tsm_public_offer) = tsm.consumed_offer() {
                         tsm_public_offer == public_offer
+                    } else {
+                        false
+                    }
+                })
+                .map(|pos| self.trade_state_machines.remove(pos))),
+            (BusMsg::Ctl(CtlMsg::ConnectSuccess), ServiceId::Peer(addr))
+            | (BusMsg::Ctl(CtlMsg::ConnectFailed), ServiceId::Peer(addr)) => Ok(self
+                .trade_state_machines
+                .iter()
+                .position(|tsm| {
+                    if let Some(ServiceId::Peer(tsm_addr)) = tsm.awaiting_connect_from() {
+                        addr == tsm_addr
                     } else {
                         false
                     }
@@ -1039,7 +1059,7 @@ impl Runtime {
         Ok(node_id)
     }
 
-    pub fn connect_peer(&mut self, node_addr: &NodeAddr) -> Result<ServiceId, Error> {
+    pub fn connect_peer(&mut self, node_addr: &NodeAddr) -> Result<(bool, ServiceId), Error> {
         self.services_ready()?;
         let (peer_secret_key, _) = self.peer_keys_ready()?;
         if let Some(spawning_peer) = self.spawning_services.iter().find(|service| {
@@ -1053,7 +1073,7 @@ impl Runtime {
                 "Already spawning a connection with remote peer {}, through a spawned connection {}, but have not received Hello from it yet.",
                 node_addr.id, spawning_peer
             );
-            return Ok(spawning_peer.clone());
+            return Ok((false, spawning_peer.clone()));
         };
         if let Some(existing_peer) = self.registered_services.iter().find(|service| {
             if let ServiceId::Peer(registered_node_addr) = service {
@@ -1066,7 +1086,7 @@ impl Runtime {
                 "Already connected to remote peer {} through a spawned connection {}",
                 node_addr.id, existing_peer
             );
-            return Ok(existing_peer.clone());
+            return Ok((true, existing_peer.clone()));
         }
 
         debug!("{} to remote peer {}", "Connecting", node_addr);
@@ -1084,9 +1104,6 @@ impl Runtime {
             ],
         );
 
-        // in case it can't connect wait for it to crash
-        std::thread::sleep(Duration::from_secs_f32(0.1));
-
         // status is Some if peerd returns because it crashed
         let (child, status) = child.and_then(|mut c| c.try_wait().map(|s| (c, s)))?;
 
@@ -1099,7 +1116,7 @@ impl Runtime {
         self.spawning_services.insert(ServiceId::Peer(*node_addr));
         debug!("Awaiting for peerd to connect...");
 
-        Ok(ServiceId::Peer(*node_addr))
+        Ok((false, ServiceId::Peer(*node_addr)))
     }
 
     /// Notify(forward to) the subscribed clients still online with the given request

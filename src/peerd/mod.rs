@@ -18,4 +18,5 @@ mod runtime;
 
 #[cfg(feature = "shell")]
 pub use opts::{Opts, PeerKeyOpts};
-pub use runtime::run;
+pub use runtime::run_from_connect;
+pub use runtime::run_from_listener;

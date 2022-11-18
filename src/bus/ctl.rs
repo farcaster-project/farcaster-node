@@ -155,6 +155,9 @@ pub enum CtlMsg {
 
     #[display("failed peer message")]
     FailedPeerMessage(PeerMsg),
+
+    #[display("connect failed")]
+    ConnectFailed,
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
