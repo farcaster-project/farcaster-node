@@ -1566,13 +1566,10 @@ impl Runtime {
                             .pop()
                             .unwrap();
                         if let (
-                            BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(mut task))),
+                            BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(task))),
                             ServiceBus::Sync,
                         ) = (request.clone(), bus_id)
                         {
-                            // safe cast
-                            task.from_height =
-                                Some(self.syncer_state.monero_height - *confirmations as u64);
                             let request = BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(task)));
 
                             info!(
@@ -1934,7 +1931,7 @@ impl Runtime {
                                     tx.clone(),
                                     endpoints,
                                     self.swap_id.clone(),
-                                    self.syncer_state.monero_height,
+                                    self.monero_address_creation_height,
                                 )?;
                                 let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
                                 let acc_confs_needs = self
@@ -1984,7 +1981,7 @@ impl Runtime {
                                     tx.clone(),
                                     endpoints,
                                     self.swap_id.clone(),
-                                    self.syncer_state.monero_height,
+                                    self.monero_address_creation_height,
                                 )?;
                                 let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
                                 let acc_confs_needs = self
@@ -2054,7 +2051,7 @@ impl Runtime {
                                     endpoints,
                                     tx.clone(),
                                     self.swap_id.clone(),
-                                    self.syncer_state.monero_height,
+                                    self.monero_address_creation_height,
                                 )?;
                                 let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
                                 let acc_confs_needs = self
