@@ -949,7 +949,11 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         }
         (BusMsg::Ctl(CtlMsg::Hello), ServiceId::Peer(..)) => {}
         _ => {
-            trace!("BusMsg {} invalid for state swapd launched", event.request);
+            trace!(
+                "{} | BusMsg {} invalid for state swapd launched",
+                swap_id,
+                event.request
+            );
         }
     }
     let peerd_up = runtime.registered_services.contains(&peerd);
@@ -963,7 +967,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         // Tell swapd swap options and link it with the
         // connection daemon
         debug!(
-            "Swapd {} is known: we spawned it to create a swap. \
+            "{} | swap daemon is known: we spawned it to create a swap. \
                  BusMsging swapd to be the {} of this swap",
             swap_id, local_trade_role,
         );
@@ -983,7 +987,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             clients_awaiting_connect_result: vec![],
         })))
     } else {
-        info!(
+        debug!(
             "{} | Not transitioning to SwapdRunning yet, service availability: accordant_syncer: {}, arbitrating_syncer: {}, swapd: {}, peerd: {}",
             swap_id,
             accordant_syncer_up.is_some(),
