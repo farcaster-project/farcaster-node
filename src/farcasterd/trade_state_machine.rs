@@ -172,9 +172,10 @@ pub struct SwapdRunning {
 impl StateMachine<Runtime, Error> for TradeStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
         info!(
-            "{} | Checking event request {} for state transition",
+            "{} | Checking event request {} from {} for state transition",
             self.swap_id().map_or("…".to_string(), |s| s.to_string()),
-            event.request
+            event.request,
+            event.source
         );
         match self {
             TradeStateMachine::StartTaker => {
@@ -965,6 +966,15 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             clients_awaiting_connect_result: vec![],
         })))
     } else {
+        info!(
+            "{} | Not transitioning to SwapdRunning yet, service availability: accordant_syncer: {}, arbitrating_syncer: {}, swapd: {}, peerd: {}",
+            swap_id,
+            accordant_syncer_up.is_some(),
+            arbitrating_syncer_up.is_some(),
+            swapd_up,
+            peerd_up,
+        );
+
         Ok(Some(TradeStateMachine::SwapdLaunched(SwapdLaunched {
             swap_id,
             public_offer,
