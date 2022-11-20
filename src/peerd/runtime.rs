@@ -14,7 +14,6 @@
 
 use farcaster_core::swap::SwapId;
 use internet2::addr::LocalNode;
-use microservices::peer::PeerReceiver;
 use microservices::peer::RecvMessage;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -108,6 +107,7 @@ pub fn start_connect_peer_listener_runtime(
     );
     // We use the _thread_flag_rx to determine when the thread had terminated
     spawn(move || {
+        debug!("entering peerd receiver runtime loop");
         if let Err(err) = peer_receiver_runtime.try_run_loop() {
             error!(
                 "Error encountered in peer receiver runtime, receiver runtime is stopped: {}",
@@ -523,31 +523,14 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     BusMsg::Ctl(CtlMsg::PeerdTerminated),
                 )?;
+                // Return here, Farcaster is supposed to terminate us
+                return Ok(());
             }
 
-            while let Err(err) = self.reconnect_peer() {
-                warn!("error during reconnection attempt: {}", err);
-            }
-            endpoints.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                ServiceId::Farcasterd,
-                BusMsg::Ctl(CtlMsg::Reconnected),
-            )?;
-
-            for cached_msg in self.unchecked_msg_cache.values() {
-                if let Err(err) = self
-                    .peer_sender
-                    .as_mut()
-                    .expect("should be connected")
-                    .send_message(cached_msg.clone())
-                {
-                    debug!(
-                        "Error re-sending cache messages to remote peer in peerd runtime: {}",
-                        err
-                    );
-                    break;
-                }
+            // This blocks until reconnected successfully
+            while let Err(err) = self.reconnect_peer(endpoints) {
+                info!("Failed to reconnect: {}, retrying.", err);
+                std::thread::sleep(std::time::Duration::from_secs(1));
             }
         }
 
@@ -636,49 +619,47 @@ impl Runtime {
         Ok(())
     }
 
-    fn reconnect_peer(&mut self) -> Result<(), Error> {
-        info!("Attempting to reconnect to remote peerd");
-        // The PeerReceiverRuntime failed, attempt to reconnect with the counterpary
-        // It is safe to unwrap remote_node_addr here, since it is Some(..) if connect=true
-        let mut connection = PeerConnection::connect_brontozaur(
-            self.local_node,
-            self.remote_node_addr
-                .expect("is some if not forked from listener"),
-        );
-        let mut attempt = 0;
-
-        while let Err(err) = connection {
-            trace!("failed to re-establish tcp connection: {}", err);
-            attempt += 1;
-            warn!("reconnect failed attempting again in {} seconds", attempt);
-            std::thread::sleep(std::time::Duration::from_secs(attempt));
-            connection = PeerConnection::connect_brontozaur(
-                self.local_node,
-                self.remote_node_addr
-                    .expect("is some if not forked from listener"),
-            );
+    fn reconnect_peer(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        // flag_rx on the old receiver thread goes out of scope, thus making
+        // the send fail as soon as the old receiver thread exited.
+        while self.thread_flag_tx.send(()).is_ok() {
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
-        let (peer_receiver, peer_sender) = connection.expect("checked with is_err()").split();
-        self.peer_sender = Some(peer_sender);
-        // send the local id to the maker(listener) again
-        self.peer_sender
-            .as_mut()
-            .expect("should be connected")
-            .send_message(PeerMsg::Identity(self.local_node.node_id()))?;
-
-        let identity = self.identity.clone();
-        let dying_thread_flag_tx = self.thread_flag_tx.clone();
-        let (thread_flag_tx, thread_flag_rx) = std::sync::mpsc::channel();
-        info!("Peerd reconnect successful, launching peerd receiver runtime");
-        spawn(move || {
-            restart_receiver_runtime(
-                identity,
-                peer_receiver,
-                dying_thread_flag_tx,
-                thread_flag_rx,
-            )
-        });
-        self.thread_flag_tx = thread_flag_tx;
+        let mut attempt = 0;
+        loop {
+            match start_connect_peer_listener_runtime(
+                self.remote_node_addr
+                    .clone()
+                    .expect("Checked for connnecter"),
+                self.local_node,
+            ) {
+                Err(err) => {
+                    attempt += 1;
+                    trace!("Failed to reconnect: {}", err);
+                    warn!("Reconnect failed attempting again in {} seconds", attempt);
+                    std::thread::sleep(std::time::Duration::from_secs(attempt));
+                }
+                Ok((peer_sender, thread_flag_tx)) => {
+                    info!("Reconnect success after {} attempts", attempt);
+                    self.peer_sender = Some(peer_sender);
+                    self.thread_flag_tx = thread_flag_tx;
+                    break;
+                }
+            }
+        }
+        for cached_msg in self.unchecked_msg_cache.values() {
+            info!("re-emitting cached message after reconnect: {}", cached_msg);
+            self.peer_sender
+                .as_mut()
+                .expect("should be connected")
+                .send_message(cached_msg.clone())?;
+        }
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            self.identity(),
+            ServiceId::Farcasterd,
+            BusMsg::Ctl(CtlMsg::Reconnected),
+        )?;
         Ok(())
     }
 
@@ -741,30 +722,11 @@ impl Runtime {
                             BusMsg::Ctl(CtlMsg::FailedPeerMessage(cached_msg)),
                         )?;
                     }
-                }
-
-                while let Err(err) = self.reconnect_peer() {
-                    warn!("error during reconnection attempt: {}", err);
-                }
-                endpoints.send_to(
-                    ServiceBus::Ctl,
-                    self.identity(),
-                    ServiceId::Farcasterd,
-                    BusMsg::Ctl(CtlMsg::Reconnected),
-                )?;
-                for cached_msg in self.unchecked_msg_cache.values() {
-                    info!("re-emitting cached message after reconnect: {}", cached_msg);
-                    if let Err(err) = self
-                        .peer_sender
-                        .as_mut()
-                        .expect("should be connected")
-                        .send_message(cached_msg.clone())
-                    {
-                        debug!(
-                            "Error re-sending cache messages to remote peer in peerd runtime: {}",
-                            err
-                        );
-                        break;
+                } else {
+                    // This blocks until reconnected successfully
+                    while let Err(err) = self.reconnect_peer(endpoints) {
+                        info!("Failed to reconnect: {}, retrying.", err);
+                        std::thread::sleep(std::time::Duration::from_secs(1));
                     }
                 }
             }
@@ -856,56 +818,5 @@ impl Runtime {
             .expect("should be connected")
             .send_message(PeerMsg::Pong(noise))?;
         Ok(())
-    }
-}
-
-fn restart_receiver_runtime(
-    internal_identity: ServiceId,
-    peer_receiver: PeerReceiver,
-    dying_thread_flag_tx: std::sync::mpsc::Sender<()>,
-    _thread_flag_rx: std::sync::mpsc::Receiver<()>,
-) {
-    // flag_rx on the old receiver thread goes out of scope, thus making
-    // the send fail as soon as the old receiver thread exited.
-    while dying_thread_flag_tx.send(()).is_ok() {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
-    let tx = ZMQ_CONTEXT
-        .socket(zmq::PUSH)
-        .expect("unable to create new bridge zmq socket");
-    tx.connect("inproc://bridge")
-        .expect("unable to connec to zmq bridge");
-
-    debug!("Starting thread listening for messages from the remote peer");
-    let bridge_handler = PeerReceiverRuntime {
-        internal_identity,
-        bridge: esb::Controller::with(
-            map! {
-                ServiceBus::Bridge => esb::BusConfig {
-                    carrier: Carrier::Socket(tx),
-                    router: None,
-                    queued: true,
-                    api_type: ZmqSocketType::Rep,
-                    topic: None,
-                }
-            },
-            BridgeHandler,
-        )
-        .expect("error re-creating receiver runtime bridge"),
-        awaiting_pong: false,
-        _thread_flag_rx,
-    };
-    let unmarshaller: Unmarshaller<PeerMsg> = PeerMsg::create_unmarshaller();
-    let peer_receiver_runtime = peer::Listener::<PeerReceiverRuntime, PeerMsg>::with(
-        peer_receiver,
-        bridge_handler,
-        unmarshaller,
-    );
-    debug!("entering peerd receiver runtime loop");
-    if let Err(err) = peer_receiver_runtime.try_run_loop() {
-        error!(
-            "Error encountered in peer receiver runtime, receiver runtime is stopped: {}",
-            err
-        )
     }
 }
