@@ -327,6 +327,7 @@ impl TradeStateMachine {
                 peerd,
                 public_offer,
                 trade_role,
+                swap_id,
                 ..
             }) => {
                 // Peerd is none, implies a connect event is possible. A connect
@@ -334,6 +335,12 @@ impl TradeStateMachine {
                 // thus has to match the address of the offer.
                 if *trade_role == TradeRole::Taker && peerd.is_none() {
                     Some(ServiceId::Peer(node_addr_from_public_offer(public_offer)))
+                } else if peerd.is_none() {
+                    info!(
+                        "This should never be triggered, but indeed the peerd of {} is None",
+                        swap_id
+                    );
+                    None
                 } else {
                     None
                 }
