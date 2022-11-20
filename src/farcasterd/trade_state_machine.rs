@@ -167,6 +167,7 @@ pub struct SwapdRunning {
     funding_info: Option<FundingInfo>,
     auto_funded: bool,
     clients_awaiting_connect_result: Vec<ServiceId>,
+    trade_role: TradeRole,
 }
 
 impl StateMachine<Runtime, Error> for TradeStateMachine {
@@ -325,12 +326,13 @@ impl TradeStateMachine {
             TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd,
                 public_offer,
+                trade_role,
                 ..
             }) => {
                 // Peerd is none, implies a connect event is possible. A connect
-                // is only possible to a listening peer, its address thus has to
-                // match the address of the offer.
-                if peerd.is_none() {
+                // is only possible to a listening peer as a taker, its address
+                // thus has to match the address of the offer.
+                if *trade_role == TradeRole::Taker && peerd.is_none() {
                     Some(ServiceId::Peer(node_addr_from_public_offer(public_offer)))
                 } else {
                     None
@@ -740,19 +742,7 @@ fn attempt_transition_to_take_offer(
     } = taker_connect;
     match event.request {
         BusMsg::Ctl(CtlMsg::ConnectSuccess) if event.source == peerd => {
-            runtime.spawning_services.remove(&event.source);
-            if runtime.registered_services.insert(event.source.clone()) {
-                info!(
-                    "Connection {} is registered; total {} connections are known",
-                    peerd.bright_blue_italic(),
-                    runtime.count_connections().bright_blue_bold(),
-                );
-            } else {
-                warn!(
-                    "Connection {} was already registered; the service probably was relaunched",
-                    peerd.bright_blue_italic()
-                );
-            }
+            runtime.handle_new_connection(event.source.clone());
             let offer_registered = "Public offer registered".to_string();
             info!(
                 "{}: {:#}",
@@ -788,8 +778,7 @@ fn attempt_transition_to_take_offer(
                 public_offer.id(),
                 peerd
             );
-            runtime.spawning_services.remove(&source.clone());
-            runtime.registered_services.remove(&source.clone());
+            runtime.handle_failed_connection(event.endpoints, event.source.clone())?;
             event.send_client_ctl(
                 source,
                 CtlMsg::Failure(Failure {
@@ -985,6 +974,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             funding_info: None,
             auto_funded: false,
             clients_awaiting_connect_result: vec![],
+            trade_role: local_trade_role,
         })))
     } else {
         debug!(
@@ -1042,19 +1032,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             if ServiceId::Peer(node_addr_from_public_offer(&public_offer)) == source
                 && trade_role == TradeRole::Taker =>
         {
-            runtime.spawning_services.remove(&event.source);
-            if runtime.registered_services.insert(event.source.clone()) {
-                info!(
-                    "Connection {} is registered; total {} connections are known",
-                    source.bright_blue_italic(),
-                    runtime.count_connections().bright_blue_bold(),
-                );
-            } else {
-                info!(
-                    "Connection {} was already registered.",
-                    source.bright_blue_italic()
-                );
-            }
+            runtime.handle_new_connection(event.source.clone());
 
             info!(
                 "{} | Peerd connected for restored swap",
@@ -1066,6 +1044,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             if ServiceId::Peer(node_addr_from_public_offer(&public_offer)) == source
                 && trade_role == TradeRole::Taker =>
         {
+            runtime.handle_failed_connection(event.endpoints, source.clone())?;
             expect_connection = false;
             connected = false;
         }
@@ -1109,6 +1088,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             auto_funded: false,
             funding_info: None,
             clients_awaiting_connect_result: vec![],
+            trade_role,
         })))
     } else {
         Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
@@ -1138,6 +1118,7 @@ fn attempt_transition_to_end(
         funding_info,
         auto_funded,
         mut clients_awaiting_connect_result,
+        trade_role,
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
@@ -1155,6 +1136,7 @@ fn attempt_transition_to_end(
                 funding_info,
                 auto_funded,
                 clients_awaiting_connect_result,
+                trade_role,
             })))
         }
 
@@ -1219,6 +1201,7 @@ fn attempt_transition_to_end(
                                 funding_info: Some(info),
                                 auto_funded: true,
                                 clients_awaiting_connect_result,
+                                trade_role,
                             })))
                         }
                         Err(err) => {
@@ -1236,6 +1219,7 @@ fn attempt_transition_to_end(
                                 funding_info: Some(info),
                                 auto_funded: false,
                                 clients_awaiting_connect_result,
+                                trade_role,
                             })))
                         }
                     }
@@ -1249,6 +1233,7 @@ fn attempt_transition_to_end(
                         funding_info: Some(info.clone()),
                         auto_funded: false,
                         clients_awaiting_connect_result,
+                        trade_role,
                     })))
                 }
             }
@@ -1315,7 +1300,8 @@ fn attempt_transition_to_end(
                              accordant_syncer,
                              funding_info: Some(info),
                              auto_funded,
-                            clients_awaiting_connect_result,
+                             clients_awaiting_connect_result,
+                             trade_role,
                          })))
                     })
                 } else {
@@ -1328,6 +1314,7 @@ fn attempt_transition_to_end(
                         funding_info: Some(info),
                         auto_funded: false,
                         clients_awaiting_connect_result,
+                        trade_role,
                     })))
                 }
             }
@@ -1349,6 +1336,7 @@ fn attempt_transition_to_end(
                 funding_info: None,
                 auto_funded,
                 clients_awaiting_connect_result,
+                trade_role,
             })))
         }
 
@@ -1368,6 +1356,7 @@ fn attempt_transition_to_end(
                 funding_info: None,
                 auto_funded,
                 clients_awaiting_connect_result,
+                trade_role,
             })))
         }
 
@@ -1407,6 +1396,7 @@ fn attempt_transition_to_end(
                 funding_info,
                 auto_funded,
                 clients_awaiting_connect_result,
+                trade_role,
             })))
         }
 
@@ -1417,6 +1407,7 @@ fn attempt_transition_to_end(
             for client in clients_awaiting_connect_result.drain(..) {
                 event.send_client_ctl(client, CtlMsg::ConnectSuccess)?;
             }
+            runtime.handle_new_connection(source.clone());
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd: Some(source),
                 public_offer,
@@ -1426,6 +1417,7 @@ fn attempt_transition_to_end(
                 funding_info,
                 auto_funded,
                 clients_awaiting_connect_result: vec![],
+                trade_role,
             })))
         }
 
@@ -1442,8 +1434,7 @@ fn attempt_transition_to_end(
                     }),
                 )?;
             }
-            runtime.spawning_services.remove(&source.clone());
-            runtime.registered_services.remove(&source.clone());
+            runtime.handle_failed_connection(event.endpoints, source.clone())?;
             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                 peerd: Some(source),
                 public_offer,
@@ -1453,6 +1444,7 @@ fn attempt_transition_to_end(
                 funding_info,
                 auto_funded,
                 clients_awaiting_connect_result: vec![],
+                trade_role,
             })))
         }
 
@@ -1477,6 +1469,7 @@ fn attempt_transition_to_end(
                 funding_info,
                 auto_funded,
                 clients_awaiting_connect_result,
+                trade_role,
             })))
         }
 
@@ -1532,6 +1525,7 @@ fn attempt_transition_to_end(
                 funding_info,
                 auto_funded,
                 clients_awaiting_connect_result,
+                trade_role,
             })))
         }
     }

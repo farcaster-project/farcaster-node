@@ -432,9 +432,7 @@ impl esb::Handler<ServiceBus> for Runtime {
                         ServiceId::Farcasterd,
                         BusMsg::Ctl(CtlMsg::ConnectFailed),
                     )?;
-                    // Exit the connecting peerd, wait one second to ensure the message makes it out
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                    std::process::exit(0);
+                    return Ok(());
                 }
             };
 
@@ -525,8 +523,6 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     BusMsg::Ctl(CtlMsg::PeerdTerminated),
                 )?;
-                warn!("Exiting peerd");
-                std::process::exit(0);
             }
 
             while let Err(err) = self.reconnect_peer() {
@@ -571,12 +567,21 @@ impl Runtime {
 
     fn handle_ctl(
         &mut self,
-        _endpoints: &mut Endpoints,
+        endpoints: &mut Endpoints,
         source: ServiceId,
         request: CtlMsg,
     ) -> Result<(), Error> {
         match request {
             CtlMsg::Terminate if source == ServiceId::Farcasterd => {
+                for (_, cached_msg) in self.unchecked_msg_cache.drain() {
+                    // Draining cached messages to the various running swaps
+                    endpoints.send_to(
+                        ServiceBus::Ctl,
+                        self.identity.clone(),
+                        ServiceId::Swap(cached_msg.swap_id()),
+                        BusMsg::Ctl(CtlMsg::FailedPeerMessage(cached_msg)),
+                    )?;
+                }
                 info!("Terminating {}", self.identity().label());
                 std::process::exit(0);
             }
@@ -736,8 +741,6 @@ impl Runtime {
                             BusMsg::Ctl(CtlMsg::FailedPeerMessage(cached_msg)),
                         )?;
                     }
-                    warn!("Exiting peerd");
-                    std::process::exit(0);
                 }
 
                 while let Err(err) = self.reconnect_peer() {

@@ -250,7 +250,10 @@ impl Runtime {
                             BusMsg::Ctl(CtlMsg::GetKeys(wallet_token)),
                         )?;
                     }
-                    ServiceId::Peer(connection_id) => {
+                    ServiceId::Peer(_) => {
+                        // If this is a connecting peerd, only process the
+                        // connection once ConnectSuccess / ConnectFailure is
+                        // received
                         if self
                             .trade_state_machines
                             .iter()
@@ -258,19 +261,7 @@ impl Runtime {
                         {
                             info!("Received hello from awaited peerd connection {}, will continue processing once Connected.", source);
                         } else {
-                            self.spawning_services.remove(&source);
-                            if self.registered_services.insert(source.clone()) {
-                                info!(
-                                    "Connection {} is registered; total {} connections are known",
-                                    connection_id.bright_blue_italic(),
-                                    self.count_connections().bright_blue_bold(),
-                                );
-                            } else {
-                                warn!(
-                                    "Connection {} was already registered; the service probably was relaunched",
-                                    connection_id.bright_blue_italic()
-                                );
-                            }
+                            self.handle_new_connection(source.clone());
                         }
                     }
                     ServiceId::Swap(_) => {
@@ -337,21 +328,13 @@ impl Runtime {
                 self.node_public_key = Some(pk);
             }
 
-            CtlMsg::PeerdTerminated => {
-                if let ServiceId::Peer(addr) = source {
-                    if self.registered_services.remove(&source) {
-                        debug!(
-                            "removed connection {} from farcasterd registered connections",
-                            addr
-                        );
+            CtlMsg::PeerdTerminated if matches!(source, ServiceId::Peer(_)) => {
+                self.handle_failed_connection(endpoints, source.clone())?;
 
-                        // log a message if a swap running over this connection
-                        // is not completed, and thus present in consumed_offers
-                        let peerd_id = ServiceId::Peer(addr);
-                        if self.connection_has_swap_client(&peerd_id) {
-                            info!("A swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", addr.bright_blue_italic());
-                        }
-                    }
+                // log a message if a swap running over this connection
+                // is not completed, and thus present in consumed_offers
+                if self.connection_has_swap_client(&source) {
+                    info!("A swap is still running over the terminated peer {}, the counterparty will attempt to reconnect.", source.bright_blue_italic());
                 }
             }
 
@@ -735,6 +718,42 @@ impl Runtime {
         } else {
             Err(Error::Farcaster("Peer keys not ready yet".to_string()))
         }
+    }
+
+    pub fn handle_new_connection(&mut self, connection: ServiceId) {
+        self.spawning_services.remove(&connection);
+        if self.registered_services.insert(connection.clone()) {
+            info!(
+                "Connection {} is registered; total {} connections are known",
+                connection.bright_blue_italic(),
+                self.count_connections().bright_blue_bold(),
+            );
+        } else {
+            warn!(
+                "Connection {} was already registered; the service probably was relaunched",
+                connection.bright_blue_italic()
+            );
+        }
+    }
+
+    pub fn handle_failed_connection(
+        &mut self,
+        endpoints: &mut Endpoints,
+        connection: ServiceId,
+    ) -> Result<(), Error> {
+        info!(
+            "Connection {} failed. Removing it from our connection pool and terminating.",
+            connection
+        );
+        self.spawning_services.remove(&connection);
+        self.registered_services.remove(&connection);
+        endpoints.send_to(
+            ServiceBus::Ctl,
+            self.identity(),
+            connection,
+            BusMsg::Ctl(CtlMsg::Terminate),
+        )?;
+        Ok(())
     }
 
     pub fn clean_up_after_swap(
