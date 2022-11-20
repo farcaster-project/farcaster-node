@@ -259,12 +259,14 @@ impl Runtime {
                         // If this is a connecting peerd, only process the
                         // connection once ConnectSuccess / ConnectFailure is
                         // received
-                        if self
+                        let awaiting_swaps: Vec<_> = self
                             .trade_state_machines
                             .iter()
-                            .any(|tsm| tsm.awaiting_connect_from() == Some(source.clone()))
-                        {
-                            info!("Received hello from awaited peerd connection {}, will continue processing once Connected.", source);
+                            .filter(|tsm| tsm.awaiting_connect_from() == Some(source.clone()))
+                            .map(|tsm| tsm.swap_id().map_or("…".to_string(), |s| s.to_string()))
+                            .collect();
+                        if !awaiting_swaps.is_empty() {
+                            info!("Received hello from awaited peerd connection {}, will continue processing once swaps {:?} are connected.", source, awaiting_swaps);
                         } else {
                             self.handle_new_connection(source.clone());
                         }
@@ -786,6 +788,7 @@ impl Runtime {
             .filter(|service| {
                 if let ServiceId::Peer(..) = service {
                     if !self.connection_has_swap_client(service) {
+                        info!("Terminating {}", service);
                         endpoints
                             .send_to(
                                 ServiceBus::Ctl,
