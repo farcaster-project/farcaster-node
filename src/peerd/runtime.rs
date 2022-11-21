@@ -565,7 +565,13 @@ impl Runtime {
                         BusMsg::Ctl(CtlMsg::FailedPeerMessage(cached_msg)),
                     )?;
                 }
-                info!("Terminating {}", self.identity().label());
+                // FIXME: if persist pid logging beyond debugging, make this idiomatic across all services
+                info!(
+                    "Terminating {} with PID {}",
+                    self.identity().label(),
+                    std::process::id()
+                );
+
                 std::process::exit(0);
             }
 
