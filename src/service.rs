@@ -293,6 +293,7 @@ where
 
     #[cfg(feature = "node")]
     pub fn run_loop(mut self) -> Result<(), Error> {
+        let identity = self.esb.handler().identity();
         if !self.is_broker() {
             std::thread::sleep(core::time::Duration::from_secs(1));
             self.esb.send_to(
@@ -300,9 +301,13 @@ where
                 ServiceId::Farcasterd,
                 BusMsg::Ctl(CtlMsg::Hello),
             )?;
+        } else if identity != ServiceId::Farcasterd {
+            warn!(
+                "Not saying hello to Farcasterd: service {} is broker",
+                identity
+            );
         }
 
-        let identity = self.esb.handler().identity();
         info!("New service {} started", identity);
 
         self.esb.run_or_panic(&identity.to_string());
