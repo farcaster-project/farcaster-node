@@ -172,7 +172,7 @@ pub struct SwapdRunning {
 
 impl StateMachine<Runtime, Error> for TradeStateMachine {
     fn next(self, event: Event, runtime: &mut Runtime) -> Result<Option<Self>, Error> {
-        info!(
+        debug!(
             "{} | Checking event request {} from {} for state transition",
             self.swap_id().map_or("…".to_string(), |s| s.to_string()),
             event.request,
