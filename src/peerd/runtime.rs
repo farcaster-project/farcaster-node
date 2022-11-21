@@ -541,6 +541,10 @@ impl Runtime {
                     ServiceId::Farcasterd,
                     BusMsg::Ctl(CtlMsg::PeerdTerminated),
                 )?;
+                warn!(
+                    "Waiting for farcaster to terminate peerd instance {}",
+                    self.identity().label()
+                );
                 // Return here, Farcaster is supposed to terminate us
                 return Ok(());
             }
@@ -779,6 +783,10 @@ impl Runtime {
                             BusMsg::Ctl(CtlMsg::FailedPeerMessage(cached_msg)),
                         )?;
                     }
+                    warn!(
+                        "Waiting for farcaster to terminate peerd instance {}",
+                        self.identity().label()
+                    );
                 } else {
                     // This blocks until reconnected successfully
                     while let Err(err) = self.reconnect_peer(endpoints) {

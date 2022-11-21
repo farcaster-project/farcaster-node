@@ -67,6 +67,71 @@ async fn swap_bob_maker_normal() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
+async fn swap_bob_maker_taker_reconnects() {
+    setup_logging();
+    let execution_mutex = Arc::new(Mutex::new(0));
+    // let bitcoin_rpc = Arc::new(bitcoin_setup());
+    let (monero_regtest, monero_wallet) = monero_setup().await;
+
+    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
+
+    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer_with_reconnect(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Bob".to_string(),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
+
+    let cli_bob_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_maker.clone(), "bitcoin".to_string());
+
+    // run until bob has the btc funding address
+    let (address, amount) =
+        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
+            .await;
+
+    // let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer_with_reconnect(
+    //     data_dir_maker.clone(),
+    //     data_dir_taker.clone(),
+    //     "Alice".to_string(),
+    //     Arc::clone(&monero_wallet),
+    //     bitcoin::Amount::from_str("1 BTC").unwrap(),
+    //     monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    // )
+    // .await;
+
+    // tokio::time::sleep(time::Duration::from_secs(20)).await;
+
+    // let cli_bob_needs_funding_args: Vec<String> =
+    //     needs_funding_args(data_dir_taker, "bitcoin".to_string());
+
+    // // run until bob has the btc funding address
+    // let (address, amount) =
+    //     retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
+    //         .await;
+
+    // run_swap(
+    //     swap_id,
+    //     data_dir_taker,
+    //     data_dir_maker,
+    //     Arc::clone(&bitcoin_rpc),
+    //     bitcoin_address,
+    //     monero_regtest,
+    //     Arc::clone(&monero_wallet),
+    //     xmr_dest_wallet_name,
+    //     execution_mutex,
+    // )
+    // .await;
+
+    kill_all();
+}
+
+#[tokio::test]
+#[timeout(600000)]
+#[ignore]
 async fn swap_bob_funds_incorrect_amount() {
     setup_logging();
     let bitcoin_rpc = Arc::new(bitcoin_setup());
@@ -2076,6 +2141,64 @@ async fn make_and_take_offer(
         offers[0].clone(),
     );
     run("../swap-cli", cli_take_args).unwrap();
+
+    let swap_id = retry_until_swap_id(taker_info_args.clone(), previous_swap_ids).await;
+
+    (xmr_address_wallet_name, btc_address, swap_id)
+}
+
+async fn make_and_take_offer_with_reconnect(
+    data_dir_maker: Vec<String>,
+    data_dir_taker: Vec<String>,
+    role: String,
+    monero_wallet: Arc<Mutex<monero_rpc::WalletClient>>,
+    btc_amount: bitcoin::Amount,
+    xmr_amount: monero::Amount,
+) -> (String, bitcoin::Address, SwapId) {
+    let maker_info_args = info_args(data_dir_maker.clone());
+    let taker_info_args = info_args(data_dir_maker.clone());
+
+    // test connection to farcasterd and check that swap-cli is in the correct place
+    run("../swap-cli", maker_info_args.clone()).unwrap();
+
+    let (xmr_address, xmr_address_wallet_name) =
+        monero_new_dest_address(Arc::clone(&monero_wallet)).await;
+    // let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
+    let btc_address =
+        bitcoin::Address::from_str("bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw").unwrap();
+    let btc_addr = btc_address.to_string();
+    let xmr_addr = xmr_address.to_string();
+
+    let (stdout, _stderr) = run("../swap-cli", taker_info_args.clone()).unwrap();
+    let previous_swap_ids: HashSet<SwapId> =
+        cli_output_to_node_info(stdout).swaps.drain(..).collect();
+
+    let cli_make_args = make_offer_args(
+        data_dir_maker.clone(),
+        role,
+        btc_addr.clone(),
+        btc_amount,
+        xmr_addr.clone(),
+        xmr_amount,
+    );
+    let (stdout, stderr) = run("../swap-cli", cli_make_args).unwrap();
+    info!("Offer output: {:?}", stdout);
+    info!("Offer error: {:?}", stderr);
+
+    // get offer strings
+    info!("retrieving offers");
+    let offers = retry_until_offer(maker_info_args.clone()).await;
+    info!("Got the offer: {:?}", offers);
+
+    let cli_take_args = take_offer_args(
+        data_dir_taker.clone(),
+        btc_addr,
+        xmr_addr,
+        offers[0].clone(),
+    );
+    run("../swap-cli", cli_take_args).unwrap();
+    info!("killing connected peerd");
+    kill_connected_peerd();
 
     let swap_id = retry_until_swap_id(taker_info_args.clone(), previous_swap_ids).await;
 
