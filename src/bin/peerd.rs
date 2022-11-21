@@ -156,9 +156,11 @@ fn main() {
 
     let local_node = opts.peer_key_opts.local_node();
     info!(
-        "{}: {}",
+        "{}: {}, {}: {}",
         "Local node id".bright_green_bold(),
-        local_node.node_id().bright_yellow_bold()
+        local_node.node_id().bright_yellow_bold(),
+        "PID".bright_green_bold(),
+        std::process::id().bright_yellow_bold(),
     );
 
     let peer_socket = PeerSocket::from(opts.clone());
