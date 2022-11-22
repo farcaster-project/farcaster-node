@@ -502,14 +502,10 @@ impl Runtime {
         message: PeerMsg,
     ) -> Result<(), Error> {
         // Forward to the remote peer
-        debug!(
-            "{} | Message type: {}",
-            message.swap_id(),
-            message.get_type()
-        );
+        debug!("{} | Message type: {}", self.identity(), message.get_type());
         debug!(
             "{} | Forwarding peer message to the remote peer, request: {}",
-            message.swap_id(),
+            self.identity(),
             &message.get_type()
         );
         self.messages_sent += 1;
@@ -527,7 +523,7 @@ impl Runtime {
             )?;
             debug!(
                 "{} | Error sending to remote peer in peerd runtime: {}",
-                message.swap_id(),
+                self.identity(),
                 err
             );
             // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
@@ -559,7 +555,7 @@ impl Runtime {
             while let Err(err) = self.reconnect_peer(endpoints) {
                 info!(
                     "{} | Failed to reconnect: {}, retrying.",
-                    message.swap_id(),
+                    self.identity(),
                     err
                 );
                 std::thread::sleep(std::time::Duration::from_secs(1));
@@ -599,8 +595,7 @@ impl Runtime {
                 }
                 // FIXME: if persist pid logging beyond debugging, make this idiomatic across all services
                 info!(
-                    "{} | Terminating {} with PID {}",
-                    request.swap_id(),
+                    "Terminating {} with PID {}",
                     self.identity().label(),
                     std::process::id()
                 );
@@ -611,7 +606,7 @@ impl Runtime {
             _ => {
                 error!(
                     "{} | BusMsg is not supported by the CTL interface",
-                    request.swap_id()
+                    self.identity().label()
                 );
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
             }
@@ -654,7 +649,11 @@ impl Runtime {
             }
 
             req => {
-                warn!("{} | Ignoring request: {}", req.swap_id(), req.err());
+                warn!(
+                    "{} | Ignoring request: {}",
+                    self.identity().label(),
+                    req.err()
+                );
             }
         }
 
@@ -725,7 +724,7 @@ impl Runtime {
         source: ServiceId,
         request: PeerMsg,
     ) -> Result<(), Error> {
-        debug!("{} | BRIDGE RPC request: {}", request.swap_id(), request);
+        debug!("{} | BRIDGE RPC request: {}", self.identity(), request);
 
         self.messages_received += 1;
 
@@ -733,36 +732,29 @@ impl Runtime {
             PeerMsg::PingPeer => self.ping()?,
 
             PeerMsg::Ping(pong_size) => {
-                debug!("{} | receiving ping, ponging back", request.swap_id());
+                debug!("{} | receiving ping, ponging back", self.identity().label());
                 self.pong(*pong_size)?
             }
 
             PeerMsg::Pong(noise) => {
                 match self.awaited_pong {
-                    None => error!(
-                        "{} | Unexpected pong from the remote peer",
-                        request.swap_id()
-                    ),
+                    None => error!("{} | Unexpected pong from the remote peer", self.identity()),
                     Some(len) if len as usize != noise.len() => {
                         warn!(
                             "{} | Pong data size does not match requested with ping",
-                            request.swap_id()
+                            self.identity()
                         );
                     }
                     _ => trace!(
                         "{} | Got pong reply, exiting pong await mode",
-                        request.swap_id()
+                        self.identity()
                     ),
                 }
                 self.awaited_pong = None;
             }
 
             PeerMsg::PeerReceiverRuntimeShutdown => {
-                warn!(
-                    "{} | {} | Exiting peerd receiver runtime",
-                    request.swap_id(),
-                    self.identity()
-                );
+                warn!("{} | Exiting peerd receiver runtime", self.identity());
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
@@ -799,7 +791,7 @@ impl Runtime {
                     while let Err(err) = self.reconnect_peer(endpoints) {
                         info!(
                             "{} | Failed to reconnect: {}, retrying.",
-                            request.swap_id(),
+                            self.identity(),
                             err
                         );
                         std::thread::sleep(std::time::Duration::from_secs(1));
@@ -841,6 +833,7 @@ impl Runtime {
             }
 
             msg => {
+                debug_assert!(msg.is_protocol());
                 let swap_id = msg.swap_id();
                 info!(
                     "{} | PID {} | Received the {} protocol message, forwarding to swapd",
