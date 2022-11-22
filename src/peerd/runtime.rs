@@ -15,7 +15,6 @@
 use farcaster_core::swap::SwapId;
 use internet2::addr::LocalNode;
 use microservices::peer::RecvMessage;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::spawn;
 use std::time::{Duration, SystemTime};
@@ -392,7 +391,7 @@ pub struct Runtime {
     messages_received: usize,
     awaited_pong: Option<u16>,
 
-    unchecked_msg_cache: HashMap<(SwapId, internet2::TypeId), PeerMsg>,
+    unchecked_msg_cache: Vec<((SwapId, internet2::TypeId), PeerMsg)>,
 
     thread_flag_tx: std::sync::mpsc::Sender<()>,
 }
@@ -528,7 +527,7 @@ impl Runtime {
             );
             // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
             if self.forked_from_listener {
-                for (_, cached_msg) in self.unchecked_msg_cache.drain() {
+                for (_, cached_msg) in self.unchecked_msg_cache.drain(..) {
                     // Draining cached messages to the various running swaps
                     endpoints.send_to(
                         ServiceBus::Ctl,
@@ -563,8 +562,20 @@ impl Runtime {
         }
 
         if message.is_protocol() {
+            // First remove any dangling messages with the same type and origin
             self.unchecked_msg_cache
-                .insert((message.swap_id(), message.get_type()), message.clone());
+                .iter()
+                .position(|(key, _)| {
+                    if key.0 == message.swap_id() && key.1 == message.get_type() {
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .map(|pos| self.unchecked_msg_cache.remove(pos));
+            // Then push the message to the back of the vector
+            self.unchecked_msg_cache
+                .push(((message.swap_id(), message.get_type()), message.clone()));
             let swap_id = message.swap_id();
             info!(
                 "{} | Sent the {} protocol message",
@@ -584,7 +595,7 @@ impl Runtime {
     ) -> Result<(), Error> {
         match request {
             CtlMsg::Terminate if source == ServiceId::Farcasterd => {
-                for (_, cached_msg) in self.unchecked_msg_cache.drain() {
+                for (_, cached_msg) in self.unchecked_msg_cache.drain(..) {
                     // Draining cached messages to the various running swaps
                     endpoints.send_to(
                         ServiceBus::Ctl,
@@ -697,7 +708,7 @@ impl Runtime {
                 }
             }
         }
-        for cached_msg in self.unchecked_msg_cache.values() {
+        for (_, cached_msg) in self.unchecked_msg_cache.iter() {
             info!(
                 "{} | re-emitting cached message after reconnect: {}",
                 cached_msg.swap_id(),
@@ -769,7 +780,7 @@ impl Runtime {
                         ServiceId::Farcasterd,
                         BusMsg::Ctl(CtlMsg::PeerdTerminated),
                     )?;
-                    for ((swap_id, _), cached_msg) in self.unchecked_msg_cache.drain() {
+                    for ((swap_id, _), cached_msg) in self.unchecked_msg_cache.drain(..) {
                         // Draining cached messages to the various running swaps
                         debug!(
                             "{} | Returning cache message {} back to swap",
@@ -801,8 +812,17 @@ impl Runtime {
 
             PeerMsg::MsgReceipt(receipt) => {
                 debug!("{} | received receipt: {:?}", request.swap_id(), receipt);
+
                 self.unchecked_msg_cache
-                    .remove(&(receipt.swap_id, receipt.msg_type));
+                    .iter()
+                    .position(|(key, _)| {
+                        if key.0 == receipt.swap_id && key.1 == receipt.msg_type {
+                            true
+                        } else {
+                            false
+                        }
+                    })
+                    .map(|pos| self.unchecked_msg_cache.remove(pos));
             }
 
             // swap initiation message
