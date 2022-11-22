@@ -413,7 +413,8 @@ impl esb::Handler<ServiceBus> for Runtime {
             ) {
                 Ok(val) => {
                     info!(
-                        "Successfully connected to remote peer: {}",
+                        "{} | Successfully connected to remote peer: {}",
+                        self.identity(),
                         self.remote_node_addr.expect("Checked for connecter")
                     );
                     endpoints.send_to(
@@ -425,7 +426,11 @@ impl esb::Handler<ServiceBus> for Runtime {
                     val
                 }
                 Err(err) => {
-                    error!("Failed to connect to remote peer: {}, exiting", err);
+                    error!(
+                        "{} | Failed to connect to remote peer: {}, exiting",
+                        self.identity(),
+                        err
+                    );
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -473,7 +478,11 @@ impl esb::Handler<ServiceBus> for Runtime {
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
-        error!("peerd runtime received an error: {}", err);
+        error!(
+            "{} | peerd runtime received an error: {}",
+            self.identity(),
+            err
+        );
         Ok(())
     }
 }
@@ -658,12 +667,20 @@ impl Runtime {
             ) {
                 Err(err) => {
                     attempt += 1;
-                    trace!("Failed to reconnect: {}", err);
-                    warn!("Reconnect failed attempting again in {} seconds", attempt);
+                    trace!("{} | Failed to reconnect: {}", self.identity(), err);
+                    warn!(
+                        "{} | Reconnect failed attempting again in {} seconds",
+                        self.identity(),
+                        attempt
+                    );
                     std::thread::sleep(std::time::Duration::from_secs(attempt));
                 }
                 Ok((peer_sender, thread_flag_tx)) => {
-                    info!("Reconnect success after {} attempts", attempt);
+                    info!(
+                        "{} | Reconnect success after {} attempts",
+                        self.identity(),
+                        attempt
+                    );
                     self.peer_sender = Some(peer_sender);
                     self.thread_flag_tx = thread_flag_tx;
                     break;
@@ -835,7 +852,7 @@ impl Runtime {
     }
 
     fn ping(&mut self) -> Result<(), Error> {
-        trace!("Sending ping to the remote peer");
+        trace!("{} | Sending ping to the remote peer", self.identity());
         let mut rng = rand::thread_rng();
         let len: u16 = rng.gen_range(4, 32);
         let mut noise = vec![0u8; len as usize];
@@ -851,7 +868,10 @@ impl Runtime {
     }
 
     fn pong(&mut self, pong_size: u16) -> Result<(), Error> {
-        trace!("Replying with pong to the remote peer");
+        trace!(
+            "{} | Replying with pong to the remote peer",
+            self.identity()
+        );
         let mut rng = rand::thread_rng();
         let noise = vec![0u8; pong_size as usize]
             .iter()
