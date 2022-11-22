@@ -55,7 +55,10 @@ use farcaster_core::{
     swap::SwapId,
     transaction::TxLabel,
 };
-use internet2::{CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller};
+use internet2::{
+    addr::{NodeAddr, NodeId},
+    CreateUnmarshaller, TypedEnum, Unmarshall, Unmarshaller,
+};
 use microservices::esb::{self, Handler};
 use strict_encoding::{StrictDecode, StrictEncode};
 
@@ -138,7 +141,10 @@ pub fn run(
     let runtime = Runtime {
         swap_id,
         identity: ServiceId::Swap(swap_id),
-        peer_service: ServiceId::Loopback,
+        peer_service: ServiceId::dummy_peer_service_id(NodeAddr {
+            id: NodeId::from(public_offer.node_id.clone()), // node_id is bitcoin::Pubkey
+            addr: public_offer.peer_address,                // peer_address is InetSocketAddr
+        }),
         connected: false,
         state: init_state,
         started: SystemTime::now(),
@@ -589,7 +595,7 @@ impl Runtime {
     ) -> Result<(), Error> {
         // Peer messages should only come from wallet (crafted internally and forwarded here) or
         // peer (received by counterpart)
-        if !matches!(source, ServiceId::Wallet | ServiceId::Peer(_)) {
+        if !matches!(source, ServiceId::Wallet | ServiceId::Peer(..)) {
             let msg = format!(
                 "Incorrect request sender: expected {} or {}",
                 ServiceId::Wallet.label(),
@@ -599,7 +605,7 @@ impl Runtime {
             return Err(Error::Farcaster(msg));
         } else {
             // Check if message are from consistent peer source
-            if matches!(source, ServiceId::Peer(_)) && self.peer_service != source {
+            if matches!(source, ServiceId::Peer(..)) && self.peer_service != source {
                 let msg = format!(
                     "Incorrect peer connection: expected {}, found {}",
                     self.peer_service, source
@@ -1811,7 +1817,9 @@ impl Runtime {
             CtlMsg::PeerdReconnected(service_id) => {
                 // Set the reconnected service id. This can happen if this is a
                 // maker launched swap after restoration and the taker
-                // reconnects, or after a manual connect call
+                // reconnects, after a manual connect call, or a new connection
+                // with the same node address is established
+                info!("{} | Peer {} reconnected", self.swap_id, service_id);
                 self.peer_service = service_id;
                 self.connected = true;
                 for msg in self.pending_peer_request.clone().iter() {
@@ -1941,11 +1949,7 @@ impl Runtime {
                 } else {
                     Some(self.swap_id())
                 };
-                let connection = if let ServiceId::Peer(addr) = self.peer_service {
-                    Some(addr)
-                } else {
-                    None
-                };
+                let connection = self.peer_service.node_addr();
                 let info = SwapInfo {
                     swap_id,
                     state: self.state.to_string(),
