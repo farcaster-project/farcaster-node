@@ -62,8 +62,9 @@ impl Exec for Command {
                     1 => {
                         let subj = subject.get(0).expect("vec of lenght 1");
                         if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                            runtime.request_info(ServiceId::Peer(node_addr), InfoMsg::GetInfo)?;
-                            ServiceId::Peer(node_addr)
+                            runtime
+                                .request_info(ServiceId::Peer(0, node_addr), InfoMsg::GetInfo)?;
+                            ServiceId::Peer(0, node_addr)
                         } else if let Ok(swap_id) = SwapId::from_str(&subj) {
                             runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
                             ServiceId::Swap(swap_id)
@@ -94,7 +95,7 @@ impl Exec for Command {
                         if code == FailureCode::TargetServiceNotFound =>
                     {
                         match target_service_id {
-                            ServiceId::Peer(node_addr) => {
+                            ServiceId::Peer(_, node_addr) => {
                                 return Err(Error::Farcaster(format!(
                                     "No connected peerd with address {}",
                                     node_addr

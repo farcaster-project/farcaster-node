@@ -250,14 +250,14 @@ impl Runtime {
                             BusMsg::Ctl(CtlMsg::GetKeys(wallet_token)),
                         )?;
                     }
-                    ServiceId::Peer(_) => {
+                    ServiceId::Peer(_, addr) => {
                         // If this is a connecting peerd, only process the
                         // connection once ConnectSuccess / ConnectFailure is
                         // received
                         let awaiting_swaps: Vec<_> = self
                             .trade_state_machines
                             .iter()
-                            .filter(|tsm| tsm.awaiting_connect_from() == Some(source.clone()))
+                            .filter(|tsm| tsm.awaiting_connect_from() == Some(*addr))
                             .map(|tsm| tsm.swap_id().map_or("…".to_string(), |s| s.to_string()))
                             .collect();
                         if !awaiting_swaps.is_empty() {
@@ -330,7 +330,7 @@ impl Runtime {
                 self.node_public_key = Some(pk);
             }
 
-            CtlMsg::PeerdTerminated if matches!(source, ServiceId::Peer(_)) => {
+            CtlMsg::PeerdTerminated if matches!(source, ServiceId::Peer(..)) => {
                 self.handle_failed_connection(endpoints, source.clone())?;
 
                 // log a message if a swap running over this connection
@@ -723,7 +723,10 @@ impl Runtime {
     }
 
     pub fn handle_new_connection(&mut self, connection: ServiceId) {
-        self.spawning_services.remove(&connection);
+        if let Some(node_addr) = connection.node_addr() {
+            self.spawning_services
+                .remove(&ServiceId::dummy_peer_service_id(node_addr));
+        }
         if self.registered_services.insert(connection.clone()) {
             info!(
                 "Connection {} is registered; total {} connections are known",
@@ -747,7 +750,10 @@ impl Runtime {
             "Connection {} failed. Removing it from our connection pool and terminating.",
             connection
         );
-        self.spawning_services.remove(&connection);
+        if let Some(node_addr) = connection.node_addr() {
+            self.spawning_services
+                .remove(&ServiceId::dummy_peer_service_id(node_addr));
+        }
         self.registered_services.remove(&connection);
         endpoints.send_to(
             ServiceBus::Ctl,
@@ -867,13 +873,7 @@ impl Runtime {
     fn get_open_connections(&self) -> Vec<NodeAddr> {
         self.registered_services
             .iter()
-            .filter_map(|s| {
-                if let ServiceId::Peer(n) = s {
-                    Some(*n)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|s| s.node_addr())
             .collect()
     }
 
@@ -928,12 +928,12 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (BusMsg::Ctl(CtlMsg::ConnectSuccess), ServiceId::Peer(addr))
-            | (BusMsg::Ctl(CtlMsg::ConnectFailed), ServiceId::Peer(addr)) => Ok(self
+            (BusMsg::Ctl(CtlMsg::ConnectSuccess), ServiceId::Peer(_, addr))
+            | (BusMsg::Ctl(CtlMsg::ConnectFailed), ServiceId::Peer(_, addr)) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
-                    if let Some(ServiceId::Peer(tsm_addr)) = tsm.awaiting_connect_from() {
+                    if let Some(tsm_addr) = tsm.awaiting_connect_from() {
                         addr == tsm_addr
                     } else {
                         false
@@ -1080,20 +1080,20 @@ impl Runtime {
         self.services_ready()?;
         let (peer_secret_key, _) = self.peer_keys_ready()?;
         if let Some(spawning_peer) = self.spawning_services.iter().find(|service| {
-            if let ServiceId::Peer(registered_node_addr) = service {
+            if let Some(registered_node_addr) = service.node_addr() {
                 registered_node_addr.id == node_addr.id
             } else {
                 false
             }
         }) {
             warn!(
-                "Already spawning a connection with remote peer {}, through a spawned connection {}, but have not received Hello from it yet.",
+                "Already spawning a connection with remote peer {}, through a spawned connection {}, but have not received Connect from it yet.",
                 node_addr.id, spawning_peer
             );
             return Ok((false, spawning_peer.clone()));
         };
         if let Some(existing_peer) = self.registered_services.iter().find(|service| {
-            if let ServiceId::Peer(registered_node_addr) = service {
+            if let Some(registered_node_addr) = service.clone().node_addr() {
                 registered_node_addr.id == node_addr.id
             } else {
                 false
@@ -1130,10 +1130,11 @@ impl Runtime {
 
         debug!("New instance of peerd launched with PID {}", child.id());
 
-        self.spawning_services.insert(ServiceId::Peer(*node_addr));
+        self.spawning_services
+            .insert(ServiceId::dummy_peer_service_id(*node_addr));
         debug!("Awaiting for peerd to connect...");
 
-        Ok((false, ServiceId::Peer(*node_addr)))
+        Ok((false, ServiceId::dummy_peer_service_id(*node_addr)))
     }
 
     /// Notify(forward to) the subscribed clients still online with the given request

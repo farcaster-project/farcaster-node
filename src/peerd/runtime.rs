@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::spawn;
 use std::time::{Duration, SystemTime};
+use uuid::Uuid;
 
 use amplify::Bipolar;
 use bitcoin::secp256k1::rand::{self, Rng, RngCore};
@@ -46,6 +47,7 @@ use crate::{CtlServer, Endpoints, Error, LogStyle, Service, ServiceConfig, Servi
 pub fn start_connect_peer_listener_runtime(
     remote_node_addr: NodeAddr,
     local_node: LocalNode,
+    peerd_service_id: ServiceId,
 ) -> Result<(PeerSender, std::sync::mpsc::Sender<()>), Error> {
     let connection = PeerConnection::connect_brontozaur(local_node, remote_node_addr)?;
     debug!("Connected to remote peer: {}", remote_node_addr);
@@ -74,8 +76,6 @@ pub fn start_connect_peer_listener_runtime(
         }
     };
 
-    let internal_identity = ServiceId::Peer(remote_node_addr);
-
     let tx = ZMQ_CONTEXT.socket(zmq::PUSH)?;
     tx.connect("inproc://bridge")?;
 
@@ -83,7 +83,7 @@ pub fn start_connect_peer_listener_runtime(
 
     debug!("Starting thread listening for messages from the remote peer");
     let bridge_handler = PeerReceiverRuntime {
-        internal_identity: internal_identity.clone(),
+        internal_identity: peerd_service_id,
         bridge: esb::Controller::with(
             map! {
                 ServiceBus::Bridge => esb::BusConfig {
@@ -131,13 +131,14 @@ pub fn run_from_connect(
     rx.bind("inproc://bridge")?;
 
     let (thread_flag_tx, _thread_flag_rx) = std::sync::mpsc::channel();
+    let id = Uuid::new_v4().as_u128();
 
     debug!(
         "Starting main service runtime with identity: {}",
-        ServiceId::Peer(remote_node_addr)
+        ServiceId::Peer(id, remote_node_addr)
     );
     let runtime = Runtime {
-        identity: ServiceId::Peer(remote_node_addr),
+        identity: ServiceId::Peer(id, remote_node_addr),
         remote_node_addr: Some(remote_node_addr),
         local_socket,
         local_node,
@@ -186,10 +187,14 @@ pub fn run_from_listener(
     peer_sender
         .send_message(PeerMsg::Pong(vec![0]))
         .expect("Failed to send handshake pong");
-    let internal_identity = ServiceId::Peer(NodeAddr {
-        id: *id.expect("remote id should always be some in maker's case"),
-        addr: local_socket.expect("Checked for listener"),
-    });
+    let peerd_id = Uuid::new_v4().as_u128();
+    let internal_identity = ServiceId::Peer(
+        peerd_id,
+        NodeAddr {
+            id: *id.expect("remote id should always be some in maker's case"),
+            addr: local_socket.expect("Checked for listener"),
+        },
+    );
 
     debug!("Opening bridge between runtime and peer receiver threads");
     let rx = ZMQ_CONTEXT.socket(zmq::PULL)?;
@@ -410,6 +415,7 @@ impl esb::Handler<ServiceBus> for Runtime {
                     .clone()
                     .expect("Checked for connecter"),
                 self.local_node,
+                self.identity(),
             ) {
                 Ok(val) => {
                     info!(
@@ -668,6 +674,7 @@ impl Runtime {
                     .clone()
                     .expect("Checked for connnecter"),
                 self.local_node,
+                self.identity(),
             ) {
                 Err(err) => {
                     attempt += 1;
