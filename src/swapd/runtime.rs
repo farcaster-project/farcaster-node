@@ -186,6 +186,17 @@ impl PendingRequestsT for PendingRequests {
         let pending_reqs = self.entry(key).or_insert(vec![]);
         pending_reqs.push(pending_req);
     }
+
+    fn update_deferred_requests_peer_destination(&mut self, destination: ServiceId) {
+        for (_, pending_requests) in self.iter_mut() {
+            for pending_request in pending_requests.iter_mut() {
+                if pending_request.dest.node_addr() == destination.node_addr() {
+                    pending_request.dest = destination.clone();
+                }
+            }
+        }
+    }
+
     fn continue_deferred_requests(
         runtime: &mut Runtime,
         endpoints: &mut Endpoints,
@@ -246,6 +257,9 @@ impl PendingRequestsT for PendingRequests {
 
 trait PendingRequestsT {
     fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest);
+
+    fn update_deferred_requests_peer_destination(&mut self, destination: ServiceId);
+
     fn continue_deferred_requests(
         runtime: &mut Runtime, // needed for recursion
         endpoints: &mut Endpoints,
@@ -1820,8 +1834,10 @@ impl Runtime {
                 // reconnects, after a manual connect call, or a new connection
                 // with the same node address is established
                 info!("{} | Peer {} reconnected", self.swap_id, service_id);
-                self.peer_service = service_id;
+                self.peer_service = service_id.clone();
                 self.connected = true;
+                self.pending_requests
+                    .update_deferred_requests_peer_destination(service_id);
                 for msg in self.pending_peer_request.clone().iter() {
                     self.send_peer(endpoints, msg.clone())?;
                 }
@@ -1853,6 +1869,9 @@ impl Runtime {
                     self.enquirer = enquirer;
                     self.temporal_safety = temporal_safety;
                     self.pending_requests = pending_requests;
+                    // We need to update the peerd for the pending requests in case of reconnect
+                    self.pending_requests
+                        .update_deferred_requests_peer_destination(self.peer_service.clone());
                     self.txs = txs.clone();
                     trace!("Watch height bitcoin");
                     let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
