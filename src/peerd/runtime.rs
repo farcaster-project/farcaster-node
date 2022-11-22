@@ -752,6 +752,13 @@ impl Runtime {
                     std::process::id(),
                     request.label()
                 );
+                endpoints.send_to(
+                    ServiceBus::Msg,
+                    self.identity(),
+                    ServiceId::Farcasterd,
+                    BusMsg::P2p(request.clone()),
+                )?;
+
                 // send a receipt back to the remote peer
                 self.handle_msg(
                     endpoints,
@@ -761,25 +768,9 @@ impl Runtime {
                         msg_type: request.get_type(),
                     }),
                 )?;
-
-                endpoints.send_to(
-                    ServiceBus::Msg,
-                    self.identity(),
-                    ServiceId::Farcasterd,
-                    BusMsg::P2p(request),
-                )?;
             }
 
             msg => {
-                // send a receipt back to the remote peer
-                self.peer_sender
-                    .as_mut()
-                    .expect("should be connected")
-                    .send_message(PeerMsg::MsgReceipt(Receipt {
-                        swap_id: request.swap_id(),
-                        msg_type: request.get_type(),
-                    }))?;
-
                 let swap_id = msg.swap_id();
                 info!(
                     "{} | PID {} | Received the {} protocol message, forwarding to swapd",
@@ -791,8 +782,17 @@ impl Runtime {
                     ServiceBus::Msg,
                     self.identity(),
                     ServiceId::Swap(swap_id),
-                    BusMsg::P2p(request),
+                    BusMsg::P2p(request.clone()),
                 )?;
+
+                // send a receipt back to the remote peer
+                self.peer_sender
+                    .as_mut()
+                    .expect("should be connected")
+                    .send_message(PeerMsg::MsgReceipt(Receipt {
+                        swap_id: request.swap_id(),
+                        msg_type: request.get_type(),
+                    }))?;
             }
         }
         Ok(())
