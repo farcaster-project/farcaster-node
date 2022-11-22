@@ -747,8 +747,9 @@ impl Runtime {
             PeerMsg::TakerCommit(swap) => {
                 let swap_id = swap.swap_id();
                 info!(
-                    "{} | Received the {} protocol message",
+                    "{} | PID {} | Received the {} protocol message, forwarding to farcasterd",
                     swap_id.swap_id(),
+                    std::process::id(),
                     request.label()
                 );
                 // send a receipt back to the remote peer
@@ -781,8 +782,9 @@ impl Runtime {
 
                 let swap_id = msg.swap_id();
                 info!(
-                    "{} | Received the {} protocol message",
+                    "{} | PID {} | Received the {} protocol message, forwarding to swapd",
                     swap_id.swap_id(),
+                    std::process::id(),
                     msg.label()
                 );
                 endpoints.send_to(
