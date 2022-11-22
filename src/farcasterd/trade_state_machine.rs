@@ -954,13 +954,19 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             );
         }
     }
-    let peerd_up = runtime.registered_services.contains(&peerd);
+    let live_peerd = runtime
+        .registered_services
+        .iter()
+        .find(|service| match service {
+            ServiceId::Peer(_, addr) => peerd.node_addr().as_ref() == Some(addr),
+            _ => false,
+        });
 
-    if let (Some(accordant_syncer), Some(arbitrating_syncer), true, true) = (
+    if let (Some(accordant_syncer), Some(arbitrating_syncer), true, Some(peerd)) = (
         accordant_syncer_up.clone(),
         arbitrating_syncer_up.clone(),
         swapd_up,
-        peerd_up,
+        live_peerd,
     ) {
         // Tell swapd swap options and link it with the
         // connection daemon
@@ -975,7 +981,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         };
         event.complete_ctl_service(ServiceId::Swap(swap_id), init_swap_req)?;
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
-            peerd: Some(peerd),
+            peerd: Some(peerd.clone()),
             swap_id,
             accordant_syncer,
             arbitrating_syncer,
@@ -992,7 +998,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             accordant_syncer_up.is_some(),
             arbitrating_syncer_up.is_some(),
             swapd_up,
-            peerd_up,
+            live_peerd.is_some(),
         );
 
         Ok(Some(TradeStateMachine::SwapdLaunched(SwapdLaunched {
