@@ -308,7 +308,11 @@ where
             );
         }
 
-        info!("New service {} started", identity);
+        info!(
+            "New service {} with PID {} started",
+            identity,
+            std::process::id()
+        );
 
         self.esb.run_or_panic(&identity.to_string());
 

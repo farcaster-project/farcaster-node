@@ -748,8 +748,9 @@ impl Runtime {
                 let swap_id = request.swap_id();
                 let msg_type = request.get_type();
                 info!(
-                    "{} | Received the {} protocol message",
+                    "{} | PID {} | Received the {} protocol message, forwarding to farcasterd",
                     swap_id.swap_id(),
+                    std::process::id(),
                     request.label()
                 );
 
@@ -780,8 +781,9 @@ impl Runtime {
 
                 let swap_id = msg.swap_id();
                 info!(
-                    "{} | Received the {} protocol message",
+                    "{} | PID {} | Received the {} protocol message, forwarding to swapd",
                     swap_id.swap_id(),
+                    std::process::id(),
                     msg.label()
                 );
                 endpoints.send_to(
