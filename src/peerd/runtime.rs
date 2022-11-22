@@ -48,7 +48,7 @@ pub fn start_connect_peer_listener_runtime(
     local_node: LocalNode,
 ) -> Result<(PeerSender, std::sync::mpsc::Sender<()>), Error> {
     let connection = PeerConnection::connect_brontozaur(local_node, remote_node_addr)?;
-    debug!("Conected to remote peer: {}", remote_node_addr);
+    debug!("Connected to remote peer: {}", remote_node_addr);
 
     debug!("Splitting connection into receiver and sender parts");
     let (mut peer_receiver, mut peer_sender) = connection.split();
@@ -487,9 +487,14 @@ impl Runtime {
         message: PeerMsg,
     ) -> Result<(), Error> {
         // Forward to the remote peer
-        debug!("Message type: {}", message.get_type());
         debug!(
-            "Forwarding peer message to the remote peer, request: {}",
+            "{} | Message type: {}",
+            message.swap_id(),
+            message.get_type()
+        );
+        debug!(
+            "{} | Forwarding peer message to the remote peer, request: {}",
+            message.swap_id(),
             &message.get_type()
         );
         self.messages_sent += 1;
@@ -505,7 +510,11 @@ impl Runtime {
                 ServiceId::Farcasterd,
                 BusMsg::Ctl(CtlMsg::Disconnected),
             )?;
-            debug!("Error sending to remote peer in peerd runtime: {}", err);
+            debug!(
+                "{} | Error sending to remote peer in peerd runtime: {}",
+                message.swap_id(),
+                err
+            );
             // If this is the listener-forked peerd, i.e. the maker's peerd, terminate it.
             if self.forked_from_listener {
                 for (_, cached_msg) in self.unchecked_msg_cache.drain() {
@@ -529,7 +538,11 @@ impl Runtime {
 
             // This blocks until reconnected successfully
             while let Err(err) = self.reconnect_peer(endpoints) {
-                info!("Failed to reconnect: {}, retrying.", err);
+                info!(
+                    "{} | Failed to reconnect: {}, retrying.",
+                    message.swap_id(),
+                    err
+                );
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         }
@@ -567,7 +580,8 @@ impl Runtime {
                 }
                 // FIXME: if persist pid logging beyond debugging, make this idiomatic across all services
                 info!(
-                    "Terminating {} with PID {}",
+                    "{} | Terminating {} with PID {}",
+                    request.swap_id(),
                     self.identity().label(),
                     std::process::id()
                 );
@@ -576,7 +590,10 @@ impl Runtime {
             }
 
             _ => {
-                error!("BusMsg is not supported by the CTL interface");
+                error!(
+                    "{} | BusMsg is not supported by the CTL interface",
+                    request.swap_id()
+                );
                 return Err(Error::NotSupported(ServiceBus::Ctl, request.to_string()));
             }
         }
@@ -618,7 +635,7 @@ impl Runtime {
             }
 
             req => {
-                warn!("Ignoring request: {}", req.err());
+                warn!("{} | Ignoring request: {}", req.swap_id(), req.err());
             }
         }
 
@@ -654,7 +671,11 @@ impl Runtime {
             }
         }
         for cached_msg in self.unchecked_msg_cache.values() {
-            info!("re-emitting cached message after reconnect: {}", cached_msg);
+            info!(
+                "{} | re-emitting cached message after reconnect: {}",
+                cached_msg.swap_id(),
+                cached_msg
+            );
             self.peer_sender
                 .as_mut()
                 .expect("should be connected")
@@ -676,7 +697,7 @@ impl Runtime {
         source: ServiceId,
         request: PeerMsg,
     ) -> Result<(), Error> {
-        debug!("BRIDGE RPC request: {}", request);
+        debug!("{} | BRIDGE RPC request: {}", request.swap_id(), request);
 
         self.messages_received += 1;
 
@@ -684,23 +705,36 @@ impl Runtime {
             PeerMsg::PingPeer => self.ping()?,
 
             PeerMsg::Ping(pong_size) => {
-                debug!("receiving ping, ponging back");
+                debug!("{} | receiving ping, ponging back", request.swap_id());
                 self.pong(*pong_size)?
             }
 
             PeerMsg::Pong(noise) => {
                 match self.awaited_pong {
-                    None => error!("Unexpected pong from the remote peer"),
+                    None => error!(
+                        "{} | Unexpected pong from the remote peer",
+                        request.swap_id()
+                    ),
                     Some(len) if len as usize != noise.len() => {
-                        warn!("Pong data size does not match requested with ping")
+                        warn!(
+                            "{} | Pong data size does not match requested with ping",
+                            request.swap_id()
+                        );
                     }
-                    _ => trace!("Got pong reply, exiting pong await mode"),
+                    _ => trace!(
+                        "{} | Got pong reply, exiting pong await mode",
+                        request.swap_id()
+                    ),
                 }
                 self.awaited_pong = None;
             }
 
             PeerMsg::PeerReceiverRuntimeShutdown => {
-                warn!("{} | Exiting peerd receiver runtime", self.identity());
+                warn!(
+                    "{} | {} | Exiting peerd receiver runtime",
+                    request.swap_id(),
+                    self.identity()
+                );
                 endpoints.send_to(
                     ServiceBus::Ctl,
                     self.identity(),
@@ -718,8 +752,8 @@ impl Runtime {
                     for ((swap_id, _), cached_msg) in self.unchecked_msg_cache.drain() {
                         // Draining cached messages to the various running swaps
                         debug!(
-                            "Returning cache message {} back to swap {}",
-                            cached_msg, swap_id
+                            "{} | Returning cache message {} back to swap",
+                            swap_id, cached_msg
                         );
                         endpoints.send_to(
                             ServiceBus::Ctl,
@@ -731,14 +765,18 @@ impl Runtime {
                 } else {
                     // This blocks until reconnected successfully
                     while let Err(err) = self.reconnect_peer(endpoints) {
-                        info!("Failed to reconnect: {}, retrying.", err);
+                        info!(
+                            "{} | Failed to reconnect: {}, retrying.",
+                            request.swap_id(),
+                            err
+                        );
                         std::thread::sleep(std::time::Duration::from_secs(1));
                     }
                 }
             }
 
             PeerMsg::MsgReceipt(receipt) => {
-                debug!("received receipt: {:?}", receipt);
+                debug!("{} | received receipt: {:?}", request.swap_id(), receipt);
                 self.unchecked_msg_cache
                     .remove(&(receipt.swap_id, receipt.msg_type));
             }
