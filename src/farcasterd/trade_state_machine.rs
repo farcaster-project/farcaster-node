@@ -1,9 +1,9 @@
 use crate::bus::ctl::{
-    BitcoinFundingInfo, CtlMsg, FundingInfo, InitSwap, LaunchSwap, MoneroFundingInfo,
+    BitcoinFundingInfo, CtlMsg, FundingInfo, InitSwap, LaunchSwap, MoneroFundingInfo, Params,
     ProtoPublicOffer, PubOffer, TakerCommitted,
 };
 use crate::bus::info::{InfoMsg, MadeOffer, OfferInfo, TookOffer};
-use crate::bus::p2p::PeerMsg;
+use crate::bus::p2p::{Commit, PeerMsg};
 use crate::bus::{CheckpointEntry, Failure, FailureCode, OfferStatus, OfferStatusPair};
 use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;
@@ -139,12 +139,14 @@ pub struct TakeOffer {
 
 pub struct SwapdLaunched {
     peerd: ServiceId,
+    local_params: Params,
+    remote_commit: Option<Commit>,
+    funding_address: Option<bitcoin::Address>,
     public_offer: PublicOffer,
     swap_id: SwapId,
     arbitrating_syncer_up: Option<ServiceId>,
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
-    init_swap: InitSwap,
     local_trade_role: TradeRole,
     peerd_reconnected: bool,
 }
@@ -928,14 +930,9 @@ fn transition_to_swapd_launched_tsm(
         arbitrating_syncer_up,
         accordant_syncer_up,
         swapd_up: false,
-        init_swap: InitSwap {
-            peerd: peerd.clone(),
-            report_to: Some(runtime.identity()),
-            local_params,
-            swap_id,
-            remote_commit,
-            funding_address,
-        },
+        local_params,
+        remote_commit,
+        funding_address,
         local_trade_role,
         peerd_reconnected: false,
     }))
@@ -948,12 +945,14 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
 ) -> Result<Option<TradeStateMachine>, Error> {
     let SwapdLaunched {
         mut peerd,
+        local_params,
+        remote_commit,
+        funding_address,
         public_offer,
         swap_id,
         mut arbitrating_syncer_up,
         mut accordant_syncer_up,
         mut swapd_up,
-        init_swap,
         local_trade_role,
         mut peerd_reconnected,
     } = swapd_launched;
@@ -1007,6 +1006,14 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
                  BusMsging swapd to be the {} of this swap",
             swap_id, local_trade_role,
         );
+        let init_swap = InitSwap {
+            peerd: peerd.clone(),
+            report_to: Some(runtime.identity()),
+            local_params,
+            swap_id: swap_id.clone(),
+            remote_commit,
+            funding_address,
+        };
         let init_swap_req = match local_trade_role {
             TradeRole::Maker => CtlMsg::MakeSwap(init_swap),
             TradeRole::Taker => CtlMsg::TakeSwap(init_swap),
@@ -1044,10 +1051,12 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             swap_id,
             public_offer,
             peerd,
+            local_params,
+            remote_commit,
+            funding_address,
             arbitrating_syncer_up,
             accordant_syncer_up,
             swapd_up,
-            init_swap,
             local_trade_role,
             peerd_reconnected,
         })))
