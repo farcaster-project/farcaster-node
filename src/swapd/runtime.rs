@@ -614,8 +614,15 @@ impl Runtime {
         }
 
         match request {
-            // we are taker and the maker committed, now we reveal after checking
-            // whether we're Bob or Alice and that we're on a compatible state
+            // Trade role: Taker, target of this message
+            // Message #2 received after Take Swap control message
+            //
+            // We receives maker (counter-party) commit message, it is now our turn to send the
+            // reveal message to counter-party.
+            //
+            // Upon reception taker needs to
+            //  1. Forward the message to wallet to create the reveal peer message
+            //  2. If we are playing Bob in the protocol: watch the arbitrating funding address
             PeerMsg::MakerCommit(remote_commit)
                 if self.state.commit()
                     && self.state.trade_role() == Some(TradeRole::Taker)
@@ -623,7 +630,7 @@ impl Runtime {
             {
                 trace!("received remote commitment");
                 self.state.t_sup_remote_commit(remote_commit.clone());
-
+                // if we are Bob watch the arbitrating funding address
                 if self.state.swap_role() == SwapRole::Bob {
                     let addr = self
                         .state
@@ -641,7 +648,7 @@ impl Runtime {
                         )?;
                     }
                 }
-
+                // forward the message to wallet to trigger creation of reveal message
                 self.send_wallet(
                     ServiceBus::Msg,
                     endpoints,
@@ -654,8 +661,11 @@ impl Runtime {
                 unreachable!()
             }
 
-            // A message sent from wallet that contains the reveal peer message for the
-            // parameters and the zero-knowledge proof
+            // Trade role: both
+            // Message received from wallet to be forwarded to counter-pary
+            //
+            // Message revealing the parameters and the zero-knowledge proof received by the wallet
+            // to trigger a state transition before forwarding it to counter-party.
             PeerMsg::Reveal2(reveal)
                 if source == ServiceId::Wallet
                     && self.state.commit()
@@ -699,6 +709,16 @@ impl Runtime {
                 self.state_update(endpoints, next_state)?;
             }
             */
+            // Trade role: both
+            // Message received by counter-party revealing they parameters
+            //
+            // Upon reception Alice needs to
+            //  1. Forward the reveal message to wallet
+            //
+            // Upon reception Bob needs to
+            //  1. Add the reveal message to the pending message for later use
+            //  2. Send the funding information message to farcaster
+            //  3. Watch the arbitrating funding address if we are maker
             PeerMsg::Reveal2(reveal) => {
                 let remote_commit = self.state.remote_commit().cloned().unwrap();
                 if let Ok(remote_params_candidate) =
@@ -709,9 +729,8 @@ impl Runtime {
                 } else {
                     error!("Revealed remote params not preimage of commitment");
                 }
-
                 match self.state.swap_role() {
-                    // As Alice always forward reveal to wallet
+                    // forward the reveal message to wallet
                     SwapRole::Alice => {
                         info!("RECEIVED REVEAL AS ALICE");
                         debug!("Alice: forwarding reveal to wallet");
@@ -723,13 +742,11 @@ impl Runtime {
                     }
                     SwapRole::Bob => {
                         info!("RECEIVED REVEAL AS BOB");
-
                         if self.state.b_address().is_none() {
                             let msg = format!("FIXME: b_address is None, request {}", reveal);
                             error!("{}", msg);
                             return Err(Error::Farcaster(msg));
                         }
-
                         // fee estimate not available yet, defer handling for later
                         if let Some(sat_per_kvb) = self.syncer_state.btc_fee_estimate_sat_per_kvb {
                             // 1. add reveal as a pending request
@@ -743,12 +760,10 @@ impl Runtime {
                                     BusMsg::P2p(PeerMsg::Reveal2(reveal)),
                                 ),
                             );
-
                             // 2. send the funding information to farcasterd
                             debug!("Bob: send the funding information to farcasterd");
                             let address = self.state.b_address().cloned().unwrap();
                             self.ask_bob_to_fund(sat_per_kvb, address.clone(), endpoints)?;
-
                             let trade_role = self.state.trade_role().unwrap();
                             if trade_role == TradeRole::Maker {
                                 // 3. watch the arbitrating address to receive an event on funding
@@ -1466,6 +1481,7 @@ impl Runtime {
         };
 
         match request {
+            // Terminate this service.
             CtlMsg::Terminate if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
@@ -1475,7 +1491,15 @@ impl Runtime {
                 std::process::exit(0);
             }
 
-            // The first message received on the taker swap side.
+            // Trade role: Taker, target of this message
+            // Message sent by farcasterd upon reception of TakeOffer message
+            //
+            // First message received on the taker swap side.
+            //
+            // Upon reception of this message Taker needs to
+            //  1. Start the fee estimation process
+            //  2. Subscribe to blockchain height change events
+            //  3. Send the peer-to-peer Taker Commit message to counter-party
             CtlMsg::TakeSwap(InitSwap {
                 peerd,
                 report_to,
@@ -1491,11 +1515,10 @@ impl Runtime {
                     );
                     return Ok(());
                 };
+                // start fee estimation and block height changes
                 self.syncer_state.watch_fee_and_height(endpoints)?;
-
                 self.peer_service = peerd.clone();
                 self.enquirer = report_to.clone();
-
                 if let ServiceId::Peer(ref addr) = peerd {
                     self.maker_peer = Some(addr.clone());
                 }
@@ -1522,11 +1545,20 @@ impl Runtime {
                     commit: local_commit,
                     public_offer: self.public_offer.clone(),
                 };
+                // send taker commit message to counter-party
                 self.send_peer(endpoints, PeerMsg::TakerCommit(take_swap))?;
                 self.state_update(endpoints, next_state)?;
             }
 
-            // The first message received on the maker swap side.
+            // Trade role: Maker, target of this message
+            // Message sent by farcasterd upon reception of p2p TakerCommit message
+            //
+            // First message received by swapd on the maker side that initiate the swap protocol.
+            //
+            // Upon reception of this message Maker needs to
+            //  1. Start the fee estimation process
+            //  2. Subscribe to blockchain height change events
+            //  3. Send the peer-to-peer Maker Commit message to counter-party
             CtlMsg::MakeSwap(InitSwap {
                 peerd,
                 report_to,
@@ -1535,6 +1567,7 @@ impl Runtime {
                 remote_commit: Some(remote_commit),
                 funding_address, // Some(_) for Bob, None for Alice
             }) if self.state.start() => {
+                // start fee estimation and block height changes
                 self.syncer_state.watch_fee_and_height(endpoints)?;
                 self.peer_service = peerd.clone();
                 if let ServiceId::Peer(ref addr) = peerd {
@@ -1559,12 +1592,18 @@ impl Runtime {
                     funding_address,
                     Some(remote_commit),
                 );
-
+                // send maker commit message to counter-party
                 trace!("sending peer MakerCommit msg {}", &local_commit);
                 self.send_peer(endpoints, PeerMsg::MakerCommit(local_commit))?;
                 self.state_update(endpoints, next_state)?;
             }
 
+            // Swap role: Bob
+            // Trade role: Taker & Maker
+            // Message sent by wallet after processing the funding transaction
+            //
+            // Upon reception of this message swap can continue the previously deferred reveal
+            // request.
             CtlMsg::FundingUpdated
                 if source == ServiceId::Wallet
                     && ((self.state.trade_role() == Some(TradeRole::Taker)
