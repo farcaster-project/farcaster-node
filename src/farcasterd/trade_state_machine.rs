@@ -1,6 +1,6 @@
 use crate::bus::ctl::{
-    BitcoinFundingInfo, CtlMsg, FundingInfo, InitSwap, LaunchSwap, MoneroFundingInfo, Params,
-    ProtoPublicOffer, PubOffer, TakerCommitted,
+    BitcoinFundingInfo, CtlMsg, FundingInfo, InitMakerSwap, InitTakerSwap, MoneroFundingInfo,
+    ProtoPublicOffer, PubOffer, SwapKeys, WrappedKeyManager,
 };
 use crate::bus::info::{InfoMsg, MadeOffer, OfferInfo, TookOffer};
 use crate::bus::p2p::{Commit, PeerMsg};
@@ -121,6 +121,9 @@ pub struct MakeOffer {
 pub struct TakerCommit {
     peerd: ServiceId,
     public_offer: PublicOffer,
+    commit: Commit,
+    target_bitcoin_address: bitcoin::Address,
+    target_monero_address: monero::Address,
 }
 
 pub struct TakerConnect {
@@ -139,16 +142,16 @@ pub struct TakeOffer {
 
 pub struct SwapdLaunched {
     peerd: ServiceId,
-    local_params: Params,
-    remote_commit: Option<Commit>,
-    funding_address: Option<bitcoin::Address>,
     public_offer: PublicOffer,
     swap_id: SwapId,
     arbitrating_syncer_up: Option<ServiceId>,
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
-    local_trade_role: TradeRole,
+    consumed_offer_role: ConsumedOfferRole,
     peerd_reconnected: bool,
+    key_manager: WrappedKeyManager,
+    target_bitcoin_address: bitcoin::Address,
+    target_monero_address: monero::Address,
 }
 
 pub struct RestoringSwapd {
@@ -173,6 +176,20 @@ pub struct SwapdRunning {
     auto_funded: bool,
     clients_awaiting_connect_result: Vec<ServiceId>,
     trade_role: TradeRole,
+}
+
+pub enum ConsumedOfferRole {
+    Taker,
+    Maker(Commit),
+}
+
+impl ConsumedOfferRole {
+    pub fn trade_role(&self) -> TradeRole {
+        match self {
+            ConsumedOfferRole::Taker => TradeRole::Taker,
+            ConsumedOfferRole::Maker(_) => TradeRole::Maker,
+        }
+    }
 }
 
 impl StateMachine<Runtime, Error> for TradeStateMachine {
@@ -468,8 +485,8 @@ fn attempt_transition_to_taker_connect_or_take_offer(
     match event.request.clone() {
         BusMsg::Ctl(CtlMsg::TakeOffer(PubOffer {
             public_offer,
-            external_address,
-            internal_address,
+            bitcoin_address: external_address,
+            monero_address: internal_address,
         })) => {
             if runtime.consumed_offers_contains(&public_offer)
                 || runtime.public_offers.contains(&public_offer)
@@ -510,11 +527,10 @@ fn attempt_transition_to_taker_connect_or_take_offer(
                         );
                         event.send_ctl_service(
                             ServiceId::Wallet,
-                            CtlMsg::TakeOffer(PubOffer {
-                                public_offer: public_offer.clone(),
-                                external_address: external_address.clone(),
-                                internal_address,
-                            }),
+                            CtlMsg::CreateSwapKeys(
+                                public_offer.clone(),
+                                runtime.wallet_token.clone(),
+                            ),
                         )?;
                         event.complete_client_info(InfoMsg::TookOffer(TookOffer {
                             offerid: public_offer.id(),
@@ -643,7 +659,7 @@ fn attempt_transition_to_restoring_swapd(
 
 fn attempt_transition_to_taker_committed(
     mut event: Event,
-    _runtime: &mut Runtime,
+    runtime: &mut Runtime,
     make_offer: MakeOffer,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let MakeOffer {
@@ -662,12 +678,7 @@ fn attempt_transition_to_taker_committed(
                 );
                 event.send_ctl_service(
                     ServiceId::Wallet,
-                    CtlMsg::TakerCommitted(TakerCommitted {
-                        swap_id,
-                        arbitrating_addr: arb_addr,
-                        accordant_addr: acc_addr,
-                        taker_commit,
-                    }),
+                    CtlMsg::CreateSwapKeys(public_offer.clone(), runtime.wallet_token.clone()),
                 )?;
                 event.complete_ctl_service(
                     ServiceId::Database,
@@ -679,6 +690,9 @@ fn attempt_transition_to_taker_committed(
                 Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
                     peerd: source,
                     public_offer,
+                    commit: taker_commit.commit,
+                    target_bitcoin_address: arb_addr,
+                    target_monero_address: acc_addr,
                 })))
             } else {
                 error!(
@@ -741,10 +755,24 @@ fn attempt_transition_from_taker_commit_to_swapd_launched(
     let TakerCommit {
         peerd,
         public_offer,
+        commit,
+        target_bitcoin_address,
+        target_monero_address,
     } = taker_commit;
     match event.request {
-        BusMsg::Ctl(CtlMsg::LaunchSwap(launch_swap)) => {
-            let tsm = transition_to_swapd_launched_tsm(runtime, launch_swap, peerd, public_offer)?;
+        BusMsg::Ctl(CtlMsg::SwapKeys(swap_keys)) => {
+            let swap_id = commit.swap_id();
+            info!("{} | Creating new swap.", swap_id.swap_id());
+            let tsm = transition_to_swapd_launched_tsm(
+                runtime,
+                ConsumedOfferRole::Maker(commit),
+                swap_keys,
+                peerd,
+                public_offer,
+                target_bitcoin_address,
+                target_monero_address,
+                swap_id,
+            )?;
             Ok(Some(tsm))
         }
         req => {
@@ -756,6 +784,9 @@ fn attempt_transition_from_taker_commit_to_swapd_launched(
             Ok(Some(TradeStateMachine::TakerCommit(TakerCommit {
                 peerd,
                 public_offer,
+                commit,
+                target_bitcoin_address,
+                target_monero_address,
             })))
         }
     }
@@ -785,11 +816,7 @@ fn attempt_transition_to_take_offer(
             );
             event.send_ctl_service(
                 ServiceId::Wallet,
-                CtlMsg::TakeOffer(PubOffer {
-                    public_offer: public_offer.clone(),
-                    external_address: arb_addr.clone(),
-                    internal_address: acc_addr.clone(),
-                }),
+                CtlMsg::CreateSwapKeys(public_offer.clone(), runtime.wallet_token.clone()),
             )?;
             event.send_client_info(
                 source,
@@ -859,8 +886,19 @@ fn attempt_transition_from_take_offer_to_swapd_launched(
         peerd,
     } = take_offer;
     match event.request {
-        BusMsg::Ctl(CtlMsg::LaunchSwap(launch_swap)) => {
-            let tsm = transition_to_swapd_launched_tsm(runtime, launch_swap, peerd, public_offer)?;
+        BusMsg::Ctl(CtlMsg::SwapKeys(swap_keys)) => {
+            let swap_id: SwapId = SwapId::random();
+            info!("{} | Creating new swap.", swap_id.swap_id());
+            let tsm = transition_to_swapd_launched_tsm(
+                runtime,
+                ConsumedOfferRole::Taker,
+                swap_keys,
+                peerd,
+                public_offer,
+                arb_addr,
+                acc_addr,
+                swap_id,
+            )?;
             Ok(Some(tsm))
         }
         req => {
@@ -888,18 +926,15 @@ fn attempt_transition_from_take_offer_to_swapd_launched(
 
 fn transition_to_swapd_launched_tsm(
     runtime: &mut Runtime,
-    launch_swap: LaunchSwap,
+    consumed_offer_role: ConsumedOfferRole,
+    swap_keys: SwapKeys,
     peerd: ServiceId,
     public_offer: PublicOffer,
+    target_bitcoin_address: bitcoin::Address,
+    target_monero_address: monero::Address,
+    swap_id: SwapId,
 ) -> Result<TradeStateMachine, Error> {
-    let LaunchSwap {
-        remote_commit,
-        local_params,
-        funding_address,
-        local_trade_role,
-        swap_id,
-        ..
-    } = launch_swap;
+    let SwapKeys { key_manager, .. } = swap_keys;
     let network = public_offer.offer.network;
     let arbitrating_syncer_up = syncer_up(
         &mut runtime.spawning_services,
@@ -921,7 +956,11 @@ fn transition_to_swapd_launched_tsm(
     );
 
     runtime.stats.incr_initiated();
-    launch_swapd(local_trade_role, public_offer.clone(), swap_id)?;
+    launch_swapd(
+        consumed_offer_role.trade_role(),
+        public_offer.clone(),
+        swap_id,
+    )?;
 
     Ok(TradeStateMachine::SwapdLaunched(SwapdLaunched {
         peerd: peerd.clone(),
@@ -930,10 +969,10 @@ fn transition_to_swapd_launched_tsm(
         arbitrating_syncer_up,
         accordant_syncer_up,
         swapd_up: false,
-        local_params,
-        remote_commit,
-        funding_address,
-        local_trade_role,
+        key_manager,
+        target_bitcoin_address,
+        target_monero_address,
+        consumed_offer_role,
         peerd_reconnected: false,
     }))
 }
@@ -945,16 +984,16 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
 ) -> Result<Option<TradeStateMachine>, Error> {
     let SwapdLaunched {
         mut peerd,
-        local_params,
-        remote_commit,
-        funding_address,
         public_offer,
         swap_id,
         mut arbitrating_syncer_up,
         mut accordant_syncer_up,
         mut swapd_up,
-        local_trade_role,
+        consumed_offer_role,
         mut peerd_reconnected,
+        target_bitcoin_address,
+        target_monero_address,
+        key_manager,
     } = swapd_launched;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
@@ -1004,19 +1043,27 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
         debug!(
             "{} | swap daemon is known: we spawned it to create a swap. \
                  BusMsging swapd to be the {} of this swap",
-            swap_id, local_trade_role,
+            swap_id,
+            consumed_offer_role.trade_role(),
         );
-        let init_swap = InitSwap {
-            peerd: peerd.clone(),
-            report_to: Some(runtime.identity()),
-            local_params,
-            swap_id: swap_id.clone(),
-            remote_commit,
-            funding_address,
-        };
-        let init_swap_req = match local_trade_role {
-            TradeRole::Maker => CtlMsg::MakeSwap(init_swap),
-            TradeRole::Taker => CtlMsg::TakeSwap(init_swap),
+        let init_swap_req = match &consumed_offer_role {
+            ConsumedOfferRole::Maker(commit) => CtlMsg::MakeSwap(InitMakerSwap {
+                peerd: peerd.clone(),
+                report_to: runtime.identity(),
+                swap_id: swap_id.clone(),
+                key_manager,
+                target_bitcoin_address,
+                target_monero_address,
+                commit: commit.clone(),
+            }),
+            ConsumedOfferRole::Taker => CtlMsg::TakeSwap(InitTakerSwap {
+                peerd: peerd.clone(),
+                report_to: runtime.identity(),
+                swap_id: swap_id.clone(),
+                key_manager,
+                target_bitcoin_address,
+                target_monero_address,
+            }),
         };
         if peerd_reconnected {
             event.send_client_ctl(
@@ -1035,7 +1082,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             funding_info: None,
             auto_funded: false,
             clients_awaiting_connect_result: vec![],
-            trade_role: local_trade_role,
+            trade_role: consumed_offer_role.trade_role(),
         })))
     } else {
         debug!(
@@ -1051,13 +1098,13 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             swap_id,
             public_offer,
             peerd,
-            local_params,
-            remote_commit,
-            funding_address,
+            key_manager,
+            target_bitcoin_address,
+            target_monero_address,
             arbitrating_syncer_up,
             accordant_syncer_up,
             swapd_up,
-            local_trade_role,
+            consumed_offer_role,
             peerd_reconnected,
         })))
     }
