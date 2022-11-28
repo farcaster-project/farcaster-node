@@ -67,15 +67,13 @@ async fn swap_bob_maker_normal() {
 #[tokio::test]
 #[timeout(600000)]
 #[ignore]
-async fn swap_bob_maker_taker_reconnects() {
+async fn swap_taker_reconnects() {
     setup_logging();
-    let execution_mutex = Arc::new(Mutex::new(0));
-    // let bitcoin_rpc = Arc::new(bitcoin_setup());
-    let (monero_regtest, monero_wallet) = monero_setup().await;
+    let (_, monero_wallet) = monero_setup().await;
 
     let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
-    let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer_with_reconnect(
+    let (_, _, swap_id) = make_and_take_offer_with_reconnect(
         data_dir_maker.clone(),
         data_dir_taker.clone(),
         "Bob".to_string(),
@@ -89,42 +87,29 @@ async fn swap_bob_maker_taker_reconnects() {
         needs_funding_args(data_dir_maker.clone(), "bitcoin".to_string());
 
     // run until bob has the btc funding address
-    let (address, amount) =
+    let (_, _) =
         retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
             .await;
 
-    // let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer_with_reconnect(
-    //     data_dir_maker.clone(),
-    //     data_dir_taker.clone(),
-    //     "Alice".to_string(),
-    //     Arc::clone(&monero_wallet),
-    //     bitcoin::Amount::from_str("1 BTC").unwrap(),
-    //     monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
-    // )
-    // .await;
+    let (_, _, swap_id) = make_and_take_offer_with_reconnect(
+        data_dir_maker.clone(),
+        data_dir_taker.clone(),
+        "Alice".to_string(),
+        Arc::clone(&monero_wallet),
+        bitcoin::Amount::from_str("1 BTC").unwrap(),
+        monero::Amount::from_str_with_denomination("1 XMR").unwrap(),
+    )
+    .await;
 
-    // tokio::time::sleep(time::Duration::from_secs(20)).await;
+    tokio::time::sleep(time::Duration::from_secs(20)).await;
 
-    // let cli_bob_needs_funding_args: Vec<String> =
-    //     needs_funding_args(data_dir_taker, "bitcoin".to_string());
+    let cli_bob_needs_funding_args: Vec<String> =
+        needs_funding_args(data_dir_taker, "bitcoin".to_string());
 
-    // // run until bob has the btc funding address
-    // let (address, amount) =
-    //     retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
-    //         .await;
-
-    // run_swap(
-    //     swap_id,
-    //     data_dir_taker,
-    //     data_dir_maker,
-    //     Arc::clone(&bitcoin_rpc),
-    //     bitcoin_address,
-    //     monero_regtest,
-    //     Arc::clone(&monero_wallet),
-    //     xmr_dest_wallet_name,
-    //     execution_mutex,
-    // )
-    // .await;
+    // run until bob has the btc funding address
+    let (_, _) =
+        retry_until_bitcoin_funding_address(swap_id.clone(), cli_bob_needs_funding_args.clone())
+            .await;
 
     kill_all();
 }
