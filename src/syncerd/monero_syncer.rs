@@ -14,10 +14,9 @@ use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
 use farcaster_core::blockchain::{Blockchain, Network};
-use internet2::zeromq::{Connection, ZmqSocketType};
-use internet2::DuplexConnection;
-use internet2::Encrypt;
-use internet2::PlainTranscoder;
+use internet2::session::LocalSession;
+use internet2::zeromq::ZmqSocketType;
+use internet2::SendRecvMessage;
 use internet2::TypedEnum;
 use monero::Hash;
 use monero_rpc::{
@@ -732,19 +731,16 @@ async fn run_syncerd_bridge_event_sender(
     syncer_address: Vec<u8>,
 ) {
     tokio::spawn(async move {
-        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx);
+        let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
-            let mut transcoder = PlainTranscoder {};
-            let writer = connection.as_sender();
-
             let request = BusMsg::Sync(SyncMsg::BridgeEvent(event));
             trace!("sending request over syncerd bridge: {:?}", request);
-            writer
-                .send_routed(
+            session
+                .send_routed_message(
                     &syncer_address,
                     &syncer_address,
                     &syncer_address,
-                    &transcoder.encrypt(request.serialize()),
+                    &request.serialize(),
                 )
                 .expect("failed to send over zmq socket to the bridge");
         }

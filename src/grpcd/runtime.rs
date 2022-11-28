@@ -18,9 +18,8 @@ use farcaster_core::role::TradeRole;
 use farcaster_core::swap::btcxmr::Offer;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
 use internet2::addr::InetSocketAddr;
-use internet2::DuplexConnection;
-use internet2::Encrypt;
-use internet2::PlainTranscoder;
+use internet2::session::LocalSession;
+use internet2::SendRecvMessage;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::net::SocketAddr;
@@ -33,10 +32,7 @@ use uuid::Uuid;
 use crate::bus::{ctl::CtlMsg, info::InfoMsg};
 use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use internet2::{
-    zeromq::{Connection, ZmqSocketType},
-    TypedEnum,
-};
+use internet2::{zeromq::ZmqSocketType, TypedEnum};
 use microservices::esb;
 use microservices::ZMQ_CONTEXT;
 use std::sync::mpsc::{Receiver, Sender};
@@ -875,20 +871,18 @@ fn request_loop(
     tx_request: zmq::Socket,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx_request);
+        let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx_request);
         while let Some((id, request)) = tokio_rx_request.recv().await {
-            let mut transcoder = PlainTranscoder {};
-            let writer = connection.as_sender();
             debug!("sending request over grpc bridge: {:?}", request);
             let grpc_client_address: Vec<u8> = ServiceId::GrpcdClient(id).into();
             let grpc_address: Vec<u8> = ServiceId::Grpcd.into();
 
-            writer
-                .send_routed(
+            session
+                .send_routed_message(
                     &grpc_client_address,
                     &grpc_address,
                     &grpc_address,
-                    &transcoder.encrypt(request.serialize()),
+                    &request.serialize(),
                 )
                 .expect("failed to send from grpc server to grpc runtime over bridge");
         }
