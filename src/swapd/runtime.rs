@@ -1097,8 +1097,8 @@ impl Runtime {
         source: ServiceId,
         request: CtlMsg,
     ) -> Result<(), Error> {
-        match (&request, &source) {
-            (CtlMsg::Hello, _) => {
+        match request {
+            CtlMsg::Hello => {
                 info!(
                     "{} | Service {} daemon is now {}",
                     self.swap_id.swap_id(),
@@ -1106,25 +1106,6 @@ impl Runtime {
                     "connected"
                 );
             }
-            (_, ServiceId::Syncer(..)) if self.syncer_state.any_syncer(&source) => {
-            }
-            (
-                _,
-                ServiceId::Farcasterd
-                | ServiceId::Wallet
-                | ServiceId::Database
-                | ServiceId::GrpcdClient(_)
-                | ServiceId::Grpcd
-            ) => {}
-            (CtlMsg::AbortSwap, ServiceId::Client(_)) => {}
-            _ => return Err(Error::Farcaster(
-                "Permission Error: only Farcasterd, Wallet, Client and Syncer can can control swapd"
-                    .to_string(),
-            )),
-        };
-
-        match request {
-            // Terminate this service.
             CtlMsg::Terminate if source == ServiceId::Farcasterd => {
                 info!(
                     "{} | {}",
@@ -1476,6 +1457,14 @@ impl Runtime {
                     self.send_peer(endpoints, msg.clone())?;
                 }
                 self.pending_peer_request.clear();
+            }
+
+            CtlMsg::FailedPeerMessage(msg) => {
+                warn!(
+                    "{} | Sending the peer message {} failed. Adding to pending peer requests",
+                    self.swap_id, msg
+                );
+                self.pending_peer_request.push(msg);
             }
 
             CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => match state {
