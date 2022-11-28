@@ -1,4 +1,4 @@
-[farcasterd.grpc]
+[grpc]
 enable = true
 port = 23433
 

@@ -66,10 +66,8 @@ pub fn run(
             &[
                 "--grpc-port",
                 &config
-                    .farcasterd
-                    .clone()
-                    .unwrap()
                     .grpc
+                    .clone()
                     .unwrap()
                     .port
                     .to_string(),

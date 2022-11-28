@@ -26,8 +26,8 @@ bitcoin_cookie_path = "~/.bitcoin/testnet3/.cookie"
 # the wallet should have spendable funds
 monero_rpc_wallet = "http://localhost:38084"
 
-# Define grpc
-[farcasterd.grpc]
+# Defines grpc options
+[grpc]
 # Set this to true to enable the grpc daemon
 enable = true
 # If enabled, also requires a port for grpc clients to connect to

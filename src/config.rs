@@ -33,12 +33,14 @@ pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
 pub struct Config {
     /// Farcasterd configuration
     pub farcasterd: Option<FarcasterdConfig>,
+    /// Sets the grpc server port, if none is given, no grpc server is run
+    pub grpc: Option<GrpcConfig>,
     /// Syncer configuration
     pub syncers: Option<SyncersConfig>,
 }
 
 impl Config {
-    /// Returns if auto-funding functionality is enable
+    /// Returns if auto-funding functionality is enabled
     pub fn is_auto_funding_enable(&self) -> bool {
         match &self.farcasterd {
             Some(FarcasterdConfig {
@@ -49,13 +51,10 @@ impl Config {
         }
     }
 
-    /// Returns if grpc port is set
+    /// Returns if grpc is enabled
     pub fn is_grpc_enable(&self) -> bool {
-        match &self.farcasterd {
-            Some(FarcasterdConfig {
-                grpc: Some(GrpcConfig { enable, .. }),
-                ..
-            }) => *enable,
+        match &self.grpc {
+            Some(GrpcConfig { enable, .. }) => *enable,
             _ => false,
         }
     }
@@ -95,6 +94,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             farcasterd: None,
+            grpc: None,
             syncers: Some(SyncersConfig::default()),
         }
     }
@@ -105,8 +105,6 @@ impl Default for Config {
 pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
-    /// Sets the grpc server port, if none is given, no grpc server is run
-    pub grpc: Option<GrpcConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
