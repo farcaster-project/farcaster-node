@@ -684,7 +684,7 @@ impl Runtime {
             //  1. Add the reveal message to the pending message for later use
             //  2. Send the funding information message to farcaster
             //  3. Watch the arbitrating funding address if we are maker
-            PeerMsg::Reveal2(reveal) => {
+            PeerMsg::Reveal2(reveal) if self.state.commit() => {
                 let remote_commit = self.state.remote_commit().cloned().unwrap();
                 if let Ok(remote_params_candidate) =
                     remote_params_candidate2(&reveal, remote_commit)
