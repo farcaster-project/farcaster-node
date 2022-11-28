@@ -208,8 +208,8 @@ impl Runtime {
         source: ServiceId,
         request: PeerMsg,
     ) -> Result<(), Error> {
-        info!(
-            "{} received {} from peer - processing with sms",
+        debug!(
+            "{} received {} from peer - processing with trade state machine",
             self.identity, request
         );
         self.process_request_with_state_machines(BusMsg::P2p(request), source, endpoints)
@@ -261,7 +261,7 @@ impl Runtime {
                             .map(|tsm| tsm.swap_id().map_or("…".to_string(), |s| s.to_string()))
                             .collect();
                         if !awaiting_swaps.is_empty() {
-                            info!("Received hello from awaited peerd connection {}, will continue processing once swaps {:?} are connected.", source, awaiting_swaps);
+                            debug!("Received hello from awaited peerd connection {}, will continue processing once swaps {:?} are connected.", source, awaiting_swaps);
                         } else {
                             self.handle_new_connection(source.clone());
                         }

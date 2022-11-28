@@ -328,7 +328,7 @@ where
             );
         }
 
-        info!(
+        debug!(
             "New service {} with PID {} started",
             identity,
             std::process::id()

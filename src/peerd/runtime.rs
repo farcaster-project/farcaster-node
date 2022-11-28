@@ -417,7 +417,7 @@ impl esb::Handler<ServiceBus> for Runtime {
                 self.identity(),
             ) {
                 Ok(val) => {
-                    info!(
+                    debug!(
                         "{} | Successfully connected to remote peer: {}",
                         self.identity(),
                         self.remote_node_addr.expect("Checked for connecter")
@@ -450,7 +450,7 @@ impl esb::Handler<ServiceBus> for Runtime {
             self.thread_flag_tx = thread_flag_tx;
             info!(
                 "{} with the remote peer {}",
-                "Initializing connection".bright_blue_bold(),
+                "Successfully connected".bright_blue_bold(),
                 self.remote_node_addr
                     .expect("remote node addr is never None if forked from listener")
             );
@@ -829,7 +829,7 @@ impl Runtime {
             PeerMsg::TakerCommit(_) => {
                 let swap_id = request.swap_id();
                 let msg_type = request.get_type();
-                info!(
+                debug!(
                     "{} | PID {} | Received the {} protocol message, forwarding to farcasterd",
                     swap_id.swap_id(),
                     std::process::id(),
@@ -853,7 +853,7 @@ impl Runtime {
             msg => {
                 debug_assert!(msg.is_protocol());
                 let swap_id = msg.swap_id();
-                info!(
+                debug!(
                     "{} | PID {} | Received the {} protocol message, forwarding to swapd",
                     swap_id.swap_id(),
                     std::process::id(),
