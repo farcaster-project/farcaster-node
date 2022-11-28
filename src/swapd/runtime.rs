@@ -29,7 +29,7 @@ use crate::{
         MoneroFundingInfo, Params, Tx,
     },
     bus::info::{InfoMsg, SwapInfo},
-    bus::p2p::{Commit, PeerMsg, /*Reveal,*/ Reveal2, TakerCommit},
+    bus::p2p::{Commit, PeerMsg, Reveal, TakerCommit},
     bus::sync::SyncMsg,
     bus::{BusMsg, Failure, FailureCode, Outcome, ServiceBus},
     syncerd::{
@@ -663,14 +663,14 @@ impl Runtime {
             //
             // Message revealing the parameters and the zero-knowledge proof received by the wallet
             // to trigger a state transition before forwarding it to counter-party.
-            PeerMsg::Reveal2(reveal)
+            PeerMsg::Reveal(reveal)
                 if source == ServiceId::Wallet
                     && self.state.commit()
                     && self.state.remote_commit().is_some() =>
             {
                 // forward message to peer
                 debug!("{} | send reveal peer message to peerd", self.swap_id);
-                self.send_peer(endpoints, PeerMsg::Reveal2(reveal))?;
+                self.send_peer(endpoints, PeerMsg::Reveal(reveal))?;
                 // trigger state transition
                 debug!("{} | transition state", self.swap_id);
                 let next_state = self.state.clone().sup_commit_to_reveal();
@@ -681,19 +681,19 @@ impl Runtime {
             // Message received by counter-party revealing they parameters
             //
             // Upon reception Alice needs to
-            //  1. Forward the reveal message to wallet
+            //  1. Validate the parameters
+            //  2. Forward the reveal message to wallet
             //
             // Upon reception Bob needs to
-            //  1. Add the reveal message to the pending message for later use
-            //  2. Send the funding information message to farcaster
-            //  3. Watch the arbitrating funding address if we are maker
-            PeerMsg::Reveal2(reveal) if self.state.commit() => {
+            //  1. Validate the parameters
+            //  2. Add the reveal message to the pending message for later use
+            //  3. Send the funding information message to farcaster
+            //  4. Watch the arbitrating funding address if we are maker
+            PeerMsg::Reveal(reveal) if self.state.commit() => {
                 let remote_commit = self.state.remote_commit().cloned().unwrap();
-                if let Ok(remote_params_candidate) =
-                    remote_params_candidate2(&reveal, remote_commit)
-                {
-                    debug!("{} | remote params validated", self.swap_id);
-                    self.state.sup_remote_params(remote_params_candidate);
+                if let Ok(validated_params) = validate_reveal(&reveal, remote_commit) {
+                    debug!("{} | remote params successfully validated", self.swap_id);
+                    self.state.sup_remote_params(validated_params);
                 } else {
                     let msg = format!("{} | remote params validation failed", self.swap_id);
                     error!("{}", msg);
@@ -706,7 +706,7 @@ impl Runtime {
                         self.send_wallet(
                             ServiceBus::Msg,
                             endpoints,
-                            BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                            BusMsg::P2p(PeerMsg::Reveal(reveal)),
                         )?
                     }
                     SwapRole::Bob => {
@@ -725,7 +725,7 @@ impl Runtime {
                                     self.identity(),
                                     ServiceId::Wallet,
                                     ServiceBus::Msg,
-                                    BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                                    BusMsg::P2p(PeerMsg::Reveal(reveal)),
                                 ),
                             );
                             // 2. send the funding information to farcasterd
@@ -755,7 +755,7 @@ impl Runtime {
                                     source,
                                     self.identity(),
                                     ServiceBus::Msg,
-                                    BusMsg::P2p(PeerMsg::Reveal2(reveal.clone())),
+                                    BusMsg::P2p(PeerMsg::Reveal(reveal.clone())),
                                 ),
                             );
                         }
@@ -1265,7 +1265,7 @@ impl Runtime {
                             &PendingRequest {
                                 dest: ServiceId::Wallet,
                                 bus_id: ServiceBus::Msg,
-                                request: BusMsg::P2p(PeerMsg::Reveal2(_)),
+                                request: BusMsg::P2p(PeerMsg::Reveal(_)),
                                 ..
                             }
                         )
@@ -2571,7 +2571,7 @@ impl Runtime {
                                         &i,
                                         &PendingRequest {
                                             bus_id: ServiceBus::Msg,
-                                            request: BusMsg::P2p(PeerMsg::Reveal2(_)),
+                                            request: BusMsg::P2p(PeerMsg::Reveal(_)),
                                             dest: ServiceId::Swap(..),
                                             ..
                                         }
@@ -2742,11 +2742,12 @@ fn aggregate_xmr_spend_view(
     (alice_params.spend + bob_params.spend, alice_view + bob_view)
 }
 
-fn remote_params_candidate2(reveal: &Reveal2, remote_commit: Commit) -> Result<Params, Error> {
-    // parameter processing irrespective of maker & taker role
+/// Parameter processing irrespective of maker & taker role. Return [`Params`] if the commit/reveal
+/// matches.
+fn validate_reveal(reveal: &Reveal, remote_commit: Commit) -> Result<Params, Error> {
     let core_wallet = CommitmentEngine;
     match reveal {
-        Reveal2::Alice { parameters, .. } => match &remote_commit {
+        Reveal::Alice { parameters, .. } => match &remote_commit {
             Commit::AliceParameters(commit) => {
                 commit.verify_with_reveal(&core_wallet, parameters.clone())?;
                 Ok(Params::Alice(parameters.clone().into_parameters()))
@@ -2757,7 +2758,7 @@ fn remote_params_candidate2(reveal: &Reveal2, remote_commit: Commit) -> Result<P
                 Err(Error::Farcaster(err_msg.to_string()))
             }
         },
-        Reveal2::Bob { parameters, .. } => match &remote_commit {
+        Reveal::Bob { parameters, .. } => match &remote_commit {
             Commit::BobParameters(commit) => {
                 commit.verify_with_reveal(&core_wallet, parameters.clone())?;
                 Ok(Params::Bob(parameters.clone().into_parameters()))

@@ -23,12 +23,9 @@ pub enum PeerMsg {
     #[display("{0} taker commit")]
     TakerCommit(TakerCommit),
 
-    //#[api(type = 33703)]
-    //#[display("reveal {0}")]
-    //Reveal(Reveal),
     #[api(type = 33704)]
     #[display("reveal {0}")]
-    Reveal2(Reveal2),
+    Reveal(Reveal),
 
     #[api(type = 33720)]
     #[display("refund procedure signatures")]
@@ -72,12 +69,7 @@ impl PeerMsg {
         match self {
             PeerMsg::MakerCommit(c) => c.swap_id(),
             PeerMsg::TakerCommit(c) => c.swap_id(),
-            //PeerMsg::Reveal(m) => match m {
-            //    Reveal::AliceParameters(n) => n.swap_id,
-            //    Reveal::BobParameters(n) => n.swap_id,
-            //    Reveal::Proof(n) => n.swap_id,
-            //},
-            PeerMsg::Reveal2(r) => r.swap_id(),
+            PeerMsg::Reveal(r) => r.swap_id(),
             PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => {
                 *swap_id
             }
@@ -101,8 +93,7 @@ impl PeerMsg {
             self,
             PeerMsg::MakerCommit(_)
                 | PeerMsg::TakerCommit(_)
-                //| PeerMsg::Reveal(_)
-                | PeerMsg::Reveal2(_)
+                | PeerMsg::Reveal(_)
                 | PeerMsg::RefundProcedureSignatures(_)
                 | PeerMsg::CoreArbitratingSetup(_)
                 | PeerMsg::BuyProcedureSignature(_)
@@ -116,8 +107,7 @@ impl PeerMsg {
             self,
             PeerMsg::MakerCommit(_)
                 | PeerMsg::TakerCommit(_)
-                //| PeerMsg::Reveal(_)
-                | PeerMsg::Reveal2(_)
+                | PeerMsg::Reveal(_)
                 | PeerMsg::RefundProcedureSignatures(_)
                 | PeerMsg::CoreArbitratingSetup(_)
                 | PeerMsg::BuyProcedureSignature(_)
@@ -125,20 +115,8 @@ impl PeerMsg {
     }
 }
 
-/*
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
 pub enum Reveal {
-    #[display("Alice parameters")]
-    AliceParameters(RevealAliceParameters),
-    #[display("Bob parameters")]
-    BobParameters(RevealBobParameters),
-    #[display("proof")]
-    Proof(RevealProof),
-}
-*/
-
-#[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
-pub enum Reveal2 {
     #[display("Alice")]
     Alice {
         parameters: RevealAliceParameters,
@@ -152,7 +130,7 @@ pub enum Reveal2 {
     },
 }
 
-impl Reveal2 {
+impl Reveal {
     pub fn swap_id(&self) -> SwapId {
         match self {
             Self::Alice { parameters, .. } => parameters.swap_id,

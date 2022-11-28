@@ -3,7 +3,7 @@ use crate::bus::{
         self, Checkpoint, CheckpointState, CtlMsg, GetKeys, Keys, LaunchSwap, Params,
         TakerCommitted, Token, Tx,
     },
-    p2p::{Commit, PeerMsg, /*Reveal,*/ Reveal2, TakerCommit},
+    p2p::{Commit, PeerMsg, Reveal, TakerCommit},
     AddressSecretKey, BusMsg, Outcome, ServiceBus,
 };
 use crate::databased::checkpoint_send;
@@ -203,14 +203,14 @@ impl Runtime {
                 }
                 // craft the correct reveal depending on role
                 let reveal = match self.wallets.get(&swap_id).unwrap() {
-                    Wallet::Alice(AliceState { local_params, .. }) => Reveal2::Alice {
+                    Wallet::Alice(AliceState { local_params, .. }) => Reveal::Alice {
                         parameters: local_params.clone().reveal_alice(swap_id),
                         proof: RevealProof {
                             swap_id,
                             proof: local_params.proof.clone().expect("local always some"),
                         },
                     },
-                    Wallet::Bob(BobState { local_params, .. }) => Reveal2::Bob {
+                    Wallet::Bob(BobState { local_params, .. }) => Reveal::Bob {
                         parameters: local_params.clone().reveal_bob(swap_id),
                         proof: RevealProof {
                             swap_id,
@@ -223,16 +223,16 @@ impl Runtime {
                     ServiceBus::Msg,
                     ServiceId::Wallet,
                     ServiceId::Swap(swap_id),
-                    BusMsg::P2p(PeerMsg::Reveal2(reveal)),
+                    BusMsg::P2p(PeerMsg::Reveal(reveal)),
                 )?;
             }
 
             // A message received from counterparty, forwarded by swap
-            PeerMsg::Reveal2(reveal) => {
+            PeerMsg::Reveal(reveal) => {
                 match reveal {
                     // receiving from counterparty Bob, thus wallet is acting as Alice (Maker or
                     // Taker)
-                    Reveal2::Bob { parameters, proof } => {
+                    Reveal::Bob { parameters, proof } => {
                         if let Some(Wallet::Alice(AliceState {
                             local_params,
                             key_manager,
@@ -271,7 +271,7 @@ impl Runtime {
                                     ServiceBus::Msg,
                                     ServiceId::Wallet,
                                     ServiceId::Swap(swap_id),
-                                    BusMsg::P2p(PeerMsg::Reveal2(Reveal2::Alice {
+                                    BusMsg::P2p(PeerMsg::Reveal(Reveal::Alice {
                                         parameters: local_params.clone().reveal_alice(swap_id),
                                         proof: RevealProof {
                                             swap_id,
@@ -292,7 +292,7 @@ impl Runtime {
                     }
                     // getting parameters from counterparty alice routed through
                     // swapd, thus I'm Bob on this swap: Bob can proceed
-                    Reveal2::Alice { parameters, proof } => {
+                    Reveal::Alice { parameters, proof } => {
                         if let Some(Wallet::Bob(BobState {
                             bob,
                             local_trade_role,
@@ -338,7 +338,7 @@ impl Runtime {
                                     ServiceBus::Msg,
                                     ServiceId::Wallet,
                                     ServiceId::Swap(swap_id),
-                                    BusMsg::P2p(PeerMsg::Reveal2(Reveal2::Bob {
+                                    BusMsg::P2p(PeerMsg::Reveal(Reveal::Bob {
                                         parameters: local_params.clone().reveal_bob(swap_id),
                                         proof: RevealProof {
                                             swap_id,
