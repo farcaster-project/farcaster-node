@@ -1093,7 +1093,7 @@ impl Runtime {
             return Ok((false, spawning_peer.clone()));
         };
         if let Some(existing_peer) = self.registered_services.iter().find(|service| {
-            if let Some(registered_node_addr) = service.clone().node_addr() {
+            if let Some(registered_node_addr) = service.node_addr() {
                 registered_node_addr.id == node_addr.id
             } else {
                 false
