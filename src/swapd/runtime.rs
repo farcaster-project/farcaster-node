@@ -628,7 +628,7 @@ impl Runtime {
                     && self.state.trade_role() == Some(TradeRole::Taker)
                     && self.state.remote_commit().is_none() =>
             {
-                trace!("received remote commitment");
+                debug!("{} | received remote maker commitment", self.swap_id);
                 self.state.t_sup_remote_commit(remote_commit.clone());
                 // if we are Bob watch the arbitrating funding address
                 if self.state.swap_role() == SwapRole::Bob {
@@ -637,6 +637,7 @@ impl Runtime {
                         .b_address()
                         .cloned()
                         .expect("address available at CommitB");
+                    debug!("{} | bob, watch arbitrating funding {}", self.swap_id, addr);
                     let txlabel = TxLabel::Funding;
                     if !self.syncer_state.is_watched_addr(&txlabel) {
                         let task = self.syncer_state.watch_addr_btc(addr, txlabel);
@@ -649,6 +650,7 @@ impl Runtime {
                     }
                 }
                 // forward the message to wallet to trigger creation of reveal message
+                debug!("{} | forward maker commitment to wallet", self.swap_id);
                 self.send_wallet(
                     ServiceBus::Msg,
                     endpoints,
@@ -667,9 +669,10 @@ impl Runtime {
                     && self.state.remote_commit().is_some() =>
             {
                 // forward message to peer
+                debug!("{} | send reveal peer message to peerd", self.swap_id);
                 self.send_peer(endpoints, PeerMsg::Reveal2(reveal))?;
-                trace!("sent reveal peer message to peerd");
                 // trigger state transition
+                debug!("{} | transition state", self.swap_id);
                 let next_state = self.state.clone().sup_commit_to_reveal();
                 self.state_update(endpoints, next_state)?;
             }
@@ -689,15 +692,17 @@ impl Runtime {
                 if let Ok(remote_params_candidate) =
                     remote_params_candidate2(&reveal, remote_commit)
                 {
-                    debug!("{:?} sets remote_params", self.state.swap_role());
+                    debug!("{} | remote params validated", self.swap_id);
                     self.state.sup_remote_params(remote_params_candidate);
                 } else {
-                    error!("Revealed remote params not preimage of commitment");
+                    let msg = format!("{} | remote params validation failed", self.swap_id);
+                    error!("{}", msg);
+                    return Err(Error::Farcaster(msg));
                 }
                 match self.state.swap_role() {
                     // forward the reveal message to wallet
                     SwapRole::Alice => {
-                        debug!("Alice: forwarding reveal to wallet");
+                        debug!("{} | alice: forwarding reveal to wallet", self.swap_id);
                         self.send_wallet(
                             ServiceBus::Msg,
                             endpoints,
@@ -706,14 +711,14 @@ impl Runtime {
                     }
                     SwapRole::Bob => {
                         if self.state.b_address().is_none() {
-                            let msg = format!("FIXME: b_address is None, request {}", reveal);
+                            let msg = format!("{} | bob: address is missing", self.swap_id);
                             error!("{}", msg);
                             return Err(Error::Farcaster(msg));
                         }
                         // if fee estimate not available yet defer handling for later
                         if let Some(sat_per_kvb) = self.syncer_state.btc_fee_estimate_sat_per_kvb {
                             // 1. add reveal as a pending request
-                            debug!("Bob: add reveal as a pending request");
+                            debug!("{} | bob: add reveal as a pending request", self.swap_id);
                             self.pending_requests.defer_request(
                                 ServiceId::Wallet,
                                 PendingRequest::new(
@@ -724,13 +729,13 @@ impl Runtime {
                                 ),
                             );
                             // 2. send the funding information to farcasterd
-                            debug!("Bob: send the funding information to farcasterd");
+                            debug!("{} | bob: send funding info to farcasterd", self.swap_id);
                             let address = self.state.b_address().cloned().unwrap();
                             self.ask_bob_to_fund(sat_per_kvb, address.clone(), endpoints)?;
                             let trade_role = self.state.trade_role().unwrap();
                             if trade_role == TradeRole::Maker {
                                 // 3. watch the arbitrating address to receive an event on funding
-                                debug!("Bob: watch the arbitrating address to receive an event on funding");
+                                debug!("{} | bob: watch address for funding event", self.swap_id);
                                 if !self.syncer_state.is_watched_addr(&TxLabel::Funding) {
                                     let watch_addr_task =
                                         self.syncer_state.watch_addr_btc(address, TxLabel::Funding);
@@ -743,7 +748,7 @@ impl Runtime {
                                 }
                             }
                         } else {
-                            debug!("Deferring request for when btc_fee_estimate available");
+                            debug!("{} | bob: deferring for when fee available", self.swap_id);
                             self.pending_requests.defer_request(
                                 self.syncer_state.bitcoin_syncer(),
                                 PendingRequest::new(
