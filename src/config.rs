@@ -113,7 +113,7 @@ pub struct GrpcConfig {
     /// Use grpc functionality
     pub enable: bool,
     /// Grpc port configuration
-    pub port: u64,
+    pub bind_port: u16,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

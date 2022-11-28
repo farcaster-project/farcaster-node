@@ -1,6 +1,6 @@
 [grpc]
 enable = true
-port = 23433
+bind_port = 23433
 
 [syncers.local]
 electrum_server = "tcp://electrs:60401"

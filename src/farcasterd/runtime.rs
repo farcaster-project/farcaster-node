@@ -69,7 +69,7 @@ pub fn run(
                     .grpc
                     .clone()
                     .unwrap()
-                    .port
+                    .bind_port
                     .to_string(),
             ],
         )?;

@@ -150,7 +150,7 @@ impl IdCounter {
     }
 }
 
-pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
+pub fn run(config: ServiceConfig, grpc_port: u16) -> Result<(), Error> {
     let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
         std::sync::mpsc::channel();
 
@@ -867,7 +867,7 @@ impl Farcaster for FarcasterService {
 }
 
 pub struct GrpcServer {
-    grpc_port: u64,
+    grpc_port: u16,
 }
 
 fn request_loop(

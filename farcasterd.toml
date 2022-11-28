@@ -31,7 +31,7 @@ monero_rpc_wallet = "http://localhost:38084"
 # Set this to true to enable the grpc daemon
 enable = true
 # If enabled, also requires a port for grpc clients to connect to
-port = 50051
+bind_port = 50051
 
 # Syncers configuration
 # configures the Bitcoin and Monero syncers for the three
