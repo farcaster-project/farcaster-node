@@ -641,10 +641,7 @@ impl Database {
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .map(|(key, value)| {
-                debug!("key: {:?}", key);
-                (SwapId::from_slice(key), value.to_vec())
-            })
+            .map(|(key, value)| (SwapId::from_slice(key), value.to_vec()))
             .collect();
         drop(cursor);
         tx.abort();
