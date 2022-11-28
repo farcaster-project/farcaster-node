@@ -78,14 +78,14 @@ jobs:
           grpc,
         ]
         bitcoin: [ '23.0' ]
-        electrs: [ 0.9.7 ]
+        electrs: [ 0.9.9 ]
         include:
         - test: bitcoin_syncer
           bitcoin: '22.0'
           electrs: 0.8.11
         - test: bitcoin_syncer
           bitcoin: '22.0'
-          electrs: 0.9.7
+          electrs: 0.9.9
 
     runs-on: ubuntu-latest
     env:
@@ -115,28 +115,28 @@ jobs:
         volumes:
           - bitcoind-data:/data
       monerod:
-        image: ghcr.io/farcaster-project/containers/monerod:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monerod:0.18.1.2
         env:
           NETWORK: regtest
           OFFLINE: --offline
           DIFFICULTY: 1
       monero-wallet-rpc-1:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-2:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-wallet-rpc-3:
-        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2
         env:
           MONERO_DAEMON_ADDRESS: monerod:18081
           WALLET_RPC_PORT: 18083
       monero-lws:
-        image: ghcr.io/farcaster-project/containers/monero-lws:monerod-0.18.0.0
+        image: ghcr.io/farcaster-project/containers/monero-lws:monerod-0.18.1.2
         env:
           NETWORK: main
           MONERO_DAEMON_ADDRESS: monerod:18082
