@@ -73,7 +73,7 @@ async fn swap_bob_maker_taker_reconnects() {
     // let bitcoin_rpc = Arc::new(bitcoin_setup());
     let (monero_regtest, monero_wallet) = monero_setup().await;
 
-    let (_, data_dir_maker, _, data_dir_taker) = setup_clients().await;
+    let (_, data_dir_maker, _, data_dir_taker) = launch_farcasterd_pair().await;
 
     let (xmr_dest_wallet_name, bitcoin_address, swap_id) = make_and_take_offer_with_reconnect(
         data_dir_maker.clone(),
