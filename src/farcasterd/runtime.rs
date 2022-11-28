@@ -65,12 +65,9 @@ pub fn run(
             "grpcd",
             &[
                 "--grpc-port",
-                &config
-                    .grpc
-                    .clone()
-                    .unwrap()
-                    .bind_port
-                    .to_string(),
+                &config.grpc.clone().unwrap().bind_port.to_string(),
+                "--grpc-ip",
+                &config.grpc_bind_ip(),
             ],
         )?;
     }

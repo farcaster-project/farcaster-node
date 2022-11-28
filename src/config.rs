@@ -28,6 +28,8 @@ pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993"
 pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.community.rino.io:38081";
 pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
 
+pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct Config {
@@ -56,6 +58,17 @@ impl Config {
         match &self.grpc {
             Some(GrpcConfig { enable, .. }) => *enable,
             _ => false,
+        }
+    }
+
+    /// Returns the Grcp bind ip address, if not set return the default value
+    pub fn grpc_bind_ip(&self) -> String {
+        match &self.grpc {
+            Some(GrpcConfig {
+                bind_ip: Some(bind_ip),
+                ..
+            }) => bind_ip.clone(),
+            _ => String::from(GRPC_BIND_IP_ADDRESS),
         }
     }
 
@@ -114,6 +127,8 @@ pub struct GrpcConfig {
     pub enable: bool,
     /// Grpc port configuration
     pub bind_port: u16,
+    /// Grpc listening ip address
+    pub bind_ip: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

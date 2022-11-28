@@ -32,6 +32,10 @@ monero_rpc_wallet = "http://localhost:38084"
 enable = true
 # If enabled, also requires a port for grpc clients to connect to
 bind_port = 50051
+# If enabled, where to bind the grpc service. Defaults to 127.0.0.1
+# The grpc interface allow full management of the node, you probably want to
+# keep it only accessible on your local network
+bind_ip = "127.0.0.1"
 
 # Syncers configuration
 # configures the Bitcoin and Monero syncers for the three
