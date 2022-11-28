@@ -23,7 +23,7 @@ pub mod farcaster {
 #[tokio::test]
 #[ignore]
 async fn grpc_server_functional_test() {
-    let _ = setup_clients().await;
+    let _ = launch_farcasterd_pair().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -171,7 +171,7 @@ async fn grpc_server_functional_test() {
 
     kill_all();
 
-    let _ = setup_clients().await;
+    let _ = launch_farcasterd_pair().await;
 
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
@@ -244,7 +244,7 @@ async fn grpc_server_functional_test() {
     // wait for lock
     tokio::time::sleep(time::Duration::from_secs(15)).await;
     kill_all();
-    let _ = setup_clients().await;
+    let _ = launch_farcasterd_pair().await;
     tokio::time::sleep(time::Duration::from_secs(5)).await;
     let channel_1 = Endpoint::from_static("http://0.0.0.0:23432")
         .connect()

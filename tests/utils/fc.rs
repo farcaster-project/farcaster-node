@@ -17,8 +17,7 @@ use tokio::sync::Mutex;
 
 use super::config;
 
-// TODO: rename this function, this launches fcd, not 'clients'
-pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
+pub async fn launch_farcasterd_pair() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
     let (farcasterd_maker, data_dir_maker) = launch_farcasterd_maker();
     let (farcasterd_taker, data_dir_taker) = launch_farcasterd_taker();
     (
@@ -29,7 +28,6 @@ pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Ve
     )
 }
 
-// TODO: rename this function, this launches fcd, not 'clients'
 pub fn launch_farcasterd_maker() -> (process::Child, Vec<String>) {
     // data directories
     let data_dir_maker = vec!["-d".to_string(), "tests/fc1".to_string()];
@@ -48,7 +46,6 @@ pub fn launch_farcasterd_maker() -> (process::Child, Vec<String>) {
     (farcasterd_maker, data_dir_maker)
 }
 
-// TODO: rename this function, this launches fcd, not 'clients'
 pub fn launch_farcasterd_taker() -> (process::Child, Vec<String>) {
     // data directories
     let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
