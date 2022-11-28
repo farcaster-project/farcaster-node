@@ -1,5 +1,5 @@
 [farcasterd.grpc]
-use_grpc = true
+enable = true
 port = 23433
 
 [syncers.local]

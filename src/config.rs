@@ -53,9 +53,9 @@ impl Config {
     pub fn is_grpc_enable(&self) -> bool {
         match &self.farcasterd {
             Some(FarcasterdConfig {
-                grpc: Some(GrpcConfig { use_grpc, .. }),
+                grpc: Some(GrpcConfig { enable, .. }),
                 ..
-            }) => *use_grpc,
+            }) => *enable,
             _ => false,
         }
     }
@@ -113,7 +113,7 @@ pub struct FarcasterdConfig {
 #[serde(crate = "serde_crate")]
 pub struct GrpcConfig {
     /// Use grpc functionality
-    pub use_grpc: bool,
+    pub enable: bool,
     /// Grpc port configuration
     pub port: u64,
 }

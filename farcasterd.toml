@@ -29,8 +29,8 @@ monero_rpc_wallet = "http://localhost:38084"
 # Define grpc
 [farcasterd.grpc]
 # Set this to true to enable the grpc daemon
-use_grpc = true
-# If use_grpc=true, also requires a port for grpc clients to connect to
+enable = true
+# If enabled, also requires a port for grpc clients to connect to
 port = 50051
 
 # Syncers configuration
