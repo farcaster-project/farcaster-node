@@ -152,7 +152,7 @@ impl IdCounter {
     }
 }
 
-pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
+pub fn run(config: ServiceConfig, grpc_port: u16, grpc_ip: String) -> Result<(), Error> {
     let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
         std::sync::mpsc::channel();
 
@@ -161,7 +161,7 @@ pub fn run(config: ServiceConfig, grpc_port: u64) -> Result<(), Error> {
     tx_request.connect("inproc://grpcdbridge")?;
     rx_request.bind("inproc://grpcdbridge")?;
 
-    let mut server = GrpcServer { grpc_port };
+    let mut server = GrpcServer { grpc_port, grpc_ip };
     server.run(rx_response, tx_request)?;
 
     let runtime = Runtime {
@@ -904,7 +904,8 @@ impl Farcaster for FarcasterService {
 }
 
 pub struct GrpcServer {
-    grpc_port: u64,
+    grpc_port: u16,
+    grpc_ip: String,
 }
 
 fn request_loop(
@@ -976,7 +977,7 @@ impl GrpcServer {
         rx_response: Receiver<(u64, BusMsg)>,
         tx_request: zmq::Socket,
     ) -> Result<(), Error> {
-        let addr = format!("0.0.0.0:{}", self.grpc_port)
+        let addr = format!("{}:{}", self.grpc_ip, self.grpc_port)
             .parse()
             .expect("invalid grpc server bind address");
         info!("Binding grpc to address: {}", addr);
