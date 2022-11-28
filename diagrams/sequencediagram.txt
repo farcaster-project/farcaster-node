@@ -32,7 +32,7 @@ m_farcasterd <- m_wallet : Ctl Keys
 ==Setup and Commit-Reveal: Bob and Alice can be on both sides==
 m_cli -> m_farcasterd : MakeOffer
 m_farcasterd -> m_farcasterd : launch\npeerd listen
-t_farcasterd <- t_farcasterd : Ctl TakeOffer
+t_farcasterd <- t_cli : TakeOffer
 t_farcasterd -> t_farcasterd : launch\npeerd connect
 t_wallet <- t_farcasterd : Ctl TakeOffer
 t_wallet -> t_wallet : create taker wallet
@@ -79,7 +79,6 @@ m_swap<-m_wallet: Ctl FundingUpdated
 m_swap -> m_wallet : SEND PENDING Msg Reveal (taker is sender)
 end
 m_wallet -> m_swap : Msg Reveal (maker is sender)
-peerd <- m_swap : Msg RevealProof (maker is sender)
 peerd <- m_swap : Msg Reveal (maker is sender)
 peerd -> t_swap : Msg Reveal (maker is sender)
 group for Alice swap role
