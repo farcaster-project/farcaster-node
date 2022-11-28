@@ -252,6 +252,11 @@ fn bitcoin_syncer_address_test() {
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_1).unwrap();
+    info!("waiting for empty message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received empty message");
+    let request = misc::get_request_from_message(message);
+    assert::empty_message(request);
     let watch_address_task_2 = SyncerdTask {
         task: Task::WatchAddress(WatchAddress {
             id: TaskId(1),
@@ -262,6 +267,11 @@ fn bitcoin_syncer_address_test() {
         source: SOURCE1.clone(),
     };
     tx.send(watch_address_task_2).unwrap();
+    info!("waiting for empty message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received empty message");
+    let request = misc::get_request_from_message(message);
+    assert::empty_message(request);
 
     // send some coins to address1
     let txid = bitcoin_rpc
@@ -362,6 +372,15 @@ fn bitcoin_syncer_address_test() {
         })
         .unwrap();
     }
+
+    for _ in 0..5 {
+        info!("waiting for repeated empty message");
+        let message = rx_event.recv_multipart(0).unwrap();
+        info!("received repeated empty message");
+        let request = misc::get_request_from_message(message);
+        assert::empty_message(request);
+    }
+
     let txid = bitcoin_rpc
         .send_to_address(&address4, amount, None, None, None, None, None, None)
         .unwrap();
@@ -395,6 +414,13 @@ fn bitcoin_syncer_address_test() {
         source: SOURCE1.clone(),
     })
     .unwrap();
+
+    info!("waiting for empty message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received empty message");
+    let request = misc::get_request_from_message(message);
+    assert::empty_message(request);
+
     let txid = bitcoin_rpc
         .send_to_address(&address5, amount, None, None, None, None, None, None)
         .unwrap();

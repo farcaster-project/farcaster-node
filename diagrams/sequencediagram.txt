@@ -159,6 +159,9 @@ parallel off
 m_swap -> m_syncer : Sync Task(Watch Accordant Lock)
 deactivate m_swap
 
+m_syncer -> m_swap : Sync Event(Empty)
+m_swap -> m_farcasterd: Ctl FundingInfo
+
 parallel
 m_swap <- m_syncer : Sync Event(Accordant Lock final)
 t_swap <- t_syncer : Sync Event(Accordant Lock final)
@@ -213,3 +216,4 @@ m_wallet->m_wallet:fully sign punish
 // TODO: in the code, this actually already happens after CoreArbitratingSetup - think about this and move either this or that
 m_swap<-m_wallet:Ctl Tx::Punish
 m_swap->m_syncer: Sync Task(Broadcast Punish)
+
