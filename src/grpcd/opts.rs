@@ -9,7 +9,11 @@ pub struct Opts {
 
     /// Port number that the grpc server is accepting connections on
     #[clap(long)]
-    pub grpc_port: u64,
+    pub grpc_port: u16,
+
+    /// Ip that the grpc server is accepting connections on
+    #[clap(long)]
+    pub grpc_ip: String,
 }
 
 impl Opts {
