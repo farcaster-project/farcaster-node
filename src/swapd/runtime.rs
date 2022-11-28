@@ -689,7 +689,11 @@ impl Runtime {
             //  2. Add the reveal message to the pending message for later use
             //  3. Send the funding information message to farcaster
             //  4. Watch the arbitrating funding address if we are maker
-            PeerMsg::Reveal(reveal) if self.state.commit() => {
+            //
+            // Reveal message is received by maker first on his commit state and by taker second on
+            // his reveal state. Because taker moves from commit to reveal after sending the reveal
+            // message to maker.
+            PeerMsg::Reveal(reveal) if self.state.commit() || self.state.reveal() => {
                 let remote_commit = self.state.remote_commit().cloned().unwrap();
                 if let Ok(validated_params) = validate_reveal(&reveal, remote_commit) {
                     debug!("{} | remote params successfully validated", self.swap_id);
