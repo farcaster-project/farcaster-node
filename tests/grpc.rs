@@ -12,7 +12,7 @@ use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
 use farcaster_node::bus::ctl::BitcoinFundingInfo;
 use std::{str::FromStr, sync::Arc, time};
 use tonic::transport::Endpoint;
-use utils::fc::*;
+use utils::{config, fc::*};
 
 mod utils;
 
@@ -23,18 +23,22 @@ pub mod farcaster {
 #[tokio::test]
 #[ignore]
 async fn grpc_server_functional_test() {
+    let conf = config::TestConfig::parse();
     let _ = setup_clients().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
-    let channel_1 = Endpoint::from_static("http://0.0.0.0:23432")
+    let grpc_1 = conf.grpc.fc1.to_string();
+    let channel_1 = Endpoint::from_str(&grpc_1)
+        .unwrap()
         .connect()
         .await
         .unwrap();
     let mut farcaster_client_1 = FarcasterClient::new(channel_1);
 
-    let channel_2 = Endpoint::from_static("http://0.0.0.0:23433")
+    let channel_2 = Endpoint::from_str(&conf.grpc.fc2.to_string())
+        .unwrap()
         .connect()
         .await
         .unwrap();
@@ -177,7 +181,8 @@ async fn grpc_server_functional_test() {
 
     // Test sweep address on re-launch
     let btc_address = bitcoin_rpc.get_new_address(None, None).unwrap();
-    let channel_1 = Endpoint::from_static("http://0.0.0.0:23432")
+    let channel_1 = Endpoint::from_str(&grpc_1)
+        .unwrap()
         .connect()
         .await
         .unwrap();
@@ -246,7 +251,8 @@ async fn grpc_server_functional_test() {
     kill_all();
     let _ = setup_clients().await;
     tokio::time::sleep(time::Duration::from_secs(5)).await;
-    let channel_1 = Endpoint::from_static("http://0.0.0.0:23432")
+    let channel_1 = Endpoint::from_str(&grpc_1)
+        .unwrap()
         .connect()
         .await
         .unwrap();

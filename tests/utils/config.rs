@@ -26,6 +26,7 @@ pub struct TestConfig {
     pub bitcoin: BitcoinConfig,
     pub electrs: NodeConfig,
     pub monero: MoneroConfig,
+    pub grpc: GrpcConfig,
 }
 
 impl TestConfig {
@@ -138,5 +139,25 @@ impl From<WalletIndex> for usize {
             WalletIndex::Secondary => 1,
             WalletIndex::Tertiary => 2,
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "serde_crate")]
+pub struct GrpcConfig {
+    pub fc1: GrpcNode,
+    pub fc2: GrpcNode,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "serde_crate")]
+pub struct GrpcNode {
+    pub host: String,
+    pub port: u16,
+}
+
+impl fmt::Display for GrpcNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "http://{}:{}", self.host, self.port)
     }
 }
