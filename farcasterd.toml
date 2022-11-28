@@ -6,7 +6,7 @@
 # Set this to true if you want to enable auto-funding, default to false
 # if set to true you need to register the parameter for the networks you
 # want to support: mainnet, testnet, or local
-auto_fund = false
+enable = false
 
 # Auto-funding testnet parameters
 [farcasterd.auto_funding.testnet]

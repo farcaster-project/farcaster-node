@@ -42,9 +42,9 @@ impl Config {
     pub fn is_auto_funding_enable(&self) -> bool {
         match &self.farcasterd {
             Some(FarcasterdConfig {
-                auto_funding: Some(AutoFundingConfig { auto_fund, .. }),
-                grpc: _,
-            }) => *auto_fund,
+                auto_funding: Some(AutoFundingConfig { enable, .. }),
+                ..
+            }) => *enable,
             _ => false,
         }
     }
@@ -53,8 +53,8 @@ impl Config {
     pub fn is_grpc_enable(&self) -> bool {
         match &self.farcasterd {
             Some(FarcasterdConfig {
-                auto_funding: _,
                 grpc: Some(GrpcConfig { use_grpc, .. }),
+                ..
             }) => *use_grpc,
             _ => false,
         }
@@ -67,13 +67,13 @@ impl Config {
             Some(FarcasterdConfig {
                 auto_funding:
                     Some(AutoFundingConfig {
-                        auto_fund,
+                        enable,
                         mainnet,
                         testnet,
                         local,
                     }),
-                grpc: _,
-            }) if *auto_fund => match network {
+                ..
+            }) if *enable => match network {
                 Network::Mainnet => mainnet.clone(),
                 Network::Testnet => testnet.clone(),
                 Network::Local => local.clone(),
@@ -122,7 +122,7 @@ pub struct GrpcConfig {
 #[serde(crate = "serde_crate")]
 pub struct AutoFundingConfig {
     /// Use auto-funding functionality
-    pub auto_fund: bool,
+    pub enable: bool,
     /// Mainnet auto-funding configuration
     pub mainnet: Option<AutoFundingServers>,
     /// Testnet auto-funding configuration
