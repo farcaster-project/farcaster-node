@@ -4,7 +4,7 @@ use farcaster_core::{
 };
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::bus::ctl::Params;
+use crate::bus::ctl::{MoneroFundingInfo, Params};
 use crate::bus::p2p::Commit;
 use crate::bus::Outcome;
 
@@ -42,6 +42,7 @@ pub enum AliceState {
         /* #[display("local_view_share({0})")] */
         local_params: Params,
         required_funding_amount: Option<u64>, // TODO: Should be monero::Amount
+        funding_info: Option<MoneroFundingInfo>,
         overfunded: bool,
     },
     #[display("Finish({0})")]
@@ -358,6 +359,12 @@ impl State {
             })
         )
     }
+    pub fn a_funding_info(&self) -> Option<MoneroFundingInfo> {
+        match self {
+            State::Alice(AliceState::RefundSigA { funding_info, .. }) => funding_info.clone(),
+            _ => None,
+        }
+    }
     pub fn b_buy_tx_seen(&self) -> bool {
         if !self.b_buy_sig() && !self.b_core_arb() {
             return false;
@@ -595,6 +602,16 @@ impl State {
             }
         } else {
             error!("Not on RefundSig state");
+            false
+        }
+    }
+    /// Update Alice RefundSig state with funding info
+    pub fn a_sup_funding_info(&mut self, new_funding_info: Option<MoneroFundingInfo>) -> bool {
+        if let State::Alice(AliceState::RefundSigA { funding_info, .. }) = self {
+            *funding_info = new_funding_info;
+            true
+        } else {
+            warn!("Not on RefundSig state");
             false
         }
     }

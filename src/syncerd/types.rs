@@ -351,4 +351,6 @@ pub enum Event {
     TaskAborted(TaskAborted),
     TransactionRetrieved(TransactionRetrieved),
     FeeEstimation(FeeEstimation),
+    /// Empty event to signify that a task with a certain id has not produced an initial result
+    Empty(TaskId),
 }

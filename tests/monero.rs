@@ -248,7 +248,7 @@ async fn monero_syncer_address_test() {
 
         // Generate two addresses and watch them
         let (address1, view_key1) = new_address(&wallet).await;
-        let tx_id = send_monero(&wallet, address1, 1).await;
+        let tx_id_1 = send_monero(&wallet, address1, 1).await;
         let blocks = regtest
             .generate_blocks(10, address.address)
             .await
@@ -267,7 +267,7 @@ async fn monero_syncer_address_test() {
             task: Task::WatchAddress(WatchAddress {
                 id: TaskId(1),
                 lifetime: blocks + 1,
-                addendum: addendum_1,
+                addendum: addendum_1.clone(),
                 include_tx: Boolean::True,
             }),
             source: SOURCE1.clone(),
@@ -284,7 +284,7 @@ async fn monero_syncer_address_test() {
             address1
         );
         let request = misc::get_request_from_message(message);
-        assert::address_transaction(request, 1, vec![tx_id]);
+        assert::address_transaction(request, 1, vec![tx_id_1.clone()]);
 
         // Generate two transactions for same address and watch them
         let (address2, view_key2) = new_address(&wallet).await;
@@ -398,12 +398,14 @@ async fn monero_syncer_address_test() {
         let (address5, view_key5) = new_address(&wallet).await;
         send_monero(&wallet, address5, 1).await;
         // this transaction should not generate an event, because the task's lifetime expired
-        send_monero(&wallet, address4, 1).await;
         let blocks = regtest
             .generate_blocks(10, address.address)
             .await
             .unwrap()
             .height;
+        std::thread::sleep(duration);
+
+        send_monero(&wallet, address4, 1).await;
 
         let addendum_5 = AddressAddendum::Monero(XmrAddressAddendum {
             spend_key: address5.public_spend,
@@ -422,6 +424,12 @@ async fn monero_syncer_address_test() {
         })
         .unwrap();
 
+        info!("waiting for empty message");
+        let message = rx_event.recv_multipart(0).unwrap();
+        info!("received empty message");
+        let request = misc::get_request_from_message(message);
+        assert::empty_message(request);
+
         let tx_id5_2 = send_monero(&wallet, address5, 2).await;
         if lws_bool {
             regtest.generate_blocks(1, address.address).await.unwrap();
@@ -439,6 +447,59 @@ async fn monero_syncer_address_test() {
         info!("received address transaction message");
         let request = misc::get_request_from_message(message);
         assert::address_transaction(request, 2, vec![tx_id5_2_3.clone()]);
+
+        let (address6, view_key6) = new_address(&wallet).await;
+        let addendum_6 = AddressAddendum::Monero(XmrAddressAddendum {
+            spend_key: address6.public_spend,
+            view_key: view_key6,
+            from_height: blocks,
+        });
+        let watch_address_task_6 = SyncerdTask {
+            task: Task::WatchAddress(WatchAddress {
+                id: TaskId(1),
+                lifetime: blocks + 2,
+                addendum: addendum_6.clone(),
+                include_tx: Boolean::True,
+            }),
+            source: SOURCE1.clone(),
+        };
+        tx.send(watch_address_task_6).unwrap();
+
+        info!("waiting for empty message");
+        let message = rx_event.recv_multipart(0).unwrap();
+        info!("received empty message");
+        let request = misc::get_request_from_message(message);
+        assert::empty_message(request);
+
+        let blocks = regtest
+            .generate_blocks(10, address.address)
+            .await
+            .unwrap()
+            .height;
+        let tx_id_6 = send_monero(&wallet, address6, 1).await;
+
+        let watch_address_task_7 = SyncerdTask {
+            task: Task::WatchAddress(WatchAddress {
+                id: TaskId(1),
+                lifetime: blocks + 2,
+                addendum: addendum_6,
+                include_tx: Boolean::True,
+            }),
+            source: SOURCE1.clone(),
+        };
+        tx.send(watch_address_task_7).unwrap();
+
+        info!(
+            "waiting for address transaction message for address {}",
+            address1
+        );
+        let message = rx_event.recv_multipart(0).unwrap();
+        info!(
+            "received address transaction message for address {}",
+            address1
+        );
+        let request = misc::get_request_from_message(message);
+        assert::address_transaction(request, 1, vec![tx_id_6]);
     }
 }
 
