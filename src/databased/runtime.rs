@@ -291,10 +291,10 @@ impl Runtime {
                     self.send_client_ctl(
                         endpoints,
                         source,
-                        BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve checkpoint entry for {}", swap_id),
-                        })),
+                        }),
                     )?;
                 }
             }
@@ -305,13 +305,13 @@ impl Runtime {
                         self.send_client_ctl(
                             endpoints,
                             source,
-                            BusMsg::Ctl(CtlMsg::Failure(Failure {
+                            CtlMsg::Failure(Failure {
                                 code: FailureCode::Unknown,
                                 info: format!(
                                     "Could not retrieve secret key for address {}",
                                     address
                                 ),
-                            })),
+                            }),
                         )?;
                     }
                     Ok(secret_key_pair) => {
@@ -333,10 +333,10 @@ impl Runtime {
                     Err(_) => self.send_client_ctl(
                         endpoints,
                         source,
-                        BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
-                        })),
+                        }),
                     )?,
                     Ok(secret_key) => {
                         self.send_client_info(

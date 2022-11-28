@@ -176,10 +176,10 @@ impl esb::Handler<ServiceBus> for Runtime {
                 self.send_client_ctl(
                     endpoints,
                     ServiceId::Client(client_id),
-                    BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    CtlMsg::Failure(Failure {
                         code: FailureCode::TargetServiceNotFound,
                         info: format!("The target service {} does not exist", target),
-                    })),
+                    }),
                 )?;
             }
             esb::Error::Send(ServiceId::GrpcdClient(client_id), target, ..) => {
@@ -190,10 +190,10 @@ impl esb::Handler<ServiceBus> for Runtime {
                 self.send_client_ctl(
                     endpoints,
                     ServiceId::GrpcdClient(client_id),
-                    BusMsg::Ctl(CtlMsg::Failure(Failure {
+                    CtlMsg::Failure(Failure {
                         code: FailureCode::TargetServiceNotFound,
                         info: format!("The target service {} does not exist", target),
-                    })),
+                    }),
                 )?;
             }
             _ => {}
