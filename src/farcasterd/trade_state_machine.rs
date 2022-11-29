@@ -308,6 +308,18 @@ impl TradeStateMachine {
         }
     }
 
+    pub fn get_swap_id_with_matching_connection(&self, source: &ServiceId) -> Option<SwapId> {
+        if let Some(peer) = self.get_connection() {
+            if peer == *source {
+                self.swap_id()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn awaiting_connect_from(&self) -> Option<NodeAddr> {
         match self {
             TradeStateMachine::TakerConnect(taker_connect) => {

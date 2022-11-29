@@ -342,17 +342,11 @@ impl Runtime {
 
             // Notify all swapds in case of disconnect
             CtlMsg::Disconnected => {
-                for swap_id in self.trade_state_machines.iter().filter_map(|tsm| {
-                    if let Some(peer) = tsm.get_connection() {
-                        if peer == source {
-                            tsm.swap_id()
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                }) {
+                for swap_id in self
+                    .trade_state_machines
+                    .iter()
+                    .filter_map(|tsm| tsm.get_swap_id_with_matching_connection(&source))
+                {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
@@ -364,17 +358,11 @@ impl Runtime {
 
             // Notify all swapds in case of reconnect
             CtlMsg::Reconnected => {
-                for swap_id in self.trade_state_machines.iter().filter_map(|tsm| {
-                    if let Some(peer) = tsm.get_connection() {
-                        if peer == source {
-                            tsm.swap_id()
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                }) {
+                for swap_id in self
+                    .trade_state_machines
+                    .iter()
+                    .filter_map(|tsm| tsm.get_swap_id_with_matching_connection(&source))
+                {
                     endpoints.send_to(
                         ServiceBus::Ctl,
                         self.identity(),
