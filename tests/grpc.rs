@@ -3,13 +3,12 @@ extern crate log;
 
 use crate::farcaster::{
     farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointsRequest, InfoResponse,
-    MakeRequest, NeedsFundingRequest, OfferInfoRequest, PeersRequest, ProgressRequest,
-    RestoreCheckpointRequest, RevokeOfferRequest, SwapInfoRequest, SweepAddressRequest,
-    TakeRequest,
+    ListOffersRequest, MakeRequest, NeedsFundingRequest, OfferInfoRequest, OfferSelector,
+    PeersRequest, ProgressRequest, RestoreCheckpointRequest, RevokeOfferRequest, SwapInfoRequest,
+    SweepAddressRequest, TakeRequest,
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
-use farcaster_node::bus::ctl::BitcoinFundingInfo;
 use std::{str::FromStr, sync::Arc, time};
 use tonic::transport::Endpoint;
 use utils::{config, fc::*};
@@ -115,6 +114,14 @@ async fn grpc_server_functional_test() {
     let response = farcaster_client_2.offer_info(offer_info_request).await;
     assert_eq!(response.unwrap().into_inner().id, 21);
 
+    // Test List offers
+    let list_offers_request = tonic::Request::new(ListOffersRequest {
+        id: 22,
+        selector: OfferSelector::All.into(),
+    });
+    let response = farcaster_client_1.list_offers(list_offers_request).await;
+    assert_eq!(response.unwrap().into_inner().id, 22);
+
     // Test take offer
     let take_request = TakeRequest {
         id: 5,
@@ -154,18 +161,11 @@ async fn grpc_server_functional_test() {
     let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
     assert_eq!(id, 11);
 
-    let funding_info = BitcoinFundingInfo::from_str(&funding_infos).unwrap();
+    let address = bitcoin::Address::from_str(&funding_infos[0].address).unwrap();
+    let amount = bitcoin::Amount::from_sat(funding_infos[0].amount);
+
     bitcoin_rpc
-        .send_to_address(
-            &funding_info.address,
-            funding_info.amount,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
     // Test abort swap
@@ -189,7 +189,7 @@ async fn grpc_server_functional_test() {
     let mut farcaster_client_1 = FarcasterClient::new(channel_1);
     let request = tonic::Request::new(SweepAddressRequest {
         id: 13,
-        source_address: funding_info.address.to_string(),
+        source_address: address.to_string(),
         destination_address: btc_address.to_string(),
     });
     let response = farcaster_client_1.sweep_address(request).await;
@@ -225,18 +225,11 @@ async fn grpc_server_functional_test() {
     let response = farcaster_client_1.needs_funding(request).await;
     let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
     assert_eq!(id, 11);
-    let funding_info = BitcoinFundingInfo::from_str(&funding_infos).unwrap();
+    let address = bitcoin::Address::from_str(&funding_infos[0].address).unwrap();
+    let amount = bitcoin::Amount::from_sat(funding_infos[0].amount);
+
     bitcoin_rpc
-        .send_to_address(
-            &funding_info.address,
-            funding_info.amount,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
     // test swap info

@@ -3,8 +3,8 @@ extern crate log;
 
 use bitcoincore_rpc::RpcApi;
 use farcaster_core::swap::SwapId;
-use farcaster_node::bus::ctl::{BitcoinFundingInfo, MoneroFundingInfo};
-use farcaster_node::bus::info::NodeInfo;
+use farcaster_node::bus::ctl::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo};
+use farcaster_node::bus::info::{FundingInfos, NodeInfo};
 use farcaster_node::bus::CheckpointEntry;
 use futures::future::join_all;
 use std::collections::HashSet;
@@ -3047,6 +3047,16 @@ fn cli_output_to_node_info(stdout: Vec<String>) -> NodeInfo {
     .unwrap()
 }
 
+fn cli_output_to_funding_infos(stdout: Vec<String>) -> FundingInfos {
+    serde_yaml::from_str(
+        &stdout
+            .iter()
+            .map(|line| format!("{}{}", line, "\n"))
+            .collect::<String>(),
+    )
+    .unwrap()
+}
+
 async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
@@ -3191,14 +3201,13 @@ async fn retry_until_bitcoin_funding_address(
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
-        // get the btc funding address
-        let funding_infos: Vec<BitcoinFundingInfo> = stdout
+        let funding_infos: Vec<BitcoinFundingInfo> = cli_output_to_funding_infos(stdout)
+            .swaps_need_funding
             .iter()
-            .filter_map(|element| {
-                info!("cli: {}", element);
-                if let Ok(funding_info) = BitcoinFundingInfo::from_str(element) {
-                    if funding_info.swap_id == swap_id {
-                        Some(funding_info)
+            .filter_map(|f| {
+                if let FundingInfo::Bitcoin(info) = f {
+                    if info.swap_id == swap_id {
+                        Some(info)
                     } else {
                         None
                     }
@@ -3206,6 +3215,7 @@ async fn retry_until_bitcoin_funding_address(
                     None
                 }
             })
+            .cloned()
             .collect();
 
         if !funding_infos.is_empty() {
@@ -3220,19 +3230,23 @@ async fn retry_until_funding_info_cleared(swap_id: SwapId, args: Vec<String>) {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
-        // get the btc funding address
-        let funding_infos: Vec<BitcoinFundingInfo> = stdout
+        let funding_infos: Vec<FundingInfo> = cli_output_to_funding_infos(stdout)
+            .swaps_need_funding
             .iter()
-            .filter_map(|element| {
-                info!("cli: {}", element);
-                if let Ok(funding_info) = BitcoinFundingInfo::from_str(element) {
-                    if funding_info.swap_id == swap_id {
-                        Some(funding_info)
+            .filter_map(|f| match f {
+                FundingInfo::Bitcoin(info) => {
+                    if info.swap_id == swap_id {
+                        Some(FundingInfo::Bitcoin(info.clone()))
                     } else {
                         None
                     }
-                } else {
-                    None
+                }
+                FundingInfo::Monero(info) => {
+                    if info.swap_id == swap_id {
+                        Some(FundingInfo::Monero(info.clone()))
+                    } else {
+                        None
+                    }
                 }
             })
             .collect();
@@ -3251,15 +3265,13 @@ async fn retry_until_monero_funding_address(
 ) -> (monero::Address, monero::Amount) {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
-
-        // get the monero funding address
-        let funding_infos: Vec<MoneroFundingInfo> = stdout
+        let funding_infos: Vec<MoneroFundingInfo> = cli_output_to_funding_infos(stdout)
+            .swaps_need_funding
             .iter()
-            .filter_map(|element| {
-                info!("cli: {}", element);
-                if let Ok(funding_info) = MoneroFundingInfo::from_str(element) {
-                    if funding_info.swap_id == swap_id {
-                        Some(funding_info)
+            .filter_map(|f| {
+                if let FundingInfo::Monero(info) = f {
+                    if info.swap_id == swap_id {
+                        Some(info)
                     } else {
                         None
                     }
@@ -3267,6 +3279,7 @@ async fn retry_until_monero_funding_address(
                     None
                 }
             })
+            .cloned()
             .collect();
 
         if !funding_infos.is_empty() {
