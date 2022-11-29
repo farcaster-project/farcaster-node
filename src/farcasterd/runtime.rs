@@ -13,8 +13,11 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::{BitcoinFundingInfo, CtlMsg, GetKeys, MoneroFundingInfo};
-use crate::bus::p2p::{PeerMsg, TakeCommit};
+use crate::bus::ctl::FundingInfo;
+use crate::bus::ctl::{CtlMsg, GetKeys};
+use crate::bus::info::FundingInfos;
+use crate::bus::p2p::PeerMsg;
+use crate::bus::p2p::TakerCommit;
 use crate::bus::sync::SyncMsg;
 use crate::bus::{BusMsg, List, ServiceBus};
 use crate::event::StateMachineExecutor;
@@ -65,14 +68,9 @@ pub fn run(
             "grpcd",
             &[
                 "--grpc-port",
-                &config
-                    .farcasterd
-                    .clone()
-                    .unwrap()
-                    .grpc
-                    .unwrap()
-                    .port
-                    .to_string(),
+                &config.grpc.clone().unwrap().bind_port.to_string(),
+                "--grpc-ip",
+                &config.grpc_bind_ip(),
             ],
         )?;
     }
@@ -160,7 +158,45 @@ impl esb::Handler<ServiceBus> for Runtime {
         }
     }
 
-    fn handle_err(&mut self, _: &mut Endpoints, _: esb::Error<ServiceId>) -> Result<(), Error> {
+    fn handle_err(
+        &mut self,
+        endpoints: &mut Endpoints,
+        err: esb::Error<ServiceId>,
+    ) -> Result<(), Error> {
+        // If the client routes through farcasterd, but the target daemon does not exist, send a response back to the client
+        match err {
+            esb::Error::Send(ServiceId::Client(client_id), target, ..) => {
+                debug!(
+                    "Target service {} not found while routing msg from {}",
+                    target,
+                    ServiceId::Client(client_id)
+                );
+                self.send_client_ctl(
+                    endpoints,
+                    ServiceId::Client(client_id),
+                    CtlMsg::Failure(Failure {
+                        code: FailureCode::TargetServiceNotFound,
+                        info: format!("The target service {} does not exist", target),
+                    }),
+                )?;
+            }
+            esb::Error::Send(ServiceId::GrpcdClient(client_id), target, ..) => {
+                debug!(
+                    "Target service {} not found while routing msg from grpc server",
+                    target
+                );
+                self.send_client_ctl(
+                    endpoints,
+                    ServiceId::GrpcdClient(client_id),
+                    CtlMsg::Failure(Failure {
+                        code: FailureCode::TargetServiceNotFound,
+                        info: format!("The target service {} does not exist", target),
+                    }),
+                )?;
+            }
+            _ => {}
+        }
+
         // We do nothing and do not propagate error; it's already being reported
         // with `error!` macro by the controller. If we propagate error here
         // this will make whole daemon panic
@@ -555,55 +591,17 @@ impl Runtime {
                 // if no swap service exists no subscription need to be removed
             }
 
-            InfoMsg::NeedsFunding(Blockchain::Monero) => {
-                let funding_infos: Vec<MoneroFundingInfo> = self
+            // Filter tsm by funding needs by blockchain and return the funding infos
+            InfoMsg::NeedsFunding(blockchain) => {
+                let swaps_need_funding: Vec<FundingInfo> = self
                     .trade_state_machines
                     .iter()
-                    .filter_map(|tsm| tsm.needs_funding_monero())
+                    .filter_map(|tsm| tsm.needs_funding(blockchain))
                     .collect();
-                let len = funding_infos.len();
-                let res = funding_infos
-                    .iter()
-                    .enumerate()
-                    .map(|(i, funding_info)| {
-                        let mut res = format!("{}", funding_info);
-                        if i < len - 1 {
-                            res.push('\n');
-                        }
-                        res
-                    })
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::String(res)),
-                )?;
-            }
-
-            InfoMsg::NeedsFunding(Blockchain::Bitcoin) => {
-                let funding_infos: Vec<BitcoinFundingInfo> = self
-                    .trade_state_machines
-                    .iter()
-                    .filter_map(|tsm| tsm.needs_funding_bitcoin())
-                    .collect();
-                let len = funding_infos.len();
-                let res = funding_infos
-                    .iter()
-                    .enumerate()
-                    .map(|(i, funding_info)| {
-                        let mut res = format!("{}", funding_info);
-                        if i < len - 1 {
-                            res.push('\n');
-                        }
-                        res
-                    })
-                    .collect();
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    source,
-                    BusMsg::Info(InfoMsg::String(res)),
+                    InfoMsg::FundingInfos(FundingInfos { swaps_need_funding }),
                 )?;
             }
 
@@ -619,12 +617,7 @@ impl Runtime {
                     continue;
                 }
                 trace!("(#{}) Respond to {}: {}", i, respond_to, resp,);
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
-                    respond_to,
-                    BusMsg::Info(resp),
-                )?;
+                self.send_client_info(endpoints, respond_to, resp)?;
             }
         }
         trace!("Processed all cli notifications");
@@ -809,7 +802,7 @@ impl Runtime {
             }
             (BusMsg::Ctl(CtlMsg::MakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartMaker)),
             (BusMsg::Ctl(CtlMsg::TakeOffer(..)), _) => Ok(Some(TradeStateMachine::StartTaker)),
-            (BusMsg::P2p(PeerMsg::TakerCommit(TakeCommit { public_offer, .. })), _)
+            (BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit { public_offer, .. })), _)
             | (BusMsg::Ctl(CtlMsg::RevokeOffer(public_offer)), _) => Ok(self
                 .trade_state_machines
                 .iter()

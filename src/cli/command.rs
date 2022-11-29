@@ -31,12 +31,12 @@ use farcaster_core::{
 };
 
 use super::Command;
-use crate::bus::BusMsg;
 use crate::bus::{
     ctl::{self, CtlMsg},
     info::{Address, InfoMsg},
     AddressSecretKey,
 };
+use crate::bus::{BusMsg, Failure, FailureCode};
 use crate::client::Client;
 use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{Error, LogStyle, ServiceId};
@@ -54,14 +54,19 @@ impl Exec for Command {
                     "Subject parameter must be either remote node address, swap id, or syncer"
                         .err()
                 );
-                match subject.len() {
-                    0 => runtime.request_info(ServiceId::Farcasterd, InfoMsg::GetInfo)?,
+                let target_service_id = match subject.len() {
+                    0 => {
+                        runtime.request_info(ServiceId::Farcasterd, InfoMsg::GetInfo)?;
+                        ServiceId::Farcasterd
+                    }
                     1 => {
                         let subj = subject.get(0).expect("vec of lenght 1");
                         if let Ok(node_addr) = NodeAddr::from_str(&subj) {
                             runtime.request_info(ServiceId::Peer(node_addr), InfoMsg::GetInfo)?;
+                            ServiceId::Peer(node_addr)
                         } else if let Ok(swap_id) = SwapId::from_str(&subj) {
                             runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
+                            ServiceId::Swap(swap_id)
                         } else {
                             return Err(Error::Other(err));
                         }
@@ -74,14 +79,47 @@ impl Exec for Command {
                             ServiceId::Syncer(blockchain, network),
                             InfoMsg::GetInfo,
                         )?;
+                        ServiceId::Syncer(blockchain, network)
                     }
-                    _ => return Err(Error::Other(err)),
-                }
+                    _ => {
+                        return Err(Error::Other(err));
+                    }
+                };
                 match runtime.response()? {
                     BusMsg::Info(InfoMsg::NodeInfo(info)) => println!("{}", info),
                     BusMsg::Info(InfoMsg::PeerInfo(info)) => println!("{}", info),
                     BusMsg::Info(InfoMsg::SwapInfo(info)) => println!("{}", info),
                     BusMsg::Info(InfoMsg::SyncerInfo(info)) => println!("{}", info),
+                    BusMsg::Ctl(CtlMsg::Failure(Failure { code, .. }))
+                        if code == FailureCode::TargetServiceNotFound =>
+                    {
+                        match target_service_id {
+                            ServiceId::Peer(node_addr) => {
+                                return Err(Error::Farcaster(format!(
+                                    "No connected peerd with address {}",
+                                    node_addr
+                                )));
+                            }
+                            ServiceId::Swap(swap_id) => {
+                                return Err(Error::Farcaster(format!(
+                                    "No running swap with id {}",
+                                    swap_id
+                                )));
+                            }
+                            ServiceId::Syncer(blockchain, network) => {
+                                return Err(Error::Farcaster(format!(
+                                    "No running syncer for {} {}",
+                                    blockchain, network
+                                )));
+                            }
+                            _ => {
+                                return Err(Error::Farcaster(format!(
+                                    "The service {:?} does not exist",
+                                    subject
+                                )));
+                            }
+                        }
+                    }
                     _ => {
                         return Err(Error::Other(
                             "Server returned unrecognizable response".to_string(),

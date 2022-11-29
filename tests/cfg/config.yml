@@ -35,6 +35,14 @@ ci:
       port: 38884
       protocol: "http"
 
+  grpc:
+    fc1:
+      host: "0.0.0.0"
+      port: 23432
+    fc2:
+      host: "0.0.0.0"
+      port: 23433
+
 # Top level configuration for (docker-)compose setup, used if no `CI`
 # environment variable is found.
 compose:
@@ -71,3 +79,11 @@ compose:
       host: "localhost"
       port: 38884
       protocol: "http"
+
+  grpc:
+    fc1:
+      host: "0.0.0.0"
+      port: 23432
+    fc2:
+      host: "0.0.0.0"
+      port: 23433

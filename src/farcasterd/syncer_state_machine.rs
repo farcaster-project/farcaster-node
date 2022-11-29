@@ -161,8 +161,7 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 network,
                 &runtime.config,
             )? {
-                event
-                    .complete_sync_service(service_id, BusMsg::Sync(SyncMsg::Task(syncer_task)))?;
+                event.complete_sync_service(service_id, SyncMsg::Task(syncer_task))?;
                 Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                     AwaitingSyncerRequest {
                         source,
@@ -203,8 +202,7 @@ fn attempt_transition_to_awaiting_syncer_request(
     } = awaiting_syncer;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), syncer_id) if syncer == syncer_id => {
-            event
-                .complete_sync_service(syncer.clone(), BusMsg::Sync(SyncMsg::Task(syncer_task)))?;
+            event.complete_sync_service(syncer.clone(), SyncMsg::Task(syncer_task))?;
             Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
                 AwaitingSyncerRequest {
                     source,
@@ -256,18 +254,15 @@ fn attempt_transition_to_end(
                 .pop()
                 .map(|txid| bitcoin::Txid::from_slice(&txid).ok())
             {
-                event.send_info_service(
+                event.send_client_info(
                     source,
-                    BusMsg::Info(InfoMsg::String(format!(
+                    InfoMsg::String(format!(
                         "Successfully sweeped address. Transaction Id: {}.",
                         txid.to_hex()
-                    ))),
+                    )),
                 )?;
             } else {
-                event.send_info_service(
-                    source,
-                    BusMsg::Info(InfoMsg::String("Nothing to sweep.".to_string())),
-                )?;
+                event.send_client_info(source, InfoMsg::String("Nothing to sweep.".to_string()))?;
             }
 
             runtime.registered_services = runtime
@@ -279,7 +274,7 @@ fn attempt_transition_to_end(
                         if !runtime.syncer_has_client(service) {
                             info!("Terminating {}", service);
                             event
-                                .send_ctl_service(service.clone(), BusMsg::Ctl(CtlMsg::Terminate))
+                                .send_ctl_service(service.clone(), CtlMsg::Terminate)
                                 .is_err()
                         } else {
                             true

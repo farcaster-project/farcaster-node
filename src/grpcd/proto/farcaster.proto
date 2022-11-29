@@ -3,6 +3,19 @@ package farcaster;
 
 service Farcaster {
     rpc Info(InfoRequest) returns (InfoResponse){}
+    rpc Peers(PeersRequest) returns (PeersResponse){}
+    rpc SwapInfo(SwapInfoRequest) returns (SwapInfoResponse){}
+    rpc OfferInfo(OfferInfoRequest) returns (OfferInfoResponse){}
+    rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
+    rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
+    rpc Make(MakeRequest) returns (MakeResponse){}
+    rpc Take(TakeRequest) returns (TakeResponse){}
+    rpc RevokeOffer(RevokeOfferRequest) returns (RevokeOfferResponse){}
+    rpc AbortSwap(AbortSwapRequest) returns (AbortSwapResponse){}
+    rpc Progress(ProgressRequest) returns (ProgressResponse){}
+    rpc NeedsFunding(NeedsFundingRequest) returns (NeedsFundingResponse){}
+    rpc SweepAddress(SweepAddressRequest) returns (SweepAddressResponse){}
+    rpc ListOffers(ListOffersRequest) returns (ListOffersResponse){}
 }
 
 message InfoRequest {
@@ -19,3 +32,196 @@ message InfoResponse {
     repeated string offers = 8;
 }
 
+message SwapInfoRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message SwapInfoResponse {
+    uint32 id = 1;
+    string maker_peer = 2;
+    uint64 uptime = 3;
+    uint64 since= 4;
+    string public_offer = 5;
+}
+
+message OfferInfoRequest {
+    uint32 id = 1;
+    string public_offer = 2;
+}
+
+message OfferInfoResponse {
+    uint32 id = 1;
+    uint64 arbitrating_amount = 2;
+    uint64 accordant_amount = 3;
+    uint32 cancel_timelock = 4;
+    uint32 punish_timelock = 5;
+    string fee_strategy = 6;
+    SwapRole maker_role = 7;
+    string uuid = 8;
+    Network network = 9;
+    Blockchain arbitrating_blockchain = 10;
+    Blockchain accordant_blockchain = 11;
+    string node_id = 12;
+    string peer_address = 13;
+}
+
+message PeersRequest {
+    uint32 id = 1;
+}
+
+message PeersResponse {
+    uint32 id = 1;
+    repeated string peers = 2;
+}
+
+message ListOffersRequest {
+    uint32 id = 1;
+    OfferSelector selector = 2;
+}
+
+enum OfferSelector {
+    OPEN = 0;
+    IN_PROGRESS = 1;
+    ENDED = 2;
+    ALL = 3;
+}
+
+message ListOffersResponse {
+    uint32 id = 1;
+    repeated string public_offers = 2;
+}
+
+message CheckpointsRequest {
+    uint32 id = 1;
+}
+
+message CheckpointsResponse {
+    uint32 id = 1;
+    repeated CheckpointEntry checkpoint_entries = 2;
+}
+
+message CheckpointEntry {
+    string swap_id = 1;
+    string public_offer = 2;
+    TradeRole trade_role = 3;
+}
+
+enum TradeRole {
+    MAKER = 0;
+    TAKER = 1;
+}
+
+message RestoreCheckpointRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message RestoreCheckpointResponse {
+    uint32 id = 1;
+    string status = 2;
+}
+
+message MakeRequest {
+    uint32 id = 1;
+    Network network = 2;
+    Blockchain accordant_blockchain = 3;
+    Blockchain arbitrating_blockchain = 4;
+    uint64 accordant_amount = 5;
+    uint64 arbitrating_amount = 6;
+    string arbitrating_addr = 7;
+    string accordant_addr = 8;
+    uint32 cancel_timelock = 9;
+    uint32 punish_timelock = 10;
+    string fee_strategy = 11;
+    SwapRole maker_role = 12;
+    string public_ip_addr = 13;
+    uint32 port = 14;
+}
+ 
+message MakeResponse {
+    uint32 id = 1;
+    string offer = 2;
+}
+
+message TakeRequest {
+    uint32 id = 1;
+    string public_offer = 2;
+    string bitcoin_address = 3;
+    string monero_address = 4;
+}
+
+message TakeResponse {
+    uint32 id = 1;
+}
+
+message RevokeOfferRequest {
+    uint32 id = 1;
+    string public_offer = 2;
+}
+
+message RevokeOfferResponse {
+    uint32 id = 1;
+}
+
+message AbortSwapRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message AbortSwapResponse {
+    uint32 id = 1;
+}
+
+message ProgressRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message ProgressResponse {
+    uint32 id = 1;
+    repeated string progress = 2;
+}
+
+message NeedsFundingRequest {
+    uint32 id = 1;
+    Blockchain blockchain = 2;
+}
+
+message NeedsFundingResponse {
+    uint32 id = 1;
+    repeated FundingInfo funding_infos = 2;
+}
+
+message FundingInfo {
+    string swap_id = 1;
+    string address = 2;
+    uint64 amount = 3;
+}
+
+message SweepAddressRequest {
+    uint32 id = 1;
+    string source_address = 2;
+    string destination_address = 3;
+}
+
+message SweepAddressResponse {
+    uint32 id = 1;
+    string message = 2;
+}
+
+enum SwapRole {
+    ALICE = 0;
+    BOB = 1;
+}
+
+enum Network {
+    MAINNET = 0;
+    TESTNET = 1;
+    LOCAL = 2;
+}
+
+enum Blockchain {
+    BITCOIN = 0;
+    MONERO = 1;
+}

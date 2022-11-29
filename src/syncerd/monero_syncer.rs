@@ -168,6 +168,7 @@ impl MoneroRpc {
         address_addendum: XmrAddressAddendum,
         network: monero::Network,
         wallet_mutex: Arc<Mutex<monero_rpc::WalletClient>>,
+        initial_check_done: bool,
     ) -> Result<AddressNotif, Error> {
         let keypair = monero::ViewPair {
             spend: address_addendum.spend_key,
@@ -198,11 +199,16 @@ impl MoneroRpc {
                     })
                     .await?;
                 wallet.open_wallet(wallet_filename, Some(password)).await?;
-                debug!("Watch wallet opened successfully")
+                debug!("Watch wallet opened successfully");
             }
             Ok(_) => {
                 debug!("Watch wallet opened successfully")
             }
+        }
+
+        if !initial_check_done {
+            debug!("Doing initial refresh for address {}", address);
+            wallet.refresh(None).await?;
         }
 
         let mut category_selector: HashMap<GetTransfersCategory, bool> = HashMap::new();
@@ -228,7 +234,7 @@ impl MoneroRpc {
         let mut address_txs: Vec<AddressTx> = vec![];
         for (_category, mut txs) in transfers.drain() {
             for tx in txs.drain(..) {
-                debug!("FIXME: tx set to vec![0]");
+                // FIXME: tx set to vec![0]
                 address_txs.push(AddressTx {
                     our_amount: tx.amount.as_pico(),
                     tx_id: tx.txid.0,
@@ -513,69 +519,73 @@ fn address_polling(
                     AddressAddendum::Monero(address) => address,
                     _ => panic!("should never get an invalid address"),
                 };
-                let address_transactions = if let Some(monero_lws) =
-                    syncer_servers.monero_lws.clone()
-                {
-                    if needs_resubscribe {
-                        needs_resubscribe = false;
-                        let mut state_guard = state.lock().await;
-                        state_guard.subscribed_addresses = none!();
-                        drop(state_guard);
-                    }
-                    if !subscribed_addresses.contains(&watched_address.task.addendum) {
-                        let success = match subscribe_address_lws(
-                            address_addendum.clone(),
-                            network,
-                            monero_lws.clone(),
-                        )
-                        .await
-                        {
-                            Ok(()) => {
-                                debug!("success subscribing address to monero lws.");
-                                true
-                            }
-                            Err(err) => {
-                                warn!("error subscribing address to monero lws: {:?}", err);
-                                false
-                            }
-                        };
-                        if success {
+                let address_transactions =
+                    if let Some(monero_lws) = syncer_servers.monero_lws.clone() {
+                        if needs_resubscribe {
+                            needs_resubscribe = false;
                             let mut state_guard = state.lock().await;
-                            state_guard.address_subscribed(id);
+                            state_guard.subscribed_addresses = none!();
                             drop(state_guard);
-                        } else {
-                            // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
-                            needs_resubscribe = true;
-                            continue;
                         }
-                    }
-                    match rpc
-                        .check_address_lws(address_addendum.clone(), network, monero_lws)
-                        .await
-                    {
-                        Ok(address_transactions) => Some(address_transactions),
-                        Err(err) => {
-                            // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
-                            needs_resubscribe = true;
-                            error!("error polling addresses: {:?}", err);
-                            // the remote server may have disconnected, set the subscribed addresses to none
-                            None
+                        if !subscribed_addresses.contains(&watched_address.task.addendum) {
+                            let success = match subscribe_address_lws(
+                                address_addendum.clone(),
+                                network,
+                                monero_lws.clone(),
+                            )
+                            .await
+                            {
+                                Ok(()) => {
+                                    debug!("success subscribing address to monero lws.");
+                                    true
+                                }
+                                Err(err) => {
+                                    warn!("error subscribing address to monero lws: {:?}", err);
+                                    false
+                                }
+                            };
+                            if success {
+                                let mut state_guard = state.lock().await;
+                                state_guard.address_subscribed(id);
+                                drop(state_guard);
+                            } else {
+                                // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
+                                needs_resubscribe = true;
+                                continue;
+                            }
                         }
-                    }
-                } else {
-                    // we cannot parallelize polling here, since we have to open and close the
-                    // wallet
-                    match rpc
-                        .check_address(address_addendum.clone(), network, Arc::clone(&wallet_mutex))
-                        .await
-                    {
-                        Ok(address_transactions) => Some(address_transactions),
-                        Err(err) => {
-                            error!("error polling addresses: {:?}", err);
-                            None
+                        match rpc
+                            .check_address_lws(address_addendum.clone(), network, monero_lws)
+                            .await
+                        {
+                            Ok(address_transactions) => Some(address_transactions),
+                            Err(err) => {
+                                // an error might indicate that the remote server shutdown, so we should re-subscribe everything on re-connect
+                                needs_resubscribe = true;
+                                error!("error polling addresses: {:?}", err);
+                                // the remote server may have disconnected, set the subscribed addresses to none
+                                None
+                            }
                         }
-                    }
-                };
+                    } else {
+                        // we cannot parallelize polling here, since we have to open and close the
+                        // wallet
+                        match rpc
+                            .check_address(
+                                address_addendum.clone(),
+                                network,
+                                Arc::clone(&wallet_mutex),
+                                watched_address.initial_check_done,
+                            )
+                            .await
+                        {
+                            Ok(address_transactions) => Some(address_transactions),
+                            Err(err) => {
+                                error!("error polling addresses: {:?}", err);
+                                None
+                            }
+                        }
+                    };
                 if let Some(address_transactions) = address_transactions {
                     let mut state_guard = state.lock().await;
                     state_guard

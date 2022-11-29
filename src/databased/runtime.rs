@@ -17,7 +17,7 @@ use crate::bus::{
     OfferStatusPair, ServiceBus,
 };
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-use microservices::esb::{self, Handler};
+use microservices::esb::{self};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
@@ -268,14 +268,10 @@ impl Runtime {
                         CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
                     })
                     .collect();
-
-                debug!("checkpointed pub offers: {:?}", checkpointed_pub_offers);
-
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    self.identity(),
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::CheckpointList(checkpointed_pub_offers)),
+                    InfoMsg::CheckpointList(checkpointed_pub_offers),
                 )?;
             }
 
@@ -290,47 +286,43 @@ impl Runtime {
                     _ => None,
                 };
                 if let Some(entry) = entry {
-                    debug!("checkpoint entry: {:?}", entry);
-                    endpoints.send_to(
-                        ServiceBus::Info,
-                        self.identity(),
-                        source,
-                        BusMsg::Info(InfoMsg::CheckpointEntry(entry)),
-                    )?;
+                    self.send_client_info(endpoints, source, InfoMsg::CheckpointEntry(entry))?;
                 } else {
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
+                    self.send_client_ctl(
+                        endpoints,
                         source,
-                        BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve checkpoint entry for {}", swap_id),
-                        })),
+                        }),
                     )?;
                 }
             }
 
             InfoMsg::GetAddressSecretKey(Address::Monero(address)) => {
                 match self.database.get_monero_address_secret_key(&address) {
-                    Err(_) => endpoints.send_to(
-                        ServiceBus::Ctl,
-                        ServiceId::Database,
-                        source,
-                        BusMsg::Ctl(CtlMsg::Failure(Failure {
-                            code: FailureCode::Unknown,
-                            info: format!("Could not retrieve secret key for address {}", address),
-                        })),
-                    )?,
-                    Ok(secret_key_pair) => {
-                        endpoints.send_to(
-                            ServiceBus::Info,
-                            ServiceId::Database,
+                    Err(_) => {
+                        self.send_client_ctl(
+                            endpoints,
                             source,
-                            BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
+                            CtlMsg::Failure(Failure {
+                                code: FailureCode::Unknown,
+                                info: format!(
+                                    "Could not retrieve secret key for address {}",
+                                    address
+                                ),
+                            }),
+                        )?;
+                    }
+                    Ok(secret_key_pair) => {
+                        self.send_client_info(
+                            endpoints,
+                            source,
+                            InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
                                 address,
                                 view: secret_key_pair.view.as_bytes().try_into().unwrap(),
                                 spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
-                            })),
+                            }),
                         )?;
                     }
                 }
@@ -338,24 +330,22 @@ impl Runtime {
 
             InfoMsg::GetAddressSecretKey(Address::Bitcoin(address)) => {
                 match self.database.get_bitcoin_address_secret_key(&address) {
-                    Err(_) => endpoints.send_to(
-                        ServiceBus::Ctl,
-                        ServiceId::Database,
+                    Err(_) => self.send_client_ctl(
+                        endpoints,
                         source,
-                        BusMsg::Ctl(CtlMsg::Failure(Failure {
+                        CtlMsg::Failure(Failure {
                             code: FailureCode::Unknown,
                             info: format!("Could not retrieve secret key for address {}", address),
-                        })),
+                        }),
                     )?,
                     Ok(secret_key) => {
-                        endpoints.send_to(
-                            ServiceBus::Info,
-                            ServiceId::Database,
+                        self.send_client_info(
+                            endpoints,
                             source,
-                            BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
+                            InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
                                 address,
                                 secret_key,
-                            })),
+                            }),
                         )?;
                     }
                 }
@@ -651,10 +641,7 @@ impl Database {
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .map(|(key, value)| {
-                debug!("key: {:?}", key);
-                (SwapId::from_slice(key), value.to_vec())
-            })
+            .map(|(key, value)| (SwapId::from_slice(key), value.to_vec()))
             .collect();
         drop(cursor);
         tx.abort();
@@ -678,7 +665,7 @@ impl Database {
     }
 
     fn delete_checkpoint_info(&mut self, key: SwapId) -> Result<(), lmdb::Error> {
-        let db = self.0.open_db(Some(LMDB_CHECKPOINTS))?;
+        let db = self.0.open_db(Some(LMDB_CHECKPOINT_INFOS))?;
         let mut tx = self.0.begin_rw_txn()?;
         tx.del(db, &key.as_bytes(), None)?;
         tx.commit()?;
@@ -715,6 +702,13 @@ fn test_lmdb_state() {
     database.delete_checkpoint_state(key2.clone()).unwrap();
     let res = database.get_checkpoint_state(&key2);
     assert!(res.is_err());
+
+    let key_info = SwapId::random();
+    let val_info = vec![0, 1, 2];
+    database.set_checkpoint_info(&key_info, &val_info).unwrap();
+    let res = database.get_checkpoint_info(&key_info).unwrap();
+    assert_eq!(val_info, res);
+    database.delete_checkpoint_info(key_info).unwrap();
 
     let sk = SecretKey::new(&mut bitcoin::secp256k1::rand::thread_rng());
     let private_key =
