@@ -29,6 +29,7 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::runtime::Builder;
+use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -204,7 +205,7 @@ impl FarcasterService {
         drop(id_counter);
 
         if let Err(error) = self.tokio_tx_request.send((id, msg)).await {
-            return Err(Status::internal(format!("{}", error)));
+            return Err(Status::internal(error.to_string()));
         }
 
         let (oneshot_tx, oneshot_rx) = tokio::sync::oneshot::channel::<BusMsg>();
@@ -212,6 +213,15 @@ impl FarcasterService {
         pending_requests.insert(id, oneshot_tx);
         drop(pending_requests);
         Ok(oneshot_rx)
+    }
+}
+
+fn process_error_response<T>(msg: Result<BusMsg, RecvError>) -> Result<GrpcResponse<T>, Status> {
+    match msg {
+        Err(error) => Err(Status::internal(error.to_string())),
+        Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+        Ok(BusMsg::Info(InfoMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+        _ => Err(Status::internal("received unexpected internal response")),
     }
 }
 
@@ -253,9 +263,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Err(error) => Err(Status::internal(format!("{}", error))),
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
-            _ => Err(Status::invalid_argument("received invalid response")),
+            res => process_error_response(res),
         }
     }
 
@@ -263,7 +271,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<PeersRequest>,
     ) -> Result<GrpcResponse<PeersResponse>, Status> {
-        debug!("Received a grpc peer request: {:?}", request);
+        debug!("Received a grpc peers request: {:?}", request);
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
                 request: InfoMsg::ListPeers,
@@ -278,9 +286,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Err(error) => Err(Status::internal(format!("{}", error))),
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
-            _ => Err(Status::invalid_argument("received invalid response")),
+            res => process_error_response(res),
         }
     }
 
@@ -288,13 +294,13 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<SwapInfoRequest>,
     ) -> Result<GrpcResponse<SwapInfoResponse>, Status> {
-        debug!("Received a grpc peer request: {:?}", request);
+        debug!("Received a grpc swap info request: {:?}", request);
         let SwapInfoRequest {
             id,
             swap_id: string_swap_id,
         } = request.into_inner();
         let swap_id = SwapId::from_str(&string_swap_id)
-            .map_err(|_| Status::internal(format!("Invalid or malformed swap id")))?;
+            .map_err(|_| Status::invalid_argument(format!("Invalid or malformed swap id")))?;
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
                 request: InfoMsg::GetInfo,
@@ -317,9 +323,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Err(error) => Err(Status::internal(format!("{}", error))),
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
-            _ => Err(Status::invalid_argument("received invalid response")),
+            res => process_error_response(res),
         }
     }
 
@@ -366,7 +370,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<OfferInfoRequest>,
     ) -> Result<GrpcResponse<OfferInfoResponse>, Status> {
-        debug!("Received a grpc peer request: {:?}", request);
+        debug!("Received a grpc offer info request: {:?}", request);
         let OfferInfoRequest {
             id,
             public_offer: string_public_offer,
@@ -424,9 +428,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Err(error) => Err(Status::internal(format!("{}", error))),
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
-            _ => Err(Status::invalid_argument("received invalid response")),
+            res => process_error_response(res),
         }
     }
 
@@ -442,7 +444,7 @@ impl Farcaster for FarcasterService {
         let swap_id = match SwapId::from_str(&string_swap_id) {
             Ok(swap_id) => swap_id,
             Err(_) => {
-                return Err(Status::internal(format!("Invalid swap id")));
+                return Err(Status::invalid_argument(format!("Invalid swap id")));
             }
         };
         let oneshot_rx = self
@@ -467,14 +469,10 @@ impl Farcaster for FarcasterService {
                         };
                         Ok(GrpcResponse::new(reply))
                     }
-                    Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => {
-                        Err(Status::internal(info))
-                    }
-                    _ => Err(Status::internal(format!("Received invalid response"))),
+                    res => process_error_response(res),
                 }
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            res => process_error_response(res),
         }
     }
 
@@ -531,13 +529,13 @@ impl Farcaster for FarcasterService {
 
         // Monero local address types are mainnet address types
         if network != accordant_addr.network.into() && network != Network::Local {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: The address {} is not for {}",
                 accordant_addr, network
             )));
         }
         if network != arbitrating_addr.network.into() {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: The address {} is not for {}",
                 arbitrating_addr, network
             )));
@@ -545,7 +543,7 @@ impl Farcaster for FarcasterService {
         if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
             && network == Network::Mainnet
         {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
                 arbitrating_amount
             )));
@@ -553,13 +551,13 @@ impl Farcaster for FarcasterService {
         if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
             && network == Network::Mainnet
         {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
                 accordant_amount
             )));
         }
         if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: Monero amount {} too low, require at least 0.001 XMR",
                 accordant_amount
             )));
@@ -600,10 +598,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
-                Err(Status::internal(info))
-            }
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            res => process_error_response(res),
         }
     }
 
@@ -611,6 +606,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<RevokeOfferRequest>,
     ) -> Result<GrpcResponse<RevokeOfferResponse>, Status> {
+        debug!("Received a grpc revoke offer request: {:?}", request);
         let RevokeOfferRequest {
             id,
             public_offer: str_public_offer,
@@ -630,8 +626,7 @@ impl Farcaster for FarcasterService {
                 let reply = farcaster::RevokeOfferResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            res => process_error_response(res),
         }
     }
 
@@ -639,6 +634,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<AbortSwapRequest>,
     ) -> Result<GrpcResponse<AbortSwapResponse>, Status> {
+        debug!("Received a grpc abort swap request: {:?}", request);
         let AbortSwapRequest {
             id,
             swap_id: str_swap_id,
@@ -657,10 +653,7 @@ impl Farcaster for FarcasterService {
                 let reply = farcaster::AbortSwapResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
-                Err(Status::internal(info))
-            }
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            res => process_error_response(res),
         }
     }
 
@@ -668,6 +661,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<ProgressRequest>,
     ) -> Result<GrpcResponse<ProgressResponse>, Status> {
+        debug!("Received a grpc progress request: {:?}", request);
         let ProgressRequest {
             id,
             swap_id: str_swap_id,
@@ -690,10 +684,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
-                Err(Status::internal(info))
-            }
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            res => process_error_response(res),
         }
     }
 
@@ -701,6 +692,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<NeedsFundingRequest>,
     ) -> Result<GrpcResponse<NeedsFundingResponse>, Status> {
+        debug!("Received a grpc needs funding request: {:?}", request);
         let NeedsFundingRequest {
             id,
             blockchain: int_blockchain,
@@ -740,10 +732,7 @@ impl Farcaster for FarcasterService {
                 };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
-                Err(Status::internal(info))
-            }
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            res => process_error_response(res),
         }
     }
 
@@ -751,6 +740,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<SweepAddressRequest>,
     ) -> Result<GrpcResponse<SweepAddressResponse>, Status> {
+        debug!("Received a grpc sweep address request: {:?}", request);
         let SweepAddressRequest {
             id,
             source_address: str_source_address,
@@ -789,16 +779,10 @@ impl Farcaster for FarcasterService {
                             let reply = SweepAddressResponse { id, message };
                             Ok(GrpcResponse::new(reply))
                         }
-                        Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
-                            Err(Status::internal(info))
-                        }
-                        _ => Err(Status::internal(format!("Received invalid response"))),
+                        res => process_error_response(res),
                     }
                 }
-                Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => {
-                    Err(Status::internal(info))
-                }
-                _ => Err(Status::internal(format!("Received invalid response"))),
+                res => process_error_response(res),
             }
         } else if let (Ok(source_address), Ok(destination_address)) = (
             monero::Address::from_str(&str_source_address),
@@ -834,16 +818,10 @@ impl Farcaster for FarcasterService {
                             let reply = SweepAddressResponse { id, message };
                             Ok(GrpcResponse::new(reply))
                         }
-                        Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
-                            Err(Status::internal(info))
-                        }
-                        _ => Err(Status::internal(format!("Received invalid response"))),
+                        res => process_error_response(res),
                     }
                 }
-                Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => {
-                    Err(Status::internal(info))
-                }
-                _ => Err(Status::internal(format!("Received invalid response"))),
+                res => process_error_response(res),
             }
         } else {
             Err(Status::invalid_argument(format!("address malformed")))
@@ -854,6 +832,7 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<TakeRequest>,
     ) -> Result<GrpcResponse<TakeResponse>, Status> {
+        debug!("Received a grpc take request: {:?}", request);
         let TakeRequest {
             id,
             public_offer: str_public_offer,
@@ -875,14 +854,14 @@ impl Farcaster for FarcasterService {
         let accordant_amount = offer.accordant_amount;
 
         if network != bitcoin_address.network.into() {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: The address {} is not for {}",
                 bitcoin_address, network
             )));
         }
         // monero local address types are mainnet address types
         if network != monero_address.network.into() && network != Network::Local {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: The address {} is not for {}",
                 monero_address, network
             )));
@@ -891,7 +870,7 @@ impl Farcaster for FarcasterService {
         if arbitrating_amount > bitcoin::Amount::from_str("0.01 BTC").unwrap()
             && network == Network::Mainnet
         {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: Bitcoin amount {} too high, mainnet amount capped at 0.01 BTC.",
                 arbitrating_amount
             )));
@@ -899,13 +878,13 @@ impl Farcaster for FarcasterService {
         if accordant_amount > monero::Amount::from_str("2 XMR").unwrap()
             && network == Network::Mainnet
         {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: Monero amount {} too high, mainnet amount capped at 2 XMR.",
                 accordant_amount
             )));
         }
         if accordant_amount < monero::Amount::from_str("0.001 XMR").unwrap() {
-            return Err(Status::internal(format!(
+            return Err(Status::invalid_argument(format!(
                 "Error: Monero amount {} too low, require at least 0.001 XMR",
                 accordant_amount
             )));
@@ -927,10 +906,7 @@ impl Farcaster for FarcasterService {
                 let reply = farcaster::TakeResponse { id };
                 Ok(GrpcResponse::new(reply))
             }
-            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
-                Err(Status::internal(info))
-            }
-            _ => Err(Status::internal(format!("Received invalid response"))),
+            res => process_error_response(res),
         }
     }
 }
