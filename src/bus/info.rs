@@ -16,6 +16,8 @@ use crate::cli::OfferSelector;
 use crate::farcasterd::stats::Stats;
 use crate::syncerd::runtime::SyncerdTask;
 
+use super::ctl::FundingInfo;
+
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
 pub enum InfoMsg {
@@ -162,6 +164,8 @@ pub enum InfoMsg {
     #[display("checkpoint_entry({0})")]
     CheckpointEntry(CheckpointEntry),
     // - End GetCheckpointEntry section
+    #[display("{0}")]
+    FundingInfos(FundingInfos),
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -300,6 +304,18 @@ pub struct SwapProgress {
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, PartialEq, Eq, Debug, Display, Default, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(FundingInfos::to_yaml_string)]
+pub struct FundingInfos {
+    pub swaps_need_funding: Vec<FundingInfo>,
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
@@ -394,3 +410,5 @@ impl ToYamlString for SwapInfo {}
 impl ToYamlString for SyncerInfo {}
 #[cfg(feature = "serde")]
 impl ToYamlString for ProgressEvent {}
+#[cfg(feature = "serde")]
+impl ToYamlString for FundingInfos {}
