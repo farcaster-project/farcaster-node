@@ -15,6 +15,7 @@ service Farcaster {
     rpc Progress(ProgressRequest) returns (ProgressResponse){}
     rpc NeedsFunding(NeedsFundingRequest) returns (NeedsFundingResponse){}
     rpc SweepAddress(SweepAddressRequest) returns (SweepAddressResponse){}
+    rpc ListOffers(ListOffersRequest) returns (ListOffersResponse){}
 }
 
 message InfoRequest {
@@ -72,6 +73,23 @@ message PeersRequest {
 message PeersResponse {
     uint32 id = 1;
     repeated string peers = 2;
+}
+
+message ListOffersRequest {
+    uint32 id = 1;
+    OfferSelector selector = 2;
+}
+
+enum OfferSelector {
+    OPEN = 0;
+    IN_PROGRESS = 1;
+    ENDED = 2;
+    ALL = 3;
+}
+
+message ListOffersResponse {
+    uint32 id = 1;
+    repeated string public_offers = 2;
 }
 
 message CheckpointsRequest {
