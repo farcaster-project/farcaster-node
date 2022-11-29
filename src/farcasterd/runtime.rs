@@ -596,24 +596,12 @@ impl Runtime {
                 // if no swap service exists no subscription need to be removed
             }
 
-            InfoMsg::NeedsFunding(Blockchain::Monero) => {
+            // Filter tsm by funding needs by blockchain and return the funding infos
+            InfoMsg::NeedsFunding(blockchain) => {
                 let swaps_need_funding: Vec<FundingInfo> = self
                     .trade_state_machines
                     .iter()
-                    .filter_map(|tsm| tsm.needs_funding_monero().map(|f| FundingInfo::Monero(f)))
-                    .collect();
-                self.send_client_info(
-                    endpoints,
-                    source,
-                    InfoMsg::FundingInfos(FundingInfos { swaps_need_funding }),
-                )?;
-            }
-
-            InfoMsg::NeedsFunding(Blockchain::Bitcoin) => {
-                let swaps_need_funding: Vec<FundingInfo> = self
-                    .trade_state_machines
-                    .iter()
-                    .filter_map(|tsm| tsm.needs_funding_bitcoin().map(|f| FundingInfo::Bitcoin(f)))
+                    .filter_map(|tsm| tsm.needs_funding(blockchain))
                     .collect();
                 self.send_client_info(
                     endpoints,

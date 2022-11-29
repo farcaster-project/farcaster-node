@@ -275,6 +275,15 @@ impl TradeStateMachine {
         }
     }
 
+    pub fn needs_funding(&self, blockchain: Blockchain) -> Option<FundingInfo> {
+        match blockchain {
+            Blockchain::Monero => self.needs_funding_monero().map(|f| FundingInfo::Monero(f)),
+            Blockchain::Bitcoin => self
+                .needs_funding_bitcoin()
+                .map(|f| FundingInfo::Bitcoin(f)),
+        }
+    }
+
     pub fn needs_funding_monero(&self) -> Option<MoneroFundingInfo> {
         match self {
             TradeStateMachine::SwapdRunning(SwapdRunning {
