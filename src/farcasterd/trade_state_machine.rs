@@ -350,10 +350,7 @@ impl TradeStateMachine {
                 if *trade_role == TradeRole::Taker && peerd.is_none() {
                     Some(node_addr_from_public_offer(public_offer))
                 } else if peerd.is_none() {
-                    info!(
-                        "This should never be triggered, but indeed the peerd of {} is None",
-                        swap_id
-                    );
+                    error!("{} | As a maker, the peerd should never be None", swap_id);
                     None
                 } else {
                     None
