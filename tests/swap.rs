@@ -2721,7 +2721,7 @@ fn restore_checkpoint_args(data_dir: Vec<String>, swap_id: SwapId) -> Vec<String
 }
 
 fn cli_output_to_node_info(stdout: Vec<String>) -> NodeInfo {
-    info!("{:?}", stdout);
+    debug!("{:?}", stdout);
     serde_yaml::from_str(
         &stdout
             .iter()
@@ -2744,7 +2744,7 @@ fn cli_output_to_funding_infos(stdout: Vec<String>) -> FundingInfos {
 async fn retry_until_offer(args: Vec<String>) -> Vec<String> {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, stderr) = run("../swap-cli", args.clone()).unwrap();
-        info!("{:?}", stderr);
+        debug!("{:?}", stderr);
         let offers: Vec<String> = cli_output_to_node_info(stdout)
             .offers
             .iter()
