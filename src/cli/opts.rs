@@ -177,13 +177,18 @@ pub enum Command {
         #[clap(long, default_value = "1 satoshi/vByte")]
         fee_strategy: FeeStrategy<SatPerVByte>,
 
-        /// Public IPv4 or IPv6 address present in the public offer allowing taker to connect.
+        /// Public IPv4 or IPv6 address to advertise in the public offer. This allows taker to
+        /// connect; defaults to 127.0.0.1.
         #[clap(short = 'I', long, default_value = "127.0.0.1")]
         public_ip_addr: IpAddr,
 
-        /// Port to use; defaults to the native LN port.
-        #[clap(short, long, default_value = "9735")]
-        port: u16,
+        /// Public port to advertise in the public offer; defaults to the FC port 7067.
+        ///
+        /// This port should either be equal to 'farcasterd.bind_port' value in your config file or
+        /// you should setup a proxy to forward trafic from {-I}:{-p} to
+        /// {farcasterd.bind_ip}:{farcasterd.bind_port}
+        #[clap(short = 'p', long, default_value = "7067")]
+        public_port: u16,
     },
 
     /// Taker accepts offer and connects to maker's daemon to start the trade.

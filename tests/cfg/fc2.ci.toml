@@ -9,4 +9,5 @@ monero_daemon = "http://monerod:18081"
 monero_rpc_wallet = "http://monero-wallet-rpc-3:18083"
 
 [farcasterd]
-bind_addr = "0.0.0.0:9735"
+bind_port = 7067
+bind_ip = "0.0.0.0"

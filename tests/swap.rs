@@ -2625,8 +2625,8 @@ fn make_offer_args(
             "1 satoshi/vByte".to_string(),
             "--public-ip-addr".to_string(),
             "127.0.0.1".to_string(),
-            "--port".to_string(),
-            "9735".to_string(),
+            "--public-port".to_string(),
+            "7067".to_string(),
         ])
         .collect()
 }

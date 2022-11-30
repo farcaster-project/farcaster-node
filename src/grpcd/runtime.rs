@@ -495,7 +495,7 @@ impl Farcaster for FarcasterService {
             fee_strategy: str_fee_strategy,
             maker_role: grpc_swap_role,
             public_ip_addr: str_public_ip_addr,
-            port,
+            public_port,
         } = request.into_inner();
 
         let network: Network = farcaster::Network::from_i32(grpc_network)
@@ -571,7 +571,7 @@ impl Farcaster for FarcasterService {
             fee_strategy,
             maker_role,
         };
-        let public_addr = InetSocketAddr::socket(public_ip_addr, port as u16);
+        let public_addr = InetSocketAddr::socket(public_ip_addr, public_port as u16);
         let proto_offer = ProtoPublicOffer {
             offer,
             public_addr,
