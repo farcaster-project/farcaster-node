@@ -5,7 +5,7 @@
 
 # Farcaster: cross-chain atomic swaps
 
-:warning: **THIS IS EVOLVING, EXPERIMENTAL TECH, USE ON MAINNET AT YOUR OWN RISK**
+**This work is still evolving, use it on mainnet at your own risk!**
 
 The **Farcaster Node** is _a collection of microservices for running cross-chain atomic swaps_. Currently, the node is focused on Bitcoin-Monero atomic swaps, but it is designed to be flexible and integrate new crypto-pairs in the future.
 
@@ -22,16 +22,9 @@ Microservices currently implemented:
 
 Farcaster Node is build on atomic swap primitives described in the [RFCs](https://github.com/farcaster-project/RFCs) and implemented in [Farcaster Core](https://github.com/farcaster-project/farcaster-core).
 
-:information_source: This work is based on LNP/BP work, this project is a fork from [LNP-BP/lnp-node](https://github.com/LNP-BP/lnp-node) since [acbb4c](https://github.com/farcaster-project/farcaster-node/commit/acbb4c467695dc3d1c02b88be97e9a6e2d434435).
-
 ## Documentation
 
-Checkout Farcaster documentation in the [wiki](https://github.com/farcaster-project/farcaster-node/wiki).
-If you want a local copy of the doc you can clone the wiki:
-
-```
-git clone https://github.com/farcaster-project/farcaster-node.wiki.git
-```
+Checkout Farcaster documentation in the [wiki](https://github.com/farcaster-project/farcaster-node/wiki) or in the `docs/` folder.
 
 ## Releases and Changelog
 
@@ -39,7 +32,7 @@ See [CHANGELOG.md](CHANGELOG.md) and [RELEASING.md](RELEASING.md).
 
 ## About
 
-This work is part of the Farcaster cross-chain atomic swap project, see [Farcaster Project](https://github.com/farcaster-project).
+This work is part of the Farcaster cross-chain atomic swap project, see [Farcaster Project](https://github.com/farcaster-project), and is based on LNP/BP work, this project is a fork from [LNP-BP/lnp-node](https://github.com/LNP-BP/lnp-node) since [acbb4c](https://github.com/farcaster-project/farcaster-node/commit/acbb4c467695dc3d1c02b88be97e9a6e2d434435).
 
 ## Licensing
 

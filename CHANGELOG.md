@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
 - doc: move documentation to wiki by @h4sh3d in https://github.com/farcaster-project/farcaster-node/pull/642
 - Add Support for electrum client Tor proxy by @TheCharlatan in https://github.com/farcaster-project/farcaster-node/pull/645
 - swapd: improve PendingRequests and add associated fn defer_request by @zkao in https://github.com/farcaster-project/farcaster-node/pull/637
