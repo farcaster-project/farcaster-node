@@ -1211,13 +1211,11 @@ impl Runtime {
                 };
                 // start fee estimation and block height changes
                 self.syncer_state.watch_fee_and_height(endpoints)?;
-
                 self.peer_service = peerd;
                 if self.peer_service != ServiceId::Loopback {
                     self.connected = true;
                 }
                 self.enquirer = report_to.clone();
-
                 let local_commit =
                     self.taker_commit(endpoints, local_params.clone())
                         .map_err(|err| {
@@ -1265,7 +1263,6 @@ impl Runtime {
             }) if self.state.start() => {
                 // start fee estimation and block height changes
                 self.syncer_state.watch_fee_and_height(endpoints)?;
-
                 self.peer_service = peerd;
                 if self.peer_service != ServiceId::Loopback {
                     self.connected = true;
