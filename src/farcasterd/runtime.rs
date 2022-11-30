@@ -344,7 +344,7 @@ impl Runtime {
             }
 
             // Notify all swapds in case of disconnect
-            req @ (CtlMsg::Disconnected | CtlMsg::Reconnected)=> {
+            req @ (CtlMsg::Disconnected | CtlMsg::Reconnected) => {
                 for swap_id in self
                     .trade_state_machines
                     .iter()
@@ -736,7 +736,7 @@ impl Runtime {
             .filter(|service| {
                 if let ServiceId::Peer(..) = service {
                     if !self.connection_has_swap_client(service) {
-                        info!("Terminating {}", service);
+                        info!("{} | Terminating {} for swap cleanup", swap_id, service);
                         endpoints
                             .send_to(
                                 ServiceBus::Ctl,
@@ -750,7 +750,7 @@ impl Runtime {
                     }
                 } else if let ServiceId::Syncer(..) = service {
                     if !self.syncer_has_client(service) {
-                        info!("Terminating {}", service);
+                        info!("{} | Terminating {} for swap cleanup", swap_id, service);
                         endpoints
                             .send_to(
                                 ServiceBus::Ctl,
