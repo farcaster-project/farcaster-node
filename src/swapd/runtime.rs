@@ -84,12 +84,8 @@ pub fn run(
     };
 
     let init_state = match local_swap_role {
-        SwapRole::Alice => State::Alice(AliceState::StartA {
-            local_trade_role: local_trade_role.clone(),
-        }),
-        SwapRole::Bob => State::Bob(BobState::StartB {
-            local_trade_role: local_trade_role.clone(),
-        }),
+        SwapRole::Alice => State::Alice(AliceState::StartA { local_trade_role }),
+        SwapRole::Bob => State::Bob(BobState::StartB { local_trade_role }),
     };
     let sweep_monero_thr = 10;
     info!(
@@ -1602,7 +1598,7 @@ impl Runtime {
                         .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
                     public_offer: self.public_offer.clone(),
-                    local_trade_role: self.local_trade_role.clone(),
+                    local_trade_role: self.local_trade_role,
                     local_swap_role: self.public_offer.swap_role(&self.local_trade_role),
                     connected_counterparty_node_id: get_node_id(&self.peer_service),
                 };
