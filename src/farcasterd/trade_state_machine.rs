@@ -653,8 +653,8 @@ fn attempt_transition_to_taker_committed(
                 let source = event.source.clone();
                 let swap_id = taker_commit.swap_id();
                 info!(
-                    "Received TakerCommit for swap {} - forwarding to walletd",
-                    swap_id,
+                    "{} | Received TakerCommit for swap - forwarding to walletd",
+                    swap_id.swap_id(),
                 );
                 event.send_ctl_service(
                     ServiceId::Wallet,
@@ -1109,7 +1109,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         swapd_up,
         (!expect_connection || expect_connection && peerd.is_some()), // expect_connection implies connected
     ) {
-        info!("Restoring swap {}", swap_id.swap_id());
+        info!("{} | Restoring swap", swap_id.swap_id());
         runtime.stats.incr_initiated();
 
         if let Some(peerd) = peerd.clone() {

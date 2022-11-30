@@ -1518,11 +1518,12 @@ impl Runtime {
                     }),
                 )?;
             }
+
+            // Set the reconnected service id. This can happen if this is a
+            // maker launched swap after restoration and the taker reconnects,
+            // after a manual connect call, or a new connection with the same
+            // node address is established
             CtlMsg::PeerdReconnected(service_id) => {
-                // Set the reconnected service id. This can happen if this is a
-                // maker launched swap after restoration and the taker
-                // reconnects, after a manual connect call, or a new connection
-                // with the same node address is established
                 info!("{} | Peer {} reconnected", self.swap_id, service_id);
                 self.peer_service = service_id.clone();
                 self.connected = true;

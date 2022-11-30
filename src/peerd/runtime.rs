@@ -123,7 +123,6 @@ pub fn run_from_connect(
     remote_node_addr: NodeAddr,
     local_socket: Option<InetSocketAddr>,
     local_node: LocalNode,
-    // TODO: make this an enum instead with a descriptive distinction of listening and connecting to a listener
 ) -> Result<(), Error> {
     debug!("Opening bridge between runtime and peer receiver threads");
     let rx = ZMQ_CONTEXT.socket(zmq::PULL)?;
