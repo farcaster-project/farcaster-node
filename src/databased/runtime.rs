@@ -115,38 +115,6 @@ impl Runtime {
             CtlMsg::RestoreCheckpoint(CheckpointEntry { swap_id, .. }) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
-                    service_id: ServiceId::Wallet,
-                }) {
-                    Ok(raw_state) => {
-                        match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
-                            Ok(CheckpointState::CheckpointWallet(wallet)) => {
-                                checkpoint_send(
-                                    endpoints,
-                                    swap_id,
-                                    ServiceId::Database,
-                                    ServiceId::Wallet,
-                                    CheckpointState::CheckpointWallet(wallet),
-                                )?;
-                            }
-                            Ok(CheckpointState::CheckpointSwapd(_)) => {
-                                error!(
-                                    "Decoded swapd checkpoint where walletd checkpoint was stored"
-                                );
-                            }
-                            Err(err) => {
-                                error!("Decoding the checkpoint failed: {}", err);
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        error!(
-                            "Failed to retrieve checkpointed state for swap {}: {}",
-                            swap_id, err
-                        );
-                    }
-                }
-                match self.database.get_checkpoint_state(&CheckpointKey {
-                    swap_id,
                     service_id: ServiceId::Swap(swap_id),
                 }) {
                     Ok(raw_state) => {
@@ -180,15 +148,6 @@ impl Runtime {
             }
 
             CtlMsg::RemoveCheckpoint(swap_id) => {
-                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
-                    swap_id,
-                    service_id: ServiceId::Wallet,
-                }) {
-                    debug!(
-                        "{} | Did not delete checkpoint wallet entry: {}",
-                        swap_id, err
-                    );
-                }
                 if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Swap(swap_id),
