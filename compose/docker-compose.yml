@@ -4,7 +4,7 @@ services:
     image: "ghcr.io/farcaster-project/farcaster-node/farcasterd:latest"
     pull_policy: "always"
     ports:
-      - "9735:9735"
+      - "7067:7067"
     # the last two keys assume that the build ARG DATA_DIR is /var/lib/farcaster,
     # which is the default value if using the image above; but you may need to
     # change it if using another image
@@ -16,5 +16,5 @@ services:
     depends_on:
       - "walletrpc"
   walletrpc:
-    image: "ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0"
+    image: "ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2"
     command: "/usr/bin/monero-wallet-rpc --stagenet --disable-rpc-login --wallet-dir wallets --daemon-host stagenet.community.rino.io:38081 --rpc-bind-ip 0.0.0.0 --rpc-bind-port 38083 --confirm-external-bind"
