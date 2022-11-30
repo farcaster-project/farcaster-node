@@ -25,24 +25,26 @@ use std::str::FromStr;
 ///
 /// State machine automaton:
 /// ```ignore
-/// StartRestore    StartTaker  StartMaker
-///       |             |            |
-///       |             V            V
-///       |       TakerConnect   MakeOffer
-///       |             |            |
-///       |             V            V
-///       |         TakeOffer   TakerCommit
-///       |             |____________|
-///       |                   |
-///       V                   V
-/// RestoringSwapd      SwapdLaunched
-///       |___________________|
-///                 |
-///                 V
-///            SwapdRunning
-///                 |
-///                 V
-///                End
+/// StartRestore   StartMaker    StartTaker
+///       |            |             |
+///       |            |         ____|____
+///       |            |        |         |
+///       |            V        |         V
+///       |        MakeOffer    |   TakerConnect
+///       |            |        |         |
+///       |            V        V         V
+///       |        TakerCommit   TakeOffer
+///       |            |____________|
+///       |                  |
+///       V                  V
+/// RestoringSwapd     SwapdLaunched
+///       |__________________|
+///                |
+///                V
+///           SwapdRunning
+///                |
+///                V
+///               End
 /// ```
 #[derive(Display)]
 pub enum TradeStateMachine {
