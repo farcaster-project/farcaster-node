@@ -24,7 +24,6 @@ use crate::bus::{
 };
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::{Health, SweepAddressAddendum};
-use crate::walletd::runtime::CheckpointWallet;
 use crate::{Error, ServiceId};
 
 use super::p2p::Commit;
@@ -284,15 +283,7 @@ pub struct InitMakerSwap {
 #[display(Debug)]
 pub struct Checkpoint {
     pub swap_id: SwapId,
-    pub state: CheckpointState,
-}
-
-#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
-pub enum CheckpointState {
-    #[display("Checkpoint Wallet")]
-    CheckpointWallet(CheckpointWallet),
-    #[display("Checkpoint Swap")]
-    CheckpointSwapd(CheckpointSwapd),
+    pub state: CheckpointSwapd,
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode, Eq, PartialEq)]

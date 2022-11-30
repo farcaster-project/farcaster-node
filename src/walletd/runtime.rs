@@ -4,14 +4,11 @@ use crate::bus::{
 };
 
 use crate::service::Endpoints;
-use crate::walletd::state::Wallet;
 use crate::walletd::NodeSecrets;
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 
 use farcaster_core::swap::btcxmr::KeyManager;
 use microservices::esb::{self, Handler};
-use monero::consensus::{Decodable as MoneroDecodable, Encodable as MoneroEncodable};
-use strict_encoding::{StrictDecode, StrictEncode};
 
 pub fn run(
     config: ServiceConfig,
@@ -31,29 +28,6 @@ pub struct Runtime {
     identity: ServiceId,
     wallet_token: Token,
     node_secrets: NodeSecrets,
-}
-
-#[derive(Clone, Debug)]
-pub struct CheckpointWallet {
-    pub wallet: Wallet,
-    pub xmr_addr: monero::Address,
-}
-
-impl StrictEncode for CheckpointWallet {
-    fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
-        let mut len = self.wallet.strict_encode(&mut e)?;
-        len += self.xmr_addr.consensus_encode(&mut e)?;
-        Ok(len)
-    }
-}
-
-impl StrictDecode for CheckpointWallet {
-    fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        let wallet = Wallet::strict_decode(&mut d)?;
-        let xmr_addr = monero::Address::consensus_decode(&mut d)
-            .map_err(|err| strict_encoding::Error::DataIntegrityError(err.to_string()))?;
-        Ok(CheckpointWallet { wallet, xmr_addr })
-    }
 }
 
 impl CtlServer for Runtime {}

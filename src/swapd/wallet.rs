@@ -550,7 +550,7 @@ impl Wallet {
 
             endpoints.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Wallet,
+                ServiceId::Swap(swap_id),
                 ServiceId::Database,
                 BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                     address: corresponding_address,
@@ -649,7 +649,7 @@ impl Wallet {
 
             endpoints.send_to(
                 ServiceBus::Ctl,
-                ServiceId::Wallet,
+                ServiceId::Swap(swap_id),
                 ServiceId::Database,
                 BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                     address: corresponding_address,
