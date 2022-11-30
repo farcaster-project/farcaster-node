@@ -57,7 +57,7 @@ pub enum TradeStateMachine {
     /// StartTaker state - transitions to TakeOffer on cli request or None on
     /// failure, or TakerConnect if not yet connected. Transition to TakeOffer
     /// triggers a connect peerd launch (if required). If connected, sends
-    /// TakeOffer to walletd, sends TookOffer back to cli.
+    /// CreateSwapKeys to walletd, sends TookOffer back to cli.
     #[display("Start Taker")]
     StartTaker,
 
@@ -69,25 +69,25 @@ pub enum TradeStateMachine {
 
     /// TakerConnect state - transitions to TakeOffer once ConnectSuccess is
     /// received from peerd or None if ConnectFailed is received. On
-    /// ConnectSuccess sends TakeOffer to walletd and TookOffer back to cli. On
-    /// Connect Failed sends Failure back to cli.
+    /// ConnectSuccess sends CreateSwapKeys to walletd and TookOffer back to
+    /// cli. On Connect Failed sends Failure back to cli.
     #[display("Taker Connect")]
     TakerConnect(TakerConnect),
 
     /// MakeOffer state - transitions to TakerCommit once TakerCommit is
     /// received from a counterpary or None if RevokeOffer is received from the
-    /// user. Transition to TakerCommit triggers sending TakerCommited to walletd
-    /// and sending SetOfferStatus to databased.
+    /// user. Transition to TakerCommit triggers sending CreateSwapKeys to
+    /// walletd and sending SetOfferStatus to databased.
     #[display("Make Offer")]
     MakeOffer(MakeOffer),
 
-    /// TakerCommit state - transitions to SwapdLaunched once LaunchSwap is
+    /// TakerCommit state - transitions to SwapdLaunched once SwapKeys is
     /// received from walletd. Transition to SwapdLaunched triggers launch
     /// swapd.
     #[display("Taker Commit")]
     TakerCommit(TakerCommit),
 
-    /// TakeOffer state - transitions to SwapdLaunched once LaunchSwap is
+    /// TakeOffer state - transitions to SwapdLaunched once SwapKeys is
     /// received from walletd. Transition to SwapdLaunched triggers launch
     /// swapd.
     #[display("Take Offer")]
