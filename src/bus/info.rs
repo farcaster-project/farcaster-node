@@ -2,8 +2,9 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use amplify::ToYamlString;
+use farcaster_core::role::{SwapRole, TradeRole};
 use farcaster_core::{blockchain::Blockchain, swap::btcxmr::PublicOffer, swap::SwapId};
-use internet2::addr::{InetSocketAddr, NodeAddr};
+use internet2::addr::{InetSocketAddr, NodeAddr, NodeId};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds};
 use strict_encoding::{NetworkDecode, NetworkEncode, StrictDecode, StrictEncode};
@@ -289,6 +290,9 @@ pub struct SwapInfo {
     pub uptime: Duration,
     pub since: u64,
     pub public_offer: PublicOffer,
+    pub local_trade_role: TradeRole,
+    pub local_swap_role: SwapRole,
+    pub connected_counterparty_node_id: Option<NodeId>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
