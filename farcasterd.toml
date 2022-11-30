@@ -1,6 +1,14 @@
 # Farcasterd configuration
 # configures farcasterd specific behaviors such as auto-funding swaps
 
+[farcasterd]
+# Sets the port where Farcaster will accept new peer connections through a
+# listening peerd. Default to 7067
+bind_port = 7067
+# Sets the binding ip for the listening peerd launched by Farcaster. Default to
+# 0.0.0.0
+bind_ip = "0.0.0.0"
+
 # Defines auto-funding
 [farcasterd.auto_funding]
 # Set this to true if you want to enable auto-funding, default to false
