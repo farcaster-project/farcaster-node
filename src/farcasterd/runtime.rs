@@ -344,7 +344,7 @@ impl Runtime {
             }
 
             // Notify all swapds in case of disconnect
-            CtlMsg::Disconnected => {
+            req @ (CtlMsg::Disconnected | CtlMsg::Reconnected)=> {
                 for swap_id in self
                     .trade_state_machines
                     .iter()
@@ -354,23 +354,7 @@ impl Runtime {
                         ServiceBus::Ctl,
                         self.identity(),
                         ServiceId::Swap(swap_id.clone()),
-                        BusMsg::Ctl(CtlMsg::Disconnected),
-                    )?;
-                }
-            }
-
-            // Notify all swapds in case of reconnect
-            CtlMsg::Reconnected => {
-                for swap_id in self
-                    .trade_state_machines
-                    .iter()
-                    .filter_map(|tsm| tsm.get_swap_id_with_matching_connection(&source))
-                {
-                    endpoints.send_to(
-                        ServiceBus::Ctl,
-                        self.identity(),
-                        ServiceId::Swap(swap_id.clone()),
-                        BusMsg::Ctl(CtlMsg::Reconnected),
+                        BusMsg::Ctl(req.clone()),
                     )?;
                 }
             }
