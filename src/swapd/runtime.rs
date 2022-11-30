@@ -155,6 +155,7 @@ pub fn run(
         pending_peer_request: none!(),
         txs: none!(),
         public_offer,
+        local_trade_role,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -176,6 +177,7 @@ pub struct Runtime {
     pending_peer_request: Vec<PeerMsg>, // Peer requests that failed and are waiting for reconnection
     txs: HashMap<TxLabel, bitcoin::Transaction>,
     public_offer: PublicOffer,
+    local_trade_role: TradeRole,
 }
 
 // FIXME Something more meaningful than ServiceId to index
@@ -328,6 +330,9 @@ pub struct CheckpointSwapd {
     pub txids: HashMap<TxLabel, Txid>,
     pub pending_broadcasts: Vec<bitcoin::Transaction>,
     pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
+    pub local_trade_role: TradeRole,
+    pub connected_counterparty_node_id: Option<NodeId>,
+    pub public_offer: PublicOffer,
 }
 
 impl StrictEncode for CheckpointSwapd {
@@ -338,6 +343,9 @@ impl StrictEncode for CheckpointSwapd {
         len += self.xmr_addr_addendum.strict_encode(&mut e)?;
         len += self.temporal_safety.strict_encode(&mut e)?;
         len += self.pending_broadcasts.strict_encode(&mut e)?;
+        len += self.local_trade_role.strict_encode(&mut e)?;
+        len += self.connected_counterparty_node_id.strict_encode(&mut e)?;
+        len += self.public_offer.strict_encode(&mut e)?;
 
         len += self.txs.len().strict_encode(&mut e)?;
         let res: Result<usize, strict_encoding::Error> =
@@ -396,6 +404,9 @@ impl StrictDecode for CheckpointSwapd {
         let xmr_addr_addendum = Option::<XmrAddressAddendum>::strict_decode(&mut d)?;
         let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
         let pending_broadcasts = Vec::<bitcoin::Transaction>::strict_decode(&mut d)?;
+        let local_trade_role = TradeRole::strict_decode(&mut d)?;
+        let connected_counterparty_node_id = Option::<NodeId>::strict_decode(&mut d)?;
+        let public_offer = PublicOffer::strict_decode(&mut d)?;
 
         let len = usize::strict_decode(&mut d)?;
         let mut txs = HashMap::<TxLabel, bitcoin::Transaction>::new();
@@ -439,6 +450,9 @@ impl StrictDecode for CheckpointSwapd {
             txids,
             pending_requests,
             pending_broadcasts,
+            local_trade_role,
+            connected_counterparty_node_id,
+            public_offer,
         })
     }
 }
@@ -578,6 +592,9 @@ impl Runtime {
                         pending_requests: self.pending_requests().clone(),
                         pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                         xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                        local_trade_role: self.local_trade_role,
+                        connected_counterparty_node_id: get_node_id(&self.peer_service),
+                        public_offer: self.public_offer.clone(),
                     }),
                 )?;
             } else {
@@ -842,6 +859,9 @@ impl Runtime {
                             pending_requests: self.pending_requests().clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                            local_trade_role: self.local_trade_role,
+                            connected_counterparty_node_id: get_node_id(&self.peer_service),
+                            public_offer: self.public_offer.clone(),
                         }),
                     )?;
                 }
@@ -959,6 +979,9 @@ impl Runtime {
                             pending_requests: self.pending_requests().clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                            local_trade_role: self.local_trade_role,
+                            connected_counterparty_node_id: get_node_id(&self.peer_service),
+                            public_offer: self.public_offer.clone(),
                         }),
                     )?;
                 }
@@ -1083,6 +1106,9 @@ impl Runtime {
                             pending_requests: self.pending_requests().clone(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
+                            local_trade_role: self.local_trade_role,
+                            connected_counterparty_node_id: get_node_id(&self.peer_service),
+                            public_offer: self.public_offer.clone(),
                         }),
                     )?;
                 }
@@ -1527,6 +1553,8 @@ impl Runtime {
                     pending_requests,
                     pending_broadcasts,
                     xmr_addr_addendum,
+                    local_trade_role,
+                    ..
                 }) => {
                     info!("{} | Restoring swap", swap_id.swap_id());
                     self.state = state;
@@ -1536,6 +1564,7 @@ impl Runtime {
                     // We need to update the peerd for the pending requests in case of reconnect
                     self.pending_requests
                         .update_deferred_requests_peer_destination(self.peer_service.clone());
+                    self.local_trade_role = local_trade_role;
                     self.txs = txs.clone();
                     trace!("Watch height bitcoin");
                     let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
@@ -1647,6 +1676,9 @@ impl Runtime {
                         .unwrap_or_else(|_| Duration::from_secs(0))
                         .as_secs(),
                     public_offer: self.public_offer.clone(),
+                    local_trade_role: self.local_trade_role,
+                    local_swap_role: self.public_offer.swap_role(&self.local_trade_role),
+                    connected_counterparty_node_id: get_node_id(&self.peer_service),
                 };
                 self.send_client_info(endpoints, source, InfoMsg::SwapInfo(info))?;
             }
@@ -2787,6 +2819,14 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
         Ok(*swap_id)
     } else {
         Err(Error::Farcaster("Not swapd".to_string()))
+    }
+}
+
+pub fn get_node_id(service: &ServiceId) -> Option<NodeId> {
+    if let ServiceId::Peer(_, addr) = service {
+        Some(addr.id)
+    } else {
+        None
     }
 }
 

@@ -40,11 +40,15 @@ message SwapInfoRequest {
 
 message SwapInfoResponse {
     uint32 id = 1;
-    string maker_peer = 2;
+    string connection = 2;
     uint64 uptime = 3;
     uint64 since= 4;
     string public_offer = 5;
     bool connected = 6;
+    TradeRole trade_role = 7;
+    SwapRole swap_role = 8;
+    string connected_counterparty_node_id = 9;
+    string state = 10;
 }
 
 message OfferInfoRequest {

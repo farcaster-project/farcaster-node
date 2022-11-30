@@ -314,18 +314,27 @@ impl Farcaster for FarcasterService {
                 swap_id: _,
                 connection,
                 connected,
-                state: _,
+                state,
                 uptime,
                 since,
                 public_offer,
+                local_trade_role,
+                local_swap_role,
+                connected_counterparty_node_id,
             }))) => {
                 let reply = SwapInfoResponse {
                     id,
-                    maker_peer: connection.map(|p| p.to_string()).unwrap_or("".to_string()),
+                    connection: connection.map(|p| p.to_string()).unwrap_or("".to_string()),
                     connected,
                     uptime: uptime.as_secs(),
                     since: since,
                     public_offer: public_offer.to_string(),
+                    trade_role: farcaster::TradeRole::from(local_trade_role).into(),
+                    swap_role: farcaster::SwapRole::from(local_swap_role).into(),
+                    connected_counterparty_node_id: connected_counterparty_node_id
+                        .map(|n| n.to_string())
+                        .unwrap_or("".to_string()),
+                    state: state.to_string(),
                 };
                 Ok(GrpcResponse::new(reply))
             }

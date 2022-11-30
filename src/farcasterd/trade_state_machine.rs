@@ -148,12 +148,13 @@ pub struct SwapdLaunched {
 }
 
 pub struct RestoringSwapd {
-    public_offer: PublicOffer,
     swap_id: SwapId,
+    public_offer: PublicOffer,
+    trade_role: TradeRole,
+    expected_counterparty_node_id: Option<NodeId>,
     arbitrating_syncer_up: Option<ServiceId>,
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
-    trade_role: TradeRole,
     expect_connection: bool,
     peerd: Option<ServiceId>,
 }
@@ -553,6 +554,7 @@ fn attempt_transition_to_restoring_swapd(
             swap_id,
             public_offer,
             trade_role,
+            expected_counterparty_node_id,
         })) => {
             if let Err(err) = runtime.services_ready() {
                 event.complete_client_ctl(CtlMsg::Failure(Failure {
@@ -614,14 +616,15 @@ fn attempt_transition_to_restoring_swapd(
             event.complete_client_info(InfoMsg::String("Restoring checkpoint.".to_string()))?;
 
             Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
-                public_offer: public_offer.clone(),
                 swap_id,
+                public_offer,
+                trade_role,
+                expected_counterparty_node_id,
                 arbitrating_syncer_up,
                 accordant_syncer_up,
                 swapd_up: false,
                 peerd: None,
                 expect_connection,
-                trade_role,
             })))
         }
         req => {
@@ -1055,14 +1058,15 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
     restoring_swapd: RestoringSwapd,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let RestoringSwapd {
-        public_offer,
         swap_id,
+        public_offer,
+        trade_role,
+        expected_counterparty_node_id,
         mut arbitrating_syncer_up,
         mut accordant_syncer_up,
         mut swapd_up,
         mut peerd,
         mut expect_connection,
-        trade_role,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
@@ -1118,6 +1122,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
                 swap_id,
                 public_offer: public_offer.clone(),
                 trade_role,
+                expected_counterparty_node_id,
             }),
         )?;
 
@@ -1134,14 +1139,15 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         })))
     } else {
         Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
-            public_offer,
             swap_id,
+            public_offer,
+            trade_role,
+            expected_counterparty_node_id,
             arbitrating_syncer_up,
             accordant_syncer_up,
             swapd_up,
             peerd,
             expect_connection,
-            trade_role,
         })))
     }
 }
