@@ -6,6 +6,7 @@ use farcaster_core::{
 };
 
 use amplify::{ToYamlString, Wrapper};
+use internet2::addr::NodeId;
 use microservices::rpc;
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
@@ -21,6 +22,7 @@ pub struct CheckpointEntry {
     pub swap_id: SwapId,
     pub public_offer: PublicOffer,
     pub trade_role: TradeRole,
+    pub expected_counterparty_node_id: Option<NodeId>,
 }
 
 #[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]

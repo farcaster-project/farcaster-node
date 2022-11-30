@@ -132,12 +132,10 @@ pub struct SwapdLaunched {
 }
 
 pub struct RestoringSwapd {
-    public_offer: PublicOffer,
-    swap_id: SwapId,
+    checkpoint_entry: CheckpointEntry,
     arbitrating_syncer_up: Option<ServiceId>,
     accordant_syncer_up: Option<ServiceId>,
     swapd_up: bool,
-    trade_role: TradeRole,
 }
 
 pub struct SwapdRunning {
@@ -217,9 +215,10 @@ impl TradeStateMachine {
             TradeStateMachine::SwapdLaunched(SwapdLaunched { public_offer, .. }) => {
                 Some(public_offer.clone())
             }
-            TradeStateMachine::RestoringSwapd(RestoringSwapd { public_offer, .. }) => {
-                Some(public_offer.clone())
-            }
+            TradeStateMachine::RestoringSwapd(RestoringSwapd {
+                checkpoint_entry: CheckpointEntry { public_offer, .. },
+                ..
+            }) => Some(public_offer.clone()),
             TradeStateMachine::SwapdRunning(SwapdRunning { public_offer, .. }) => {
                 Some(public_offer.clone())
             }
@@ -230,7 +229,10 @@ impl TradeStateMachine {
     pub fn swap_id(&self) -> Option<SwapId> {
         match self {
             TradeStateMachine::SwapdLaunched(SwapdLaunched { swap_id, .. }) => Some(*swap_id),
-            TradeStateMachine::RestoringSwapd(RestoringSwapd { swap_id, .. }) => Some(*swap_id),
+            TradeStateMachine::RestoringSwapd(RestoringSwapd {
+                checkpoint_entry: CheckpointEntry { swap_id, .. },
+                ..
+            }) => Some(*swap_id),
             TradeStateMachine::SwapdRunning(SwapdRunning { swap_id, .. }) => Some(*swap_id),
             _ => None,
         }
@@ -469,6 +471,7 @@ fn attempt_transition_to_restoring_swapd(
             swap_id,
             public_offer,
             trade_role,
+            expected_counterparty_node_id,
         })) => {
             if let Err(err) = runtime.services_ready() {
                 event.complete_client_ctl(CtlMsg::Failure(Failure {
@@ -517,12 +520,15 @@ fn attempt_transition_to_restoring_swapd(
             event.complete_client_info(InfoMsg::String("Restoring checkpoint.".to_string()))?;
 
             Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
-                public_offer: public_offer.clone(),
-                swap_id,
+                checkpoint_entry: CheckpointEntry {
+                    swap_id,
+                    public_offer,
+                    trade_role,
+                    expected_counterparty_node_id,
+                },
                 arbitrating_syncer_up,
                 accordant_syncer_up,
                 swapd_up: false,
-                trade_role,
             })))
         }
         req => {
@@ -830,24 +836,30 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
     restoring_swapd: RestoringSwapd,
 ) -> Result<Option<TradeStateMachine>, Error> {
     let RestoringSwapd {
-        public_offer,
-        swap_id,
+        checkpoint_entry,
         mut arbitrating_syncer_up,
         mut accordant_syncer_up,
         mut swapd_up,
-        trade_role,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
-            if ServiceId::Syncer(Blockchain::Monero, public_offer.offer.network) == source =>
+            if ServiceId::Syncer(
+                Blockchain::Monero,
+                checkpoint_entry.public_offer.offer.network,
+            ) == source =>
         {
             accordant_syncer_up = Some(source);
         }
-        (BusMsg::Ctl(CtlMsg::Hello), source) if ServiceId::Swap(swap_id) == source => {
+        (BusMsg::Ctl(CtlMsg::Hello), source)
+            if ServiceId::Swap(checkpoint_entry.swap_id) == source =>
+        {
             swapd_up = true;
         }
         (BusMsg::Ctl(CtlMsg::Hello), source)
-            if ServiceId::Syncer(Blockchain::Bitcoin, public_offer.offer.network) == source =>
+            if ServiceId::Syncer(
+                Blockchain::Bitcoin,
+                checkpoint_entry.public_offer.offer.network,
+            ) == source =>
         {
             arbitrating_syncer_up = Some(source);
         }
@@ -858,35 +870,29 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         arbitrating_syncer_up.clone(),
         swapd_up,
     ) {
-        info!("Restoring swap {}", swap_id.swap_id());
+        info!("Restoring swap {}", checkpoint_entry.swap_id.swap_id());
         runtime.stats.incr_initiated();
         event.complete_ctl_service(
             ServiceId::Database,
-            CtlMsg::RestoreCheckpoint(CheckpointEntry {
-                swap_id,
-                public_offer: public_offer.clone(),
-                trade_role,
-            }),
+            CtlMsg::RestoreCheckpoint(checkpoint_entry.clone()),
         )?;
 
         Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
             peerd: ServiceId::Loopback, // TODO: Move this from the dummy value to the actual peerd once we handle reconnect
-            swap_id,
+            swap_id: checkpoint_entry.swap_id,
             accordant_syncer,
             arbitrating_syncer,
-            public_offer,
+            public_offer: checkpoint_entry.public_offer,
             connected: true,
             auto_funded: false,
             funding_info: None,
         })))
     } else {
         Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
-            public_offer,
-            swap_id,
+            checkpoint_entry,
             arbitrating_syncer_up,
             accordant_syncer_up,
             swapd_up,
-            trade_role,
         })))
     }
 }

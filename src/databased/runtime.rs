@@ -1,4 +1,3 @@
-use crate::walletd::state::{AliceState, BobState, Wallet};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
@@ -84,34 +83,23 @@ impl Runtime {
 
             CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => {
                 match &state {
-                    CheckpointState::CheckpointWallet(wallet_checkpoint) => {
-                        let info = match &wallet_checkpoint.wallet {
-                            Wallet::Alice(AliceState {
-                                local_trade_role,
-                                pub_offer,
-                                ..
-                            }) => CheckpointEntry {
-                                swap_id,
-                                public_offer: pub_offer.clone(),
-                                trade_role: local_trade_role.clone(),
-                            },
-                            Wallet::Bob(BobState {
-                                local_trade_role,
-                                pub_offer,
-                                ..
-                            }) => CheckpointEntry {
-                                swap_id,
-                                public_offer: pub_offer.clone(),
-                                trade_role: local_trade_role.clone(),
-                            },
+                    CheckpointState::CheckpointWallet(_) => {
+                        debug!("setting wallet checkpoint");
+                    }
+                    CheckpointState::CheckpointSwapd(swap_checkpoint) => {
+                        let info = CheckpointEntry {
+                            swap_id,
+                            public_offer: swap_checkpoint.public_offer.clone(),
+                            trade_role: swap_checkpoint.local_trade_role.clone(),
+                            expected_counterparty_node_id: swap_checkpoint
+                                .connected_counterparty_node_id
+                                .clone(),
                         };
                         debug!("setting checkpoint info entry");
                         let mut info_encoded = vec![];
                         let _info_size = info.strict_encode(&mut info_encoded);
                         self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
-                        debug!("setting wallet checkpoint");
-                    }
-                    CheckpointState::CheckpointSwapd(_) => {
+
                         debug!("setting swap checkpoint");
                     }
                 };
