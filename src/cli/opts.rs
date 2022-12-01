@@ -108,6 +108,13 @@ pub enum Command {
         swap_id: SwapId,
     },
 
+    /// Connects a running swap to its counterparty
+    #[clap(aliases = &["c"])]
+    Connect {
+        // The swap id of the swap we wish to connect again
+        swap_id: SwapId,
+    },
+
     /// Maker creates offer and start listening for incoming connections. Command used to to print
     /// the resulting public offer that shall be shared with Taker. Additionally it spins up the
     /// listener awaiting for connection related to this offer.

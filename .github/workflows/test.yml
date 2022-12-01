@@ -71,6 +71,7 @@ jobs:
           swap_bob_maker_punish_kill_bob,
           swap_bob_maker_refund,
           swap_bob_maker_restore_checkpoint,
+          swap_bob_maker_restore_reconnect_alice_pre_lock,
           swap_bob_maker_user_abort_sweep_btc,
           swap_parallel_execution,
           swap_revoke_offer_bob_maker_normal,

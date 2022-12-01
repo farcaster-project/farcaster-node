@@ -34,6 +34,8 @@ m_cli -> m_farcasterd : MakeOffer
 m_farcasterd -> m_farcasterd : launch\npeerd listen
 t_farcasterd <- t_cli : TakeOffer
 t_farcasterd -> t_farcasterd : launch\npeerd connect
+peerd -> t_farcasterd: Ctl ConnectSuccess
+peerd -> m_farcasterd: Ctl Hello
 t_wallet <- t_farcasterd : Ctl TakeOffer
 t_wallet -> t_wallet : create taker wallet
 t_wallet -> t_farcasterd : Ctl LaunchSwap
@@ -70,7 +72,6 @@ end
 group for Bob swap role
 m_swap -> m_swap : ADD PENDING Msg Reveal
 m_swap -> m_farcasterd : Ctl FundingInfo
-
 m_swap -> m_syncer: Watch Arbitrating Funding Address
 m_swap <- m_syncer: Arbitrating Funding event
 m_farcasterd<-m_swap: Ctl FundingCompleted Bitcoin

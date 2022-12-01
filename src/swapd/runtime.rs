@@ -141,9 +141,12 @@ pub fn run(
     let runtime = Runtime {
         swap_id,
         identity: ServiceId::Swap(swap_id),
-        peer_service: ServiceId::Loopback,
+        peer_service: ServiceId::dummy_peer_service_id(NodeAddr {
+            id: NodeId::from(public_offer.node_id.clone()), // node_id is bitcoin::Pubkey
+            addr: public_offer.peer_address,                // peer_address is InetSocketAddr
+        }),
+        connected: false,
         state: init_state,
-        maker_peer: None,
         started: SystemTime::now(),
         syncer_state,
         temporal_safety,
@@ -164,8 +167,8 @@ pub struct Runtime {
     swap_id: SwapId,
     identity: ServiceId,
     peer_service: ServiceId,
+    connected: bool,
     state: State,
-    maker_peer: Option<NodeAddr>,
     started: SystemTime,
     enquirer: Option<ServiceId>,
     syncer_state: SyncerState,
@@ -185,6 +188,17 @@ impl PendingRequestsT for PendingRequests {
         let pending_reqs = self.entry(key).or_insert(vec![]);
         pending_reqs.push(pending_req);
     }
+
+    fn update_deferred_requests_peer_destination(&mut self, destination: ServiceId) {
+        for (_, pending_requests) in self.iter_mut() {
+            for pending_request in pending_requests.iter_mut() {
+                if pending_request.dest.node_addr() == destination.node_addr() {
+                    pending_request.dest = destination.clone();
+                }
+            }
+        }
+    }
+
     fn continue_deferred_requests(
         runtime: &mut Runtime,
         endpoints: &mut Endpoints,
@@ -245,6 +259,9 @@ impl PendingRequestsT for PendingRequests {
 
 trait PendingRequestsT {
     fn defer_request(&mut self, key: ServiceId, pending_req: PendingRequest);
+
+    fn update_deferred_requests_peer_destination(&mut self, destination: ServiceId);
+
     fn continue_deferred_requests(
         runtime: &mut Runtime, // needed for recursion
         endpoints: &mut Endpoints,
@@ -485,13 +502,14 @@ impl Runtime {
         if let Err(error) = endpoints.send_to(
             ServiceBus::Msg,
             self.identity(),
-            self.peer_service.clone(), // ServiceId::Loopback if not initiailized
+            self.peer_service.clone(),
             BusMsg::P2p(msg.clone()),
         ) {
             error!(
                 "could not send message {} to {} due to {}",
                 msg, self.peer_service, error
             );
+            self.connected = false;
             warn!("notifying farcasterd of peer error, farcasterd will attempt to reconnect");
             endpoints.send_to(
                 ServiceBus::Ctl,
@@ -608,20 +626,35 @@ impl Runtime {
     ) -> Result<(), Error> {
         // Peer messages should only come from wallet (crafted internally and forwarded here) or
         // peer (received by counterpart)
-        if !matches!(source, ServiceId::Wallet | ServiceId::Peer(_)) {
-            return Err(Error::Farcaster(format!(
+        if !matches!(source, ServiceId::Wallet | ServiceId::Peer(..)) {
+            let msg = format!(
                 "Incorrect request sender: expected {} or {}",
                 ServiceId::Wallet.label(),
                 self.peer_service.label(),
-            )));
+            );
+            error!("{}", msg);
+            return Err(Error::Farcaster(msg));
         } else {
             // Check if message are from consistent peer source
-            if matches!(source, ServiceId::Peer(_)) && self.peer_service != source {
-                return Err(Error::Farcaster(format!(
+            if matches!(source, ServiceId::Peer(..)) && self.peer_service != source {
+                let msg = format!(
                     "Incorrect peer connection: expected {}, found {}",
                     self.peer_service, source
-                )));
+                );
+                error!("{}", msg);
+                return Err(Error::Farcaster(msg));
             }
+        }
+
+        if request.swap_id() != self.swap_id() {
+            let msg = format!(
+                "{} | Incorrect swap_id: expected {}, found {}",
+                self.swap_id.bright_blue_italic(),
+                self.swap_id(),
+                request.swap_id(),
+            );
+            error!("{}", msg);
+            return Err(Error::Farcaster(msg));
         }
 
         // check if message swap id matches internal swap id
@@ -1144,6 +1177,14 @@ impl Runtime {
                 std::process::exit(0);
             }
 
+            CtlMsg::Disconnected => {
+                self.connected = false;
+            }
+
+            CtlMsg::Reconnected => {
+                self.connected = true;
+            }
+
             // Trade role: Taker, target of this message
             // Message sent by farcasterd upon reception of TakeOffer message
             //
@@ -1170,11 +1211,11 @@ impl Runtime {
                 };
                 // start fee estimation and block height changes
                 self.syncer_state.watch_fee_and_height(endpoints)?;
-                self.peer_service = peerd.clone();
-                self.enquirer = report_to.clone();
-                if let ServiceId::Peer(ref addr) = peerd {
-                    self.maker_peer = Some(addr.clone());
+                self.peer_service = peerd;
+                if self.peer_service != ServiceId::Loopback {
+                    self.connected = true;
                 }
+                self.enquirer = report_to.clone();
                 let local_commit =
                     self.taker_commit(endpoints, local_params.clone())
                         .map_err(|err| {
@@ -1222,13 +1263,13 @@ impl Runtime {
             }) if self.state.start() => {
                 // start fee estimation and block height changes
                 self.syncer_state.watch_fee_and_height(endpoints)?;
-                self.peer_service = peerd.clone();
-                if let ServiceId::Peer(ref addr) = peerd {
-                    self.maker_peer = Some(addr.clone());
+                self.peer_service = peerd;
+                if self.peer_service != ServiceId::Loopback {
+                    self.connected = true;
                 }
                 self.enquirer = report_to.clone();
                 let local_commit = self
-                    .maker_commit(endpoints, &peerd, swap_id, &local_params)
+                    .maker_commit(endpoints, swap_id, &local_params)
                     .map_err(|err| {
                         self.report_failure_to(
                             endpoints,
@@ -1475,13 +1516,16 @@ impl Runtime {
                 )?;
             }
 
+            // Set the reconnected service id. This can happen if this is a
+            // maker launched swap after restoration and the taker reconnects,
+            // after a manual connect call, or a new connection with the same
+            // node address is established
             CtlMsg::PeerdReconnected(service_id) => {
-                // set the reconnected service id, if it is not set yet. This
-                // can happen if this is a maker launched swap after restoration
-                // and the taker reconnects
-                if self.peer_service == ServiceId::Loopback {
-                    self.peer_service = service_id;
-                }
+                info!("{} | Peer {} reconnected", self.swap_id, service_id);
+                self.peer_service = service_id.clone();
+                self.connected = true;
+                self.pending_requests
+                    .update_deferred_requests_peer_destination(service_id);
                 for msg in self.pending_peer_request.clone().iter() {
                     self.send_peer(endpoints, msg.clone())?;
                 }
@@ -1515,6 +1559,9 @@ impl Runtime {
                     self.enquirer = enquirer;
                     self.temporal_safety = temporal_safety;
                     self.pending_requests = pending_requests;
+                    // We need to update the peerd for the pending requests in case of reconnect
+                    self.pending_requests
+                        .update_deferred_requests_peer_destination(self.peer_service.clone());
                     self.local_trade_role = local_trade_role;
                     self.txs = txs.clone();
                     trace!("Watch height bitcoin");
@@ -1612,10 +1659,12 @@ impl Runtime {
                 } else {
                     Some(self.swap_id())
                 };
+                let connection = self.peer_service.node_addr();
                 let info = SwapInfo {
                     swap_id,
-                    // state: self.state, // FIXME serde missing
-                    maker_peer: self.maker_peer.clone().map(|p| vec![p]).unwrap_or_default(),
+                    state: self.state.to_string(),
+                    connection,
+                    connected: self.connected,
                     uptime: SystemTime::now()
                         .duration_since(self.started)
                         .unwrap_or_else(|_| Duration::from_secs(0)),
@@ -2722,7 +2771,6 @@ impl Runtime {
     pub fn maker_commit(
         &mut self,
         endpoints: &mut Endpoints,
-        peerd: &ServiceId,
         swap_id: SwapId,
         params: &Params,
     ) -> Result<Commit, Error> {
@@ -2730,12 +2778,12 @@ impl Runtime {
             "{} | {} as Maker from Taker through peerd {}",
             swap_id.swap_id(),
             "Accepting swap".bright_white_bold(),
-            peerd.bright_blue_italic()
+            self.peer_service.bright_blue_italic()
         );
 
         let msg = format!(
             "Accepting swap {} as Maker from Taker through peerd {}",
-            swap_id, peerd
+            swap_id, self.peer_service
         );
         let enquirer = self.enquirer.clone();
         // Ignoring possible reporting errors here and after: do not want to
@@ -2773,7 +2821,7 @@ pub fn get_swap_id(source: &ServiceId) -> Result<SwapId, Error> {
 }
 
 pub fn get_node_id(service: &ServiceId) -> Option<NodeId> {
-    if let ServiceId::Peer(addr) = service {
+    if let ServiceId::Peer(_, addr) = service {
         Some(addr.id)
     } else {
         None

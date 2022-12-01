@@ -11,7 +11,7 @@ mod utils;
 #[tokio::test]
 #[ignore]
 async fn cli_make_offer() {
-    let (_, data_dir_maker, _, _) = setup_clients().await;
+    let (_, data_dir_maker, _, _) = launch_farcasterd_pair().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;

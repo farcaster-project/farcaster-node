@@ -156,22 +156,22 @@ fn main() {
 
     let local_node = opts.peer_key_opts.local_node();
     info!(
-        "{}: {}",
+        "{}: {}, {}: {}",
         "Local node id".bright_green_bold(),
-        local_node.node_id().bright_yellow_bold()
+        local_node.node_id().bright_yellow_bold(),
+        "PID".bright_green_bold(),
+        std::process::id().bright_yellow_bold(),
     );
 
     let peer_socket = PeerSocket::from(opts.clone());
     debug!("Peer socket parameter interpreted as {}", peer_socket);
 
     let mut local_socket: Option<InetSocketAddr> = None;
-    let mut remote_node_addr: Option<NodeAddr> = None;
-    let forked_from_listener: bool;
+    let remote_node_addr: Option<NodeAddr> = None;
     let connection = match peer_socket {
         PeerSocket::Listen(inet_addr) => {
             debug!("Running in LISTEN mode");
 
-            forked_from_listener = true;
             local_socket = Some(inet_addr);
 
             debug!("Binding TCP socket {}", inet_addr);
@@ -220,13 +220,10 @@ fn main() {
         }
         PeerSocket::Connect(remote_node) => {
             debug!("Peerd running in CONNECT mode");
-
-            forked_from_listener = false;
-            remote_node_addr = Some(remote_node);
-
             debug!("Connecting to {}", &remote_node.addr());
-            PeerConnection::connect_brontozaur(local_node, remote_node)
-                .expect("Unable to connect to the remote peer")
+            peerd::run_from_connect(service_config, remote_node, local_socket, local_node)
+                .expect("Error running peerd runtime");
+            unreachable!()
         }
     };
 
@@ -241,13 +238,12 @@ fn main() {
         remote_node_addr: full internet2 remote node address
         local_socket: None
         connect: true */
-    peerd::run(
+    peerd::run_from_listener(
         service_config,
         connection,
         remote_node_addr,
         local_socket,
         local_node,
-        forked_from_listener,
     )
     .expect("Error running peerd runtime");
 

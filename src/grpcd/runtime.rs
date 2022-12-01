@@ -33,10 +33,7 @@ use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::bus::{
-    ctl::CtlMsg,
-    info::{InfoMsg, SwapInfo},
-};
+use crate::bus::{ctl::CtlMsg, info::InfoMsg, info::SwapInfo};
 use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{
@@ -55,6 +52,8 @@ use self::farcaster::AbortSwapRequest;
 use self::farcaster::AbortSwapResponse;
 use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
+use self::farcaster::ConnectSwapRequest;
+use self::farcaster::ConnectSwapResponse;
 use self::farcaster::ListOffersRequest;
 use self::farcaster::ListOffersResponse;
 use self::farcaster::MakeRequest;
@@ -313,7 +312,9 @@ impl Farcaster for FarcasterService {
         match oneshot_rx.await {
             Ok(BusMsg::Info(InfoMsg::SwapInfo(SwapInfo {
                 swap_id: _,
-                maker_peer,
+                connection,
+                connected,
+                state,
                 uptime,
                 since,
                 public_offer,
@@ -323,11 +324,8 @@ impl Farcaster for FarcasterService {
             }))) => {
                 let reply = SwapInfoResponse {
                     id,
-                    maker_peer: maker_peer
-                        .into_iter()
-                        .next()
-                        .map(|p| p.to_string())
-                        .unwrap_or("".to_string()),
+                    connection: connection.map(|p| p.to_string()).unwrap_or("".to_string()),
+                    connected,
                     uptime: uptime.as_secs(),
                     since: since,
                     public_offer: public_offer.to_string(),
@@ -336,6 +334,7 @@ impl Farcaster for FarcasterService {
                     connected_counterparty_node_id: connected_counterparty_node_id
                         .map(|n| n.to_string())
                         .unwrap_or("".to_string()),
+                    state: state.to_string(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -701,6 +700,37 @@ impl Farcaster for FarcasterService {
                 Ok(GrpcResponse::new(reply))
             }
             res => process_error_response(res),
+        }
+    }
+
+    async fn connect_swap(
+        &self,
+        request: GrpcRequest<ConnectSwapRequest>,
+    ) -> Result<GrpcResponse<ConnectSwapResponse>, Status> {
+        let ConnectSwapRequest {
+            id,
+            swap_id: str_swap_id,
+        } = request.into_inner();
+
+        let swap_id =
+            SwapId::from_str(&str_swap_id).map_err(|_| Status::invalid_argument("swap id"))?;
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::Connect(swap_id),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::ConnectSuccess)) => {
+                let reply = ConnectSwapResponse { id };
+                Ok(GrpcResponse::new(reply))
+            }
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, code: _ }))) => {
+                Err(Status::internal(info))
+            }
+            _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
 

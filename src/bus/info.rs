@@ -284,8 +284,10 @@ pub struct PeerInfo {
 pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub swap_id: Option<SwapId>,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub maker_peer: Vec<NodeAddr>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub connection: Option<NodeAddr>,
+    pub connected: bool,
+    pub state: String,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
