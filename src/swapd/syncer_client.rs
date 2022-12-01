@@ -54,6 +54,7 @@ pub struct SyncerState {
     pub confirmation_bound: u32,
     pub lock_tx_confs: Option<SyncMsg>,
     pub cancel_tx_confs: Option<SyncMsg>,
+    pub buy_tx_confs: Option<SyncMsg>,
     pub network: farcaster_core::blockchain::Network,
     pub bitcoin_syncer: ServiceId,
     pub monero_syncer: ServiceId,
