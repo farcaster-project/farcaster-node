@@ -870,7 +870,7 @@ async fn run_restore_alice_pre_lock(
 
     // run until SuccessSwap is received
     retry_until_bob_finish_state_transition(
-        cli_bob_progress_args.clone(),
+        cli_alice_progress_args.clone(),
         StateReport::FinishA(Outcome::SuccessSwap),
         monero_regtest.clone(),
     )
