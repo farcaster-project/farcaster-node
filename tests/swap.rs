@@ -813,20 +813,12 @@ async fn run_restore_alice_pre_lock(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -866,12 +858,8 @@ async fn run_restore_alice_pre_lock(
         .await
         .unwrap();
 
-    // run until BobState(BuySig) is received
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(BuySig)".to_string(),
-    )
-    .await;
+    // run until BuySigB is received
+    retry_until_state_transition(cli_bob_progress_args.clone(), "BuySigB".to_string()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -880,10 +868,11 @@ async fn run_restore_alice_pre_lock(
         .generate_to_address(5, &reusable_btc_address())
         .unwrap();
 
-    // run until the AliceState(Finish) is received
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(Finish(Success(Swapped)))".to_string(),
+    // run until SuccessSwap is received
+    retry_until_bob_finish_state_transition(
+        cli_bob_progress_args.clone(),
+        StateReport::FinishA(Outcome::SuccessSwap),
+        monero_regtest.clone(),
     )
     .await;
 
@@ -921,10 +910,10 @@ async fn run_restore_alice_pre_lock(
         .await
         .unwrap();
 
-    // run until the BobState(Finish) is received
+    // run until SuccessSwap is received
     retry_until_bob_finish_state_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishB(Outcome::SuccessSwap),
         monero_regtest.clone(),
     )
     .await;
