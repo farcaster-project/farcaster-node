@@ -667,6 +667,17 @@ impl Runtime {
         }
 
         match request {
+            PeerMsg::OfferNotFound(swap_id)
+                if self.state.commit() && self.state.trade_role() == Some(TradeRole::Taker) =>
+            {
+                error!(
+                    "{} | Taken offer was not found by the maker, aborting this swap.",
+                    swap_id
+                );
+                // just cancel the swap, no additional logic required
+                self.state_update(endpoints, State::Alice(AliceState::FinishA(Outcome::Abort)))?;
+                self.abort_swap(endpoints)?;
+            }
             // Trade role: Taker, target of this message
             // Message #2 received after Take Swap control message
             //

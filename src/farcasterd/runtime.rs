@@ -826,8 +826,8 @@ impl Runtime {
 
     fn match_request_to_syncer_state_machine(
         &mut self,
-        req: BusMsg,
-        source: ServiceId,
+        req: &BusMsg,
+        source: &ServiceId,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
             (BusMsg::Ctl(CtlMsg::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
@@ -836,15 +836,15 @@ impl Runtime {
                     id, ..
                 }))),
                 _,
-            ) => Ok(self.syncer_state_machines.remove(&id)),
+            ) => Ok(self.syncer_state_machines.remove(id)),
             _ => Ok(None),
         }
     }
 
     fn match_request_to_trade_state_machine(
         &mut self,
-        req: BusMsg,
-        source: ServiceId,
+        req: &BusMsg,
+        source: &ServiceId,
     ) -> Result<Option<TradeStateMachine>, Error> {
         match (req, source) {
             (BusMsg::Ctl(CtlMsg::RestoreCheckpoint(..)), _) => {
@@ -858,7 +858,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_public_offer) = tsm.open_offer() {
-                        tsm_public_offer == public_offer
+                        tsm_public_offer == *public_offer
                     } else {
                         false
                     }
@@ -869,7 +869,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_public_offer) = tsm.consumed_offer() {
-                        tsm_public_offer == public_offer
+                        tsm_public_offer == *public_offer
                     } else {
                         false
                     }
@@ -881,7 +881,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_addr) = tsm.awaiting_connect_from() {
-                        addr == tsm_addr
+                        tsm_addr == *addr
                     } else {
                         false
                     }
@@ -897,7 +897,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_swap_id) = tsm.swap_id() {
-                        tsm_swap_id == swap_id
+                        tsm_swap_id == *swap_id
                     } else {
                         false
                     }
@@ -913,18 +913,14 @@ impl Runtime {
         source: ServiceId,
         endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
-        if let Some(tsm) =
-            self.match_request_to_trade_state_machine(request.clone(), source.clone())?
-        {
+        if let Some(tsm) = self.match_request_to_trade_state_machine(&request, &source)? {
             if let Some(new_tsm) =
                 TradeStateMachineExecutor::execute(self, endpoints, source, request, tsm)?
             {
                 self.trade_state_machines.push(new_tsm);
             }
             Ok(())
-        } else if let Some(ssm) =
-            self.match_request_to_syncer_state_machine(request.clone(), source.clone())?
-        {
+        } else if let Some(ssm) = self.match_request_to_syncer_state_machine(&request, &source)? {
             if let Some(new_ssm) =
                 SyncerStateMachineExecutor::execute(self, endpoints, source, request, ssm)?
             {
@@ -958,6 +954,16 @@ impl Runtime {
                             code: FailureCode::Unknown,
                             info: "Swap to connect not found.".to_string(),
                         })),
+                    )?;
+                    Ok(())
+                }
+                BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit { commit, .. })) => {
+                    debug!("{} | Offer already taken or aborted, replying with offer not found to the counterparty", commit.swap_id());
+                    endpoints.send_to(
+                        ServiceBus::Msg,
+                        self.identity(),
+                        source,
+                        BusMsg::P2p(PeerMsg::OfferNotFound(commit.swap_id())),
                     )?;
                     Ok(())
                 }
