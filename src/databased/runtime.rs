@@ -7,13 +7,13 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::{swapd::CheckpointSwapd, Endpoints};
 use crate::bus::{
     ctl::{Checkpoint, CtlMsg},
     info::{Address, InfoMsg, OfferStatusSelector},
     AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
     OfferStatusPair, ServiceBus,
 };
+use crate::{swapd::CheckpointSwapd, Endpoints};
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use microservices::esb::{self, Handler};
 

@@ -19,13 +19,13 @@ use super::{
     temporal_safety::TemporalSafety,
     wallet::Wallet,
 };
+use crate::bus::ctl::{InitMakerSwap, InitTakerSwap};
 use crate::service::Endpoints;
 use crate::swapd::wallet::{
     HandleBuyProcedureSignatureRes, HandleCoreArbitratingSetupRes,
     HandleRefundProcedureSignaturesRes,
 };
 use crate::swapd::StateReport;
-use crate::bus::ctl::{InitMakerSwap, InitTakerSwap};
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{AddressTransaction, Boolean, Event, Task, TransactionConfirmations};
 use crate::syncerd::{FeeEstimation, FeeEstimations};
