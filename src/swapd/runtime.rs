@@ -323,7 +323,7 @@ impl StrictDecode for PendingRequest {
     }
 }
 
-#[derive(Debug, Clone, Display)]
+#[derive(Debug, Clone, Display, StrictEncode, StrictDecode)]
 #[display("checkpoint-swapd")]
 pub struct CheckpointSwapd {
     pub state: State,
@@ -331,135 +331,13 @@ pub struct CheckpointSwapd {
     pub enquirer: Option<ServiceId>,
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
     pub temporal_safety: TemporalSafety,
-    pub txs: HashMap<TxLabel, bitcoin::Transaction>,
-    pub txids: HashMap<TxLabel, Txid>,
+    pub txs: Vec<(TxLabel, bitcoin::Transaction)>,
+    pub txids: Vec<(TxLabel, Txid)>,
     pub pending_broadcasts: Vec<bitcoin::Transaction>,
-    pub pending_requests: HashMap<ServiceId, Vec<PendingRequest>>,
+    pub pending_requests: Vec<(ServiceId, Vec<PendingRequest>)>,
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
     pub public_offer: PublicOffer,
-}
-
-impl StrictEncode for CheckpointSwapd {
-    fn strict_encode<E: std::io::Write>(&self, mut e: E) -> Result<usize, strict_encoding::Error> {
-        let mut len = self.state.strict_encode(&mut e)?;
-        len += self.last_msg.strict_encode(&mut e)?;
-        len += self.enquirer.strict_encode(&mut e)?;
-        len += self.xmr_addr_addendum.strict_encode(&mut e)?;
-        len += self.temporal_safety.strict_encode(&mut e)?;
-        len += self.pending_broadcasts.strict_encode(&mut e)?;
-        len += self.local_trade_role.strict_encode(&mut e)?;
-        len += self.connected_counterparty_node_id.strict_encode(&mut e)?;
-        len += self.public_offer.strict_encode(&mut e)?;
-
-        len += self.txs.len().strict_encode(&mut e)?;
-        let res: Result<usize, strict_encoding::Error> =
-            self.txs.iter().try_fold(len, |mut acc, (key, val)| {
-                acc += key.strict_encode(&mut e).map_err(|err| {
-                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
-                })?;
-                acc += val.strict_encode(&mut e).map_err(|err| {
-                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
-                })?;
-                Ok(acc)
-            });
-        len = match res {
-            Ok(val) => Ok(val),
-            Err(err) => Err(strict_encoding::Error::DataIntegrityError(format!(
-                "{}",
-                err
-            ))),
-        }?;
-
-        len += self.txids.len().strict_encode(&mut e)?;
-        let res: Result<usize, strict_encoding::Error> =
-            self.txids.iter().try_fold(len, |mut acc, (key, val)| {
-                acc += key.strict_encode(&mut e).map_err(|err| {
-                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
-                })?;
-                acc += val.strict_encode(&mut e).map_err(|err| {
-                    strict_encoding::Error::DataIntegrityError(format!("{}", err))
-                })?;
-                Ok(acc)
-            });
-        len = match res {
-            Ok(val) => Ok(val),
-            Err(err) => Err(strict_encoding::Error::DataIntegrityError(format!(
-                "{}",
-                err
-            ))),
-        }?;
-
-        len += self.pending_requests.len().strict_encode(&mut e)?;
-        self.pending_requests
-            .iter()
-            .try_fold(len, |mut acc, (key, val)| {
-                acc += key.strict_encode(&mut e)?;
-                acc += val.strict_encode(&mut e)?;
-                Ok(acc)
-            })
-    }
-}
-
-impl StrictDecode for CheckpointSwapd {
-    fn strict_decode<D: std::io::Read>(mut d: D) -> Result<Self, strict_encoding::Error> {
-        let state = State::strict_decode(&mut d)?;
-        let last_msg = PeerMsg::strict_decode(&mut d)?;
-        let enquirer = Option::<ServiceId>::strict_decode(&mut d)?;
-        let xmr_addr_addendum = Option::<XmrAddressAddendum>::strict_decode(&mut d)?;
-        let temporal_safety = TemporalSafety::strict_decode(&mut d)?;
-        let pending_broadcasts = Vec::<bitcoin::Transaction>::strict_decode(&mut d)?;
-        let local_trade_role = TradeRole::strict_decode(&mut d)?;
-        let connected_counterparty_node_id = Option::<NodeId>::strict_decode(&mut d)?;
-        let public_offer = PublicOffer::strict_decode(&mut d)?;
-
-        let len = usize::strict_decode(&mut d)?;
-        let mut txs = HashMap::<TxLabel, bitcoin::Transaction>::new();
-        for _ in 0..len {
-            let key = TxLabel::strict_decode(&mut d)?;
-            let val = bitcoin::Transaction::strict_decode(&mut d)?;
-            if txs.contains_key(&key) {
-                return Err(strict_encoding::Error::RepeatedValue(format!("{:?}", key)));
-            }
-            txs.insert(key, val);
-        }
-
-        let len = usize::strict_decode(&mut d)?;
-        let mut txids = HashMap::<TxLabel, Txid>::new();
-        for _ in 0..len {
-            let key = TxLabel::strict_decode(&mut d)?;
-            let val = Txid::strict_decode(&mut d)?;
-            if txids.contains_key(&key) {
-                return Err(strict_encoding::Error::RepeatedValue(format!("{:?}", key)));
-            }
-            txids.insert(key, val);
-        }
-
-        let len = usize::strict_decode(&mut d)?;
-        let mut pending_requests = HashMap::<ServiceId, Vec<PendingRequest>>::new();
-        for _ in 0..len {
-            let key = ServiceId::strict_decode(&mut d)?;
-            let val = Vec::<PendingRequest>::strict_decode(&mut d)?;
-            if pending_requests.contains_key(&key) {
-                return Err(strict_encoding::Error::RepeatedValue(format!("{:?}", key)));
-            }
-            pending_requests.insert(key, val);
-        }
-        Ok(CheckpointSwapd {
-            state,
-            last_msg,
-            enquirer,
-            xmr_addr_addendum,
-            temporal_safety,
-            txs,
-            txids,
-            pending_requests,
-            pending_broadcasts,
-            local_trade_role,
-            connected_counterparty_node_id,
-            public_offer,
-        })
-    }
 }
 
 impl CtlServer for Runtime {}
@@ -599,9 +477,9 @@ impl Runtime {
                         last_msg: PeerMsg::BuyProcedureSignature(buy_proc),
                         enquirer: self.enquirer.clone(),
                         temporal_safety: self.temporal_safety.clone(),
-                        txs: self.txs.clone(),
-                        txids: self.syncer_state.tasks.txids.clone(),
-                        pending_requests: self.pending_requests().clone(),
+                        txs: self.txs.clone().drain().collect(),
+                        txids: self.syncer_state.tasks.txids.clone().drain().collect(),
+                        pending_requests: self.pending_requests().clone().drain().collect(),
                         pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                         xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                         local_trade_role: self.local_trade_role,
@@ -866,9 +744,9 @@ impl Runtime {
                             last_msg: PeerMsg::CoreArbitratingSetup(setup.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
-                            txs: self.txs.clone(),
-                            txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests().clone(),
+                            txs: self.txs.clone().drain().collect(),
+                            txids: self.syncer_state.tasks.txids.clone().drain().collect(),
+                            pending_requests: self.pending_requests().clone().drain().collect(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                             local_trade_role: self.local_trade_role,
@@ -986,9 +864,9 @@ impl Runtime {
                             last_msg: PeerMsg::RefundProcedureSignatures(refund_proc_sigs.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
-                            txs: self.txs.clone(),
-                            txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests().clone(),
+                            txs: self.txs.clone().drain().collect(),
+                            txids: self.syncer_state.tasks.txids.clone().drain().collect(),
+                            pending_requests: self.pending_requests().clone().drain().collect(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                             local_trade_role: self.local_trade_role,
@@ -1113,9 +991,9 @@ impl Runtime {
                             last_msg: PeerMsg::BuyProcedureSignature(buy_proc_sig.clone()),
                             enquirer: self.enquirer.clone(),
                             temporal_safety: self.temporal_safety.clone(),
-                            txs: self.txs.clone(),
-                            txids: self.syncer_state.tasks.txids.clone(),
-                            pending_requests: self.pending_requests().clone(),
+                            txs: self.txs.clone().drain().collect(),
+                            txids: self.syncer_state.tasks.txids.clone().drain().collect(),
+                            pending_requests: self.pending_requests().clone().drain().collect(),
                             pending_broadcasts: self.syncer_state.pending_broadcast_txs(),
                             xmr_addr_addendum: self.syncer_state.xmr_addr_addendum.clone(),
                             local_trade_role: self.local_trade_role,
@@ -1558,9 +1436,9 @@ impl Runtime {
                     last_msg,
                     enquirer,
                     temporal_safety,
-                    txs,
+                    mut txs,
                     txids,
-                    pending_requests,
+                    mut pending_requests,
                     pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
@@ -1570,12 +1448,12 @@ impl Runtime {
                     self.state = state;
                     self.enquirer = enquirer;
                     self.temporal_safety = temporal_safety;
-                    self.pending_requests = pending_requests;
+                    self.pending_requests = pending_requests.drain(..).collect();
                     // We need to update the peerd for the pending requests in case of reconnect
                     self.pending_requests
                         .update_deferred_requests_peer_destination(self.peer_service.clone());
                     self.local_trade_role = local_trade_role;
-                    self.txs = txs.clone();
+                    self.txs = txs.drain(..).collect();
                     trace!("Watch height bitcoin");
                     let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
                     endpoints.send_to(
