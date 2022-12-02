@@ -32,14 +32,29 @@ pub enum AddressSecretKey {
     #[display("addr_key({address}, ..)")]
     Bitcoin {
         address: bitcoin::Address,
-        secret_key: bitcoin::secp256k1::SecretKey,
+        secret_key_info: BitcoinSecretKeyInfo,
     },
     #[display("addr_key({address}, ..)")]
     Monero {
         address: monero::Address,
-        view: monero::PrivateKey,
-        spend: monero::PrivateKey,
+        secret_key_info: MoneroSecretKeyInfo,
     },
+}
+
+#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[display("bitcoin secret key info")]
+pub struct BitcoinSecretKeyInfo {
+    pub swap_id: Option<SwapId>,
+    pub secret_key: bitcoin::secp256k1::SecretKey,
+}
+
+#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[display("monero secret key info")]
+pub struct MoneroSecretKeyInfo {
+    pub swap_id: Option<SwapId>,
+    pub view: monero::PrivateKey,
+    pub spend: monero::PrivateKey,
+    pub creation_height: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]

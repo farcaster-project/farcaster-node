@@ -403,7 +403,7 @@ impl Exec for Command {
                     InfoMsg::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
                 if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
-                    secret_key,
+                    secret_key_info,
                     ..
                 })) = runtime.report_failure()?
                 {
@@ -411,7 +411,7 @@ impl Exec for Command {
                         ServiceId::Farcasterd,
                         CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                             source_address,
-                            source_secret_key: secret_key,
+                            source_secret_key: secret_key_info.secret_key,
                             destination_address,
                         })),
                     )?;
@@ -430,16 +430,15 @@ impl Exec for Command {
                     InfoMsg::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
                 if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
-                    view,
-                    spend,
+                    secret_key_info,
                     ..
                 })) = runtime.report_failure()?
                 {
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
                         CtlMsg::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
-                            source_spend_key: spend,
-                            source_view_key: view,
+                            source_spend_key: secret_key_info.spend,
+                            source_view_key: secret_key_info.view,
                             destination_address,
                             minimum_balance: monero::Amount::from_pico(0),
                         })),
