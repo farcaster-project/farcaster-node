@@ -160,6 +160,7 @@ pub fn run(
         public_offer,
         local_trade_role,
         latest_state_report: state_report,
+        monero_address_creation_height: None,
     };
     let broker = false;
     Service::run(config, runtime, broker)
@@ -183,6 +184,7 @@ pub struct Runtime {
     public_offer: PublicOffer,
     local_trade_role: TradeRole,
     latest_state_report: StateReport,
+    monero_address_creation_height: Option<u64>,
 }
 
 // FIXME Something more meaningful than ServiceId to index
@@ -338,6 +340,7 @@ pub struct CheckpointSwapd {
     pub local_trade_role: TradeRole,
     pub connected_counterparty_node_id: Option<NodeId>,
     pub public_offer: PublicOffer,
+    pub monero_address_creation_height: Option<u64>,
 }
 
 impl CtlServer for Runtime {}
@@ -485,6 +488,7 @@ impl Runtime {
                         local_trade_role: self.local_trade_role,
                         connected_counterparty_node_id: get_node_id(&self.peer_service),
                         public_offer: self.public_offer.clone(),
+                        monero_address_creation_height: self.monero_address_creation_height.clone(),
                     }),
                 )?;
             } else {
@@ -733,6 +737,11 @@ impl Runtime {
             {
                 // checkpoint swap pre lock bob
                 debug!("{} | checkpointing bob pre lock state", self.swap_id);
+                // Set the monero address creation height for Bob before setting the first checkpoint
+                if self.monero_address_creation_height.is_none() {
+                    self.monero_address_creation_height =
+                        Some(self.syncer_state.height(Blockchain::Monero));
+                }
                 if self.state.b_sup_checkpoint_pre_lock() {
                     checkpoint_send(
                         endpoints,
@@ -752,6 +761,9 @@ impl Runtime {
                             local_trade_role: self.local_trade_role,
                             connected_counterparty_node_id: get_node_id(&self.peer_service),
                             public_offer: self.public_offer.clone(),
+                            monero_address_creation_height: self
+                                .monero_address_creation_height
+                                .clone(),
                         }),
                     )?;
                 }
@@ -872,6 +884,9 @@ impl Runtime {
                             local_trade_role: self.local_trade_role,
                             connected_counterparty_node_id: get_node_id(&self.peer_service),
                             public_offer: self.public_offer.clone(),
+                            monero_address_creation_height: self
+                                .monero_address_creation_height
+                                .clone(),
                         }),
                     )?;
                 }
@@ -999,6 +1014,9 @@ impl Runtime {
                             local_trade_role: self.local_trade_role,
                             connected_counterparty_node_id: get_node_id(&self.peer_service),
                             public_offer: self.public_offer.clone(),
+                            monero_address_creation_height: self
+                                .monero_address_creation_height
+                                .clone(),
                         }),
                     )?;
                 }
@@ -1232,7 +1250,12 @@ impl Runtime {
 
                     let txlabel = TxLabel::AccLock;
                     if !self.syncer_state.is_watched_addr(&txlabel) {
-                        let task = self.syncer_state.watch_addr_xmr(spend, view, txlabel, None);
+                        let task = self.syncer_state.watch_addr_xmr(
+                            spend,
+                            view,
+                            txlabel,
+                            self.monero_address_creation_height,
+                        );
                         endpoints.send_to(
                             ServiceBus::Sync,
                             self.identity(),
@@ -1308,27 +1331,34 @@ impl Runtime {
                 }
                 SweepAddressAddendum::Monero(sweep_xmr) => {
                     let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
-                    let acc_confs_needs = self.temporal_safety.sweep_monero_thr
-                        - self.temporal_safety.xmr_finality_thr;
+                    let acc_confs_needs = self
+                        .syncer_state
+                        .get_confs(TxLabel::AccLock)
+                        .map(|c| {
+                            self.temporal_safety
+                                .sweep_monero_thr
+                                .checked_sub(c)
+                                .unwrap_or(0)
+                        })
+                        .unwrap_or(self.temporal_safety.sweep_monero_thr);
                     let sweep_block =
                         self.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
                     info!(
-                        "{} | Tx {} needs {}, and has {} {}",
+                        "{} | Tx {} needs {} confirmations, and has {} confirmations",
                         self.swap_id.swap_id(),
                         TxLabel::AccLock.label(),
-                        "10 confirmations".bright_green_bold(),
-                        (10 - acc_confs_needs).bright_green_bold(),
-                        "confirmations".bright_green_bold(),
+                        acc_confs_needs.bright_green_bold(),
+                        self.syncer_state.get_confs(TxLabel::AccLock).unwrap_or(0),
                     );
                     info!(
-                        "{} | {} reaches your address {} around block {}",
+                        "{} | {} reaches your address {} after block {}",
                         self.swap_id.swap_id(),
                         Blockchain::Monero.label(),
                         sweep_xmr.destination_address.addr(),
                         sweep_block.bright_blue_bold(),
                     );
                     warn!(
-                        "Peerd might crash, just ignore it, counterparty closed\
+                        "Peerd might crash, just ignore it, counterparty closed \
                                connection but you don't need it anymore!"
                     );
                     self.pending_requests.defer_request(
@@ -1442,6 +1472,7 @@ impl Runtime {
                     pending_broadcasts,
                     xmr_addr_addendum,
                     local_trade_role,
+                    monero_address_creation_height,
                     ..
                 }) => {
                     info!("{} | Restoring swap", swap_id.swap_id());
@@ -1453,7 +1484,14 @@ impl Runtime {
                     self.pending_requests
                         .update_deferred_requests_peer_destination(self.peer_service.clone());
                     self.local_trade_role = local_trade_role;
+                    trace!(
+                        "setting transaction: {:?}",
+                        txs.iter()
+                            .map(|(l, _)| l.to_string())
+                            .collect::<Vec<String>>()
+                    );
                     self.txs = txs.drain(..).collect();
+                    self.monero_address_creation_height = monero_address_creation_height;
                     trace!("Watch height bitcoin");
                     let watch_height_bitcoin = self.syncer_state.watch_height(Blockchain::Bitcoin);
                     endpoints.send_to(
@@ -2129,6 +2167,11 @@ impl Runtime {
                                 {
                                     let (spend, view) =
                                         aggregate_xmr_spend_view(alice_params, bob_params);
+                                    // Set the monero address creation height for Alice right after the first aggregation
+                                    if self.monero_address_creation_height.is_none() {
+                                        self.monero_address_creation_height =
+                                            Some(self.syncer_state.height(Blockchain::Monero));
+                                    }
                                     let viewpair = monero::ViewPair { spend, view };
                                     let address = monero::Address::from_viewpair(
                                         self.syncer_state.network.into(),
@@ -2145,9 +2188,12 @@ impl Runtime {
 
                                     let txlabel = TxLabel::AccLock;
                                     if !self.syncer_state.is_watched_addr(&txlabel) {
-                                        let watch_addr_task = self
-                                            .syncer_state
-                                            .watch_addr_xmr(spend, view, txlabel, None);
+                                        let watch_addr_task = self.syncer_state.watch_addr_xmr(
+                                            spend,
+                                            view,
+                                            txlabel,
+                                            self.monero_address_creation_height,
+                                        );
                                         endpoints.send_to(
                                             ServiceBus::Sync,
                                             self.identity(),
@@ -2263,11 +2309,16 @@ impl Runtime {
                             }
 
                             TxLabel::Cancel
-                                if self.temporal_safety.safe_refund(*confirmations)
+                                if self
+                                    .temporal_safety
+                                    .final_tx(*confirmations, Blockchain::Bitcoin)
                                     && (self.state.b_buy_sig() || self.state.b_core_arb())
                                     && self.txs.contains_key(&TxLabel::Refund) =>
                             {
                                 trace!("here Bob publishes refund tx");
+                                if !self.temporal_safety.safe_refund(*confirmations) {
+                                    warn!("Publishing refund tx, but we might already have been punished");
+                                }
                                 let (tx_label, refund_tx) =
                                     self.txs.remove_entry(&TxLabel::Refund).unwrap();
                                 self.broadcast(refund_tx, tx_label, endpoints)?;
