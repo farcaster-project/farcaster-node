@@ -87,7 +87,6 @@ pub fn run(
         SwapRole::Alice => State::Alice(AliceState::StartA { local_trade_role }),
         SwapRole::Bob => State::Bob(BobState::StartB { local_trade_role }),
     };
-    let sweep_monero_thr = 10;
     info!(
         "{}: {}",
         "Starting swap".to_string().bright_green_bold(),
@@ -105,7 +104,8 @@ pub fn run(
         btc_finality_thr: 1,
         race_thr: 3,
         xmr_finality_thr: 1,
-        sweep_monero_thr,
+        // this is a constant
+        sweep_monero_thr: 10,
     };
 
     temporal_safety.valid_params()?;

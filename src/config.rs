@@ -40,6 +40,8 @@ pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
 pub struct Config {
     /// Farcasterd configuration
     pub farcasterd: Option<FarcasterdConfig>,
+    /// Swap configuration, applies to all swaps launched by this node
+    pub swap: Option<SwapConfig>,
     /// Sets the grpc server port, if none is given, no grpc server is run
     pub grpc: Option<GrpcConfig>,
     /// Syncer configuration
@@ -142,6 +144,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             farcasterd: Some(FarcasterdConfig::default()),
+            swap: None,
             grpc: None,
             syncers: Some(SyncersConfig::default()),
         }
@@ -159,6 +162,31 @@ pub struct FarcasterdConfig {
     pub bind_ip: Option<String>,
     /// Whether checkpoints should be auto restored at start-up, or not
     pub auto_restore: Option<bool>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(crate = "serde_crate")]
+pub struct SwapConfig {
+    /// Swap parameters for the Bitcoin blockchain
+    pub bitcoin: BitcoinConfig,
+    /// Swap parameters for the Monero blockchain
+    pub monero: MoneroConfig,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(crate = "serde_crate")]
+pub struct BitcoinConfig {
+    /// Avoid broadcasting a transaction if a race can happen in # blocks
+    pub safety_margin: u8,
+    /// Number of confirmations required to consider a transaction final
+    pub finality: u8,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(crate = "serde_crate")]
+pub struct MoneroConfig {
+    /// Number of confirmations required to consider a transaction final
+    pub finality: u8,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
