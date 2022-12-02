@@ -23,16 +23,36 @@ service Farcaster {
 
 message HealthCheckRequest {
     uint32 id = 1;
+    HealthCheckSelector selector = 2;
+}
+
+enum HealthCheckSelector {
+    CHECK_ALL = 0;
+    CHECK_MAINNET = 1;
+    CHECK_TESTNET = 2;
+    CHECK_LOCAL = 3;
 }
 
 message HealthCheckResponse {
     uint32 id = 1;
+    oneof health_report {
+        CompleteHealthReport complete_health_report = 2;
+        ReducedHealthReport reduced_health_report = 3;
+    }
+}
+
+message CompleteHealthReport {
     string bitcoin_mainnet_health = 2;
     string bitcoin_testnet_health = 3;
     string bitcoin_local_health = 4;
     string monero_mainnet_health = 5;
     string monero_testnet_health = 6;
-    string monero_local_health = 7;
+    string monero_local_health = 7;   
+}
+
+message ReducedHealthReport {
+    string bitcoin_health = 2;
+    string monero_health = 7;
 }
 
 message InfoRequest {

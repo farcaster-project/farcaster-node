@@ -7,6 +7,7 @@ use crate::bus::info::OfferStatusSelector;
 use crate::bus::info::ProgressEvent;
 use crate::bus::AddressSecretKey;
 use crate::bus::Failure;
+use crate::bus::HealthCheckSelector;
 use crate::bus::OptionDetails;
 use crate::bus::Outcome;
 use crate::service::Endpoints;
@@ -53,6 +54,7 @@ use self::farcaster::AbortSwapResponse;
 use self::farcaster::AddressSwapIdPair;
 use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
+use self::farcaster::CompleteHealthReport;
 use self::farcaster::ConnectSwapRequest;
 use self::farcaster::ConnectSwapResponse;
 use self::farcaster::FundingAddressesRequest;
@@ -71,6 +73,7 @@ use self::farcaster::PeersRequest;
 use self::farcaster::PeersResponse;
 use self::farcaster::ProgressRequest;
 use self::farcaster::ProgressResponse;
+use self::farcaster::ReducedHealthReport;
 use self::farcaster::RestoreCheckpointRequest;
 use self::farcaster::RestoreCheckpointResponse;
 use self::farcaster::RevokeOfferRequest;
@@ -317,6 +320,23 @@ impl From<StateReport> for farcaster::State {
                     outcome: farcaster::Outcome::from(outcome).into(),
                 })),
             },
+        }
+    }
+}
+
+impl From<farcaster::HealthCheckSelector> for HealthCheckSelector {
+    fn from(s: farcaster::HealthCheckSelector) -> Self {
+        match s {
+            farcaster::HealthCheckSelector::CheckAll => HealthCheckSelector::All,
+            farcaster::HealthCheckSelector::CheckLocal => {
+                HealthCheckSelector::Network(Network::Local)
+            }
+            farcaster::HealthCheckSelector::CheckMainnet => {
+                HealthCheckSelector::Network(Network::Mainnet)
+            }
+            farcaster::HealthCheckSelector::CheckTestnet => {
+                HealthCheckSelector::Network(Network::Testnet)
+            }
         }
     }
 }
@@ -1062,99 +1082,158 @@ impl Farcaster for FarcasterService {
         &self,
         request: GrpcRequest<HealthCheckRequest>,
     ) -> Result<GrpcResponse<HealthCheckResponse>, Status> {
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Testnet),
-                service_id: ServiceId::Farcasterd,
-            }))
-            .await?;
+        let HealthCheckRequest {
+            id,
+            selector: grpc_selector,
+        } = request.into_inner();
 
-        let bitcoin_testnet_health = match oneshot_rx.await {
-            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-            _ => {
-                return Err(Status::internal("Error during health check".to_string()));
+        let selector: HealthCheckSelector = farcaster::HealthCheckSelector::from_i32(grpc_selector)
+            .ok_or(Status::invalid_argument("selector"))?
+            .into();
+
+        match selector {
+            HealthCheckSelector::Network(network) => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, network),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+
+                let bitcoin_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
+
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Monero, network),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+
+                let monero_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
+                Ok(GrpcResponse::new(HealthCheckResponse {
+                    id,
+                    health_report: Some(
+                        farcaster::health_check_response::HealthReport::ReducedHealthReport(
+                            ReducedHealthReport {
+                                bitcoin_health: bitcoin_health.to_string(),
+                                monero_health: monero_health.to_string(),
+                            },
+                        ),
+                    ),
+                }))
             }
-        };
+            HealthCheckSelector::All => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Testnet),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
 
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Mainnet),
-                service_id: ServiceId::Farcasterd,
-            }))
-            .await?;
+                let bitcoin_testnet_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
 
-        let bitcoin_mainnet_health = match oneshot_rx.await {
-            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-            _ => {
-                return Err(Status::internal("Error during health check".to_string()));
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Mainnet),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+
+                let bitcoin_mainnet_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
+
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Local),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+
+                let bitcoin_local_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
+
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Testnet),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+
+                let monero_testnet_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
+
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Mainnet),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+
+                let monero_mainnet_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
+
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                        request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Local),
+                        service_id: ServiceId::Farcasterd,
+                    }))
+                    .await?;
+
+                let monero_local_health = match oneshot_rx.await {
+                    Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+                    _ => {
+                        return Err(Status::internal("Error during health check".to_string()));
+                    }
+                };
+
+                Ok(GrpcResponse::new(HealthCheckResponse {
+                    id,
+                    health_report: Some(
+                        farcaster::health_check_response::HealthReport::CompleteHealthReport(
+                            CompleteHealthReport {
+                                bitcoin_mainnet_health: bitcoin_mainnet_health.to_string(),
+                                bitcoin_testnet_health: bitcoin_testnet_health.to_string(),
+                                bitcoin_local_health: bitcoin_local_health.to_string(),
+                                monero_mainnet_health: monero_mainnet_health.to_string(),
+                                monero_testnet_health: monero_testnet_health.to_string(),
+                                monero_local_health: monero_local_health.to_string(),
+                            },
+                        ),
+                    ),
+                }))
             }
-        };
-
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Local),
-                service_id: ServiceId::Farcasterd,
-            }))
-            .await?;
-
-        let bitcoin_local_health = match oneshot_rx.await {
-            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-            _ => {
-                return Err(Status::internal("Error during health check".to_string()));
-            }
-        };
-
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Testnet),
-                service_id: ServiceId::Farcasterd,
-            }))
-            .await?;
-
-        let monero_testnet_health = match oneshot_rx.await {
-            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-            _ => {
-                return Err(Status::internal("Error during health check".to_string()));
-            }
-        };
-
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Mainnet),
-                service_id: ServiceId::Farcasterd,
-            }))
-            .await?;
-
-        let monero_mainnet_health = match oneshot_rx.await {
-            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-            _ => {
-                return Err(Status::internal("Error during health check".to_string()));
-            }
-        };
-
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
-                request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Local),
-                service_id: ServiceId::Farcasterd,
-            }))
-            .await?;
-
-        let monero_local_health = match oneshot_rx.await {
-            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
-            _ => {
-                return Err(Status::internal("Error during health check".to_string()));
-            }
-        };
-
-        Ok(GrpcResponse::new(HealthCheckResponse {
-            id: request.into_inner().id,
-            bitcoin_mainnet_health: bitcoin_mainnet_health.to_string(),
-            bitcoin_testnet_health: bitcoin_testnet_health.to_string(),
-            bitcoin_local_health: bitcoin_local_health.to_string(),
-            monero_mainnet_health: monero_mainnet_health.to_string(),
-            monero_testnet_health: monero_testnet_health.to_string(),
-            monero_local_health: monero_local_health.to_string(),
-        }))
+        }
     }
 
     async fn sweep_address(
