@@ -1,3 +1,4 @@
+use crate::bus::Outcome;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
@@ -222,6 +223,33 @@ impl Runtime {
 
             CtlMsg::SetOfferStatus(OfferStatusPair { offer, status }) => {
                 self.database.set_offer_status(&offer, &status)?;
+            }
+
+            CtlMsg::CleanDanglingOffers => {
+                let checkpointed_pub_offers: Vec<PublicOffer> = self
+                    .database
+                    .get_all_checkpoint_info()?
+                    .iter()
+                    .filter_map(|(_, info)| {
+                        CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
+                    })
+                    .map(|c| c.public_offer)
+                    .collect();
+                self.database
+                    .get_offers(OfferStatusSelector::InProgress)?
+                    .drain(..)
+                    .filter_map(|o| {
+                        if !checkpointed_pub_offers.contains(&o.offer) {
+                            Some(o.offer)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|offer| {
+                        self.database
+                            .set_offer_status(&offer, &OfferStatus::Ended(Outcome::FailureAbort))
+                    })
+                    .collect::<Result<_, _>>()?;
             }
 
             _ => {

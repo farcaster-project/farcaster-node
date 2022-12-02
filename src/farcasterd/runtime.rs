@@ -242,6 +242,12 @@ impl Runtime {
                     }
                     ServiceId::Database => {
                         self.registered_services.insert(source.clone());
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Database,
+                            BusMsg::Ctl(CtlMsg::CleanDanglingOffers),
+                        )?;
                     }
                     ServiceId::Wallet => {
                         self.registered_services.insert(source.clone());
