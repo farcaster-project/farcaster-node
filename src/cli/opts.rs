@@ -328,10 +328,9 @@ pub enum OfferSelectorParseError {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
+#[display(Debug)]
 pub enum CheckpointSelector {
-    #[display("All")]
     All,
-    #[display("AvailableForRestore")]
     AvailableForRestore,
 }
 
