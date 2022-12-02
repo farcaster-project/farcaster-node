@@ -737,7 +737,7 @@ impl Runtime {
             {
                 // checkpoint swap pre lock bob
                 debug!("{} | checkpointing bob pre lock state", self.swap_id);
-                // Set the monero address creation height for Bob to before setting the first checkpoint
+                // Set the monero address creation height for Bob before setting the first checkpoint
                 if self.monero_address_creation_height.is_none() {
                     self.monero_address_creation_height =
                         Some(self.syncer_state.height(Blockchain::Monero));
