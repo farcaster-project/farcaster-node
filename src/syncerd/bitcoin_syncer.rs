@@ -569,11 +569,21 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::BroadcastTransaction(task) => {
                             debug!("trying to broadcast tx: {:?}", task.tx.to_hex());
-                            if task.broadcast_after_height.is_some() {
+                            if let Some(height) = task.broadcast_after_height {
                                 let mut state_guard = state.lock().await;
-                                state_guard
-                                    .pending_broadcasts
-                                    .insert((task, syncerd_task.source));
+                                // If we already surpassed the height, immediately broadcast it. Otherwise queue the broadcast
+                                if height <= state_guard.block_height() {
+                                    drop(state_guard);
+                                    transaction_broadcast_tx
+                                        .send((task, syncerd_task.source))
+                                        .await
+                                        .expect("failed on transaction_broadcast_tx sender");
+                                } else {
+                                    state_guard
+                                        .pending_broadcasts
+                                        .insert((task, syncerd_task.source));
+                                    drop(state_guard);
+                                }
                             } else {
                                 transaction_broadcast_tx
                                     .send((task, syncerd_task.source))
