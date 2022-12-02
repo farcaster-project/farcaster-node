@@ -765,7 +765,7 @@ fn height_polling(
                 }
                 drop(state_guard);
 
-                // if the blocks changed, query transactions
+                // if the blocks changed, check pending broadcasts and query transactions
                 if block_change {
                     let state_guard = state.lock().await;
                     let height = state_guard.block_height();
@@ -784,6 +784,7 @@ fn height_polling(
                             .collect();
                     drop(state_guard);
                     for pending in pending_broadcasts {
+                        // Do not re-try sending pending broadcasts
                         if let Err(err) = transaction_broadcast_tx.send(pending.clone()).await {
                             error!("error sending through transaction_broadcast_tx {}", err);
                         }
