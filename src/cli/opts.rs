@@ -104,7 +104,7 @@ pub enum Command {
             short,
             long,
             default_value = "all",
-            possible_values = &["all", "All", "available", "Available", "available_for_restore"],
+            possible_values = &["all", "All", "available", "Available", "available-for-restore"],
         )]
         select: CheckpointSelector,
     },
@@ -340,7 +340,7 @@ impl FromStr for CheckpointSelector {
     fn from_str(input: &str) -> Result<CheckpointSelector, Self::Err> {
         match input {
             "all" | "All" => Ok(CheckpointSelector::All),
-            "available" | "Available" | "available_for_restore" => {
+            "available" | "Available" | "available-for-restore" => {
                 Ok(CheckpointSelector::AvailableForRestore)
             }
             _ => Err(CheckpointSelectorParseError::Invalid),
