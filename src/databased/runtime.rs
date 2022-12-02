@@ -247,7 +247,7 @@ impl Runtime {
                     })
                     .map(|offer| {
                         self.database
-                            .set_offer_status(&offer, &OfferStatus::Ended(Outcome::Abort))
+                            .set_offer_status(&offer, &OfferStatus::Ended(Outcome::FailureAbort))
                     })
                     .collect::<Result<_, _>>()?;
             }
