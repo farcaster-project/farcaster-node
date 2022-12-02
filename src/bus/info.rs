@@ -15,9 +15,11 @@ use crate::bus::{
 };
 use crate::cli::OfferSelector;
 use crate::farcasterd::stats::Stats;
+use crate::swapd::StateReport;
 use crate::syncerd::runtime::SyncerdTask;
 
 use super::ctl::FundingInfo;
+use super::StateTransition;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -287,7 +289,6 @@ pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub connection: Option<NodeAddr>,
     pub connected: bool,
-    pub state: String,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
@@ -295,6 +296,7 @@ pub struct SwapInfo {
     pub local_trade_role: TradeRole,
     pub local_swap_role: SwapRole,
     pub connected_counterparty_node_id: Option<NodeId>,
+    pub state: StateReport,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -332,8 +334,10 @@ pub struct FundingInfos {
 pub enum ProgressEvent {
     #[serde(rename = "message")]
     Message(String),
+    #[serde(rename = "update")]
+    StateUpdate(StateReport),
     #[serde(rename = "transition")]
-    StateTransition(String),
+    StateTransition(StateTransition),
     #[serde(rename = "success")]
     Success(OptionDetails),
     #[serde(rename = "failure")]

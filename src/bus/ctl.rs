@@ -41,6 +41,9 @@ pub enum CtlMsg {
     #[display(inner)]
     Progress(Progress),
 
+    /// A message sent from farcaster to database on startup to cleanup dangling offer data
+    CleanDanglingOffers,
+
     /// A message sent from farcaster to maker swap service to begin the swap.
     #[display("make_swap({0})")]
     MakeSwap(InitSwap),

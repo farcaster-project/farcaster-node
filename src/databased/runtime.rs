@@ -1,4 +1,4 @@
-use crate::bus::{BitcoinSecretKeyInfo, MoneroSecretKeyInfo};
+use crate::bus::{BitcoinSecretKeyInfo, MoneroSecretKeyInfo, Outcome};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
@@ -221,6 +221,33 @@ impl Runtime {
 
             CtlMsg::SetOfferStatus(OfferStatusPair { offer, status }) => {
                 self.database.set_offer_status(&offer, &status)?;
+            }
+
+            CtlMsg::CleanDanglingOffers => {
+                let checkpointed_pub_offers: Vec<PublicOffer> = self
+                    .database
+                    .get_all_checkpoint_info()?
+                    .iter()
+                    .filter_map(|(_, info)| {
+                        CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
+                    })
+                    .map(|c| c.public_offer)
+                    .collect();
+                self.database
+                    .get_offers(OfferStatusSelector::InProgress)?
+                    .drain(..)
+                    .filter_map(|o| {
+                        if !checkpointed_pub_offers.contains(&o.offer) {
+                            Some(o.offer)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|offer| {
+                        self.database
+                            .set_offer_status(&offer, &OfferStatus::Ended(Outcome::FailureAbort))
+                    })
+                    .collect::<Result<_, _>>()?;
             }
 
             _ => {
@@ -742,7 +769,7 @@ fn test_lmdb_state() {
     assert_eq!(offer_1, offers_retrieved[0].offer);
 
     database
-        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::Buy))
+        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::SuccessSwap))
         .unwrap();
     let offers_retrieved = database.get_offers(OfferStatusSelector::Ended).unwrap();
     assert_eq!(offer_1, offers_retrieved[0].offer);
@@ -753,7 +780,7 @@ fn test_lmdb_state() {
     let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
     let status_1 = OfferStatusPair {
         offer: offer_1,
-        status: OfferStatus::Ended(Outcome::Buy),
+        status: OfferStatus::Ended(Outcome::SuccessSwap),
     };
     let status_2 = OfferStatusPair {
         offer: offer_2,
