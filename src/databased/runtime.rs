@@ -235,8 +235,7 @@ impl Runtime {
                     })
                     .map(|c| c.public_offer)
                     .collect();
-                let dangling_offers: Vec<PublicOffer> = self
-                    .database
+                self.database
                     .get_offers(OfferStatusSelector::InProgress)?
                     .drain(..)
                     .filter_map(|o| {
@@ -246,11 +245,11 @@ impl Runtime {
                             None
                         }
                     })
-                    .collect();
-                for offer in dangling_offers.iter() {
-                    self.database
-                        .set_offer_status(&offer, &OfferStatus::Ended(Outcome::Abort))?;
-                }
+                    .map(|offer| {
+                        self.database
+                            .set_offer_status(&offer, &OfferStatus::Ended(Outcome::Abort))
+                    })
+                    .collect::<Result<_, _>>()?;
             }
 
             _ => {
