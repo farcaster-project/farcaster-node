@@ -1353,7 +1353,7 @@ impl Runtime {
             CtlMsg::SwapOutcome(success) => {
                 let swap_id = get_swap_id(&source)?;
                 let success = match success {
-                    Outcome::Buy => success.bright_green_bold(),
+                    Outcome::SuccessSwap => success.bright_green_bold(),
                     _ => success.err(),
                 };
                 info!(

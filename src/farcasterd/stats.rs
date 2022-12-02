@@ -30,10 +30,10 @@ pub struct Stats {
 impl Stats {
     pub fn incr_outcome(&mut self, outcome: &Outcome) {
         match outcome {
-            Outcome::Buy => self.success += 1,
-            Outcome::Refund => self.refund += 1,
-            Outcome::Punish => self.punish += 1,
-            Outcome::Abort => self.abort += 1,
+            Outcome::SuccessSwap => self.success += 1,
+            Outcome::FailureRefund => self.refund += 1,
+            Outcome::FailurePunish => self.punish += 1,
+            Outcome::FailureAbort => self.abort += 1,
         };
     }
 

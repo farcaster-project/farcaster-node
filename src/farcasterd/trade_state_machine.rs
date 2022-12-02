@@ -1540,16 +1540,16 @@ fn attempt_transition_to_end(
             runtime.clean_up_after_swap(&swap_id, event.endpoints)?;
             runtime.stats.incr_outcome(&outcome);
             match outcome {
-                Outcome::Buy => {
+                Outcome::SuccessSwap => {
                     debug!("Success on swap {}", swap_id);
                 }
-                Outcome::Refund => {
+                Outcome::FailureRefund => {
                     warn!("Refund on swap {}", swap_id);
                 }
-                Outcome::Punish => {
+                Outcome::FailurePunish => {
                     warn!("Punish on swap {}", swap_id);
                 }
-                Outcome::Abort => {
+                Outcome::FailureAbort => {
                     warn!("Aborted swap {}", swap_id);
                 }
             }

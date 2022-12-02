@@ -373,6 +373,14 @@ impl Runtime {
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 let prog = match event {
                     CtlMsg::Progress(p) => {
+                        // Replace the latest state update message in the queue
+                        if let Progress::StateUpdate(_) = p {
+                            if let Some(ProgressStack::Progress(Progress::StateUpdate(_))) =
+                                queue.back()
+                            {
+                                queue.pop_back();
+                            }
+                        }
                         (ProgressStack::Progress(p.clone()), InfoMsg::Progress(p))
                     }
                     CtlMsg::Success(s) => (ProgressStack::Success(s.clone()), InfoMsg::Success(s)),
@@ -506,7 +514,12 @@ impl Runtime {
                             ProgressStack::Progress(Progress::Message(m)) => {
                                 swap_progress
                                     .progress
-                                    .push(ProgressEvent::Message(m.clone()));
+                                    .push(ProgressEvent::Message(m.to_string()));
+                            }
+                            ProgressStack::Progress(Progress::StateUpdate(s)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::StateUpdate(s.clone()));
                             }
                             ProgressStack::Progress(Progress::StateTransition(t)) => {
                                 swap_progress

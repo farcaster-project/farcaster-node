@@ -264,7 +264,7 @@ impl State {
         matches!(self, State::Bob(BobState::BuySigB { .. }))
     }
     pub fn b_outcome_abort(&self) -> bool {
-        matches!(self, State::Bob(BobState::FinishB(Outcome::Abort)))
+        matches!(self, State::Bob(BobState::FinishB(Outcome::FailureAbort)))
     }
     pub fn remote_commit(&self) -> Option<&Commit> {
         match self {
