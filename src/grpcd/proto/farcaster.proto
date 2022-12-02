@@ -17,6 +17,21 @@ service Farcaster {
     rpc SweepAddress(SweepAddressRequest) returns (SweepAddressResponse){}
     rpc ConnectSwap(ConnectSwapRequest) returns (ConnectSwapResponse){}
     rpc ListOffers(ListOffersRequest) returns (ListOffersResponse){}
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse){}
+}
+
+message HealthCheckRequest {
+    uint32 id = 1;
+}
+
+message HealthCheckResponse {
+    uint32 id = 1;
+    string bitcoin_mainnet_health = 2;
+    string bitcoin_testnet_health = 3;
+    string bitcoin_local_health = 4;
+    string monero_mainnet_health = 5;
+    string monero_testnet_health = 6;
+    string monero_local_health = 7;
 }
 
 message InfoRequest {

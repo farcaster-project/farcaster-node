@@ -773,9 +773,17 @@ impl SyncerState {
         self.sweep_addresses.remove(id);
         self.tasks_sources.remove(id);
     }
+
+    pub async fn health_result(&mut self, id: TaskId, health: Health, source: ServiceId) {
+        send_event(
+            &self.tx_event,
+            &mut vec![(Event::HealthResult(HealthResult { id, health }), source)],
+        )
+        .await;
+    }
 }
 
-async fn send_event(tx_event: &TokioSender<BridgeEvent>, events: &mut Vec<(Event, ServiceId)>) {
+pub async fn send_event(tx_event: &TokioSender<BridgeEvent>, events: &mut Vec<(Event, ServiceId)>) {
     for (event, source) in events.drain(..) {
         tx_event
             .send(BridgeEvent { event, source })

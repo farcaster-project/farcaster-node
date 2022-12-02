@@ -11,6 +11,7 @@ use microservices::rpc;
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::swapd::StateReport;
+use crate::syncerd::Health;
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{swap_id}, {public_offer}")]
@@ -208,3 +209,22 @@ impl From<FailureCode> for rpc::FailureCode<FailureCode> {
 }
 
 impl rpc::FailureCodeExt for FailureCode {}
+
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(HealthReport::to_yaml_string)]
+pub struct HealthReport {
+    pub bitcoin_mainnet_health: Health,
+    pub bitcoin_testnet_health: Health,
+    pub bitcoin_local_health: Health,
+    pub monero_mainnet_health: Health,
+    pub monero_testnet_health: Health,
+    pub monero_local_health: Health,
+}
+
+#[cfg(feature = "serde")]
+impl ToYamlString for HealthReport {}

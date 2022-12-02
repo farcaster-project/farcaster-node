@@ -101,6 +101,10 @@ pub enum Command {
     #[clap(aliases = &["lc"])]
     ListCheckpoints,
 
+    /// Checks the health of the syncers
+    #[clap(aliases = &["hc"])]
+    HealthCheck,
+
     /// Restores saved checkpoint of a swap
     #[clap(aliases = &["r"])]
     RestoreCheckpoint {

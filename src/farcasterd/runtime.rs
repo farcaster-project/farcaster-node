@@ -25,7 +25,7 @@ use crate::farcasterd::stats::Stats;
 use crate::farcasterd::syncer_state_machine::{SyncerStateMachine, SyncerStateMachineExecutor};
 use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachineExecutor};
 use crate::farcasterd::Opts;
-use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
+use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
     bus::info::{InfoMsg, NodeInfo, OfferInfo, OfferStatusSelector, ProgressEvent, SwapProgress},
@@ -850,8 +850,15 @@ impl Runtime {
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
             (BusMsg::Ctl(CtlMsg::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
+            (BusMsg::Ctl(CtlMsg::HealthCheck(..)), _) => Ok(Some(SyncerStateMachine::Start)),
             (
                 BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
+                    id, ..
+                }))),
+                _,
+            ) => Ok(self.syncer_state_machines.remove(&id)),
+            (
+                BusMsg::Sync(SyncMsg::Event(SyncerEvent::HealthResult(HealthResult {
                     id, ..
                 }))),
                 _,
