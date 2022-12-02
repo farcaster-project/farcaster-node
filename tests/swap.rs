@@ -4,8 +4,9 @@ extern crate log;
 use bitcoincore_rpc::RpcApi;
 use farcaster_core::swap::SwapId;
 use farcaster_node::bus::ctl::{BitcoinFundingInfo, FundingInfo, MoneroFundingInfo};
-use farcaster_node::bus::info::{FundingInfos, NodeInfo};
-use farcaster_node::bus::CheckpointEntry;
+use farcaster_node::bus::info::{FundingInfos, NodeInfo, ProgressEvent, SwapProgress};
+use farcaster_node::bus::{CheckpointEntry, Outcome, StateTransition};
+use farcaster_node::swapd::StateReport;
 use futures::future::join_all;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -812,20 +813,12 @@ async fn run_restore_alice_pre_lock(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -865,12 +858,8 @@ async fn run_restore_alice_pre_lock(
         .await
         .unwrap();
 
-    // run until BobState(BuySig) is received
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(BuySig)".to_string(),
-    )
-    .await;
+    // run until BuySigB is received
+    retry_until_state_transition(cli_bob_progress_args.clone(), "BuySigB".to_string()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -879,10 +868,11 @@ async fn run_restore_alice_pre_lock(
         .generate_to_address(5, &reusable_btc_address())
         .unwrap();
 
-    // run until the AliceState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until SuccessSwap is received
+    retry_until_bob_finish_state_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishA(Outcome::SuccessSwap),
+        monero_regtest.clone(),
     )
     .await;
 
@@ -920,10 +910,10 @@ async fn run_restore_alice_pre_lock(
         .await
         .unwrap();
 
-    // run until the BobState(Finish) is received
+    // run until SuccessSwap is received
     retry_until_bob_finish_state_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishB(Outcome::SuccessSwap),
         monero_regtest.clone(),
     )
     .await;
@@ -982,20 +972,12 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -1024,12 +1006,8 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
         .await
         .unwrap();
 
-    // run until BobState(BuySig) is received
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(BuySig)".to_string(),
-    )
-    .await;
+    // run until BuySigB is received
+    retry_until_state_transition(cli_bob_progress_args.clone(), "BuySigB".to_string()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -1051,10 +1029,10 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
         .generate_to_address(5, &reusable_btc_address())
         .unwrap();
 
-    // run until the AliceState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until the SuccessSwap outcome is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishA(Outcome::SuccessSwap),
     )
     .await;
 
@@ -1092,10 +1070,10 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_buy(
         .await
         .unwrap();
 
-    // run until the BobState(Finish) is received
+    // run until SuccessSwap is received
     retry_until_bob_finish_state_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishB(Outcome::SuccessSwap),
         monero_regtest.clone(),
     )
     .await;
@@ -1154,20 +1132,12 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -1225,10 +1195,10 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    // run until the BobState(Finish(Failure(Refunded))) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishB(Outcome::FailureRefund),
     )
     .await;
 
@@ -1266,10 +1236,10 @@ async fn run_restore_checkpoint_bob_pre_buy_alice_pre_lock(
         .await
         .unwrap();
 
-    // run until the BobState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishA(Outcome::FailureRefund),
     )
     .await;
 
@@ -1330,20 +1300,12 @@ async fn run_refund_swap_alice_overfunds(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -1378,12 +1340,8 @@ async fn run_refund_swap_alice_overfunds(
         .await
         .unwrap();
 
-    // run until BobState(BuySig) is received
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(BuySig)".to_string(),
-    )
-    .await;
+    // run until BuySigB is received
+    retry_until_state_transition(cli_bob_progress_args.clone(), "BuySigB".to_string()).await;
 
     tokio::time::sleep(time::Duration::from_secs(20)).await;
 
@@ -1410,10 +1368,10 @@ async fn run_refund_swap_alice_overfunds(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    // run until the BobState(Finish(Failure(Refunded))) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishB(Outcome::FailureRefund),
     )
     .await;
 
@@ -1451,10 +1409,10 @@ async fn run_refund_swap_alice_overfunds(
         .await
         .unwrap();
 
-    // run until the AliceState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishA(Outcome::FailureRefund),
     )
     .await;
 
@@ -1509,20 +1467,12 @@ async fn run_refund_swap_race_cancel(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -1565,10 +1515,10 @@ async fn run_refund_swap_race_cancel(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    // run until the BobState(Finish(Failure(Refunded))) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishB(Outcome::FailureRefund),
     )
     .await;
 
@@ -1606,10 +1556,10 @@ async fn run_refund_swap_race_cancel(
         .await
         .unwrap();
 
-    // run until the BobState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishA(Outcome::FailureRefund),
     )
     .await;
 
@@ -1663,20 +1613,12 @@ async fn run_refund_swap_kill_alice_after_funding(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -1722,10 +1664,10 @@ async fn run_refund_swap_kill_alice_after_funding(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    // run until the BobState(Finish(Failure(Refunded))) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishB(Outcome::FailureRefund),
     )
     .await;
 
@@ -1774,20 +1716,12 @@ async fn run_refund_swap_alice_does_not_fund(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -1814,10 +1748,10 @@ async fn run_refund_swap_alice_does_not_fund(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    // run until the AliceState(Finish(Failure(Refunded))) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishA(Outcome::FailureRefund),
     )
     .await;
 
@@ -1831,10 +1765,10 @@ async fn run_refund_swap_alice_does_not_fund(
         .generate_to_address(3, &reusable_btc_address())
         .unwrap();
 
-    // run until the BobState(Finish(Failure(Refunded))) is received
-    retry_until_finish_state_transition(
+    // run until FailureRefund is received
+    retry_until_finish_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Failure(Refunded)))".to_string(),
+        StateReport::FinishB(Outcome::FailureRefund),
     )
     .await;
 
@@ -1886,20 +1820,12 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -1974,10 +1900,10 @@ async fn run_punish_swap_kill_bob_before_monero_funding(
 
     info!("generated 20 bitcoin blocks");
 
-    // run until the AliceState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until the FailurePunish is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Failure(Punished)))".to_string(),
+        StateReport::FinishA(Outcome::FailurePunish),
     )
     .await;
 
@@ -2219,20 +2145,20 @@ async fn run_swaps_parallel(
     }
 
     for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
-        info!("waiting for AliceState(RefundSigs");
-        retry_until_finish_state_transition(
+        info!("waiting for RefundSigA");
+        retry_until_state_transition(
             progress_args(data_dir_alice.clone(), *swap_id),
-            "AliceState(RefundSigs".to_string(),
+            "RefundSigA".to_string(),
         )
         .await;
     }
 
-    // run until BobState(CoreArb) is received
+    // run until CoreArbB is received
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
-        info!("waiting for BobState(CoreArb)");
-        retry_until_finish_state_transition(
+        info!("waiting for CoreArbB");
+        retry_until_state_transition(
             progress_args(data_dir_bob.clone(), *swap_id),
-            "BobState(CoreArb)".to_string(),
+            "CoreArbB".to_string(),
         )
         .await;
     }
@@ -2280,12 +2206,12 @@ async fn run_swaps_parallel(
         .await
         .unwrap();
 
-    // run until BobState(BuySig) is received
+    // run until BuySigB is received
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
-        info!("waiting for BobState(BuySig)");
-        retry_until_finish_state_transition(
+        info!("waiting for BuySigB");
+        retry_until_state_transition(
             progress_args(data_dir_bob.clone(), *swap_id),
-            "BobState(BuySig)".to_string(),
+            "BuySigB".to_string(),
         )
         .await;
     }
@@ -2297,11 +2223,11 @@ async fn run_swaps_parallel(
         .generate_to_address(5, &reusable_btc_address())
         .unwrap();
 
-    // run until the AliceState(Finish) is received
+    // run until the SuccessSwap is received
     for (swap_id, SwapParams { data_dir_alice, .. }) in swap_info.iter() {
-        retry_until_finish_state_transition(
+        retry_until_finish_transition(
             progress_args(data_dir_alice.clone(), *swap_id),
-            "AliceState(Finish(Success(Swapped)))".to_string(),
+            StateReport::FinishA(Outcome::SuccessSwap),
         )
         .await;
     }
@@ -2364,12 +2290,11 @@ async fn run_swaps_parallel(
         .await
         .unwrap();
 
-    // run until the BobState(Finish) is received
+    // run until SuccessSwap is received
     for (swap_id, SwapParams { data_dir_bob, .. }) in swap_info.iter() {
-        retry_until_finish_state_transition(
+        retry_until_finish_transition(
             progress_args(data_dir_bob.clone(), *swap_id),
-            "BobState(Finish(Success(Swapped)))".to_string(),
-            // monero_regtest.clone(),
+            StateReport::FinishB(Outcome::SuccessSwap),
         )
         .await;
     }
@@ -2588,20 +2513,12 @@ async fn run_swap_bob_maker_manual_monero_sweep(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -2629,12 +2546,8 @@ async fn run_swap_bob_maker_manual_monero_sweep(
         .await
         .unwrap();
 
-    // run until BobState(BuySig) is received
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(BuySig)".to_string(),
-    )
-    .await;
+    // run until BuySigB is received
+    retry_until_state_transition(cli_bob_progress_args.clone(), "BuySigB".to_string()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -2643,10 +2556,10 @@ async fn run_swap_bob_maker_manual_monero_sweep(
         .generate_to_address(5, &reusable_btc_address())
         .unwrap();
 
-    // run until the AliceState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until the SuccessSwap is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishA(Outcome::SuccessSwap),
     )
     .await;
 
@@ -2752,20 +2665,12 @@ async fn run_swap(
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
 
-    info!("waiting for AliceState(RefundSigs");
-    retry_until_finish_state_transition(
-        cli_alice_progress_args.clone(),
-        "AliceState(RefundSigs".to_string(),
-    )
-    .await;
+    info!("waiting for RefundSigA");
+    retry_until_state_transition(cli_alice_progress_args.clone(), "RefundSigA".to_string()).await;
 
-    // run until BobState(CoreArb) is received
-    info!("waiting for BobState(CoreArb)");
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(CoreArb)".to_string(),
-    )
-    .await;
+    // run until CoreArbB is received
+    info!("waiting for CoreArbB");
+    retry_until_state_transition(cli_bob_progress_args.clone(), "CoreArbB".to_string()).await;
 
     // run until the funding infos are cleared again
     info!("waiting for the bitcoin funding info to clear");
@@ -2793,12 +2698,8 @@ async fn run_swap(
         .await
         .unwrap();
 
-    // run until BobState(BuySig) is received
-    retry_until_finish_state_transition(
-        cli_bob_progress_args.clone(),
-        "BobState(BuySig)".to_string(),
-    )
-    .await;
+    // run until BuySigB is received
+    retry_until_state_transition(cli_bob_progress_args.clone(), "BuySigB".to_string()).await;
 
     tokio::time::sleep(time::Duration::from_secs(10)).await;
 
@@ -2807,10 +2708,10 @@ async fn run_swap(
         .generate_to_address(5, &reusable_btc_address())
         .unwrap();
 
-    // run until the AliceState(Finish) is received
-    retry_until_finish_state_transition(
+    // run until the SuccessSwap is received
+    retry_until_finish_transition(
         cli_alice_progress_args.clone(),
-        "AliceState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishA(Outcome::SuccessSwap),
     )
     .await;
 
@@ -2848,10 +2749,10 @@ async fn run_swap(
         .await
         .unwrap();
 
-    // run until the BobState(Finish) is received
+    // run until SuccessSwap is received
     retry_until_bob_finish_state_transition(
         cli_bob_progress_args.clone(),
-        "BobState(Finish(Success(Swapped)))".to_string(),
+        StateReport::FinishB(Outcome::SuccessSwap),
         monero_regtest.clone(),
     )
     .await;
@@ -3290,28 +3191,37 @@ async fn retry_until_monero_funding_address(
     panic!("timeout before any monero funding address could be retrieved");
 }
 
+fn output_to_progress(stdout: Vec<String>) -> SwapProgress {
+    serde_yaml::from_str(
+        &stdout
+            .iter()
+            .map(|line| format!("{}{}", line, "\n"))
+            .collect::<String>(),
+    )
+    .unwrap()
+}
+
 async fn retry_until_bob_finish_state_transition(
     args: Vec<String>,
-    finish_state: String,
+    finish_state: StateReport,
     monero_regtest: monero_rpc::RegtestDaemonJsonRpcClient,
-) -> Vec<String> {
+) -> bool {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
-        let bob_finish: Vec<String> = stdout
-            .iter()
-            .filter_map(|element| {
-                info!("cli: {}", element);
-                if element.contains(&finish_state) {
-                    Some(element.to_string())
+        let progress = output_to_progress(stdout);
+        if progress.progress.iter().any(|v| {
+            if let ProgressEvent::StateTransition(StateTransition { new_state, .. }) = v {
+                if *new_state == finish_state {
+                    true
                 } else {
-                    None
+                    false
                 }
-            })
-            .collect();
-
-        if !bob_finish.is_empty() {
-            return bob_finish;
+            } else {
+                false
+            }
+        }) {
+            return true;
         }
 
         monero_regtest
@@ -3327,27 +3237,46 @@ async fn retry_until_bob_finish_state_transition(
     );
 }
 
-async fn retry_until_finish_state_transition(
-    args: Vec<String>,
-    finish_state: String,
-) -> Vec<String> {
+async fn retry_until_state_transition(args: Vec<String>, finish_state: String) -> bool {
     for _ in 0..ALLOWED_RETRIES {
         let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
 
-        let alice_finish: Vec<String> = stdout
-            .iter()
-            .filter_map(|element| {
-                info!("cli: {}", element);
-                if element.contains(&finish_state) {
-                    Some(element.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let progress = output_to_progress(stdout);
+        if progress.progress.iter().any(|v| {
+            if let ProgressEvent::StateTransition(_) = v {
+                v.to_string().contains(&finish_state)
+            } else {
+                false
+            }
+        }) {
+            return true;
+        }
 
-        if !alice_finish.is_empty() {
-            return alice_finish;
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
+    panic!(
+        "timeout before finish state {:?} could be retrieved",
+        finish_state
+    );
+}
+
+async fn retry_until_finish_transition(args: Vec<String>, finish_state: StateReport) -> bool {
+    for _ in 0..ALLOWED_RETRIES {
+        let (stdout, _stderr) = run("../swap-cli", args.clone()).unwrap();
+
+        let progress = output_to_progress(stdout);
+        if progress.progress.iter().any(|v| {
+            if let ProgressEvent::StateTransition(StateTransition { new_state, .. }) = v {
+                if *new_state == finish_state {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }) {
+            return true;
         }
 
         tokio::time::sleep(time::Duration::from_secs(1)).await;

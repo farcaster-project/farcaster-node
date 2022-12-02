@@ -747,7 +747,7 @@ fn test_lmdb_state() {
     assert_eq!(offer_1, offers_retrieved[0].offer);
 
     database
-        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::Buy))
+        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::SuccessSwap))
         .unwrap();
     let offers_retrieved = database.get_offers(OfferStatusSelector::Ended).unwrap();
     assert_eq!(offer_1, offers_retrieved[0].offer);
@@ -758,7 +758,7 @@ fn test_lmdb_state() {
     let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
     let status_1 = OfferStatusPair {
         offer: offer_1,
-        status: OfferStatus::Ended(Outcome::Buy),
+        status: OfferStatus::Ended(Outcome::SuccessSwap),
     };
     let status_2 = OfferStatusPair {
         offer: offer_2,
