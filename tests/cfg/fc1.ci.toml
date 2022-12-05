@@ -1,5 +1,5 @@
 [farcasterd]
-auto_restore = false
+auto_restore = true
 
 [grpc]
 enable = true
