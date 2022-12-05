@@ -256,7 +256,7 @@ impl Runtime {
                             );
                             // Retrieve all checkpoint info from farcasterd triggers restore of all checkpoints
                             endpoints.send_to(
-                                ServiceBus::Ctl,
+                                ServiceBus::Info,
                                 self.identity(),
                                 ServiceId::Database,
                                 BusMsg::Info(InfoMsg::RetrieveAllCheckpointInfo),
