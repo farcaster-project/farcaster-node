@@ -28,10 +28,10 @@ use electrum_client::{
 use farcaster_core::bitcoin::segwitv0::signature_hash;
 use farcaster_core::bitcoin::transaction::TxInRef;
 use farcaster_core::blockchain::{Blockchain, Network};
+use hex;
 use internet2::session::LocalSession;
 use internet2::zeromq::ZmqSocketType;
 use internet2::SendRecvMessage;
-use hex;
 use internet2::TypedEnum;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};

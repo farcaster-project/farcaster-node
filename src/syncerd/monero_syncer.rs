@@ -17,10 +17,10 @@ use crate::syncerd::XmrAddressAddendum;
 use crate::syncerd::{Event, Health};
 use crate::ServiceId;
 use farcaster_core::blockchain::{Blockchain, Network};
+use hex;
 use internet2::session::LocalSession;
 use internet2::zeromq::ZmqSocketType;
 use internet2::SendRecvMessage;
-use hex;
 use internet2::TypedEnum;
 use monero::{Hash, PrivateKey};
 use monero_rpc::{
