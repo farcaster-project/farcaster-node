@@ -10,6 +10,9 @@ use internet2::addr::NodeId;
 use microservices::rpc;
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
+use crate::swapd::StateReport;
+use crate::syncerd::Health;
+
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{swap_id}, {public_offer}")]
 #[cfg_attr(
@@ -30,14 +33,29 @@ pub enum AddressSecretKey {
     #[display("addr_key({address}, ..)")]
     Bitcoin {
         address: bitcoin::Address,
-        secret_key: bitcoin::secp256k1::SecretKey,
+        secret_key_info: BitcoinSecretKeyInfo,
     },
     #[display("addr_key({address}, ..)")]
     Monero {
         address: monero::Address,
-        view: monero::PrivateKey,
-        spend: monero::PrivateKey,
+        secret_key_info: MoneroSecretKeyInfo,
     },
+}
+
+#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[display("bitcoin secret key info")]
+pub struct BitcoinSecretKeyInfo {
+    pub swap_id: Option<SwapId>,
+    pub secret_key: bitcoin::secp256k1::SecretKey,
+}
+
+#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[display("monero secret key info")]
+pub struct MoneroSecretKeyInfo {
+    pub swap_id: Option<SwapId>,
+    pub view: monero::PrivateKey,
+    pub spend: monero::PrivateKey,
+    pub creation_height: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
@@ -71,28 +89,41 @@ pub struct OfferStatusPair {
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferStatusPair {}
 
-#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
 pub enum Outcome {
-    #[display("Success(Swapped)")]
-    Buy,
-    #[display("Failure(Refunded)")]
-    Refund,
-    #[display("Failure(Punished)")]
-    Punish,
-    #[display("Failure(Aborted)")]
-    Abort,
+    #[display("Success Swap")]
+    SuccessSwap,
+    #[display("Failure Refund")]
+    FailureRefund,
+    #[display("Failure Punish")]
+    FailurePunish,
+    #[display("Failure Abort")]
+    FailureAbort,
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display(inner)]
 pub enum Progress {
     Message(String),
-    StateTransition(String),
+    StateUpdate(StateReport),
+    StateTransition(StateTransition),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display("State transition: {old_state} -> {new_state}")]
+pub struct StateTransition {
+    pub old_state: StateReport,
+    pub new_state: StateReport,
 }
 
 #[derive(Wrapper, Clone, PartialEq, Eq, Debug, From, Default, NetworkEncode, NetworkDecode)]
@@ -178,3 +209,22 @@ impl From<FailureCode> for rpc::FailureCode<FailureCode> {
 }
 
 impl rpc::FailureCodeExt for FailureCode {}
+
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(HealthReport::to_yaml_string)]
+pub struct HealthReport {
+    pub bitcoin_mainnet_health: Health,
+    pub bitcoin_testnet_health: Health,
+    pub bitcoin_local_health: Health,
+    pub monero_mainnet_health: Health,
+    pub monero_testnet_health: Health,
+    pub monero_local_health: Health,
+}
+
+#[cfg(feature = "serde")]
+impl ToYamlString for HealthReport {}

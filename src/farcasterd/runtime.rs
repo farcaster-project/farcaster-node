@@ -25,7 +25,7 @@ use crate::farcasterd::stats::Stats;
 use crate::farcasterd::syncer_state_machine::{SyncerStateMachine, SyncerStateMachineExecutor};
 use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachineExecutor};
 use crate::farcasterd::Opts;
-use crate::syncerd::{Event as SyncerEvent, SweepSuccess, TaskId};
+use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
     bus::info::{InfoMsg, NodeInfo, OfferInfo, OfferStatusSelector, ProgressEvent, SwapProgress},
@@ -242,6 +242,12 @@ impl Runtime {
                     }
                     ServiceId::Database => {
                         self.registered_services.insert(source.clone());
+                        endpoints.send_to(
+                            ServiceBus::Ctl,
+                            self.identity(),
+                            ServiceId::Database,
+                            BusMsg::Ctl(CtlMsg::CleanDanglingOffers),
+                        )?;
                     }
                     ServiceId::Wallet => {
                         self.registered_services.insert(source.clone());
@@ -367,6 +373,14 @@ impl Runtime {
                 let queue = self.progress.get_mut(&source).expect("checked/added above");
                 let prog = match event {
                     CtlMsg::Progress(p) => {
+                        // Replace the latest state update message in the queue
+                        if let Progress::StateUpdate(_) = p {
+                            if let Some(ProgressStack::Progress(Progress::StateUpdate(_))) =
+                                queue.back()
+                            {
+                                queue.pop_back();
+                            }
+                        }
                         (ProgressStack::Progress(p.clone()), InfoMsg::Progress(p))
                     }
                     CtlMsg::Success(s) => (ProgressStack::Success(s.clone()), InfoMsg::Success(s)),
@@ -500,7 +514,12 @@ impl Runtime {
                             ProgressStack::Progress(Progress::Message(m)) => {
                                 swap_progress
                                     .progress
-                                    .push(ProgressEvent::Message(m.clone()));
+                                    .push(ProgressEvent::Message(m.to_string()));
+                            }
+                            ProgressStack::Progress(Progress::StateUpdate(s)) => {
+                                swap_progress
+                                    .progress
+                                    .push(ProgressEvent::StateUpdate(s.clone()));
                             }
                             ProgressStack::Progress(Progress::StateTransition(t)) => {
                                 swap_progress
@@ -831,8 +850,15 @@ impl Runtime {
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
             (BusMsg::Ctl(CtlMsg::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
+            (BusMsg::Ctl(CtlMsg::HealthCheck(..)), _) => Ok(Some(SyncerStateMachine::Start)),
             (
                 BusMsg::Sync(SyncMsg::Event(SyncerEvent::SweepSuccess(SweepSuccess {
+                    id, ..
+                }))),
+                _,
+            ) => Ok(self.syncer_state_machines.remove(id)),
+            (
+                BusMsg::Sync(SyncMsg::Event(SyncerEvent::HealthResult(HealthResult {
                     id, ..
                 }))),
                 _,

@@ -403,23 +403,6 @@ where
         Ok(())
     }
 
-    fn report_state_transition_progress_message_to(
-        &mut self,
-        senders: &mut Endpoints,
-        dest: impl TryToServiceId,
-        msg: impl ToString,
-    ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
-            senders.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                dest,
-                BusMsg::Ctl(CtlMsg::Progress(Progress::StateTransition(msg.to_string()))),
-            )?;
-        }
-        Ok(())
-    }
-
     fn report_failure_to(
         &mut self,
         senders: &mut Endpoints,

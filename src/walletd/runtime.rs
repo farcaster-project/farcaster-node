@@ -4,7 +4,7 @@ use crate::bus::{
         TakerCommitted, Token, Tx,
     },
     p2p::{Commit, PeerMsg, Reveal, TakerCommit},
-    AddressSecretKey, BusMsg, Outcome, ServiceBus,
+    AddressSecretKey, BitcoinSecretKeyInfo, BusMsg, MoneroSecretKeyInfo, Outcome, ServiceBus,
 };
 use crate::databased::checkpoint_send;
 use crate::service::Endpoints;
@@ -852,8 +852,11 @@ impl Runtime {
                             ServiceId::Database,
                             BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                                 address: funding_addr.clone(),
-                                secret_key: key_manager
-                                    .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
+                                secret_key_info: BitcoinSecretKeyInfo {
+                                    swap_id: Some(swap_id),
+                                    secret_key: key_manager
+                                        .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
+                                },
                             })),
                         )?;
                         info!("{} | Loading {}", swap_id.swap_id(), "Wallet::Bob".label());
@@ -990,8 +993,12 @@ impl Runtime {
                                 BusMsg::Ctl(CtlMsg::SetAddressSecretKey(
                                     AddressSecretKey::Bitcoin {
                                         address: funding_addr.clone(),
-                                        secret_key: key_manager
-                                            .get_or_derive_bitcoin_key(ArbitratingKeyId::Lock)?,
+                                        secret_key_info: BitcoinSecretKeyInfo {
+                                            swap_id: Some(swap_id),
+                                            secret_key: key_manager.get_or_derive_bitcoin_key(
+                                                ArbitratingKeyId::Lock,
+                                            )?,
+                                        },
                                     },
                                 )),
                             )?;
@@ -1186,8 +1193,12 @@ impl Runtime {
                         ServiceId::Database,
                         BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                             address: corresponding_address,
-                            spend: keypair.spend.as_bytes().try_into().unwrap(),
-                            view: keypair.view.as_bytes().try_into().unwrap(),
+                            secret_key_info: MoneroSecretKeyInfo {
+                                swap_id: Some(swap_id),
+                                spend: keypair.spend.as_bytes().try_into().unwrap(),
+                                view: keypair.view.as_bytes().try_into().unwrap(),
+                                creation_height: None,
+                            },
                         })),
                     )?;
 
@@ -1284,8 +1295,12 @@ impl Runtime {
                         ServiceId::Database,
                         BusMsg::Ctl(CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                             address: corresponding_address,
-                            spend: keypair.spend.as_bytes().try_into().unwrap(),
-                            view: keypair.view.as_bytes().try_into().unwrap(),
+                            secret_key_info: MoneroSecretKeyInfo {
+                                swap_id: Some(swap_id),
+                                spend: keypair.spend.as_bytes().try_into().unwrap(),
+                                view: keypair.view.as_bytes().try_into().unwrap(),
+                                creation_height: None,
+                            },
                         })),
                     )?;
 
@@ -1353,7 +1368,7 @@ impl Runtime {
             CtlMsg::SwapOutcome(success) => {
                 let swap_id = get_swap_id(&source)?;
                 let success = match success {
-                    Outcome::Buy => success.bright_green_bold(),
+                    Outcome::SuccessSwap => success.bright_green_bold(),
                     _ => success.err(),
                 };
                 info!(

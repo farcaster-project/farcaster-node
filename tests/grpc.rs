@@ -19,6 +19,8 @@ pub mod farcaster {
     tonic::include_proto!("farcaster");
 }
 
+const ALLOWED_RETRIES: u32 = 100;
+
 #[tokio::test]
 #[ignore]
 async fn grpc_server_functional_test() {
@@ -133,12 +135,7 @@ async fn grpc_server_functional_test() {
     let response = farcaster_client_2.take(request).await;
     assert_eq!(response.unwrap().into_inner().id, 5);
 
-    // Wait for and retrieve swap id
-    tokio::time::sleep(time::Duration::from_secs(15)).await;
-
-    let request = tonic::Request::new(InfoRequest { id: 6 });
-    let InfoResponse { swaps, .. } = farcaster_client_2.info(request).await.unwrap().into_inner();
-    let swap_id = swaps[0].clone();
+    let swap_id = retry_until_swap_id(&mut farcaster_client_2).await;
 
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
@@ -211,11 +208,9 @@ async fn grpc_server_functional_test() {
     let request = tonic::Request::new(take_request.clone());
     let response = farcaster_client_2.take(request).await;
     assert_eq!(response.unwrap().into_inner().id, 5);
-    // Wait for and retrieve swap id
-    tokio::time::sleep(time::Duration::from_secs(5)).await;
-    let request = tonic::Request::new(InfoRequest { id: 6 });
-    let InfoResponse { swaps, .. } = farcaster_client_2.info(request).await.unwrap().into_inner();
-    let swap_id = swaps[0].clone();
+
+    let swap_id = retry_until_swap_id(&mut farcaster_client_2).await;
+
     // wait for funding
     tokio::time::sleep(time::Duration::from_secs(10)).await;
     let request = tonic::Request::new(NeedsFundingRequest {
@@ -255,4 +250,16 @@ async fn grpc_server_functional_test() {
     assert_eq!(response.unwrap().into_inner().id, 12);
 
     kill_all();
+}
+
+async fn retry_until_swap_id(client: &mut FarcasterClient<tonic::transport::Channel>) -> String {
+    for _ in 0..ALLOWED_RETRIES {
+        let request = tonic::Request::new(InfoRequest { id: 6 });
+        let InfoResponse { swaps, .. } = client.info(request).await.unwrap().into_inner();
+        if !swaps.is_empty() {
+            return swaps[0].clone();
+        }
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
+    panic!("timeout before a swap id could be retrieved")
 }

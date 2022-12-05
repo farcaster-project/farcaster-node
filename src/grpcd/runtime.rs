@@ -4,9 +4,13 @@ use crate::bus::ctl::ProtoPublicOffer;
 use crate::bus::ctl::PubOffer;
 use crate::bus::info::Address;
 use crate::bus::info::OfferStatusSelector;
+use crate::bus::info::ProgressEvent;
 use crate::bus::AddressSecretKey;
 use crate::bus::Failure;
+use crate::bus::OptionDetails;
+use crate::bus::Outcome;
 use crate::service::Endpoints;
+use crate::swapd::StateReport;
 use crate::syncerd::SweepAddressAddendum;
 use crate::syncerd::SweepBitcoinAddress;
 use crate::syncerd::SweepMoneroAddress;
@@ -54,6 +58,8 @@ use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
 use self::farcaster::ConnectSwapRequest;
 use self::farcaster::ConnectSwapResponse;
+use self::farcaster::HealthCheckRequest;
+use self::farcaster::HealthCheckResponse;
 use self::farcaster::ListOffersRequest;
 use self::farcaster::ListOffersResponse;
 use self::farcaster::MakeRequest;
@@ -76,6 +82,10 @@ use self::farcaster::SweepAddressRequest;
 use self::farcaster::SweepAddressResponse;
 use self::farcaster::TakeRequest;
 use self::farcaster::TakeResponse;
+use self::farcaster::{
+    BuySigB, CommitA, CommitB, CoreArbB, FinishA, FinishB, RefundSigA, RevealA, RevealB, StartA,
+    StartB,
+};
 
 pub mod farcaster {
     tonic::include_proto!("farcaster");
@@ -153,6 +163,161 @@ impl From<farcaster::OfferSelector> for OfferStatusSelector {
             farcaster::OfferSelector::Open => OfferStatusSelector::Open,
             farcaster::OfferSelector::InProgress => OfferStatusSelector::InProgress,
             farcaster::OfferSelector::Ended => OfferStatusSelector::Ended,
+        }
+    }
+}
+
+impl From<Outcome> for farcaster::Outcome {
+    fn from(t: Outcome) -> farcaster::Outcome {
+        match t {
+            Outcome::SuccessSwap => farcaster::Outcome::SuccessSwap,
+            Outcome::FailureRefund => farcaster::Outcome::FailureRefund,
+            Outcome::FailurePunish => farcaster::Outcome::FailurePunish,
+            Outcome::FailureAbort => farcaster::Outcome::FailureAbort,
+        }
+    }
+}
+
+impl From<StateReport> for farcaster::State {
+    fn from(state_report: StateReport) -> farcaster::State {
+        match state_report.clone() {
+            StateReport::StartA => farcaster::State {
+                state: Some(farcaster::state::State::StartA(StartA {})),
+            },
+            StateReport::CommitA => farcaster::State {
+                state: Some(farcaster::state::State::CommitA(CommitA {})),
+            },
+            StateReport::RevealA => farcaster::State {
+                state: Some(farcaster::state::State::RevealA(RevealA {})),
+            },
+            StateReport::RefundSigA {
+                arb_block_height,
+                acc_block_height,
+                arb_locked,
+                acc_locked,
+                buy_published,
+                cancel_seen,
+                refund_seen,
+                overfunded,
+                arb_lock_confirmations,
+                acc_lock_confirmations,
+                blocks_until_cancel_possible,
+                cancel_confirmations,
+                blocks_until_punish_possible,
+                blocks_until_safe_buy,
+            } => farcaster::State {
+                state: Some(farcaster::state::State::RefundSigA(RefundSigA {
+                    arb_block_height,
+                    acc_block_height,
+                    arb_locked,
+                    acc_locked,
+                    buy_published,
+                    cancel_seen,
+                    refund_seen,
+                    overfunded,
+                    arb_lock_confirmations: arb_lock_confirmations
+                        .map(|c| farcaster::refund_sig_a::ArbLockConfirmations::ArbConfs(c)),
+                    acc_lock_confirmations: acc_lock_confirmations
+                        .map(|c| farcaster::refund_sig_a::AccLockConfirmations::AccConfs(c)),
+                    blocks_until_cancel_possible: blocks_until_cancel_possible.map(|b| {
+                        farcaster::refund_sig_a::BlocksUntilCancelPossible::CancelBlocks(b)
+                    }),
+                    cancel_confirmations: cancel_confirmations
+                        .map(|c| farcaster::refund_sig_a::CancelConfirmations::CancelConfs(c)),
+                    blocks_until_punish_possible: blocks_until_punish_possible.map(|b| {
+                        farcaster::refund_sig_a::BlocksUntilPunishPossible::PunishBlocks(b)
+                    }),
+                    blocks_until_safe_buy: blocks_until_safe_buy
+                        .map(|b| farcaster::refund_sig_a::BlocksUntilSafeBuy::BuyBlocks(b)),
+                })),
+            },
+            StateReport::FinishA(outcome) => farcaster::State {
+                state: Some(farcaster::state::State::FinishA(FinishA {
+                    outcome: farcaster::Outcome::from(outcome).into(),
+                })),
+            },
+            StateReport::StartB => farcaster::State {
+                state: Some(farcaster::state::State::StartB(StartB {})),
+            },
+            StateReport::CommitB => farcaster::State {
+                state: Some(farcaster::state::State::CommitB(CommitB {})),
+            },
+            StateReport::RevealB => farcaster::State {
+                state: Some(farcaster::state::State::RevealB(RevealB {})),
+            },
+            StateReport::CoreArbB {
+                arb_block_height,
+                acc_block_height,
+                arb_locked,
+                acc_locked,
+                buy_published,
+                refund_seen,
+                arb_lock_confirmations,
+                acc_lock_confirmations,
+                blocks_until_cancel_possible,
+                cancel_confirmations,
+                blocks_until_refund,
+                blocks_until_punish_possible,
+            } => farcaster::State {
+                state: Some(farcaster::state::State::CoreArbB(CoreArbB {
+                    arb_block_height,
+                    acc_block_height,
+                    arb_locked,
+                    acc_locked,
+                    buy_published,
+                    refund_seen,
+                    arb_lock_confirmations: arb_lock_confirmations
+                        .map(|c| farcaster::core_arb_b::ArbLockConfirmations::ArbConfs(c)),
+                    acc_lock_confirmations: acc_lock_confirmations
+                        .map(|c| farcaster::core_arb_b::AccLockConfirmations::AccConfs(c)),
+                    blocks_until_cancel_possible: blocks_until_cancel_possible
+                        .map(|b| farcaster::core_arb_b::BlocksUntilCancelPossible::CancelBlocks(b)),
+                    cancel_confirmations: cancel_confirmations
+                        .map(|c| farcaster::core_arb_b::CancelConfirmations::CancelConfs(c)),
+                    blocks_until_refund: blocks_until_refund
+                        .map(|b| farcaster::core_arb_b::BlocksUntilRefund::RefundBlocks(b)),
+                    blocks_until_punish_possible: blocks_until_punish_possible
+                        .map(|b| farcaster::core_arb_b::BlocksUntilPunishPossible::PunishBlocks(b)),
+                })),
+            },
+            StateReport::BuySigB {
+                arb_block_height,
+                acc_block_height,
+                buy_tx_seen,
+                arb_lock_confirmations,
+                acc_lock_confirmations,
+                blocks_until_cancel_possible,
+                cancel_confirmations,
+                blocks_until_refund,
+                blocks_until_punish_possible,
+                blocks_until_safe_monero_buy_sweep,
+            } => farcaster::State {
+                state: Some(farcaster::state::State::BuySigB(BuySigB {
+                    arb_block_height,
+                    acc_block_height,
+                    buy_tx_seen,
+                    arb_lock_confirmations: arb_lock_confirmations
+                        .map(|c| farcaster::buy_sig_b::ArbLockConfirmations::ArbConfs(c)),
+                    acc_lock_confirmations: acc_lock_confirmations
+                        .map(|c| farcaster::buy_sig_b::AccLockConfirmations::AccConfs(c)),
+                    blocks_until_cancel_possible: blocks_until_cancel_possible
+                        .map(|b| farcaster::buy_sig_b::BlocksUntilCancelPossible::CancelBlocks(b)),
+                    cancel_confirmations: cancel_confirmations
+                        .map(|c| farcaster::buy_sig_b::CancelConfirmations::CancelConfs(c)),
+                    blocks_until_refund: blocks_until_refund
+                        .map(|b| farcaster::buy_sig_b::BlocksUntilRefund::RefundBlocks(b)),
+                    blocks_until_punish_possible: blocks_until_punish_possible
+                        .map(|b| farcaster::buy_sig_b::BlocksUntilPunishPossible::PunishBlocks(b)),
+                    blocks_until_safe_monero_buy_sweep: blocks_until_safe_monero_buy_sweep.map(
+                        |b| farcaster::buy_sig_b::BlocksUntilSafeMoneroBuySweep::BuyMoneroBlocks(b),
+                    ),
+                })),
+            },
+            StateReport::FinishB(outcome) => farcaster::State {
+                state: Some(farcaster::state::State::FinishB(FinishB {
+                    outcome: farcaster::Outcome::from(outcome).into(),
+                })),
+            },
         }
     }
 }
@@ -692,11 +857,45 @@ impl Farcaster for FarcasterService {
             .await?;
 
         match oneshot_rx.await {
-            Ok(BusMsg::Info(InfoMsg::SwapProgress(progress))) => {
+            Ok(BusMsg::Info(InfoMsg::SwapProgress(mut progress))) => {
                 let reply = ProgressResponse {
                     id,
-                    progress: progress.progress.iter().map(|p| p.to_string()).collect(),
+                    progress: progress
+                        .progress
+                        .drain(..)
+                        .map(|p| match p {
+                            ProgressEvent::Message(m) => farcaster::Progress {
+                                progress: Some(farcaster::progress::Progress::Message(
+                                    m.to_string(),
+                                )),
+                            },
+                            ProgressEvent::StateUpdate(su) => farcaster::Progress {
+                                progress: Some(farcaster::progress::Progress::StateUpdate(
+                                    su.into(),
+                                )),
+                            },
+                            ProgressEvent::StateTransition(st) => farcaster::Progress {
+                                progress: Some(farcaster::progress::Progress::StateTransition(
+                                    farcaster::StateTransition {
+                                        old_state: Some(st.old_state.into()),
+                                        new_state: Some(st.new_state.into()),
+                                    },
+                                )),
+                            },
+                            ProgressEvent::Failure(Failure { info, .. }) => farcaster::Progress {
+                                progress: Some(farcaster::progress::Progress::Failure(
+                                    info.to_string(),
+                                )),
+                            },
+                            ProgressEvent::Success(OptionDetails(s)) => farcaster::Progress {
+                                progress: Some(farcaster::progress::Progress::Success(
+                                    s.unwrap_or("".to_string()),
+                                )),
+                            },
+                        })
+                        .collect(),
                 };
+
                 Ok(GrpcResponse::new(reply))
             }
             res => process_error_response(res),
@@ -782,6 +981,105 @@ impl Farcaster for FarcasterService {
         }
     }
 
+    async fn health_check(
+        &self,
+        request: GrpcRequest<HealthCheckRequest>,
+    ) -> Result<GrpcResponse<HealthCheckResponse>, Status> {
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Testnet),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        let bitcoin_testnet_health = match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+            _ => {
+                return Err(Status::internal("Error during health check".to_string()));
+            }
+        };
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Mainnet),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        let bitcoin_mainnet_health = match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+            _ => {
+                return Err(Status::internal("Error during health check".to_string()));
+            }
+        };
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Local),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        let bitcoin_local_health = match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+            _ => {
+                return Err(Status::internal("Error during health check".to_string()));
+            }
+        };
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Testnet),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        let monero_testnet_health = match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+            _ => {
+                return Err(Status::internal("Error during health check".to_string()));
+            }
+        };
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Mainnet),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        let monero_mainnet_health = match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+            _ => {
+                return Err(Status::internal("Error during health check".to_string()));
+            }
+        };
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
+                request: CtlMsg::HealthCheck(Blockchain::Monero, Network::Local),
+                service_id: ServiceId::Farcasterd,
+            }))
+            .await?;
+
+        let monero_local_health = match oneshot_rx.await {
+            Ok(BusMsg::Ctl(CtlMsg::HealthResult(health))) => health,
+            _ => {
+                return Err(Status::internal("Error during health check".to_string()));
+            }
+        };
+
+        Ok(GrpcResponse::new(HealthCheckResponse {
+            id: request.into_inner().id,
+            bitcoin_mainnet_health: bitcoin_mainnet_health.to_string(),
+            bitcoin_testnet_health: bitcoin_testnet_health.to_string(),
+            bitcoin_local_health: bitcoin_local_health.to_string(),
+            monero_mainnet_health: monero_mainnet_health.to_string(),
+            monero_testnet_health: monero_testnet_health.to_string(),
+            monero_local_health: monero_local_health.to_string(),
+        }))
+    }
+
     async fn sweep_address(
         &self,
         request: GrpcRequest<SweepAddressRequest>,
@@ -805,7 +1103,7 @@ impl Farcaster for FarcasterService {
                 .await?;
             match oneshot_rx.await {
                 Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
-                    secret_key,
+                    secret_key_info,
                     address: _,
                 }))) => {
                     let oneshot_rx = self
@@ -813,7 +1111,7 @@ impl Farcaster for FarcasterService {
                             request: CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(
                                 SweepBitcoinAddress {
                                     source_address,
-                                    source_secret_key: secret_key,
+                                    source_secret_key: secret_key_info.secret_key,
                                     destination_address,
                                 },
                             )),
@@ -842,16 +1140,15 @@ impl Farcaster for FarcasterService {
                 .await?;
             match oneshot_rx.await {
                 Ok(BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
-                    view,
-                    spend,
+                    secret_key_info,
                     address: _,
                 }))) => {
                     let oneshot_rx = self
                         .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
                             request: CtlMsg::SweepAddress(SweepAddressAddendum::Monero(
                                 SweepMoneroAddress {
-                                    source_spend_key: spend,
-                                    source_view_key: view,
+                                    source_spend_key: secret_key_info.spend,
+                                    source_view_key: secret_key_info.view,
                                     destination_address,
                                     minimum_balance: monero::Amount::from_pico(0),
                                 },

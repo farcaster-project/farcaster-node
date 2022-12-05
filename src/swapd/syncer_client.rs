@@ -54,6 +54,7 @@ pub struct SyncerState {
     pub monero_amount: monero::Amount,
     pub bitcoin_amount: bitcoin::Amount,
     pub xmr_addr_addendum: Option<XmrAddressAddendum>,
+    pub confirmations: HashMap<TxLabel, Option<u32>>,
     pub awaiting_funding: bool,
     pub btc_fee_estimate_sat_per_kvb: Option<u64>,
 }
@@ -385,6 +386,8 @@ impl SyncerState {
                     }
                 }
             }
+            self.confirmations
+                .insert(txlabel.clone(), confirmations.clone());
         } else {
             error!(
                 "received event with unknown transaction and task id {}",
@@ -417,6 +420,10 @@ impl SyncerState {
             BusMsg::Sync(SyncMsg::Task(watch_height_xmr_task)),
         )?;
         Ok(())
+    }
+
+    pub fn get_confs(&self, label: TxLabel) -> Option<u32> {
+        self.confirmations.get(&label).map(|c| c.clone()).flatten()
     }
 }
 
