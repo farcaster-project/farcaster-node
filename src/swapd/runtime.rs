@@ -568,8 +568,9 @@ impl Runtime {
                 if self.state.commit() && self.state.trade_role() == Some(TradeRole::Taker) =>
             {
                 error!(
-                    "{} | Taken offer was not found by the maker, aborting this swap.",
-                    swap_id
+                    "{} | Taken offer {} was not found by the maker, aborting this swap.",
+                    swap_id.swap_id(),
+                    self.public_offer.id().swap_id(),
                 );
                 // just cancel the swap, no additional logic required
                 self.state_update(State::Alice(AliceState::FinishA(Outcome::FailureAbort)))?;
