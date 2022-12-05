@@ -2,7 +2,7 @@
 
 When `farcasterd` is up & running and `swap-cli` is configured to connect and control it, you can make offers and/or take offers. An offer encapsulates informations about a trade of Bitcoin and Monero. One will make :hammer: an offer, e.g. a market maker, and one will try to take :moneybag: the offer. Below are the commands to use to either `make` an offer or `take` one.
 
-## :moneybag: Take the offer
+## Take the offer
 
 Taking a public offer is a simple process: all you need is a running node (doesn't require to know your network topology), an encoded public offer, a Bitcoin address and a Monero address to receive assets or refund, depending on your swap role and if the swap completes.
 
@@ -18,7 +18,7 @@ The cli will ask you to validate the offer's specifics (amounts, assets, etc.).
 
 Then follow your `farcasterd` logs and fund the swap with the bitcoins or moneroj when it asks so. At the end of the swap, you should receive the counter-party's assets.
 
-## :hammer: Make an offer
+## Make an offer
 
 If you want to propose a trade to someone you have to make an offer. After making an offer, the maker starts listening for other peers to connect and take that offer -- and hopefully execute a swap successfully.
 
