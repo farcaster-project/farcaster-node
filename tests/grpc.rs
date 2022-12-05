@@ -150,16 +150,7 @@ async fn grpc_server_functional_test() {
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
     // Test needs funding
-    let request = tonic::Request::new(NeedsFundingRequest {
-        id: 11,
-        blockchain: farcaster::Blockchain::Bitcoin.into(),
-    });
-    let response = farcaster_client_1.needs_funding(request).await;
-    let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
-    assert_eq!(id, 11);
-
-    let address = bitcoin::Address::from_str(&funding_infos[0].address).unwrap();
-    let amount = bitcoin::Amount::from_sat(funding_infos[0].amount);
+    let (address, amount) = retry_until_bitcoin_funding_info(&mut farcaster_client_1).await;
 
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
@@ -212,16 +203,8 @@ async fn grpc_server_functional_test() {
     let swap_id = retry_until_swap_id(&mut farcaster_client_2).await;
 
     // wait for funding
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
-    let request = tonic::Request::new(NeedsFundingRequest {
-        id: 11,
-        blockchain: farcaster::Blockchain::Bitcoin.into(),
-    });
-    let response = farcaster_client_1.needs_funding(request).await;
-    let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
-    assert_eq!(id, 11);
-    let address = bitcoin::Address::from_str(&funding_infos[0].address).unwrap();
-    let amount = bitcoin::Amount::from_sat(funding_infos[0].amount);
+    tokio::time::sleep(time::Duration::from_secs(5)).await;
+    let (address, amount) = retry_until_bitcoin_funding_info(&mut farcaster_client_1).await;
 
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
@@ -262,4 +245,25 @@ async fn retry_until_swap_id(client: &mut FarcasterClient<tonic::transport::Chan
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
     panic!("timeout before a swap id could be retrieved")
+}
+
+async fn retry_until_bitcoin_funding_info(
+    client: &mut FarcasterClient<tonic::transport::Channel>,
+) -> (bitcoin::Address, bitcoin::Amount) {
+    for _ in 0..ALLOWED_RETRIES {
+        let request = tonic::Request::new(NeedsFundingRequest {
+            id: 11,
+            blockchain: farcaster::Blockchain::Bitcoin.into(),
+        });
+        let response = client.needs_funding(request).await;
+        let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
+        if !funding_infos.is_empty() {
+            return (
+                bitcoin::Address::from_str(&funding_infos[0].address).unwrap(),
+                bitcoin::Amount::from_sat(funding_infos[0].amount),
+            );
+        }
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
+    panic!("timeout before funding info could be retrieved")
 }
