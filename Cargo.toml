@@ -13,7 +13,7 @@ include = [
   "CHANGELOG.md",
   "LICENSE",
 ]
-keywords = ["bitcoin", "monero", "node", "atomic swaps"]
+keywords = ["bitcoin", "monero", "atomic-swaps"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/farcaster-project/farcaster-node"

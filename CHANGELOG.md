@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Refactor: Improve reliability of peerd connections by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/792>
+- Add richer data to the progress messages by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/761>
+- Swapd: Simplify checkpoint encoding by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/786>
+- Swapd: Some patches and improvements by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/783>
+- Farcaster: Cleanup dangling swap info on restart by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/779>
+- Database: Change secret key encoding by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/782>
+- Tests: Use retries until swap id is available in grpc test by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/797>
+- Cli: Implement endpoint for checking syncer health by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/755>
+
 ## [0.4.0] - 2022-11-30
 
 ### Changed
