@@ -1,3 +1,6 @@
+[farcasterd]
+auto_restore = false
+
 [grpc]
 enable = true
 bind_port = 23433

@@ -17,11 +17,21 @@ use tokio::sync::Mutex;
 
 use super::config;
 
-// TODO: rename this function, this launches fcd, not 'clients'
-pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Vec<String>) {
+pub async fn launch_farcasterd_pair() -> (process::Child, Vec<String>, process::Child, Vec<String>)
+{
+    let (farcasterd_maker, data_dir_maker) = launch_farcasterd_maker();
+    let (farcasterd_taker, data_dir_taker) = launch_farcasterd_taker();
+    (
+        farcasterd_maker,
+        data_dir_maker,
+        farcasterd_taker,
+        data_dir_taker,
+    )
+}
+
+pub fn launch_farcasterd_maker() -> (process::Child, Vec<String>) {
     // data directories
     let data_dir_maker = vec!["-d".to_string(), "tests/fc1".to_string()];
-    let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
 
     // If we are in CI we use .ci.toml files, otherwise .toml
     let ctx = env::var("CI").unwrap_or_else(|_| "false".into());
@@ -32,20 +42,27 @@ pub async fn setup_clients() -> (process::Child, Vec<String>, process::Child, Ve
         vec!["--config", &format!("tests/cfg/fc1{}", ext)],
         vec![],
     );
+
+    let farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
+    (farcasterd_maker, data_dir_maker)
+}
+
+pub fn launch_farcasterd_taker() -> (process::Child, Vec<String>) {
+    // data directories
+    let data_dir_taker = vec!["-d".to_string(), "tests/fc2".to_string()];
+
+    // If we are in CI we use .ci.toml files, otherwise .toml
+    let ctx = env::var("CI").unwrap_or_else(|_| "false".into());
+    let ext = if ctx == "false" { ".toml" } else { ".ci.toml" };
+
     let farcasterd_taker_args = farcasterd_args(
         data_dir_taker.clone(),
         vec!["--config", &format!("tests/cfg/fc2{}", ext)],
         vec![],
     );
 
-    let farcasterd_maker = launch("../farcasterd", farcasterd_maker_args).unwrap();
     let farcasterd_taker = launch("../farcasterd", farcasterd_taker_args).unwrap();
-    (
-        farcasterd_maker,
-        data_dir_maker,
-        farcasterd_taker,
-        data_dir_taker,
-    )
+    (farcasterd_taker, data_dir_taker)
 }
 
 fn farcasterd_args(data_dir: Vec<String>, server_args: Vec<&str>, extra: Vec<&str>) -> Vec<String> {

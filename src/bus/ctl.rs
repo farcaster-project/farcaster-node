@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug};
 use std::str::FromStr;
 
+use farcaster_core::blockchain::Network;
 use farcaster_core::{
     blockchain::Blockchain,
     role::TradeRole,
@@ -18,7 +19,7 @@ use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
 };
 use crate::swapd::CheckpointSwapd;
-use crate::syncerd::SweepAddressAddendum;
+use crate::syncerd::{Health, SweepAddressAddendum};
 use crate::walletd::runtime::CheckpointWallet;
 use crate::{Error, ServiceId};
 
@@ -40,6 +41,9 @@ pub enum CtlMsg {
 
     #[display(inner)]
     Progress(Progress),
+
+    /// A message sent from farcaster to database on startup to cleanup dangling offer data
+    CleanDanglingOffers,
 
     /// A message sent from farcaster to maker swap service to begin the swap.
     #[display("make_swap({0})")]
@@ -65,6 +69,18 @@ pub enum CtlMsg {
 
     #[display("peerd_terminated()")]
     PeerdTerminated,
+
+    #[display("disconnected")]
+    Disconnected,
+
+    #[display("re-connected")]
+    Reconnected,
+
+    #[display("connect({0})")]
+    Connect(SwapId),
+
+    #[display("Connect success")]
+    ConnectSuccess,
 
     #[display("restore_checkpoint({0})", alt = "{0:#}")]
     RestoreCheckpoint(CheckpointEntry),
@@ -143,6 +159,15 @@ pub enum CtlMsg {
 
     #[display("failed peer message")]
     FailedPeerMessage(PeerMsg),
+
+    #[display("connect failed")]
+    ConnectFailed,
+
+    #[display("health_check({0} {1})")]
+    HealthCheck(Blockchain, Network),
+
+    #[display("health_result({0})")]
+    HealthResult(Health),
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
@@ -202,7 +227,7 @@ pub enum Params {
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display("{peerd}, {swap_id}, ..")]
+#[display("{swap_id}, ..")]
 pub struct InitSwap {
     pub peerd: ServiceId,
     pub report_to: Option<ServiceId>,

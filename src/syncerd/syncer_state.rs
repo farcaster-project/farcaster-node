@@ -46,6 +46,7 @@ pub struct SyncerState {
     task_count: TaskCounter,
     pub subscribed_addresses: HashSet<AddressAddendum>,
     pub fee_estimation: Option<FeeEstimations>,
+    pub pending_broadcasts: HashSet<(BroadcastTransaction, ServiceId)>,
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +92,7 @@ impl SyncerState {
             blockchain,
             subscribed_addresses: HashSet::new(),
             fee_estimation: None,
+            pending_broadcasts: HashSet::new(),
         }
     }
 
@@ -773,9 +775,17 @@ impl SyncerState {
         self.sweep_addresses.remove(id);
         self.tasks_sources.remove(id);
     }
+
+    pub async fn health_result(&mut self, id: TaskId, health: Health, source: ServiceId) {
+        send_event(
+            &self.tx_event,
+            &mut vec![(Event::HealthResult(HealthResult { id, health }), source)],
+        )
+        .await;
+    }
 }
 
-async fn send_event(tx_event: &TokioSender<BridgeEvent>, events: &mut Vec<(Event, ServiceId)>) {
+pub async fn send_event(tx_event: &TokioSender<BridgeEvent>, events: &mut Vec<(Event, ServiceId)>) {
     for (event, source) in events.drain(..) {
         tx_event
             .send(BridgeEvent { event, source })

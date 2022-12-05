@@ -1,5 +1,10 @@
 # Farcasterd configuration
-# configures farcasterd specific behaviors such as auto-funding swaps
+# configures farcasterd specific behaviors such as auto-funding swaps or
+# auto-restoring checkpoints
+
+[farcasterd]
+# Set this to false if you only want manual restore. Defaut to true
+auto_restore = true
 
 [farcasterd]
 # Sets the port where Farcaster will accept new peer connections through a

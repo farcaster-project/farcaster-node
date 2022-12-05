@@ -1,4 +1,7 @@
-use crate::walletd::state::{AliceState, BobState, Wallet};
+use crate::bus::{
+    info::{BitcoinAddressSwapIdPair, MoneroAddressSwapIdPair},
+    BitcoinSecretKeyInfo, MoneroSecretKeyInfo, Outcome,
+};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
@@ -7,15 +10,13 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::Endpoints;
-use bitcoin::secp256k1::SecretKey;
-
 use crate::bus::{
     ctl::{Checkpoint, CheckpointState, CtlMsg},
     info::{Address, InfoMsg, OfferStatusSelector},
     AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
     OfferStatusPair, ServiceBus,
 };
+use crate::Endpoints;
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 use microservices::esb::{self};
 
@@ -84,34 +85,23 @@ impl Runtime {
 
             CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => {
                 match &state {
-                    CheckpointState::CheckpointWallet(wallet_checkpoint) => {
-                        let info = match &wallet_checkpoint.wallet {
-                            Wallet::Alice(AliceState {
-                                local_trade_role,
-                                pub_offer,
-                                ..
-                            }) => CheckpointEntry {
-                                swap_id,
-                                public_offer: pub_offer.clone(),
-                                trade_role: local_trade_role.clone(),
-                            },
-                            Wallet::Bob(BobState {
-                                local_trade_role,
-                                pub_offer,
-                                ..
-                            }) => CheckpointEntry {
-                                swap_id,
-                                public_offer: pub_offer.clone(),
-                                trade_role: local_trade_role.clone(),
-                            },
+                    CheckpointState::CheckpointWallet(_) => {
+                        debug!("setting wallet checkpoint");
+                    }
+                    CheckpointState::CheckpointSwapd(swap_checkpoint) => {
+                        let info = CheckpointEntry {
+                            swap_id,
+                            public_offer: swap_checkpoint.public_offer.clone(),
+                            trade_role: swap_checkpoint.local_trade_role.clone(),
+                            expected_counterparty_node_id: swap_checkpoint
+                                .connected_counterparty_node_id
+                                .clone(),
                         };
                         debug!("setting checkpoint info entry");
                         let mut info_encoded = vec![];
-                        let _info_size = info.strict_encode(&mut info_encoded);
+                        info.strict_encode(&mut info_encoded)?;
                         self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
-                        debug!("setting wallet checkpoint");
-                    }
-                    CheckpointState::CheckpointSwapd(_) => {
+
                         debug!("setting swap checkpoint");
                     }
                 };
@@ -120,7 +110,7 @@ impl Runtime {
                     service_id: source,
                 };
                 let mut state_encoded = vec![];
-                let _state_size = state.strict_encode(&mut state_encoded);
+                state.strict_encode(&mut state_encoded)?;
                 self.database.set_checkpoint_state(&key, &state_encoded)?;
                 debug!("checkpoint set");
             }
@@ -218,22 +208,49 @@ impl Runtime {
 
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Bitcoin {
                 address,
-                secret_key,
+                secret_key_info,
             }) => {
-                self.database.set_bitcoin_address(&address, &secret_key)?;
+                self.database
+                    .set_bitcoin_address(&address, &secret_key_info)?;
             }
 
             CtlMsg::SetAddressSecretKey(AddressSecretKey::Monero {
                 address,
-                view,
-                spend,
+                secret_key_info,
             }) => {
                 self.database
-                    .set_monero_address(&address, &monero::KeyPair { view, spend })?;
+                    .set_monero_address(&address, &secret_key_info)?;
             }
 
             CtlMsg::SetOfferStatus(OfferStatusPair { offer, status }) => {
                 self.database.set_offer_status(&offer, &status)?;
+            }
+
+            CtlMsg::CleanDanglingOffers => {
+                let checkpointed_pub_offers: Vec<PublicOffer> = self
+                    .database
+                    .get_all_checkpoint_info()?
+                    .iter()
+                    .filter_map(|(_, info)| {
+                        CheckpointEntry::strict_decode(std::io::Cursor::new(info)).ok()
+                    })
+                    .map(|c| c.public_offer)
+                    .collect();
+                self.database
+                    .get_offers(OfferStatusSelector::InProgress)?
+                    .drain(..)
+                    .filter_map(|o| {
+                        if !checkpointed_pub_offers.contains(&o.offer) {
+                            Some(o.offer)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|offer| {
+                        self.database
+                            .set_offer_status(&offer, &OfferStatus::Ended(Outcome::FailureAbort))
+                    })
+                    .collect::<Result<_, _>>()?;
             }
 
             _ => {
@@ -314,14 +331,13 @@ impl Runtime {
                             }),
                         )?;
                     }
-                    Ok(secret_key_pair) => {
+                    Ok(secret_key_info) => {
                         self.send_client_info(
                             endpoints,
                             source,
                             InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
                                 address,
-                                view: secret_key_pair.view.as_bytes().try_into().unwrap(),
-                                spend: secret_key_pair.spend.as_bytes().try_into().unwrap(),
+                                secret_key_info,
                             }),
                         )?;
                     }
@@ -338,13 +354,13 @@ impl Runtime {
                             info: format!("Could not retrieve secret key for address {}", address),
                         }),
                     )?,
-                    Ok(secret_key) => {
+                    Ok(secret_key_info) => {
                         self.send_client_info(
                             endpoints,
                             source,
                             InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
                                 address,
-                                secret_key,
+                                secret_key_info,
                             }),
                         )?;
                     }
@@ -352,22 +368,30 @@ impl Runtime {
             }
 
             InfoMsg::GetAddresses(Blockchain::Bitcoin) => {
-                let addresses = self.database.get_all_bitcoin_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    ServiceId::Database,
+                let mut addresses = self.database.get_all_bitcoin_addresses()?;
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::BitcoinAddressList(addresses.into())),
+                    InfoMsg::BitcoinAddressList(
+                        addresses
+                            .drain(..)
+                            .map(|(address, swap_id)| BitcoinAddressSwapIdPair { address, swap_id })
+                            .collect(),
+                    ),
                 )?;
             }
 
             InfoMsg::GetAddresses(Blockchain::Monero) => {
-                let addresses = self.database.get_all_monero_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    ServiceId::Database,
+                let mut addresses = self.database.get_all_monero_addresses()?;
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::MoneroAddressList(addresses.into())),
+                    InfoMsg::MoneroAddressList(
+                        addresses
+                            .drain(..)
+                            .map(|(address, swap_id)| MoneroAddressSwapIdPair { address, swap_id })
+                            .collect(),
+                    ),
                 )?;
             }
 
@@ -447,20 +471,16 @@ impl Database {
         Ok(Database(env))
     }
 
-    fn set_offer_status(
-        &mut self,
-        offer: &PublicOffer,
-        status: &OfferStatus,
-    ) -> Result<(), lmdb::Error> {
+    fn set_offer_status(&mut self, offer: &PublicOffer, status: &OfferStatus) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_OFFER_HISTORY))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
-        let _key_size = offer.strict_encode(&mut key);
+        offer.strict_encode(&mut key)?;
         if tx.get(db, &key).is_ok() {
-            tx.del(db, &key.clone(), None)?;
+            tx.del(db, &key, None)?;
         }
         let mut val = vec![];
-        let _key_size = status.strict_encode(&mut val);
+        status.strict_encode(&mut val)?;
         tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         tx.commit()?;
         Ok(())
@@ -499,19 +519,16 @@ impl Database {
     fn set_bitcoin_address(
         &mut self,
         address: &bitcoin::Address,
-        secret_key: &SecretKey,
-    ) -> Result<(), lmdb::Error> {
+        secret_key_info: &BitcoinSecretKeyInfo,
+    ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let mut key = vec![];
-        let _key_size = address.strict_encode(&mut key);
+        address.strict_encode(&mut key)?;
+        let mut val = vec![];
+        secret_key_info.strict_encode(&mut val)?;
         if tx.get(db, &key).is_err() {
-            tx.put(
-                db,
-                &key,
-                &secret_key.secret_bytes(),
-                lmdb::WriteFlags::empty(),
-            )?;
+            tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         } else {
             warn!(
                 "address {} was already persisted with its secret key",
@@ -525,25 +542,36 @@ impl Database {
     fn get_bitcoin_address_secret_key(
         &mut self,
         address: &bitcoin::Address,
-    ) -> Result<SecretKey, lmdb::Error> {
+    ) -> Result<BitcoinSecretKeyInfo, Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut key = vec![];
-        let _key_size = address.strict_encode(&mut key);
-        let val = SecretKey::from_slice(tx.get(db, &key)?)
-            .expect("we only insert private keys, so retrieving one should not fail");
+        address.strict_encode(&mut key)?;
+        let val = BitcoinSecretKeyInfo::strict_decode(tx.get(db, &key)?)?;
         tx.abort();
         Ok(val)
     }
 
-    fn get_all_bitcoin_addresses(&mut self) -> Result<Vec<bitcoin::Address>, lmdb::Error> {
+    fn get_all_bitcoin_addresses(
+        &mut self,
+    ) -> Result<Vec<(bitcoin::Address, Option<SwapId>)>, lmdb::Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, _)| {
-                bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec())).ok()
+            .filter_map(|(key, val)| {
+                bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec()))
+                    .ok()
+                    .map(|a| {
+                        (
+                            a,
+                            BitcoinSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
+                                .ok()
+                                .map(|s| s.swap_id)
+                                .flatten(),
+                        )
+                    })
             })
             .collect();
         drop(cursor);
@@ -554,13 +582,13 @@ impl Database {
     fn set_monero_address(
         &mut self,
         address: &monero::Address,
-        secret_keys: &monero::KeyPair,
-    ) -> Result<(), lmdb::Error> {
+        secret_key_info: &MoneroSecretKeyInfo,
+    ) -> Result<(), Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let mut tx = self.0.begin_rw_txn()?;
         let key = address.as_bytes();
-        let mut val = secret_keys.spend.as_bytes().to_vec();
-        val.append(&mut secret_keys.view.as_bytes().to_vec());
+        let mut val = vec![];
+        secret_key_info.strict_encode(&mut val)?;
         if tx.get(db, &key).is_err() {
             tx.put(db, &key, &val, lmdb::WriteFlags::empty())?;
         } else {
@@ -576,29 +604,34 @@ impl Database {
     fn get_monero_address_secret_key(
         &mut self,
         address: &monero::Address,
-    ) -> Result<monero::KeyPair, lmdb::Error> {
+    ) -> Result<MoneroSecretKeyInfo, Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let key = address.as_bytes();
-        let val: [u8; 64] = tx
-            .get(db, &key)?
-            .try_into()
-            .expect("every monero address should have a keypair");
+        let val = MoneroSecretKeyInfo::strict_decode(tx.get(db, &key)?)?;
         tx.abort();
-        Ok(monero::KeyPair {
-            spend: val[0..32].try_into().expect("unable to decode spend key"),
-            view: val[32..64].try_into().expect("unable to decode view key"),
-        })
+        Ok(val)
     }
 
-    fn get_all_monero_addresses(&mut self) -> Result<Vec<String>, lmdb::Error> {
+    fn get_all_monero_addresses(
+        &mut self,
+    ) -> Result<Vec<(monero::Address, Option<SwapId>)>, lmdb::Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, _)| monero::Address::from_bytes(key).ok())
-            .map(|addr| addr.to_string())
+            .filter_map(|(key, val)| {
+                monero::Address::from_bytes(key).ok().map(|a| {
+                    (
+                        a,
+                        MoneroSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
+                            .ok()
+                            .map(|s| s.swap_id)
+                            .flatten(),
+                    )
+                })
+            })
             .collect();
         drop(cursor);
         tx.abort();
@@ -676,6 +709,7 @@ impl Database {
 #[test]
 fn test_lmdb_state() {
     use crate::bus::Outcome;
+    use bitcoin::secp256k1::SecretKey;
     use std::str::FromStr;
 
     let val1 = vec![0, 1];
@@ -715,12 +749,15 @@ fn test_lmdb_state() {
         bitcoin::PrivateKey::from_slice(&sk.secret_bytes(), bitcoin::Network::Testnet).unwrap();
     let pk = bitcoin::PublicKey::from_private_key(bitcoin::secp256k1::SECP256K1, &private_key);
     let addr = bitcoin::Address::p2wpkh(&pk, bitcoin::Network::Testnet).unwrap();
-    database.set_bitcoin_address(&addr, &sk).unwrap();
+    let addr_info = BitcoinSecretKeyInfo {
+        swap_id: None,
+        secret_key: sk,
+    };
+    database.set_bitcoin_address(&addr, &addr_info).unwrap();
     let val_retrieved = database.get_bitcoin_address_secret_key(&addr).unwrap();
-    assert_eq!(sk, val_retrieved);
+    assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_bitcoin_addresses().unwrap();
-    assert!(addrs.contains(&addr));
-
+    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
     let key_pair = monero::KeyPair {
         spend: monero::PrivateKey::from_str(
             "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -731,12 +768,19 @@ fn test_lmdb_state() {
         )
         .unwrap(),
     };
+    let addr_info = MoneroSecretKeyInfo {
+        swap_id: None,
+        creation_height: None,
+        view: key_pair.view,
+        spend: key_pair.spend,
+    };
+
     let addr = monero::Address::from_keypair(monero::Network::Stagenet, &key_pair);
-    database.set_monero_address(&addr, &key_pair).unwrap();
+    database.set_monero_address(&addr, &addr_info).unwrap();
     let val_retrieved = database.get_monero_address_secret_key(&addr).unwrap();
-    assert_eq!(key_pair, val_retrieved);
+    assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_monero_addresses().unwrap();
-    assert!(addrs.contains(&addr.to_string()));
+    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
 
     let offer_1 = PublicOffer::from_str("Offer:Cke4ftrP5A7MgLMaQZLZUMTC6TfkqUKBu1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBtrLeA3t").unwrap();
     let offer_2 = PublicOffer::from_str("Offer:Cke4ftrP5A7Km9Kmc2UDBePio1p7wM56P1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBuLWyw3M").unwrap();
@@ -759,7 +803,7 @@ fn test_lmdb_state() {
     assert_eq!(offer_1, offers_retrieved[0].offer);
 
     database
-        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::Buy))
+        .set_offer_status(&offer_1, &OfferStatus::Ended(Outcome::SuccessSwap))
         .unwrap();
     let offers_retrieved = database.get_offers(OfferStatusSelector::Ended).unwrap();
     assert_eq!(offer_1, offers_retrieved[0].offer);
@@ -770,7 +814,7 @@ fn test_lmdb_state() {
     let offers_retrieved = database.get_offers(OfferStatusSelector::All).unwrap();
     let status_1 = OfferStatusPair {
         offer: offer_1,
-        status: OfferStatus::Ended(Outcome::Buy),
+        status: OfferStatus::Ended(Outcome::SuccessSwap),
     };
     let status_2 = OfferStatusPair {
         offer: offer_2,

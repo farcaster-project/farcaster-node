@@ -36,7 +36,8 @@ use crate::bus::{
     info::{Address, InfoMsg},
     AddressSecretKey,
 };
-use crate::bus::{BusMsg, Failure, FailureCode};
+use crate::bus::{BusMsg, Failure, FailureCode, HealthReport};
+use crate::cli::opts::CheckpointSelector;
 use crate::client::Client;
 use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{Error, LogStyle, ServiceId};
@@ -62,8 +63,9 @@ impl Exec for Command {
                     1 => {
                         let subj = subject.get(0).expect("vec of lenght 1");
                         if let Ok(node_addr) = NodeAddr::from_str(&subj) {
-                            runtime.request_info(ServiceId::Peer(node_addr), InfoMsg::GetInfo)?;
-                            ServiceId::Peer(node_addr)
+                            runtime
+                                .request_info(ServiceId::Peer(0, node_addr), InfoMsg::GetInfo)?;
+                            ServiceId::Peer(0, node_addr)
                         } else if let Ok(swap_id) = SwapId::from_str(&subj) {
                             runtime.request_info(ServiceId::Swap(swap_id), InfoMsg::GetInfo)?;
                             ServiceId::Swap(swap_id)
@@ -94,7 +96,7 @@ impl Exec for Command {
                         if code == FailureCode::TargetServiceNotFound =>
                     {
                         match target_service_id {
-                            ServiceId::Peer(node_addr) => {
+                            ServiceId::Peer(_, node_addr) => {
                                 return Err(Error::Farcaster(format!(
                                     "No connected peerd with address {}",
                                     node_addr
@@ -157,8 +159,33 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::ListCheckpoints => {
-                runtime.request_info(ServiceId::Database, InfoMsg::RetrieveAllCheckpointInfo)?;
+            Command::ListCheckpoints { select } => {
+                match select {
+                    CheckpointSelector::All => {
+                        runtime.request_info(
+                            ServiceId::Database,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                    }
+                    CheckpointSelector::AvailableForRestore => {
+                        runtime.request_info(
+                            ServiceId::Database,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                        if let BusMsg::Info(InfoMsg::CheckpointList(list)) =
+                            runtime.report_failure()?
+                        {
+                            runtime.request_info(
+                                ServiceId::Farcasterd,
+                                InfoMsg::CheckpointList(list),
+                            )?;
+                        } else {
+                            return Err(Error::Farcaster(
+                                "Received unexpected response".to_string(),
+                            ));
+                        }
+                    }
+                }
                 runtime.report_response_or_fail()?;
             }
 
@@ -170,6 +197,101 @@ impl Exec for Command {
                 } else {
                     return Err(Error::Farcaster("Received unexpected response".to_string()));
                 }
+            }
+
+            Command::Connect { swap_id } => {
+                runtime.request_ctl(ServiceId::Farcasterd, CtlMsg::Connect(swap_id))?;
+                runtime.report_response_or_fail()?;
+            }
+
+            Command::HealthCheck => {
+                runtime.request_ctl(
+                    ServiceId::Farcasterd,
+                    CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Testnet),
+                )?;
+                let bitcoin_testnet_health = match runtime.response()? {
+                    BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
+                    _ => {
+                        return Err(Error::Other(
+                            "Server returned unexpected response for call health check".to_string(),
+                        ))
+                    }
+                };
+
+                runtime.request_ctl(
+                    ServiceId::Farcasterd,
+                    CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Mainnet),
+                )?;
+                let bitcoin_mainnet_health = match runtime.response()? {
+                    BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
+                    _ => {
+                        return Err(Error::Other(
+                            "Server returned unexpected response for call health check".to_string(),
+                        ))
+                    }
+                };
+                runtime.request_ctl(
+                    ServiceId::Farcasterd,
+                    CtlMsg::HealthCheck(Blockchain::Bitcoin, Network::Local),
+                )?;
+                let bitcoin_local_health = match runtime.response()? {
+                    BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
+                    _ => {
+                        return Err(Error::Other(
+                            "Server returned unexpected response for call health check".to_string(),
+                        ))
+                    }
+                };
+
+                runtime.request_ctl(
+                    ServiceId::Farcasterd,
+                    CtlMsg::HealthCheck(Blockchain::Monero, Network::Testnet),
+                )?;
+                let monero_testnet_health = match runtime.response()? {
+                    BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
+                    _ => {
+                        return Err(Error::Other(
+                            "Server returned unexpected response for call health check".to_string(),
+                        ))
+                    }
+                };
+
+                runtime.request_ctl(
+                    ServiceId::Farcasterd,
+                    CtlMsg::HealthCheck(Blockchain::Monero, Network::Mainnet),
+                )?;
+                let monero_mainnet_health = match runtime.response()? {
+                    BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
+                    _ => {
+                        return Err(Error::Other(
+                            "Server returned unexpected response for call health check".to_string(),
+                        ))
+                    }
+                };
+
+                runtime.request_ctl(
+                    ServiceId::Farcasterd,
+                    CtlMsg::HealthCheck(Blockchain::Monero, Network::Local),
+                )?;
+                let monero_local_health = match runtime.response()? {
+                    BusMsg::Ctl(CtlMsg::HealthResult(health)) => health,
+                    _ => {
+                        return Err(Error::Other(
+                            "Server returned unexpected response for call health check".to_string(),
+                        ))
+                    }
+                };
+
+                let report = HealthReport {
+                    bitcoin_testnet_health,
+                    bitcoin_mainnet_health,
+                    bitcoin_local_health,
+                    monero_testnet_health,
+                    monero_mainnet_health,
+                    monero_local_health,
+                };
+
+                println!("{}", report);
             }
 
             Command::Make {
@@ -385,6 +507,11 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
+            Command::ListFundingAddresses { blockchain } => {
+                runtime.request_info(ServiceId::Database, InfoMsg::GetAddresses(blockchain))?;
+                runtime.report_response_or_fail()?;
+            }
+
             Command::SweepBitcoinAddress {
                 source_address,
                 destination_address,
@@ -394,7 +521,7 @@ impl Exec for Command {
                     InfoMsg::GetAddressSecretKey(Address::Bitcoin(source_address.clone())),
                 )?;
                 if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Bitcoin {
-                    secret_key,
+                    secret_key_info,
                     ..
                 })) = runtime.report_failure()?
                 {
@@ -402,7 +529,7 @@ impl Exec for Command {
                         ServiceId::Farcasterd,
                         CtlMsg::SweepAddress(SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                             source_address,
-                            source_secret_key: secret_key,
+                            source_secret_key: secret_key_info.secret_key,
                             destination_address,
                         })),
                     )?;
@@ -421,16 +548,15 @@ impl Exec for Command {
                     InfoMsg::GetAddressSecretKey(Address::Monero(source_address)),
                 )?;
                 if let BusMsg::Info(InfoMsg::AddressSecretKey(AddressSecretKey::Monero {
-                    view,
-                    spend,
+                    secret_key_info,
                     ..
                 })) = runtime.report_failure()?
                 {
                     runtime.request_ctl(
                         ServiceId::Farcasterd,
                         CtlMsg::SweepAddress(SweepAddressAddendum::Monero(SweepMoneroAddress {
-                            source_spend_key: spend,
-                            source_view_key: view,
+                            source_spend_key: secret_key_info.spend,
+                            source_view_key: secret_key_info.view,
                             destination_address,
                             minimum_balance: monero::Amount::from_pico(0),
                         })),

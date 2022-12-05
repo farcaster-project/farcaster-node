@@ -2,10 +2,10 @@
 extern crate log;
 
 use crate::farcaster::{
-    farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointsRequest, InfoResponse,
-    ListOffersRequest, MakeRequest, NeedsFundingRequest, OfferInfoRequest, OfferSelector,
-    PeersRequest, ProgressRequest, RestoreCheckpointRequest, RevokeOfferRequest, SwapInfoRequest,
-    SweepAddressRequest, TakeRequest,
+    farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointSelector, CheckpointsRequest,
+    InfoResponse, ListOffersRequest, MakeRequest, NeedsFundingRequest, OfferInfoRequest,
+    OfferSelector, PeersRequest, ProgressRequest, RestoreCheckpointRequest, RevokeOfferRequest,
+    SwapInfoRequest, SweepAddressRequest, TakeRequest,
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
@@ -19,11 +19,13 @@ pub mod farcaster {
     tonic::include_proto!("farcaster");
 }
 
+const ALLOWED_RETRIES: u32 = 100;
+
 #[tokio::test]
 #[ignore]
 async fn grpc_server_functional_test() {
     let conf = config::TestConfig::parse();
-    let _ = setup_clients().await;
+    let _ = launch_farcasterd_pair().await;
 
     // Allow some time for the microservices to start and register each other
     tokio::time::sleep(time::Duration::from_secs(10)).await;
@@ -54,7 +56,10 @@ async fn grpc_server_functional_test() {
     assert_eq!(response.unwrap().into_inner().id, 1);
 
     // Test list checkpoints
-    let request = tonic::Request::new(CheckpointsRequest { id: 2 });
+    let request = tonic::Request::new(CheckpointsRequest {
+        id: 2,
+        selector: CheckpointSelector::AllCheckpoints.into(),
+    });
     let response = farcaster_client_1.checkpoints(request).await;
     assert_eq!(response.unwrap().into_inner().id, 2);
 
@@ -132,12 +137,7 @@ async fn grpc_server_functional_test() {
     let response = farcaster_client_2.take(request).await;
     assert_eq!(response.unwrap().into_inner().id, 5);
 
-    // Wait for and retrieve swap id
-    tokio::time::sleep(time::Duration::from_secs(15)).await;
-
-    let request = tonic::Request::new(InfoRequest { id: 6 });
-    let InfoResponse { swaps, .. } = farcaster_client_2.info(request).await.unwrap().into_inner();
-    let swap_id = swaps[0].clone();
+    let swap_id = retry_until_swap_id(&mut farcaster_client_2).await;
 
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
@@ -152,16 +152,7 @@ async fn grpc_server_functional_test() {
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
     // Test needs funding
-    let request = tonic::Request::new(NeedsFundingRequest {
-        id: 11,
-        blockchain: farcaster::Blockchain::Bitcoin.into(),
-    });
-    let response = farcaster_client_1.needs_funding(request).await;
-    let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
-    assert_eq!(id, 11);
-
-    let address = bitcoin::Address::from_str(&funding_infos[0].address).unwrap();
-    let amount = bitcoin::Amount::from_sat(funding_infos[0].amount);
+    let (address, amount) = retry_until_bitcoin_funding_info(&mut farcaster_client_1).await;
 
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
@@ -174,7 +165,7 @@ async fn grpc_server_functional_test() {
 
     kill_all();
 
-    let _ = setup_clients().await;
+    let _ = launch_farcasterd_pair().await;
 
     tokio::time::sleep(time::Duration::from_secs(5)).await;
 
@@ -210,22 +201,12 @@ async fn grpc_server_functional_test() {
     let request = tonic::Request::new(take_request.clone());
     let response = farcaster_client_2.take(request).await;
     assert_eq!(response.unwrap().into_inner().id, 5);
-    // Wait for and retrieve swap id
-    tokio::time::sleep(time::Duration::from_secs(5)).await;
-    let request = tonic::Request::new(InfoRequest { id: 6 });
-    let InfoResponse { swaps, .. } = farcaster_client_2.info(request).await.unwrap().into_inner();
-    let swap_id = swaps[0].clone();
+
+    let swap_id = retry_until_swap_id(&mut farcaster_client_2).await;
+
     // wait for funding
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
-    let request = tonic::Request::new(NeedsFundingRequest {
-        id: 11,
-        blockchain: farcaster::Blockchain::Bitcoin.into(),
-    });
-    let response = farcaster_client_1.needs_funding(request).await;
-    let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
-    assert_eq!(id, 11);
-    let address = bitcoin::Address::from_str(&funding_infos[0].address).unwrap();
-    let amount = bitcoin::Amount::from_sat(funding_infos[0].amount);
+    tokio::time::sleep(time::Duration::from_secs(5)).await;
+    let (address, amount) = retry_until_bitcoin_funding_info(&mut farcaster_client_1).await;
 
     bitcoin_rpc
         .send_to_address(&address, amount, None, None, None, None, None, None)
@@ -241,7 +222,7 @@ async fn grpc_server_functional_test() {
     // wait for lock
     tokio::time::sleep(time::Duration::from_secs(15)).await;
     kill_all();
-    let _ = setup_clients().await;
+    let _ = launch_farcasterd_pair().await;
     tokio::time::sleep(time::Duration::from_secs(5)).await;
     let channel_1 = Endpoint::from_str(&grpc_1)
         .unwrap()
@@ -254,4 +235,37 @@ async fn grpc_server_functional_test() {
     assert_eq!(response.unwrap().into_inner().id, 12);
 
     kill_all();
+}
+
+async fn retry_until_swap_id(client: &mut FarcasterClient<tonic::transport::Channel>) -> String {
+    for _ in 0..ALLOWED_RETRIES {
+        let request = tonic::Request::new(InfoRequest { id: 6 });
+        let InfoResponse { swaps, .. } = client.info(request).await.unwrap().into_inner();
+        if !swaps.is_empty() {
+            return swaps[0].clone();
+        }
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
+    panic!("timeout before a swap id could be retrieved")
+}
+
+async fn retry_until_bitcoin_funding_info(
+    client: &mut FarcasterClient<tonic::transport::Channel>,
+) -> (bitcoin::Address, bitcoin::Amount) {
+    for _ in 0..ALLOWED_RETRIES {
+        let request = tonic::Request::new(NeedsFundingRequest {
+            id: 11,
+            blockchain: farcaster::Blockchain::Bitcoin.into(),
+        });
+        let response = client.needs_funding(request).await;
+        let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
+        if !funding_infos.is_empty() {
+            return (
+                bitcoin::Address::from_str(&funding_infos[0].address).unwrap(),
+                bitcoin::Amount::from_sat(funding_infos[0].amount),
+            );
+        }
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
+    panic!("timeout before funding info could be retrieved")
 }

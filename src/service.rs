@@ -21,6 +21,7 @@ use std::str::FromStr;
 
 use bitcoin::hashes::hex::{self, ToHex};
 use colored::Colorize;
+use internet2::addr::NodeId;
 use internet2::{
     addr::{NodeAddr, ServiceAddr},
     zeromq,
@@ -138,9 +139,8 @@ pub enum ServiceId {
     #[display("farcasterd")]
     Farcasterd,
 
-    #[display("peerd<{0}>")]
-    #[from]
-    Peer(NodeAddr),
+    #[display("peerd<{0} {1}>")]
+    Peer(u128, NodeAddr),
 
     #[display("swap<{0}>")]
     #[from]
@@ -176,6 +176,26 @@ impl ServiceId {
     pub fn client() -> ServiceId {
         use bitcoin::secp256k1::rand;
         ServiceId::Client(rand::random())
+    }
+
+    pub fn node_id(&self) -> Option<NodeId> {
+        if let ServiceId::Peer(_, addr) = self {
+            Some(addr.id)
+        } else {
+            None
+        }
+    }
+
+    pub fn node_addr(&self) -> Option<NodeAddr> {
+        if let ServiceId::Peer(_, addr) = self {
+            Some(addr.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn dummy_peer_service_id(node_addr: NodeAddr) -> ServiceId {
+        ServiceId::Peer(0, node_addr)
     }
 }
 
@@ -293,6 +313,7 @@ where
 
     #[cfg(feature = "node")]
     pub fn run_loop(mut self) -> Result<(), Error> {
+        let identity = self.esb.handler().identity();
         if !self.is_broker() {
             std::thread::sleep(core::time::Duration::from_secs(1));
             self.esb.send_to(
@@ -300,10 +321,18 @@ where
                 ServiceId::Farcasterd,
                 BusMsg::Ctl(CtlMsg::Hello),
             )?;
+        } else if identity != ServiceId::Farcasterd {
+            warn!(
+                "Not saying hello to Farcasterd: service {} is broker",
+                identity
+            );
         }
 
-        let identity = self.esb.handler().identity();
-        info!("New service {} started", identity);
+        debug!(
+            "New service {} with PID {} started",
+            identity,
+            std::process::id()
+        );
 
         self.esb.run_or_panic(&identity.to_string());
 
@@ -369,23 +398,6 @@ where
                 self.identity(),
                 dest,
                 BusMsg::Ctl(CtlMsg::Progress(Progress::Message(msg.to_string()))),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn report_state_transition_progress_message_to(
-        &mut self,
-        senders: &mut Endpoints,
-        dest: impl TryToServiceId,
-        msg: impl ToString,
-    ) -> Result<(), Error> {
-        if let Some(dest) = dest.try_to_service_id() {
-            senders.send_to(
-                ServiceBus::Ctl,
-                self.identity(),
-                dest,
-                BusMsg::Ctl(CtlMsg::Progress(Progress::StateTransition(msg.to_string()))),
             )?;
         }
         Ok(())

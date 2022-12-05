@@ -8,7 +8,9 @@ use crate::{
     bus::BusMsg,
     error::Error,
     event::{Event, StateMachine, StateMachineExecutor},
-    syncerd::{Event as SyncerEvent, SweepAddress, SweepAddressAddendum, Task, TaskId},
+    syncerd::{
+        Event as SyncerEvent, Health, HealthCheck, SweepAddress, SweepAddressAddendum, Task, TaskId,
+    },
     ServiceId,
 };
 
@@ -179,6 +181,43 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
             }
         }
 
+        BusMsg::Ctl(CtlMsg::HealthCheck(blockchain, network)) => {
+            let syncer_task_id = TaskId(runtime.syncer_task_counter);
+            runtime.syncer_task_counter += 1;
+            let syncer_task = Task::HealthCheck(HealthCheck { id: syncer_task_id });
+
+            match syncer_up(
+                &mut runtime.spawning_services,
+                &mut runtime.registered_services,
+                blockchain,
+                network,
+                &runtime.config,
+            ) {
+                Ok(Some(service_id)) => {
+                    event.complete_sync_service(service_id, SyncMsg::Task(syncer_task))?;
+                    Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
+                        AwaitingSyncerRequest {
+                            source,
+                            syncer_task_id,
+                            syncer: ServiceId::Syncer(blockchain, network),
+                        },
+                    )))
+                }
+                Ok(None) => Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
+                    source,
+                    syncer: ServiceId::Syncer(blockchain, network),
+                    syncer_task: syncer_task,
+                    syncer_task_id,
+                }))),
+                Err(err) => {
+                    event.complete_ctl(CtlMsg::HealthResult(Health::ConfigUnavailable(
+                        err.to_string(),
+                    )))?;
+                    Ok(None)
+                }
+            }
+        }
+
         req => {
             warn!(
                 "Request {} from {} invalid for state start - invalidating.",
@@ -265,6 +304,32 @@ fn attempt_transition_to_end(
                 event.send_client_info(source, InfoMsg::String("Nothing to sweep.".to_string()))?;
             }
 
+            runtime.registered_services = runtime
+                .registered_services
+                .clone()
+                .drain()
+                .filter(|service| {
+                    if let ServiceId::Syncer(..) = service {
+                        if !runtime.syncer_has_client(service) {
+                            info!("Terminating {}", service);
+                            event
+                                .send_ctl_service(service.clone(), CtlMsg::Terminate)
+                                .is_err()
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+            Ok(None)
+        }
+
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::HealthResult(res))), syncer_id)
+            if syncer == syncer_id && res.id == syncer_task_id =>
+        {
+            event.send_ctl_service(source, CtlMsg::HealthResult(res.health))?;
             runtime.registered_services = runtime
                 .registered_services
                 .clone()

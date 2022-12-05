@@ -2,8 +2,9 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use amplify::ToYamlString;
+use farcaster_core::role::{SwapRole, TradeRole};
 use farcaster_core::{blockchain::Blockchain, swap::btcxmr::PublicOffer, swap::SwapId};
-use internet2::addr::{InetSocketAddr, NodeAddr};
+use internet2::addr::{InetSocketAddr, NodeAddr, NodeId};
 #[cfg(feature = "serde")]
 use serde_with::{DisplayFromStr, DurationSeconds};
 use strict_encoding::{NetworkDecode, NetworkEncode, StrictDecode, StrictEncode};
@@ -14,9 +15,11 @@ use crate::bus::{
 };
 use crate::cli::OfferSelector;
 use crate::farcasterd::stats::Stats;
+use crate::swapd::StateReport;
 use crate::syncerd::runtime::SyncerdTask;
 
 use super::ctl::FundingInfo;
+use super::StateTransition;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -153,11 +156,11 @@ pub enum InfoMsg {
     // - End GetAddressSecretKey section
 
     // - GetAddresses section
-    #[display("bitcoin_address_list({0})")]
-    BitcoinAddressList(List<bitcoin::Address>),
+    #[display(inner)]
+    BitcoinAddressList(List<BitcoinAddressSwapIdPair>),
 
-    #[display("monero_address_list({0})")]
-    MoneroAddressList(List<String>),
+    #[display(inner)]
+    MoneroAddressList(List<MoneroAddressSwapIdPair>),
     // - End GetAddresses section
 
     // - GetCheckpointEntry section
@@ -166,6 +169,30 @@ pub enum InfoMsg {
     // - End GetCheckpointEntry section
     #[display("{0}")]
     FundingInfos(FundingInfos),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(BitcoinAddressSwapIdPair::to_yaml_string)]
+pub struct BitcoinAddressSwapIdPair {
+    pub address: bitcoin::Address,
+    pub swap_id: Option<SwapId>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(MoneroAddressSwapIdPair::to_yaml_string)]
+pub struct MoneroAddressSwapIdPair {
+    pub address: monero::Address,
+    pub swap_id: Option<SwapId>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -283,12 +310,17 @@ pub struct PeerInfo {
 pub struct SwapInfo {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub swap_id: Option<SwapId>,
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub maker_peer: Vec<NodeAddr>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub connection: Option<NodeAddr>,
+    pub connected: bool,
     #[serde_as(as = "DurationSeconds")]
     pub uptime: Duration,
     pub since: u64,
     pub public_offer: PublicOffer,
+    pub local_trade_role: TradeRole,
+    pub local_swap_role: SwapRole,
+    pub connected_counterparty_node_id: Option<NodeId>,
+    pub state: StateReport,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -326,8 +358,10 @@ pub struct FundingInfos {
 pub enum ProgressEvent {
     #[serde(rename = "message")]
     Message(String),
+    #[serde(rename = "update")]
+    StateUpdate(StateReport),
     #[serde(rename = "transition")]
-    StateTransition(String),
+    StateTransition(StateTransition),
     #[serde(rename = "success")]
     Success(OptionDetails),
     #[serde(rename = "failure")]
@@ -390,6 +424,10 @@ pub struct OfferInfo {
     pub details: PublicOffer,
 }
 
+#[cfg(feature = "serde")]
+impl ToYamlString for BitcoinAddressSwapIdPair {}
+#[cfg(feature = "serde")]
+impl ToYamlString for MoneroAddressSwapIdPair {}
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferInfo {}
 #[cfg(feature = "serde")]

@@ -77,6 +77,17 @@ impl Config {
         }
     }
 
+    /// Returns if auto restore is enabled. Default to true
+    pub fn auto_restore_enable(&self) -> bool {
+        match &self.farcasterd {
+            Some(FarcasterdConfig {
+                auto_restore: Some(enable),
+                ..
+            }) => *enable,
+            _ => true,
+        }
+    }
+
     /// Returns the auto-funding configuration for a given network if enable, if None no
     /// configuration is found
     pub fn get_auto_funding_config(&self, network: Network) -> Option<AutoFundingServers> {
@@ -146,6 +157,8 @@ pub struct FarcasterdConfig {
     pub bind_port: Option<u16>,
     /// Sets the bind ip for potential makers
     pub bind_ip: Option<String>,
+    /// Whether checkpoints should be auto restored at start-up, or not
+    pub auto_restore: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -241,6 +254,8 @@ impl Default for FarcasterdConfig {
     fn default() -> Self {
         FarcasterdConfig {
             auto_funding: None,
+            // write the default config for auto-restore
+            auto_restore: Some(true),
             // write the default port and ip in the generated config
             bind_port: Some(FARCASTER_BIND_PORT),
             bind_ip: Some(FARCASTER_BIND_IP.to_string()),

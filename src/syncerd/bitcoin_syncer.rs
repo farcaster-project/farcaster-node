@@ -7,7 +7,6 @@ use crate::syncerd::runtime::Synclet;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
-use crate::syncerd::BroadcastTransaction;
 use crate::syncerd::BtcAddressAddendum;
 use crate::syncerd::Event;
 use crate::syncerd::FeeEstimations;
@@ -15,6 +14,7 @@ use crate::syncerd::GetTx;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::TransactionRetrieved;
+use crate::syncerd::{BroadcastTransaction, Health};
 use crate::{error::Error, syncerd::syncer_state::create_set};
 use crate::{LogStyle, ServiceId};
 use bitcoin::hashes::{hex::ToHex, Hash};
@@ -26,12 +26,11 @@ use electrum_client::{
 use farcaster_core::bitcoin::segwitv0::signature_hash;
 use farcaster_core::bitcoin::transaction::TxInRef;
 use farcaster_core::blockchain::{Blockchain, Network};
-use internet2::zeromq::{Connection, ZmqSocketType};
-use internet2::DuplexConnection;
-use internet2::Encrypt;
-use internet2::PlainTranscoder;
+use internet2::session::LocalSession;
+use internet2::zeromq::ZmqSocketType;
+use internet2::SendRecvMessage;
 use internet2::TypedEnum;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,6 +39,8 @@ use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
 use hex;
+
+use super::HealthCheck;
 
 const RETRY_TIMEOUT: u64 = 5;
 const PING_WAIT: u8 = 2;
@@ -506,19 +507,16 @@ async fn run_syncerd_bridge_event_sender(
     syncer_address: Vec<u8>,
 ) {
     tokio::spawn(async move {
-        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx);
+        let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
-            let mut transcoder = PlainTranscoder {};
-            let writer = connection.as_sender();
-
             let request = BusMsg::Sync(SyncMsg::BridgeEvent(event));
             trace!("sending request over syncerd bridge: {:?}", request);
-            writer
-                .send_routed(
+            session
+                .send_routed_message(
                     &syncer_address,
                     &syncer_address,
                     &syncer_address,
-                    &transcoder.encrypt(request.serialize()),
+                    &request.serialize(),
                 )
                 .expect("failed to send from bitcoin syncer to syncerd bridge");
         }
@@ -526,6 +524,8 @@ async fn run_syncerd_bridge_event_sender(
 }
 
 async fn run_syncerd_task_receiver(
+    electrum_server: String,
+    proxy_address: Option<String>,
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
     transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
@@ -578,10 +578,27 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::BroadcastTransaction(task) => {
                             debug!("trying to broadcast tx: {:?}", task.tx.to_hex());
-                            transaction_broadcast_tx
-                                .send((task, syncerd_task.source))
-                                .await
-                                .expect("failed on transaction_broadcast_tx sender");
+                            if let Some(height) = task.broadcast_after_height {
+                                let mut state_guard = state.lock().await;
+                                // If we already surpassed the height, immediately broadcast it. Otherwise queue the broadcast
+                                if height <= state_guard.block_height() {
+                                    drop(state_guard);
+                                    transaction_broadcast_tx
+                                        .send((task, syncerd_task.source))
+                                        .await
+                                        .expect("failed on transaction_broadcast_tx sender");
+                                } else {
+                                    state_guard
+                                        .pending_broadcasts
+                                        .insert((task, syncerd_task.source));
+                                    drop(state_guard);
+                                }
+                            } else {
+                                transaction_broadcast_tx
+                                    .send((task, syncerd_task.source))
+                                    .await
+                                    .expect("failed on transaction_broadcast_tx sender");
+                            }
                         }
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Bitcoin(_) => {
@@ -615,6 +632,23 @@ async fn run_syncerd_task_receiver(
                                 .send(())
                                 .await
                                 .expect("terminating, don't care if we panic");
+                        }
+                        Task::HealthCheck(HealthCheck { id }) => {
+                            debug!("performing health check");
+                            let health =
+                                match ElectrumRpc::new(&electrum_server, proxy_address.clone())
+                                    .and_then(|client| {
+                                        client.client.ping()?;
+                                        Ok(())
+                                    }) {
+                                    Err(err) => Health::FaultyElectrum(err.to_string()),
+                                    Ok(_) => Health::Healthy,
+                                };
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .health_result(id, health, syncerd_task.source)
+                                .await;
+                            drop(state_guard);
                         }
                     }
                     continue;
@@ -718,6 +752,7 @@ fn height_polling(
     state: Arc<Mutex<SyncerState>>,
     electrum_server: String,
     proxy_address: Option<String>,
+    transaction_broadcast_tx: TokioSender<(BroadcastTransaction, ServiceId)>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         // outer loop ensures the polling restarts if there is an error
@@ -766,8 +801,33 @@ fn height_polling(
                 }
                 drop(state_guard);
 
-                // if the blocks changed, query transactions
+                // if the blocks changed, check pending broadcasts and query transactions
                 if block_change {
+                    let state_guard = state.lock().await;
+                    let height = state_guard.block_height();
+                    let pending_broadcasts: HashSet<(BroadcastTransaction, ServiceId)> =
+                        state_guard
+                            .pending_broadcasts
+                            .iter()
+                            .filter(|(task, _)| {
+                                if let Some(after_height) = task.broadcast_after_height {
+                                    after_height < height
+                                } else {
+                                    false
+                                }
+                            })
+                            .cloned()
+                            .collect();
+                    drop(state_guard);
+                    for pending in pending_broadcasts {
+                        // Do not re-try sending pending broadcasts
+                        if let Err(err) = transaction_broadcast_tx.send(pending.clone()).await {
+                            error!("error sending through transaction_broadcast_tx {}", err);
+                        }
+                        let mut state_guard = state.lock().await;
+                        state_guard.pending_broadcasts.remove(&pending);
+                        drop(state_guard);
+                    }
                     rpc.query_transactions(Arc::clone(&state), false).await;
                 }
 
@@ -1101,9 +1161,11 @@ impl Synclet for BitcoinSyncer {
                     )));
 
                     run_syncerd_task_receiver(
+                        electrum_server.clone(),
+                        proxy_address.clone(),
                         receive_task_channel,
                         Arc::clone(&state),
-                        transaction_broadcast_tx,
+                        transaction_broadcast_tx.clone(),
                         transaction_get_tx,
                         terminate_tx,
                     )
@@ -1120,6 +1182,7 @@ impl Synclet for BitcoinSyncer {
                         Arc::clone(&state),
                         electrum_server.clone(),
                         proxy_address.clone(),
+                        transaction_broadcast_tx,
                     );
 
                     let unseen_transaction_handle = unseen_transaction_polling(

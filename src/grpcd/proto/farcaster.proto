@@ -8,6 +8,7 @@ service Farcaster {
     rpc OfferInfo(OfferInfoRequest) returns (OfferInfoResponse){}
     rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
     rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
+    rpc FundingAddresses(FundingAddressesRequest) returns (FundingAddressesResponse){}
     rpc Make(MakeRequest) returns (MakeResponse){}
     rpc Take(TakeRequest) returns (TakeResponse){}
     rpc RevokeOffer(RevokeOfferRequest) returns (RevokeOfferResponse){}
@@ -15,7 +16,23 @@ service Farcaster {
     rpc Progress(ProgressRequest) returns (ProgressResponse){}
     rpc NeedsFunding(NeedsFundingRequest) returns (NeedsFundingResponse){}
     rpc SweepAddress(SweepAddressRequest) returns (SweepAddressResponse){}
+    rpc ConnectSwap(ConnectSwapRequest) returns (ConnectSwapResponse){}
     rpc ListOffers(ListOffersRequest) returns (ListOffersResponse){}
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse){}
+}
+
+message HealthCheckRequest {
+    uint32 id = 1;
+}
+
+message HealthCheckResponse {
+    uint32 id = 1;
+    string bitcoin_mainnet_health = 2;
+    string bitcoin_testnet_health = 3;
+    string bitcoin_local_health = 4;
+    string monero_mainnet_health = 5;
+    string monero_testnet_health = 6;
+    string monero_local_health = 7;
 }
 
 message InfoRequest {
@@ -39,10 +56,15 @@ message SwapInfoRequest {
 
 message SwapInfoResponse {
     uint32 id = 1;
-    string maker_peer = 2;
+    string connection = 2;
     uint64 uptime = 3;
     uint64 since= 4;
     string public_offer = 5;
+    bool connected = 6;
+    TradeRole trade_role = 7;
+    SwapRole swap_role = 8;
+    string connected_counterparty_node_id = 9;
+    string state = 10;
 }
 
 message OfferInfoRequest {
@@ -94,11 +116,17 @@ message ListOffersResponse {
 
 message CheckpointsRequest {
     uint32 id = 1;
+    CheckpointSelector selector = 2;
 }
 
 message CheckpointsResponse {
     uint32 id = 1;
     repeated CheckpointEntry checkpoint_entries = 2;
+}
+
+enum CheckpointSelector {
+    ALL_CHECKPOINTS = 0;
+    AVAILABLE_FOR_RESTORE = 1;
 }
 
 message CheckpointEntry {
@@ -120,6 +148,23 @@ message RestoreCheckpointRequest {
 message RestoreCheckpointResponse {
     uint32 id = 1;
     string status = 2;
+}
+
+message FundingAddressesRequest {
+    uint32 id = 1;
+    Blockchain blockchain = 2;
+}
+
+message FundingAddressesResponse {
+    uint32 id = 1;
+    repeated AddressSwapIdPair addresses = 2;
+}
+
+message AddressSwapIdPair {
+    string address = 1;
+    oneof address_swap_id {
+        string swap_id = 2;
+    }
 }
 
 message MakeRequest {
@@ -180,7 +225,150 @@ message ProgressRequest {
 
 message ProgressResponse {
     uint32 id = 1;
-    repeated string progress = 2;
+    repeated Progress progress = 2;
+}
+
+message Progress {
+    oneof progress {
+        string message = 1;
+        State state_update = 2;
+        StateTransition state_transition = 3;
+        string failure = 4;
+        string success = 5;
+    }
+}
+
+message StateTransition {
+    State old_state = 1;
+    State new_state = 2;
+}
+
+message State {
+    oneof state {
+        StartA start_a = 1;
+        CommitA commit_a = 2;
+        RevealA reveal_a = 3;
+        RefundSigA refund_sig_a = 4;
+        FinishA finish_a = 5;
+        StartB start_b = 6;
+        CommitB commit_b = 7;
+        RevealB reveal_b = 8;
+        CoreArbB core_arb_b = 9;
+        BuySigB buy_sig_b = 10;
+        FinishB finish_b = 11;
+    }
+}
+
+message StartA {}
+message CommitA {}
+message RevealA {}
+message FinishA {
+    Outcome outcome = 1;
+}
+message StartB {}
+message CommitB {}
+message RevealB {}
+message FinishB {
+    Outcome outcome = 1;
+}
+
+message RefundSigA {
+    uint64 arb_block_height = 1;
+    uint64 acc_block_height = 2;
+    bool arb_locked = 3;
+    bool acc_locked = 4;
+    bool buy_published = 5;
+    bool cancel_seen = 6;
+    bool refund_seen = 7;
+    bool overfunded = 8;
+    oneof arb_lock_confirmations {
+        uint32 arb_confs = 9;
+    }
+    oneof acc_lock_confirmations {
+        uint32 acc_confs = 10;
+    }
+    oneof blocks_until_cancel_possible {
+        int64 cancel_blocks = 11;
+    }
+    oneof cancel_confirmations {
+        uint32 cancel_confs = 12;
+    }
+    oneof blocks_until_punish_possible {
+        int64 punish_blocks = 13;
+    }
+    oneof blocks_until_safe_buy {
+        uint32 buy_blocks = 14;
+    }
+}
+
+message CoreArbB {
+    uint64 arb_block_height = 1;
+    uint64 acc_block_height = 2;
+    bool arb_locked = 3;
+    bool acc_locked = 4;
+    bool buy_published = 5;
+    bool refund_seen = 7;
+    oneof arb_lock_confirmations {
+        uint32 arb_confs = 9;
+    }
+    oneof acc_lock_confirmations {
+        uint32 acc_confs = 10;
+    }
+    oneof blocks_until_cancel_possible {
+        int64 cancel_blocks = 11;
+    }
+    oneof cancel_confirmations {
+        uint32 cancel_confs = 12;
+    }
+    oneof blocks_until_refund {
+        int64 refund_blocks = 13;
+    }
+    oneof blocks_until_punish_possible {
+        int64 punish_blocks = 14;
+    }
+}
+
+message BuySigB {
+    uint64 arb_block_height = 1;
+    uint64 acc_block_height = 2;
+    bool buy_tx_seen = 3;
+    oneof arb_lock_confirmations {
+        uint32 arb_confs = 4;
+    }
+    oneof acc_lock_confirmations {
+        uint32 acc_confs = 5;
+    }
+    oneof blocks_until_cancel_possible {
+        int64 cancel_blocks = 6;
+    }
+    oneof cancel_confirmations {
+        uint32 cancel_confs = 7;
+    }
+    oneof blocks_until_refund {
+        int64 refund_blocks = 8;
+    }
+    oneof blocks_until_punish_possible {
+        int64 punish_blocks = 9;
+    }
+    oneof blocks_until_safe_monero_buy_sweep {
+        uint32 buy_monero_blocks = 10;
+    }
+}
+
+enum Outcome {
+    SuccessSwap = 0;
+    FailureRefund = 1;
+    FailurePunish = 2;
+    FailureAbort = 3;
+}
+
+message ConnectSwapRequest {
+    uint32 id = 1;
+    string swap_id = 2;
+}
+
+message ConnectSwapResponse {
+    uint32 id = 1;
 }
 
 message NeedsFundingRequest {

@@ -9,15 +9,14 @@ use crate::syncerd::syncer_state::create_set;
 use crate::syncerd::syncer_state::AddressTx;
 use crate::syncerd::syncer_state::SyncerState;
 use crate::syncerd::types::{AddressAddendum, Boolean, SweepAddressAddendum, Task};
-use crate::syncerd::Event;
 use crate::syncerd::TaskTarget;
 use crate::syncerd::TransactionBroadcasted;
 use crate::syncerd::XmrAddressAddendum;
+use crate::syncerd::{Event, Health};
 use farcaster_core::blockchain::{Blockchain, Network};
-use internet2::zeromq::{Connection, ZmqSocketType};
-use internet2::DuplexConnection;
-use internet2::Encrypt;
-use internet2::PlainTranscoder;
+use internet2::session::LocalSession;
+use internet2::zeromq::ZmqSocketType;
+use internet2::SendRecvMessage;
 use internet2::TypedEnum;
 use monero::Hash;
 use monero_rpc::{
@@ -34,6 +33,8 @@ use tokio::sync::mpsc::Sender as TokioSender;
 use tokio::sync::Mutex;
 
 use hex;
+
+use super::HealthCheck;
 
 #[derive(Debug, Clone)]
 pub struct MoneroRpc {
@@ -202,7 +203,7 @@ impl MoneroRpc {
                 debug!("Watch wallet opened successfully");
             }
             Ok(_) => {
-                debug!("Watch wallet opened successfully")
+                debug!("Watch wallet opened successfully");
             }
         }
 
@@ -381,6 +382,7 @@ impl MoneroSyncer {
 }
 
 async fn run_syncerd_task_receiver(
+    syncer_servers: MoneroSyncerServers,
     receive_task_channel: Receiver<SyncerdTask>,
     state: Arc<Mutex<SyncerState>>,
     tx_event: TokioSender<BridgeEvent>,
@@ -436,6 +438,7 @@ async fn run_syncerd_task_receiver(
                         }
                         Task::WatchAddress(task) => match task.addendum.clone() {
                             AddressAddendum::Monero(_) => {
+                                debug!("received new task: {:?}", task);
                                 let mut state_guard = state.lock().await;
                                 state_guard.watch_address(task, syncerd_task.source);
                             }
@@ -452,11 +455,41 @@ async fn run_syncerd_task_receiver(
                             state_guard.watch_height(task, syncerd_task.source).await;
                         }
                         Task::WatchTransaction(task) => {
+                            debug!("received new task: {:?}", task);
                             let mut state_guard = state.lock().await;
                             state_guard.watch_transaction(task, syncerd_task.source);
                         }
                         Task::Terminate => {
                             debug!("unimplemented");
+                        }
+                        Task::HealthCheck(HealthCheck { id }) => {
+                            debug!("performing health check");
+                            let mut health = match monero_rpc::RpcClient::new(
+                                syncer_servers.monero_daemon.clone(),
+                            )
+                            .daemon()
+                            .get_block_count()
+                            .await
+                            {
+                                Ok(_) => Health::Healthy,
+                                Err(err) => Health::FaultyMoneroDaemon(err.to_string()),
+                            };
+
+                            health = match monero_rpc::RpcClient::new(
+                                syncer_servers.monero_rpc_wallet.clone(),
+                            )
+                            .wallet()
+                            .get_version()
+                            .await
+                            {
+                                Ok(_) => health,
+                                Err(err) => Health::FaultyMoneroRpcWallet(err.to_string()),
+                            };
+                            let mut state_guard = state.lock().await;
+                            state_guard
+                                .health_result(id, health, syncerd_task.source)
+                                .await;
+                            drop(state_guard);
                         }
                     }
                     continue;
@@ -742,19 +775,16 @@ async fn run_syncerd_bridge_event_sender(
     syncer_address: Vec<u8>,
 ) {
     tokio::spawn(async move {
-        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx);
+        let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx);
         while let Some(event) = event_rx.recv().await {
-            let mut transcoder = PlainTranscoder {};
-            let writer = connection.as_sender();
-
             let request = BusMsg::Sync(SyncMsg::BridgeEvent(event));
             trace!("sending request over syncerd bridge: {:?}", request);
-            writer
-                .send_routed(
+            session
+                .send_routed_message(
                     &syncer_address,
                     &syncer_address,
                     &syncer_address,
-                    &transcoder.encrypt(request.serialize()),
+                    &request.serialize(),
                 )
                 .expect("failed to send over zmq socket to the bridge");
         }
@@ -816,6 +846,7 @@ impl Synclet for MoneroSyncer {
                         )));
 
                         run_syncerd_task_receiver(
+                            syncer_servers.clone(),
                             receive_task_channel,
                             Arc::clone(&state),
                             event_tx.clone(),
