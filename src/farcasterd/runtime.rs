@@ -569,6 +569,11 @@ impl Runtime {
                 }
             }
 
+            // From client: Request a list of checkpoints available for restore.
+            // From internal: Trigger restore on a list of checkpoints.
+            //
+            // If the request commes from a client, return the diff between the list and running
+            // swaps, otherwise handle a restore command for each checkpoint.
             InfoMsg::CheckpointList(mut list) => {
                 if matches!(source, ServiceId::Client(_) | ServiceId::GrpcdClient(_)) {
                     self.send_client_info(
