@@ -293,6 +293,7 @@ impl SyncerState {
         let task = Task::BroadcastTransaction(BroadcastTransaction {
             id,
             tx: bitcoin::consensus::serialize(&tx),
+            broadcast_after_height: None,
         });
         self.tasks.tasks.insert(id, task.clone());
         self.tasks.broadcasting_txs.insert(id);

@@ -24,9 +24,8 @@ use farcaster_core::role::TradeRole;
 use farcaster_core::swap::btcxmr::Offer;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
 use internet2::addr::InetSocketAddr;
-use internet2::DuplexConnection;
-use internet2::Encrypt;
-use internet2::PlainTranscoder;
+use internet2::session::LocalSession;
+use internet2::SendRecvMessage;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::net::SocketAddr;
@@ -40,10 +39,7 @@ use uuid::Uuid;
 use crate::bus::{ctl::CtlMsg, info::InfoMsg, info::SwapInfo};
 use crate::bus::{BusMsg, ServiceBus};
 use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
-use internet2::{
-    zeromq::{Connection, ZmqSocketType},
-    TypedEnum,
-};
+use internet2::{zeromq::ZmqSocketType, TypedEnum};
 use microservices::esb;
 use microservices::ZMQ_CONTEXT;
 use std::sync::mpsc::{Receiver, Sender};
@@ -54,10 +50,13 @@ use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse,
 
 use self::farcaster::AbortSwapRequest;
 use self::farcaster::AbortSwapResponse;
+use self::farcaster::AddressSwapIdPair;
 use self::farcaster::CheckpointsRequest;
 use self::farcaster::CheckpointsResponse;
 use self::farcaster::ConnectSwapRequest;
 use self::farcaster::ConnectSwapResponse;
+use self::farcaster::FundingAddressesRequest;
+use self::farcaster::FundingAddressesResponse;
 use self::farcaster::HealthCheckRequest;
 use self::farcaster::HealthCheckResponse;
 use self::farcaster::ListOffersRequest;
@@ -587,16 +586,52 @@ impl Farcaster for FarcasterService {
         request: GrpcRequest<CheckpointsRequest>,
     ) -> Result<GrpcResponse<CheckpointsResponse>, Status> {
         debug!("Received a grpc checkpoints request: {:?}", request);
-        let oneshot_rx = self
-            .process_request(BusMsg::Bridge(BridgeMsg::Info {
-                request: InfoMsg::RetrieveAllCheckpointInfo,
-                service_id: ServiceId::Database,
-            }))
-            .await?;
+        let CheckpointsRequest { id, selector } = request.into_inner();
+
+        let selector = farcaster::CheckpointSelector::from_i32(selector)
+            .ok_or(Status::invalid_argument("selector"))?
+            .into();
+
+        let oneshot_rx = match selector {
+            farcaster::CheckpointSelector::AllCheckpoints => {
+                self.process_request(BusMsg::Bridge(BridgeMsg::Info {
+                    request: InfoMsg::RetrieveAllCheckpointInfo,
+                    service_id: ServiceId::Database,
+                }))
+                .await?
+            }
+            farcaster::CheckpointSelector::AvailableForRestore => {
+                let oneshot_rx = self
+                    .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                        request: InfoMsg::RetrieveAllCheckpointInfo,
+                        service_id: ServiceId::Database,
+                    }))
+                    .await?;
+                match oneshot_rx.await {
+                    Ok(BusMsg::Info(InfoMsg::CheckpointList(checkpoint_entries))) => {
+                        self.process_request(BusMsg::Bridge(BridgeMsg::Info {
+                            request: InfoMsg::CheckpointList(checkpoint_entries),
+                            service_id: ServiceId::Farcasterd,
+                        }))
+                        .await?
+                    }
+                    Err(error) => {
+                        return Err(Status::internal(format!("{}", error)));
+                    }
+                    Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => {
+                        return Err(Status::internal(info));
+                    }
+                    _ => {
+                        return Err(Status::invalid_argument("received invalid response"));
+                    }
+                }
+            }
+        };
+
         match oneshot_rx.await {
             Ok(BusMsg::Info(InfoMsg::CheckpointList(checkpoint_entries))) => {
                 let reply = farcaster::CheckpointsResponse {
-                    id: request.into_inner().id,
+                    id,
                     checkpoint_entries: checkpoint_entries
                         .iter()
                         .map(|entry| farcaster::CheckpointEntry {
@@ -653,6 +688,48 @@ impl Farcaster for FarcasterService {
                 }
             }
             res => process_error_response(res),
+        }
+    }
+
+    async fn funding_addresses(
+        &self,
+        request: GrpcRequest<FundingAddressesRequest>,
+    ) -> Result<GrpcResponse<FundingAddressesResponse>, Status> {
+        let FundingAddressesRequest {
+            id,
+            blockchain: grpc_blockchain,
+        } = request.into_inner();
+
+        let blockchain: Blockchain = farcaster::Blockchain::from_i32(grpc_blockchain)
+            .ok_or(Status::invalid_argument("arbitrating blockchain"))?
+            .into();
+
+        let oneshot_rx = self
+            .process_request(BusMsg::Bridge(BridgeMsg::Info {
+                request: InfoMsg::GetAddresses(blockchain),
+                service_id: ServiceId::Database,
+            }))
+            .await?;
+        match oneshot_rx.await {
+            Ok(BusMsg::Info(InfoMsg::BitcoinAddressList(addresses))) => {
+                let reply = FundingAddressesResponse {
+                    id,
+                    addresses: addresses
+                        .iter()
+                        .map(|a| AddressSwapIdPair {
+                            address: a.address.to_string(),
+                            address_swap_id: a.swap_id.map(|c| {
+                                farcaster::address_swap_id_pair::AddressSwapId::SwapId(
+                                    c.to_string(),
+                                )
+                            }),
+                        })
+                        .collect(),
+                };
+                Ok(GrpcResponse::new(reply))
+            }
+            Ok(BusMsg::Ctl(CtlMsg::Failure(Failure { info, .. }))) => Err(Status::internal(info)),
+            _ => Err(Status::internal(format!("Received invalid response"))),
         }
     }
 
@@ -1264,20 +1341,18 @@ fn request_loop(
     tx_request: zmq::Socket,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
-        let mut connection = Connection::with_socket(ZmqSocketType::Push, tx_request);
+        let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx_request);
         while let Some((id, request)) = tokio_rx_request.recv().await {
-            let mut transcoder = PlainTranscoder {};
-            let writer = connection.as_sender();
             debug!("sending request over grpc bridge: {:?}", request);
             let grpc_client_address: Vec<u8> = ServiceId::GrpcdClient(id).into();
             let grpc_address: Vec<u8> = ServiceId::Grpcd.into();
 
-            writer
-                .send_routed(
+            session
+                .send_routed_message(
                     &grpc_client_address,
                     &grpc_address,
                     &grpc_address,
-                    &transcoder.encrypt(request.serialize()),
+                    &request.serialize(),
                 )
                 .expect("failed to send from grpc server to grpc runtime over bridge");
         }

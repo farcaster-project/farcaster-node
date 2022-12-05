@@ -72,6 +72,17 @@ impl Config {
         }
     }
 
+    /// Returns if auto restore is enabled. Default to true
+    pub fn auto_restore_enable(&self) -> bool {
+        match &self.farcasterd {
+            Some(FarcasterdConfig {
+                auto_restore: Some(enable),
+                ..
+            }) => *enable,
+            _ => true,
+        }
+    }
+
     /// Returns the auto-funding configuration for a given network if enable, if None no
     /// configuration is found
     pub fn get_auto_funding_config(&self, network: Network) -> Option<AutoFundingServers> {
@@ -106,18 +117,29 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            farcasterd: None,
+            farcasterd: Some(FarcasterdConfig::default()),
             grpc: None,
             syncers: Some(SyncersConfig::default()),
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
+    /// Whether checkpoints should be auto restored at start-up, or not
+    pub auto_restore: Option<bool>,
+}
+
+impl Default for FarcasterdConfig {
+    fn default() -> Self {
+        FarcasterdConfig {
+            auto_funding: None,
+            auto_restore: Some(true),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

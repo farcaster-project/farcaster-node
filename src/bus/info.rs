@@ -156,11 +156,11 @@ pub enum InfoMsg {
     // - End GetAddressSecretKey section
 
     // - GetAddresses section
-    #[display("bitcoin_address_list({0})")]
-    BitcoinAddressList(List<bitcoin::Address>),
+    #[display(inner)]
+    BitcoinAddressList(List<BitcoinAddressSwapIdPair>),
 
-    #[display("monero_address_list({0})")]
-    MoneroAddressList(List<String>),
+    #[display(inner)]
+    MoneroAddressList(List<MoneroAddressSwapIdPair>),
     // - End GetAddresses section
 
     // - GetCheckpointEntry section
@@ -169,6 +169,30 @@ pub enum InfoMsg {
     // - End GetCheckpointEntry section
     #[display("{0}")]
     FundingInfos(FundingInfos),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(BitcoinAddressSwapIdPair::to_yaml_string)]
+pub struct BitcoinAddressSwapIdPair {
+    pub address: bitcoin::Address,
+    pub swap_id: Option<SwapId>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(MoneroAddressSwapIdPair::to_yaml_string)]
+pub struct MoneroAddressSwapIdPair {
+    pub address: monero::Address,
+    pub swap_id: Option<SwapId>,
 }
 
 #[cfg_attr(feature = "serde", serde_as)]
@@ -400,6 +424,10 @@ pub struct OfferInfo {
     pub details: PublicOffer,
 }
 
+#[cfg(feature = "serde")]
+impl ToYamlString for BitcoinAddressSwapIdPair {}
+#[cfg(feature = "serde")]
+impl ToYamlString for MoneroAddressSwapIdPair {}
 #[cfg(feature = "serde")]
 impl ToYamlString for OfferInfo {}
 #[cfg(feature = "serde")]

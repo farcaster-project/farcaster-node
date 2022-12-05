@@ -99,7 +99,15 @@ pub enum Command {
 
     /// Lists saved checkpoints of the swaps
     #[clap(aliases = &["lc"])]
-    ListCheckpoints,
+    ListCheckpoints {
+        #[clap(
+            short,
+            long,
+            default_value = "all",
+            possible_values = &["all", "All", "available", "Available", "available-for-restore"],
+        )]
+        select: CheckpointSelector,
+    },
 
     /// Checks the health of the syncers
     #[clap(aliases = &["hc"])]
@@ -252,6 +260,13 @@ pub enum Command {
         blockchain: Blockchain,
     },
 
+    /// Returns previously created funding addresses for blockchain.
+    #[display("list-funding-address<{blockchain}>")]
+    ListFundingAddresses {
+        /// Retrieve funding addresses for a particular blockchain.
+        blockchain: Blockchain,
+    },
+
     /// Attempts to sweep any funds on a given bitcoin funding address
     #[display("sweep-bitcoin-address<{source_address} {destination_address}>")]
     SweepBitcoinAddress {
@@ -299,7 +314,6 @@ pub enum OfferSelector {
     #[display("All")]
     All,
 }
-
 impl FromStr for OfferSelector {
     type Err = OfferSelectorParseError;
     fn from_str(input: &str) -> Result<OfferSelector, Self::Err> {
@@ -316,6 +330,33 @@ impl FromStr for OfferSelector {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
 pub enum OfferSelectorParseError {
+    /// The provided value can't be parsed as an offer selector
+    Invalid,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
+#[display(Debug)]
+pub enum CheckpointSelector {
+    All,
+    AvailableForRestore,
+}
+
+impl FromStr for CheckpointSelector {
+    type Err = CheckpointSelectorParseError;
+    fn from_str(input: &str) -> Result<CheckpointSelector, Self::Err> {
+        match input {
+            "all" | "All" => Ok(CheckpointSelector::All),
+            "available" | "Available" | "available-for-restore" => {
+                Ok(CheckpointSelector::AvailableForRestore)
+            }
+            _ => Err(CheckpointSelectorParseError::Invalid),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
+#[display(doc_comments)]
+pub enum CheckpointSelectorParseError {
     /// The provided value can't be parsed as an offer selector
     Invalid,
 }

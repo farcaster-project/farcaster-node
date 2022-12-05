@@ -50,15 +50,15 @@ Check out the documentation on configuration and usage for more advanced setups 
 
 ## Run with docker
 
-If you did use Docker you are already all set up, check out [Using Docker](./Using-Docker) for more details. Run `docker-compose up -d` if you haven't yet, and the node and the wallet will start running. You can interact with the `farcasterd` container using the cli already setup inside the container via
+If you did use Docker you are already all set up, check out [Using Docker](./Using-Docker) for more details. Run `docker compose up -d` if you haven't yet, and the node and the wallet will start running. You can interact with the `farcasterd` container using the cli already setup inside the container via
 
 ```
-docker-compose exec farcasterd swap-cli info
+docker compose exec farcasterd swap-cli info
 ```
 
 Commands you should know: `swap-cli info` gives a general overview of the node, `swap-cli ls` lists the ongoing swaps and `swap-cli progress <swap_id>` gives the state of a given swap (use `--follow` to see live update progression).
 
-With those commands and `farcasterd` logs (attach to the log with `docker-compose logs -f --no-log-prefix farcasterd`), you should be able to follow your swaps.
+With those commands and `farcasterd` logs (attach to the log with `docker compose logs -f --no-log-prefix farcasterd`), you should be able to follow your swaps.
 
 Check out the documentation on configuration and usage for more advanced setups and to learn how to make and take offers.
 
@@ -79,7 +79,7 @@ monero_rpc_wallet = ""
 
 :mag_right: The default config for _local_ network is set to `null`.
 
-### :bulb: Use public infrastructure
+### Use public infrastructure
 
 To help quickly test and avoid running the entire infrastructure on your machine, you can make use of public nodes. Following is a non-exhaustive list of public nodes.
 

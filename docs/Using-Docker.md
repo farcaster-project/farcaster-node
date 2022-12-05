@@ -8,7 +8,7 @@ The easiest way is to use `docker-compose` to run both the node and the Monero w
 
 ```
 cd compose
-docker-compose up -d
+docker compose up -d
 ```
 
 :mag_right: If you plan to make offer with the Docker stack make sure you understand what ports need to be open and reachable on your host and exposed from the container (port `9735` is exposed in the provided compose file). You might need to additionally configure your firewall to enable takers to connect.
@@ -16,19 +16,19 @@ docker-compose up -d
 To follow live `farcaster`'s logs run in another terminal (in the `compose/` folder):
 
 ```
-docker-compose logs -f --no-log-prefix farcasterd
+docker compose logs -f --no-log-prefix farcasterd
 ```
 
 To interact with the node use `swap-cli` command line tool. The tool is installed in `farcasterd` container and already setup. To execute a command run:
 
 ```
-docker-compose exec farcasterd swap-cli [command]
+docker compose exec farcasterd swap-cli [command]
 ```
 
 To stop and remove the containers simply run:
 
 ```
-docker-compose down
+docker compose down
 ```
 
 Daemons used by the services are public testnet servers, you can change them by modifying `compose/farcaster.toml` file. After launching the containers you will see a new folder `compose/.farcaster` appears, this folder contains all node's data (nodeid key, database) and is stored on your machine so restarting the containers doesn't reset your node identity nor erase check-pointed data (public offers, swaps checkpoints, etc.)
@@ -40,7 +40,7 @@ Images used in the docker compose are produced by the `farcaster-project` direct
 | Service      | Image                                                             |
 | ------------ | ----------------------------------------------------------------- |
 | `farcasterd` | `ghcr.io/farcaster-project/farcaster-node/farcasterd:latest`      |
-| `walletrpc`  | `ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.0.0` |
+| `walletrpc`  | `ghcr.io/farcaster-project/containers/monero-wallet-rpc:0.18.1.2` |
 
 ## Docker image
 
@@ -89,4 +89,4 @@ Then use the following values in `farcasterd` configuration file:
 | mainnet             | `http://localhost:18083` |
 | stagenet            | `http://localhost:38083` |
 
-Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](./Home) for public mainnet daemon hosts.
+Remove `--stagenet` add change `--rpc-bind-port` and `-p` values to `18083` and connect to a **mainnet** daemon host, see [:bulb: Use public infrastructure](./Home#use-public-infrastructure) for public mainnet daemon hosts.
