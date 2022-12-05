@@ -561,6 +561,9 @@ impl Runtime {
         }
 
         match request {
+            // Trade role: Taker, target of this message
+            // Potentially the first and only message receive from maker if the offer is not found
+            // on maker side.
             PeerMsg::OfferNotFound(swap_id)
                 if self.state.commit() && self.state.trade_role() == Some(TradeRole::Taker) =>
             {
