@@ -169,7 +169,7 @@ impl Exec for Command {
                     }
                     CheckpointSelector::AvailableForRestore => {
                         runtime.request_info(
-                            ServiceId::Farcasterd,
+                            ServiceId::Database,
                             InfoMsg::RetrieveAllCheckpointInfo,
                         )?;
                         if let BusMsg::Info(InfoMsg::CheckpointList(list)) =
