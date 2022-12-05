@@ -91,6 +91,7 @@ pub fn run(
         node_public_key: None,
         listens: none!(),
         started: SystemTime::now(),
+        auto_restored: false,
         spawning_services: none!(),
         registered_services: none!(),
         public_offers: none!(),
@@ -112,6 +113,7 @@ pub struct Runtime {
     identity: ServiceId,                         // Set on Runtime instantiation
     wallet_token: Token,                         // Set on Runtime instantiation
     started: SystemTime,                         // Set on Runtime instantiation
+    auto_restored: bool,                         // Set on Runtime instantiation
     node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
     node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
     pub listens: HashSet<InetSocketAddr>, // Set by MakeOffer, contains unique socket addresses of the binding peerd listeners.
@@ -248,20 +250,7 @@ impl Runtime {
                             ServiceId::Database,
                             BusMsg::Ctl(CtlMsg::CleanDanglingOffers),
                         )?;
-                        if self.config.auto_restore_enable() {
-                            info!(
-                                "{} will {} checkpoints",
-                                "farcasterd".label(),
-                                "auto restore".label()
-                            );
-                            // Retrieve all checkpoint info from farcasterd triggers restore of all checkpoints
-                            endpoints.send_to(
-                                ServiceBus::Info,
-                                self.identity(),
-                                ServiceId::Database,
-                                BusMsg::Info(InfoMsg::RetrieveAllCheckpointInfo),
-                            )?;
-                        }
+                        self.handle_auto_restore(endpoints)?;
                     }
                     ServiceId::Wallet => {
                         self.registered_services.insert(source.clone());
@@ -351,6 +340,7 @@ impl Runtime {
                 debug!("received peerd keys {}", sk.display_secret());
                 self.node_secret_key = Some(sk);
                 self.node_public_key = Some(pk);
+                self.handle_auto_restore(endpoints)?;
             }
 
             CtlMsg::PeerdTerminated if matches!(source, ServiceId::Peer(..)) => {
@@ -589,7 +579,7 @@ impl Runtime {
                     for checkpoint in list.drain(..) {
                         self.handle_ctl(
                             endpoints,
-                            self.identity(),
+                            source.clone(),
                             CtlMsg::RestoreCheckpoint(checkpoint),
                         )?;
                     }
@@ -705,6 +695,29 @@ impl Runtime {
         request: SyncMsg,
     ) -> Result<(), Error> {
         self.process_request_with_state_machines(BusMsg::Sync(request), source, endpoints)
+    }
+
+    fn handle_auto_restore(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        if self.config.auto_restore_enable()
+            && self.services_ready().is_ok()
+            && self.peer_keys_ready().is_ok()
+            && !self.auto_restored
+        {
+            info!(
+                "{} will {} checkpoints",
+                "farcasterd".label(),
+                "auto restore".label()
+            );
+            // Retrieve all checkpoint info from farcasterd triggers restore of all checkpoints
+            endpoints.send_to(
+                ServiceBus::Info,
+                self.identity(),
+                ServiceId::Database,
+                BusMsg::Info(InfoMsg::RetrieveAllCheckpointInfo),
+            )?;
+            self.auto_restored = true;
+        }
+        Ok(())
     }
 
     pub fn services_ready(&self) -> Result<(), Error> {
