@@ -249,6 +249,11 @@ impl Runtime {
                             BusMsg::Ctl(CtlMsg::CleanDanglingOffers),
                         )?;
                         if self.config.auto_restore_enable() {
+                            info!(
+                                "{} will {} checkpoints",
+                                "farcasterd".label(),
+                                "auto restore".label()
+                            );
                             // Retrieve all checkpoint info from farcasterd triggers restore of all checkpoints
                             endpoints.send_to(
                                 ServiceBus::Ctl,
