@@ -29,7 +29,6 @@ cargo install --path . --bins --all-features --locked --force
 Install dependencies
 
 ```
-apt-get update -y
 apt-get install -y git curl libssl-dev pkg-config build-essential cmake
 ```
 
@@ -38,7 +37,6 @@ apt-get install -y git curl libssl-dev pkg-config build-essential cmake
 Install dependencies
 
 ```
-pacman -Syy && pacman -Syu
 pacman -Sy git base-devel cmake
 ```
 
