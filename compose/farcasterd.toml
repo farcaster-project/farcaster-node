@@ -1,3 +1,7 @@
+[farcasterd]
+bind_port = 7067
+bind_ip = "0.0.0.0"
+
 [syncers.testnet]
 electrum_server = "ssl://blockstream.info:993"
 monero_daemon = "http://stagenet.community.rino.io:38081"

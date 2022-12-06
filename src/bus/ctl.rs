@@ -194,7 +194,6 @@ pub enum ProgressStack {
 pub struct ProtoPublicOffer {
     pub offer: Offer,
     pub public_addr: InetSocketAddr,
-    pub bind_addr: InetSocketAddr,
     pub arbitrating_addr: bitcoin::Address,
     pub accordant_addr: monero::Address,
 }

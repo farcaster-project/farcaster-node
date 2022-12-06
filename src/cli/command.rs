@@ -37,6 +37,7 @@ use crate::bus::{
     AddressSecretKey,
 };
 use crate::bus::{BusMsg, Failure, FailureCode, HealthReport};
+use crate::cli::opts::CheckpointSelector;
 use crate::client::Client;
 use crate::syncerd::{SweepAddressAddendum, SweepBitcoinAddress, SweepMoneroAddress};
 use crate::{Error, LogStyle, ServiceId};
@@ -158,8 +159,33 @@ impl Exec for Command {
                 runtime.report_response_or_fail()?;
             }
 
-            Command::ListCheckpoints => {
-                runtime.request_info(ServiceId::Database, InfoMsg::RetrieveAllCheckpointInfo)?;
+            Command::ListCheckpoints { select } => {
+                match select {
+                    CheckpointSelector::All => {
+                        runtime.request_info(
+                            ServiceId::Database,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                    }
+                    CheckpointSelector::AvailableForRestore => {
+                        runtime.request_info(
+                            ServiceId::Database,
+                            InfoMsg::RetrieveAllCheckpointInfo,
+                        )?;
+                        if let BusMsg::Info(InfoMsg::CheckpointList(list)) =
+                            runtime.report_failure()?
+                        {
+                            runtime.request_info(
+                                ServiceId::Farcasterd,
+                                InfoMsg::CheckpointList(list),
+                            )?;
+                        } else {
+                            return Err(Error::Farcaster(
+                                "Received unexpected response".to_string(),
+                            ));
+                        }
+                    }
+                }
                 runtime.report_response_or_fail()?;
             }
 
@@ -281,8 +307,7 @@ impl Exec for Command {
                 fee_strategy,
                 maker_role,
                 public_ip_addr,
-                bind_ip_addr,
-                port,
+                public_port,
             } => {
                 // Monero local address types are mainnet address types
                 if network != accordant_addr.network.into() && network != Network::Local {
@@ -336,12 +361,10 @@ impl Exec for Command {
                     fee_strategy,
                     maker_role,
                 };
-                let public_addr = InetSocketAddr::socket(public_ip_addr, port);
-                let bind_addr = InetSocketAddr::socket(bind_ip_addr, port);
+                let public_addr = InetSocketAddr::socket(public_ip_addr, public_port);
                 let proto_offer = ctl::ProtoPublicOffer {
                     offer,
                     public_addr,
-                    bind_addr,
                     arbitrating_addr,
                     accordant_addr,
                 };
@@ -481,6 +504,11 @@ impl Exec for Command {
 
             Command::NeedsFunding { blockchain } => {
                 runtime.request_info(ServiceId::Farcasterd, InfoMsg::NeedsFunding(blockchain))?;
+                runtime.report_response_or_fail()?;
+            }
+
+            Command::ListFundingAddresses { blockchain } => {
+                runtime.request_info(ServiceId::Database, InfoMsg::GetAddresses(blockchain))?;
                 runtime.report_response_or_fail()?;
             }
 

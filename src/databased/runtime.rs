@@ -1,4 +1,7 @@
-use crate::bus::{BitcoinSecretKeyInfo, MoneroSecretKeyInfo, Outcome};
+use crate::bus::{
+    info::{BitcoinAddressSwapIdPair, MoneroAddressSwapIdPair},
+    BitcoinSecretKeyInfo, MoneroSecretKeyInfo, Outcome,
+};
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::swap::btcxmr::PublicOffer;
 use farcaster_core::swap::SwapId;
@@ -309,22 +312,30 @@ impl Runtime {
             }
 
             InfoMsg::GetAddresses(Blockchain::Bitcoin) => {
-                let addresses = self.database.get_all_bitcoin_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    ServiceId::Database,
+                let mut addresses = self.database.get_all_bitcoin_addresses()?;
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::BitcoinAddressList(addresses.into())),
+                    InfoMsg::BitcoinAddressList(
+                        addresses
+                            .drain(..)
+                            .map(|(address, swap_id)| BitcoinAddressSwapIdPair { address, swap_id })
+                            .collect(),
+                    ),
                 )?;
             }
 
             InfoMsg::GetAddresses(Blockchain::Monero) => {
-                let addresses = self.database.get_all_monero_addresses()?;
-                endpoints.send_to(
-                    ServiceBus::Info,
-                    ServiceId::Database,
+                let mut addresses = self.database.get_all_monero_addresses()?;
+                self.send_client_info(
+                    endpoints,
                     source,
-                    BusMsg::Info(InfoMsg::MoneroAddressList(addresses.into())),
+                    InfoMsg::MoneroAddressList(
+                        addresses
+                            .drain(..)
+                            .map(|(address, swap_id)| MoneroAddressSwapIdPair { address, swap_id })
+                            .collect(),
+                    ),
                 )?;
             }
 
@@ -485,14 +496,26 @@ impl Database {
         Ok(val)
     }
 
-    fn get_all_bitcoin_addresses(&mut self) -> Result<Vec<bitcoin::Address>, lmdb::Error> {
+    fn get_all_bitcoin_addresses(
+        &mut self,
+    ) -> Result<Vec<(bitcoin::Address, Option<SwapId>)>, lmdb::Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, _)| {
-                bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec())).ok()
+            .filter_map(|(key, val)| {
+                bitcoin::Address::strict_decode(std::io::Cursor::new(key.to_vec()))
+                    .ok()
+                    .map(|a| {
+                        (
+                            a,
+                            BitcoinSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
+                                .ok()
+                                .map(|s| s.swap_id)
+                                .flatten(),
+                        )
+                    })
             })
             .collect();
         drop(cursor);
@@ -534,14 +557,25 @@ impl Database {
         Ok(val)
     }
 
-    fn get_all_monero_addresses(&mut self) -> Result<Vec<String>, lmdb::Error> {
+    fn get_all_monero_addresses(
+        &mut self,
+    ) -> Result<Vec<(monero::Address, Option<SwapId>)>, lmdb::Error> {
         let db = self.0.open_db(Some(LMDB_BITCOIN_ADDRESSES))?;
         let tx = self.0.begin_ro_txn()?;
         let mut cursor = tx.open_ro_cursor(db)?;
         let res = cursor
             .iter()
-            .filter_map(|(key, _)| monero::Address::from_bytes(key).ok())
-            .map(|addr| addr.to_string())
+            .filter_map(|(key, val)| {
+                monero::Address::from_bytes(key).ok().map(|a| {
+                    (
+                        a,
+                        MoneroSecretKeyInfo::strict_decode(std::io::Cursor::new(val.to_vec()))
+                            .ok()
+                            .map(|s| s.swap_id)
+                            .flatten(),
+                    )
+                })
+            })
             .collect();
         drop(cursor);
         tx.abort();
@@ -667,7 +701,7 @@ fn test_lmdb_state() {
     let val_retrieved = database.get_bitcoin_address_secret_key(&addr).unwrap();
     assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_bitcoin_addresses().unwrap();
-    assert!(addrs.contains(&addr));
+    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
     let key_pair = monero::KeyPair {
         spend: monero::PrivateKey::from_str(
             "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -690,7 +724,7 @@ fn test_lmdb_state() {
     let val_retrieved = database.get_monero_address_secret_key(&addr).unwrap();
     assert_eq!(addr_info, val_retrieved);
     let addrs = database.get_all_monero_addresses().unwrap();
-    assert!(addrs.contains(&addr.to_string()));
+    assert!(addrs.iter().find(|(a, _)| *a == addr).is_some());
 
     let offer_1 = PublicOffer::from_str("Offer:Cke4ftrP5A7MgLMaQZLZUMTC6TfkqUKBu1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBtrLeA3t").unwrap();
     let offer_2 = PublicOffer::from_str("Offer:Cke4ftrP5A7Km9Kmc2UDBePio1p7wM56P1LQM2fvVdFMNR4gmBqNCsR11111uMFuZTAsNgpdK8DiK11111TB9zym113GTvtvqfD1111114A4TTF4h53Tv4MR6eS9sdDxV5JCH9xZcKejCqKShnphqndeeD11111111111111111111111111111111111111111AfZ113XRBuLWyw3M").unwrap();

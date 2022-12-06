@@ -8,6 +8,7 @@ service Farcaster {
     rpc OfferInfo(OfferInfoRequest) returns (OfferInfoResponse){}
     rpc Checkpoints(CheckpointsRequest) returns (CheckpointsResponse){}
     rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse){}
+    rpc FundingAddresses(FundingAddressesRequest) returns (FundingAddressesResponse){}
     rpc Make(MakeRequest) returns (MakeResponse){}
     rpc Take(TakeRequest) returns (TakeResponse){}
     rpc RevokeOffer(RevokeOfferRequest) returns (RevokeOfferResponse){}
@@ -115,11 +116,17 @@ message ListOffersResponse {
 
 message CheckpointsRequest {
     uint32 id = 1;
+    CheckpointSelector selector = 2;
 }
 
 message CheckpointsResponse {
     uint32 id = 1;
     repeated CheckpointEntry checkpoint_entries = 2;
+}
+
+enum CheckpointSelector {
+    ALL_CHECKPOINTS = 0;
+    AVAILABLE_FOR_RESTORE = 1;
 }
 
 message CheckpointEntry {
@@ -143,6 +150,23 @@ message RestoreCheckpointResponse {
     string status = 2;
 }
 
+message FundingAddressesRequest {
+    uint32 id = 1;
+    Blockchain blockchain = 2;
+}
+
+message FundingAddressesResponse {
+    uint32 id = 1;
+    repeated AddressSwapIdPair addresses = 2;
+}
+
+message AddressSwapIdPair {
+    string address = 1;
+    oneof address_swap_id {
+        string swap_id = 2;
+    }
+}
+
 message MakeRequest {
     uint32 id = 1;
     Network network = 2;
@@ -157,8 +181,7 @@ message MakeRequest {
     string fee_strategy = 11;
     SwapRole maker_role = 12;
     string public_ip_addr = 13;
-    string bind_ip_addr = 14;
-    uint32 port = 15;
+    uint32 public_port = 14;
 }
  
 message MakeResponse {

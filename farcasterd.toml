@@ -1,5 +1,16 @@
 # Farcasterd configuration
-# configures farcasterd specific behaviors such as auto-funding swaps
+# configures farcasterd specific behaviors such as auto-funding swaps or
+# auto-restoring checkpoints
+
+[farcasterd]
+# Set this to false if you only want manual restore. Defaut to true
+auto_restore = true
+# Sets the port where Farcaster will accept new peer connections through a
+# listening peerd. Default to 7067
+bind_port = 7067
+# Sets the binding ip for the listening peerd launched by Farcaster. Default to
+# 0.0.0.0
+bind_ip = "0.0.0.0"
 
 # Defines auto-funding
 [farcasterd.auto_funding]

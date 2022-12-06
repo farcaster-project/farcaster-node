@@ -40,8 +40,6 @@ async fn cli_make_offer() {
         "30",
         "--fee-strategy",
         "1 satoshi/vByte",
-        "-p",
-        "9376",
     ];
     args.append(&mut data_dir_maker.iter().map(std::ops::Deref::deref).collect());
 

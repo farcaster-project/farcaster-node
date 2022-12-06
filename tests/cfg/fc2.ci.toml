@@ -1,3 +1,8 @@
+[farcasterd]
+auto_restore = false
+bind_port = 7067
+bind_ip = "0.0.0.0"
+
 [grpc]
 enable = true
 bind_port = 23433

@@ -46,6 +46,7 @@ pub struct SyncerState {
     task_count: TaskCounter,
     pub subscribed_addresses: HashSet<AddressAddendum>,
     pub fee_estimation: Option<FeeEstimations>,
+    pub pending_broadcasts: HashSet<(BroadcastTransaction, ServiceId)>,
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +92,7 @@ impl SyncerState {
             blockchain,
             subscribed_addresses: HashSet::new(),
             fee_estimation: None,
+            pending_broadcasts: HashSet::new(),
         }
     }
 

@@ -830,6 +830,7 @@ async fn monero_syncer_broadcast_tx_test() {
         task: Task::BroadcastTransaction(BroadcastTransaction {
             id: TaskId(0),
             tx: vec![0],
+            broadcast_after_height: None,
         }),
         source: SOURCE2.clone(),
     };

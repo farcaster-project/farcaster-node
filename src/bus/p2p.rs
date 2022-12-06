@@ -23,6 +23,10 @@ pub enum PeerMsg {
     #[display("{0} taker commit")]
     TakerCommit(TakerCommit),
 
+    #[api(type = 33703)]
+    #[display("{0} offer not found")]
+    OfferNotFound(SwapId),
+
     #[api(type = 33704)]
     #[display("reveal {0}")]
     Reveal(Reveal),
@@ -73,6 +77,7 @@ impl PeerMsg {
         match self {
             PeerMsg::MakerCommit(c) => c.swap_id(),
             PeerMsg::TakerCommit(c) => c.swap_id(),
+            PeerMsg::OfferNotFound(swap_id) => *swap_id,
             PeerMsg::Reveal(r) => r.swap_id(),
             PeerMsg::RefundProcedureSignatures(RefundProcedureSignatures { swap_id, .. }) => {
                 *swap_id
@@ -105,6 +110,7 @@ impl PeerMsg {
                 | PeerMsg::Ping(_)
                 | PeerMsg::Pong(_)
                 | PeerMsg::MsgReceipt(_)
+                | PeerMsg::OfferNotFound(_)
         )
     }
 
@@ -117,6 +123,7 @@ impl PeerMsg {
                 | PeerMsg::RefundProcedureSignatures(_)
                 | PeerMsg::CoreArbitratingSetup(_)
                 | PeerMsg::BuyProcedureSignature(_)
+                | PeerMsg::OfferNotFound(_)
         )
     }
 }

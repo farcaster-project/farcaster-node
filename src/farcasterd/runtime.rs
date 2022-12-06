@@ -89,6 +89,7 @@ pub fn run(
         node_public_key: None,
         listens: none!(),
         started: SystemTime::now(),
+        auto_restored: false,
         spawning_services: none!(),
         registered_services: none!(),
         public_offers: none!(),
@@ -110,6 +111,7 @@ pub struct Runtime {
     identity: ServiceId,                         // Set on Runtime instantiation
     pub wallet_token: Token,                     // Set on Runtime instantiation
     started: SystemTime,                         // Set on Runtime instantiation
+    auto_restored: bool,                         // Set on Runtime instantiation
     node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
     node_public_key: Option<PublicKey>, // Set by Keys request shortly after Hello from walletd
     pub listens: HashSet<InetSocketAddr>, // Set by MakeOffer, contains unique socket addresses of the binding peerd listeners.
@@ -246,6 +248,7 @@ impl Runtime {
                             ServiceId::Database,
                             BusMsg::Ctl(CtlMsg::CleanDanglingOffers),
                         )?;
+                        self.handle_auto_restore(endpoints)?;
                     }
                     ServiceId::Wallet => {
                         self.registered_services.insert(source.clone());
@@ -335,6 +338,7 @@ impl Runtime {
                 debug!("received peerd keys {}", sk.display_secret());
                 self.node_secret_key = Some(sk);
                 self.node_public_key = Some(pk);
+                self.handle_auto_restore(endpoints)?;
             }
 
             CtlMsg::PeerdTerminated if matches!(source, ServiceId::Peer(..)) => {
@@ -553,6 +557,33 @@ impl Runtime {
                 }
             }
 
+            // From client: Request a list of checkpoints available for restore.
+            // From internal: Trigger restore on a list of checkpoints.
+            //
+            // If the request commes from a client, return the diff between the list and running
+            // swaps, otherwise handle a restore command for each checkpoint.
+            InfoMsg::CheckpointList(mut list) => {
+                if matches!(source, ServiceId::Client(_) | ServiceId::GrpcdClient(_)) {
+                    self.send_client_info(
+                        endpoints,
+                        source,
+                        InfoMsg::CheckpointList(
+                            list.drain(..)
+                                .filter(|c| !self.running_swaps_contain(&c.swap_id))
+                                .collect(),
+                        ),
+                    )?;
+                } else {
+                    for checkpoint in list.drain(..) {
+                        self.handle_ctl(
+                            endpoints,
+                            source.clone(),
+                            CtlMsg::RestoreCheckpoint(checkpoint),
+                        )?;
+                    }
+                }
+            }
+
             // Add the request's source to the subscription list for later progress notifications
             // and send all notifications already in the queue
             InfoMsg::SubscribeProgress(swap_id) => {
@@ -662,6 +693,29 @@ impl Runtime {
         request: SyncMsg,
     ) -> Result<(), Error> {
         self.process_request_with_state_machines(BusMsg::Sync(request), source, endpoints)
+    }
+
+    fn handle_auto_restore(&mut self, endpoints: &mut Endpoints) -> Result<(), Error> {
+        if self.config.auto_restore_enable()
+            && self.services_ready().is_ok()
+            && self.peer_keys_ready().is_ok()
+            && !self.auto_restored
+        {
+            info!(
+                "{} will {} checkpoints",
+                "farcasterd".label(),
+                "auto restore".label()
+            );
+            // Retrieve all checkpoint info from farcasterd triggers restore of all checkpoints
+            endpoints.send_to(
+                ServiceBus::Info,
+                self.identity(),
+                ServiceId::Database,
+                BusMsg::Info(InfoMsg::RetrieveAllCheckpointInfo),
+            )?;
+            self.auto_restored = true;
+        }
+        Ok(())
     }
 
     pub fn services_ready(&self) -> Result<(), Error> {
@@ -843,8 +897,8 @@ impl Runtime {
 
     fn match_request_to_syncer_state_machine(
         &mut self,
-        req: BusMsg,
-        source: ServiceId,
+        req: &BusMsg,
+        source: &ServiceId,
     ) -> Result<Option<SyncerStateMachine>, Error> {
         match (req, source) {
             (BusMsg::Ctl(CtlMsg::SweepAddress(..)), _) => Ok(Some(SyncerStateMachine::Start)),
@@ -854,21 +908,21 @@ impl Runtime {
                     id, ..
                 }))),
                 _,
-            ) => Ok(self.syncer_state_machines.remove(&id)),
+            ) => Ok(self.syncer_state_machines.remove(id)),
             (
                 BusMsg::Sync(SyncMsg::Event(SyncerEvent::HealthResult(HealthResult {
                     id, ..
                 }))),
                 _,
-            ) => Ok(self.syncer_state_machines.remove(&id)),
+            ) => Ok(self.syncer_state_machines.remove(id)),
             _ => Ok(None),
         }
     }
 
     fn match_request_to_trade_state_machine(
         &mut self,
-        req: BusMsg,
-        source: ServiceId,
+        req: &BusMsg,
+        source: &ServiceId,
     ) -> Result<Option<TradeStateMachine>, Error> {
         match (req, source) {
             (BusMsg::Ctl(CtlMsg::RestoreCheckpoint(..)), _) => {
@@ -882,7 +936,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_public_offer) = tsm.open_offer() {
-                        tsm_public_offer == public_offer
+                        tsm_public_offer == *public_offer
                     } else {
                         false
                     }
@@ -894,7 +948,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_public_offer) = tsm.consumed_offer() {
-                        tsm_public_offer == public_offer
+                        tsm_public_offer == *public_offer
                     } else {
                         false
                     }
@@ -906,7 +960,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_addr) = tsm.awaiting_connect_from() {
-                        addr == tsm_addr
+                        tsm_addr == *addr
                     } else {
                         false
                     }
@@ -922,7 +976,7 @@ impl Runtime {
                 .iter()
                 .position(|tsm| {
                     if let Some(tsm_swap_id) = tsm.swap_id() {
-                        tsm_swap_id == swap_id
+                        tsm_swap_id == *swap_id
                     } else {
                         false
                     }
@@ -938,18 +992,14 @@ impl Runtime {
         source: ServiceId,
         endpoints: &mut Endpoints,
     ) -> Result<(), Error> {
-        if let Some(tsm) =
-            self.match_request_to_trade_state_machine(request.clone(), source.clone())?
-        {
+        if let Some(tsm) = self.match_request_to_trade_state_machine(&request, &source)? {
             if let Some(new_tsm) =
                 TradeStateMachineExecutor::execute(self, endpoints, source, request, tsm)?
             {
                 self.trade_state_machines.push(new_tsm);
             }
             Ok(())
-        } else if let Some(ssm) =
-            self.match_request_to_syncer_state_machine(request.clone(), source.clone())?
-        {
+        } else if let Some(ssm) = self.match_request_to_syncer_state_machine(&request, &source)? {
             if let Some(new_ssm) =
                 SyncerStateMachineExecutor::execute(self, endpoints, source, request, ssm)?
             {
@@ -983,6 +1033,23 @@ impl Runtime {
                             code: FailureCode::Unknown,
                             info: "Swap to connect not found.".to_string(),
                         })),
+                    )?;
+                    Ok(())
+                }
+                BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit {
+                    commit,
+                    public_offer,
+                })) => {
+                    debug!(
+                        "{} | Offer {} already taken or aborted, replying with offer not found to the counterparty",
+                        commit.swap_id(),
+                        public_offer.id(),
+                    );
+                    endpoints.send_to(
+                        ServiceBus::Msg,
+                        self.identity(),
+                        source,
+                        BusMsg::P2p(PeerMsg::OfferNotFound(commit.swap_id())),
                     )?;
                     Ok(())
                 }

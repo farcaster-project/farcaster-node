@@ -99,7 +99,15 @@ pub enum Command {
 
     /// Lists saved checkpoints of the swaps
     #[clap(aliases = &["lc"])]
-    ListCheckpoints,
+    ListCheckpoints {
+        #[clap(
+            short,
+            long,
+            default_value = "all",
+            possible_values = &["all", "All", "available", "Available", "available-for-restore"],
+        )]
+        select: CheckpointSelector,
+    },
 
     /// Checks the health of the syncers
     #[clap(aliases = &["hc"])]
@@ -188,17 +196,18 @@ pub enum Command {
         #[clap(long, default_value = "1 satoshi/vByte")]
         fee_strategy: FeeStrategy<SatPerVByte>,
 
-        /// Public IPv4 or IPv6 address present in the public offer allowing taker to connect.
+        /// Public IPv4 or IPv6 address to advertise in the public offer. This allows taker to
+        /// connect; defaults to 127.0.0.1.
         #[clap(short = 'I', long, default_value = "127.0.0.1")]
         public_ip_addr: IpAddr,
 
-        /// IPv4 or IPv6 address to bind to, listening for takers.
-        #[clap(short, long, default_value = "0.0.0.0")]
-        bind_ip_addr: IpAddr,
-
-        /// Port to use; defaults to the native LN port.
-        #[clap(short, long, default_value = "9735")]
-        port: u16,
+        /// Public port to advertise in the public offer; defaults to the FC port 7067.
+        ///
+        /// This port should either be equal to 'farcasterd.bind_port' value in your config file or
+        /// you should setup a proxy to forward trafic from {-I}:{-p} to
+        /// {farcasterd.bind_ip}:{farcasterd.bind_port}
+        #[clap(short = 'p', long, default_value = "7067")]
+        public_port: u16,
     },
 
     /// Taker accepts offer and connects to maker's daemon to start the trade.
@@ -252,6 +261,13 @@ pub enum Command {
         blockchain: Blockchain,
     },
 
+    /// Returns previously created funding addresses for blockchain.
+    #[display("list-funding-address<{blockchain}>")]
+    ListFundingAddresses {
+        /// Retrieve funding addresses for a particular blockchain.
+        blockchain: Blockchain,
+    },
+
     /// Attempts to sweep any funds on a given bitcoin funding address
     #[display("sweep-bitcoin-address<{source_address} {destination_address}>")]
     SweepBitcoinAddress {
@@ -299,7 +315,6 @@ pub enum OfferSelector {
     #[display("All")]
     All,
 }
-
 impl FromStr for OfferSelector {
     type Err = OfferSelectorParseError;
     fn from_str(input: &str) -> Result<OfferSelector, Self::Err> {
@@ -316,6 +331,33 @@ impl FromStr for OfferSelector {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
 #[display(doc_comments)]
 pub enum OfferSelectorParseError {
+    /// The provided value can't be parsed as an offer selector
+    Invalid,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
+#[display(Debug)]
+pub enum CheckpointSelector {
+    All,
+    AvailableForRestore,
+}
+
+impl FromStr for CheckpointSelector {
+    type Err = CheckpointSelectorParseError;
+    fn from_str(input: &str) -> Result<CheckpointSelector, Self::Err> {
+        match input {
+            "all" | "All" => Ok(CheckpointSelector::All),
+            "available" | "Available" | "available-for-restore" => {
+                Ok(CheckpointSelector::AvailableForRestore)
+            }
+            _ => Err(CheckpointSelectorParseError::Invalid),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, Error, From)]
+#[display(doc_comments)]
+pub enum CheckpointSelectorParseError {
     /// The provided value can't be parsed as an offer selector
     Invalid,
 }

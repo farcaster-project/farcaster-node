@@ -14,9 +14,11 @@
 
 use crate::Error;
 use farcaster_core::blockchain::Network;
+use internet2::addr::InetSocketAddr;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +29,9 @@ pub const FARCASTER_MAINNET_MONERO_RPC_WALLET: &str = "http://localhost:18083";
 pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993";
 pub const FARCASTER_TESTNET_MONERO_DAEMON: &str = "http://stagenet.community.rino.io:38081";
 pub const FARCASTER_TESTNET_MONERO_RPC_WALLET: &str = "http://localhost:38083";
+
+pub const FARCASTER_BIND_PORT: u16 = 7067;
+pub const FARCASTER_BIND_IP: &str = "0.0.0.0";
 
 pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
 
@@ -72,6 +77,17 @@ impl Config {
         }
     }
 
+    /// Returns if auto restore is enabled. Default to true
+    pub fn auto_restore_enable(&self) -> bool {
+        match &self.farcasterd {
+            Some(FarcasterdConfig {
+                auto_restore: Some(enable),
+                ..
+            }) => *enable,
+            _ => true,
+        }
+    }
+
     /// Returns the auto-funding configuration for a given network if enable, if None no
     /// configuration is found
     pub fn get_auto_funding_config(&self, network: Network) -> Option<AutoFundingServers> {
@@ -94,6 +110,24 @@ impl Config {
         }
     }
 
+    /// Returns the bind address to use to instanciate listening peerd, either loads the values
+    /// from the config file or use the default values '0.0.0.0:7067'
+    pub fn get_bind_addr(&self) -> Result<InetSocketAddr, Error> {
+        let addr = if let Some(FarcasterdConfig {
+            bind_ip, bind_port, ..
+        }) = &self.farcasterd
+        {
+            format!(
+                "{}:{}",
+                bind_ip.as_ref().unwrap_or(&FARCASTER_BIND_IP.to_string()),
+                bind_port.unwrap_or(FARCASTER_BIND_PORT)
+            )
+        } else {
+            format!("{}:{}", FARCASTER_BIND_IP, FARCASTER_BIND_PORT)
+        };
+        Ok(InetSocketAddr::from_str(&addr).map_err(|e| Error::Farcaster(e.to_string()))?)
+    }
+
     pub fn get_syncer_servers(&self, network: Network) -> Option<SyncerServers> {
         match network {
             Network::Mainnet => self.syncers.as_ref()?.mainnet.clone(),
@@ -103,21 +137,28 @@ impl Config {
     }
 }
 
+// Default implementation is used to generate the config file on disk if not found
 impl Default for Config {
     fn default() -> Self {
         Config {
-            farcasterd: None,
+            farcasterd: Some(FarcasterdConfig::default()),
             grpc: None,
             syncers: Some(SyncersConfig::default()),
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct FarcasterdConfig {
     /// Sets the auto-funding parameters, default to no auto-fund
     pub auto_funding: Option<AutoFundingConfig>,
+    /// Sets the bind port for potential makers
+    pub bind_port: Option<u16>,
+    /// Sets the bind ip for potential makers
+    pub bind_ip: Option<String>,
+    /// Whether checkpoints should be auto restored at start-up, or not
+    pub auto_restore: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -185,6 +226,7 @@ pub struct SyncerServers {
     pub monero_wallet_dir: Option<String>,
 }
 
+// Default implementation is used to generate the config file on disk if not found
 impl Default for SyncersConfig {
     fn default() -> Self {
         SyncersConfig {
@@ -203,6 +245,20 @@ impl Default for SyncersConfig {
                 monero_wallet_dir: None,
             }),
             local: None,
+        }
+    }
+}
+
+// Default implementation is used to generate the config file on disk if not found
+impl Default for FarcasterdConfig {
+    fn default() -> Self {
+        FarcasterdConfig {
+            auto_funding: None,
+            // write the default config for auto-restore
+            auto_restore: Some(true),
+            // write the default port and ip in the generated config
+            bind_port: Some(FARCASTER_BIND_PORT),
+            bind_ip: Some(FARCASTER_BIND_IP.to_string()),
         }
     }
 }
