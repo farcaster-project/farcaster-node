@@ -1037,8 +1037,15 @@ impl Runtime {
                     )?;
                     Ok(())
                 }
-                BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit { commit, .. })) => {
-                    debug!("{} | Offer already taken or aborted, replying with offer not found to the counterparty", commit.swap_id());
+                BusMsg::P2p(PeerMsg::TakerCommit(TakerCommit {
+                    commit,
+                    public_offer,
+                })) => {
+                    debug!(
+                        "{} | Offer {} already taken or aborted, replying with offer not found to the counterparty",
+                        commit.swap_id(),
+                        public_offer.id(),
+                    );
                     endpoints.send_to(
                         ServiceBus::Msg,
                         self.identity(),
