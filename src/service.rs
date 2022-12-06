@@ -433,19 +433,6 @@ where
         Ok(())
     }
 
-    fn send_wallet(
-        &mut self,
-        bus: ServiceBus,
-        senders: &mut Endpoints,
-        request: BusMsg,
-    ) -> Result<(), Error> {
-        let source = self.identity();
-        trace!("sending {} to walletd from {}", request, source);
-        senders
-            .send_to(bus, source, ServiceId::Wallet, request)
-            .map_err(From::from)
-    }
-
     fn send_client_ctl(
         &mut self,
         senders: &mut Endpoints,
