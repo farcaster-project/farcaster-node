@@ -16,7 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for grpcd: farcaster node grpc microservice.
+//! Main executable for grpcd: Farcaster Node grpc microservice.
 
 #[macro_use]
 extern crate log;

@@ -16,8 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for peerd: lightning peer network connection
-//! microservice.
+//! Main executable for peerd: peer network connection microservice.
 //!
 //! Program operations
 //! ==================
@@ -77,8 +76,7 @@
 //! --------
 //!
 //! Node key, used for node identification and in generation of the encryption
-//! keys, is read from the file specified in `--key-file` parameter, or (if the
-//! parameter is absent) from `LNP_NODE_KEY_FILE` environment variable.
+//! keys, is read from the file specified in `--peer-secret-key` parameter.
 
 #[macro_use]
 extern crate log;

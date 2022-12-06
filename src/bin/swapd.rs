@@ -16,7 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for swapd: farcaster node swap operations microservice
+//! Main executable for swapd: Farcaster Node swap operations microservice
 
 #[macro_use]
 extern crate log;

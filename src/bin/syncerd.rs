@@ -16,7 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for farcasterd: farcaster node management microservice.
+//! Main executable for farcasterd: Farcaster Node management microservice.
 
 #[macro_use]
 extern crate log;

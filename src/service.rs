@@ -117,7 +117,7 @@ impl From<Opts> for ServiceConfig {
     }
 }
 
-/// Identifiers of daemons participating in LNP Node
+/// Identifiers of daemons participating in Farcaster Node
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Display, From, StrictEncode, StrictDecode)]
 #[cfg_attr(
     feature = "serde",

@@ -10,9 +10,9 @@ use std::net::IpAddr;
 use crate::opts::TokenString;
 use internet2::addr::{LocalNode, NodeAddr};
 
-/// Lightning peer network connection daemon; part of LNP Node
+/// Peer network connection daemon; part of Farcaster Node
 ///
-/// Daemon listens to incoming connections from the lightning network peers
+/// Daemon listens to incoming connections from the network peers
 /// (if started with `--listen` argument) or connects to the remote peer
 /// (specified with `--connect` argument) and passes all incoming messages into
 /// ZMQ messaging socket (controlled with `--msg-socket` argument, defaulting to
@@ -52,7 +52,7 @@ pub struct Opts {
     #[clap(short = 'C', long, group = "action")]
     pub connect: Option<NodeAddr>,
 
-    /// Customize port used by lightning peer network
+    /// Customize port used by peer network
     ///
     /// Optional argument specifying local or remote TCP port to use with the
     /// address given to `--listen` or `--connect` argument.

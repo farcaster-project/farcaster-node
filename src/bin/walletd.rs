@@ -16,7 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for walletd: farcaster node wallet microservice.
+//! Main executable for walletd: Farcaster Node wallet microservice.
 
 #[macro_use]
 extern crate log;

@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-//! Command-line interface to LNP node
+//! Command-line interface to Farcaster Node
 
 #[macro_use]
 extern crate log;
