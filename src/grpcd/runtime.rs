@@ -752,8 +752,7 @@ impl Farcaster for FarcasterService {
             fee_strategy: str_fee_strategy,
             maker_role: grpc_swap_role,
             public_ip_addr: str_public_ip_addr,
-            bind_ip_addr: str_bind_ip_addr,
-            port,
+            public_port,
         } = request.into_inner();
 
         let network: Network = farcaster::Network::from_i32(grpc_network)
@@ -779,8 +778,6 @@ impl Farcaster for FarcasterService {
             .into();
         let public_ip_addr = IpAddr::from_str(&str_public_ip_addr)
             .map_err(|_| Status::invalid_argument("public ip address"))?;
-        let bind_ip_addr = IpAddr::from_str(&str_bind_ip_addr)
-            .map_err(|_| Status::invalid_argument("bind ip address"))?;
         let fee_strategy: FeeStrategy<SatPerVByte> = FeeStrategy::from_str(&str_fee_strategy).map_err(|_| Status::invalid_argument("
         fee strategy is required to be formated as a fixed value, e.g. \"100 satoshi/vByte\" or a range, e.g. \"50 satoshi/vByte-150 satoshi/vByte\" "))?;
 
@@ -831,12 +828,10 @@ impl Farcaster for FarcasterService {
             fee_strategy,
             maker_role,
         };
-        let public_addr = InetSocketAddr::socket(public_ip_addr, port as u16);
-        let bind_addr = InetSocketAddr::socket(bind_ip_addr, port as u16);
+        let public_addr = InetSocketAddr::socket(public_ip_addr, public_port as u16);
         let proto_offer = ProtoPublicOffer {
             offer,
             public_addr,
-            bind_addr,
             arbitrating_addr,
             accordant_addr,
         };

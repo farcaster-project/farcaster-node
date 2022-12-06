@@ -85,8 +85,7 @@ async fn grpc_server_functional_test() {
         fee_strategy: "100 satoshi/vByte".to_string(),
         maker_role: farcaster::SwapRole::Bob.into(),
         public_ip_addr: "127.0.0.1".to_string(),
-        bind_ip_addr: "0.0.0.0".to_string(),
-        port: 9376,
+        public_port: 7067,
     };
     let request = tonic::Request::new(make_request.clone());
     let response = farcaster_client_1.make(request).await;

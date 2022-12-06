@@ -181,8 +181,7 @@ message MakeRequest {
     string fee_strategy = 11;
     SwapRole maker_role = 12;
     string public_ip_addr = 13;
-    string bind_ip_addr = 14;
-    uint32 port = 15;
+    uint32 public_port = 14;
 }
  
 message MakeResponse {
