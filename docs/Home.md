@@ -90,8 +90,7 @@ Only blockchain daemons and electrum servers are listed, you should always run y
 | daemon            | value                                                |
 | ----------------- | ---------------------------------------------------- |
 | `electrum server` | `ssl://blockstream.info:700` **(default)**           |
-| `monero daemon`   | `http://node.community.rino.io:18081`                |
-| `monero daemon`   | `http://node.monerooutreach.org:18081` **(default)** |
+| `monero daemon`   | `http://node.community.rino.io:18081` **(default)**  |
 
 **Testnet/Stagenet**
 
