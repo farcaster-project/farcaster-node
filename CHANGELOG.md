@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Grpc: Add retries when retrieving the funding info by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/802>
+- Auto-restore checkpoint on startup by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/773>
+- Busses: Remove transcoders from bridge bus senders by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/790>
+- Syncer: Logic for conditional broadcast by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/750>
+- Cli: Implement endpoint for listing funding addresses by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/764>
+- Config: Define global static bind address by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/766>
+- Farcaster: Handle take offer failure by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/796>
+- Grpc/Server: Add network args to health check by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/803>
+
 ## [0.5.0] - 2022-12-05
 
 ### Changed
