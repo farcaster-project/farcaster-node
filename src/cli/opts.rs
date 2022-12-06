@@ -25,6 +25,8 @@ use farcaster_core::{
     swap::{btcxmr::PublicOffer, SwapId},
 };
 
+use crate::bus::HealthCheckSelector;
+
 /// Command-line tool for working with Farcaster node
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(name = "swap-cli", bin_name = "swap-cli", author, version)]
@@ -111,7 +113,13 @@ pub enum Command {
 
     /// Checks the health of the syncers
     #[clap(aliases = &["hc"])]
-    HealthCheck,
+    HealthCheck {
+        #[clap(
+            default_value = "all",
+            possible_values = &["Mainnet", "mainnet", "Testnet", "testnet", "Local", "local", "all", "All"]
+        )]
+        selector: HealthCheckSelector,
+    },
 
     /// Restores saved checkpoint of a swap
     #[clap(aliases = &["r"])]

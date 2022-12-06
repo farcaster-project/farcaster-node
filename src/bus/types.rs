@@ -1,6 +1,10 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    str::FromStr,
+};
 
 use farcaster_core::{
+    blockchain::Network,
     role::TradeRole,
     swap::{btcxmr::PublicOffer, SwapId},
 };
@@ -210,6 +214,30 @@ impl From<FailureCode> for rpc::FailureCode<FailureCode> {
 
 impl rpc::FailureCodeExt for FailureCode {}
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, From)]
+pub enum HealthCheckSelector {
+    #[display(inner)]
+    Network(Network),
+    #[display("all")]
+    All,
+}
+
+impl FromStr for HealthCheckSelector {
+    type Err = farcaster_core::consensus::Error;
+    fn from_str(input: &str) -> Result<HealthCheckSelector, Self::Err> {
+        match Network::from_str(&input) {
+            Ok(n) => Ok(HealthCheckSelector::Network(n)),
+            Err(err) => {
+                if input == "all" || input == "All" {
+                    Ok(HealthCheckSelector::All)
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[cfg_attr(
     feature = "serde",
@@ -226,5 +254,19 @@ pub struct HealthReport {
     pub monero_local_health: Health,
 }
 
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(ReducedHealthReport::to_yaml_string)]
+pub struct ReducedHealthReport {
+    pub bitcoin_health: Health,
+    pub monero_health: Health,
+}
+
 #[cfg(feature = "serde")]
 impl ToYamlString for HealthReport {}
+#[cfg(feature = "serde")]
+impl ToYamlString for ReducedHealthReport {}

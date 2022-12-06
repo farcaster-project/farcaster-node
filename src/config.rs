@@ -23,7 +23,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 pub const FARCASTER_MAINNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:700";
-pub const FARCASTER_MAINNET_MONERO_DAEMON: &str = "http://node.monerooutreach.org:18081";
+pub const FARCASTER_MAINNET_MONERO_DAEMON: &str = "http://node.community.rino.io:18081";
 pub const FARCASTER_MAINNET_MONERO_RPC_WALLET: &str = "http://localhost:18083";
 
 pub const FARCASTER_TESTNET_ELECTRUM_SERVER: &str = "ssl://blockstream.info:993";

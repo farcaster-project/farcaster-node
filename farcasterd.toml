@@ -57,7 +57,7 @@ bind_ip = "127.0.0.1"
 # Electrum Server used by the Bitcoin syncer
 electrum_server = "ssl://blockstream.info:700"
 # Monero daemon used by the Monero syncer
-monero_daemon = "http://node.monerooutreach.org:18081"
+monero_daemon = "http://node.community.rino.io:18081"
 # Monero Wallet RPC used by the Monero syncer
 # Point to local running wallet
 monero_rpc_wallet = "http://localhost:18083"
