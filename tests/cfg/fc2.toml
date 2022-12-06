@@ -1,5 +1,7 @@
 [farcasterd]
 auto_restore = false
+bind_port = 7067
+bind_ip = "0.0.0.0"
 
 [grpc]
 enable = true
@@ -10,7 +12,3 @@ bind_ip = "0.0.0.0"
 electrum_server = "tcp://localhost:60401"
 monero_daemon = "http://localhost:18081"
 monero_rpc_wallet = "http://localhost:18085"
-
-[farcasterd]
-bind_port = 7067
-bind_ip = "0.0.0.0"
