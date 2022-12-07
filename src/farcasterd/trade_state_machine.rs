@@ -18,6 +18,7 @@ use farcaster_core::role::TradeRole;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
 use internet2::addr::{NodeAddr, NodeId};
 use microservices::esb::Handler;
+use std::convert::TryInto;
 use std::str::FromStr;
 
 /// State machine for launching a swap and cleaning up once done.
@@ -599,24 +600,23 @@ fn attempt_transition_to_restoring_swapd(
                 false
             };
 
-            let network = public_offer.offer.network;
             let swap_config = runtime.config.get_swap_config(
-                public_offer.offer.arbitrating_blockchain,
-                public_offer.offer.accordant_blockchain,
-                network,
+                public_offer.offer.arbitrating_blockchain.try_into()?,
+                public_offer.offer.accordant_blockchain.try_into()?,
+                public_offer.offer.network,
             )?;
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
                 public_offer.offer.arbitrating_blockchain,
-                network,
+                public_offer.offer.network,
                 &runtime.config,
             )?;
             let accordant_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
                 public_offer.offer.accordant_blockchain,
-                network,
+                public_offer.offer.network,
                 &runtime.config,
             )?;
 
@@ -904,24 +904,23 @@ fn transition_to_swapd_launched_tsm(
         swap_id,
         ..
     } = launch_swap;
-    let network = public_offer.offer.network;
     let swap_config = runtime.config.get_swap_config(
-        public_offer.offer.arbitrating_blockchain,
-        public_offer.offer.accordant_blockchain,
-        network,
+        public_offer.offer.arbitrating_blockchain.try_into()?,
+        public_offer.offer.accordant_blockchain.try_into()?,
+        public_offer.offer.network,
     )?;
     let arbitrating_syncer_up = syncer_up(
         &mut runtime.spawning_services,
         &mut runtime.registered_services,
         public_offer.offer.arbitrating_blockchain,
-        network,
+        public_offer.offer.network,
         &runtime.config,
     )?;
     let accordant_syncer_up = syncer_up(
         &mut runtime.spawning_services,
         &mut runtime.registered_services,
         public_offer.offer.accordant_blockchain,
-        network,
+        public_offer.offer.network,
         &runtime.config,
     )?;
     trace!(

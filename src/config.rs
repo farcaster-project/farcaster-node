@@ -12,8 +12,8 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::Error;
-use farcaster_core::blockchain::{Blockchain, Network};
+use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
+use farcaster_core::blockchain::Network;
 use internet2::addr::InetSocketAddr;
 use std::fs::File;
 use std::io::prelude::*;
@@ -150,32 +150,23 @@ impl Config {
     /// Returns the swap config for the specified network and arbitrating/accordant blockchains
     pub fn get_swap_config(
         &self,
-        arb: Blockchain,
-        acc: Blockchain,
+        arb: ArbitratingBlockchain,
+        acc: AccordantBlockchain,
         network: Network,
     ) -> Result<ParsedSwapConfig, config::ConfigError> {
         match &self.swap {
             Some(swap) => {
                 let arbitrating = match arb {
-                    Blockchain::Bitcoin => swap
+                    ArbitratingBlockchain::Bitcoin => swap
                         .bitcoin
                         .get_for_network(network)
                         .or_else(|| ArbConfig::get(arb, network))
                         .ok_or(config::ConfigError::Message(
                             "No configuration nor defaults founds!".to_string(),
                         ))?,
-                    Blockchain::Monero => Err(config::ConfigError::Message(
-                        "Monero cannot be the arbitrating blockchain".to_string(),
-                    ))?,
                 };
-                let accordant = match arb {
-                    // NOTE: this is theoricly correct but not used in reality
-                    //Blockchain::Bitcoin => swap.bitcoin.get_for_network(network)?.into(),
-                    Blockchain::Bitcoin => Err(config::ConfigError::Message(
-                        "Are you sure you want to use Bitcoin as the accordant blockchain?"
-                            .to_string(),
-                    ))?,
-                    Blockchain::Monero => swap
+                let accordant = match acc {
+                    AccordantBlockchain::Monero => swap
                         .monero
                         .get_for_network(network)
                         .or_else(|| AccConfig::get(acc, network))
@@ -192,7 +183,7 @@ impl Config {
                 let arbitrating = ArbConfig::get(arb, network).ok_or(
                     config::ConfigError::Message("No defaults founds!".to_string()),
                 )?;
-                let accordant = AccConfig::get(arb, network).ok_or(
+                let accordant = AccConfig::get(acc, network).ok_or(
                     config::ConfigError::Message("No defaults founds!".to_string()),
                 )?;
                 Ok(ParsedSwapConfig {
@@ -274,14 +265,13 @@ pub struct ArbConfig {
 }
 
 impl ArbConfig {
-    fn get(blockchain: Blockchain, network: Network) -> Option<Self> {
+    fn get(blockchain: ArbitratingBlockchain, network: Network) -> Option<Self> {
         match blockchain {
-            Blockchain::Bitcoin => match network {
+            ArbitratingBlockchain::Bitcoin => match network {
                 Network::Mainnet => Some(Self::btc_mainnet_default()),
                 Network::Testnet => Some(Self::btc_testnet_default()),
                 Network::Local => None,
             },
-            Blockchain::Monero => None,
         }
     }
 
@@ -308,15 +298,13 @@ pub struct AccConfig {
 }
 
 impl AccConfig {
-    fn get(blockchain: Blockchain, network: Network) -> Option<Self> {
+    fn get(blockchain: AccordantBlockchain, network: Network) -> Option<Self> {
         match blockchain {
-            Blockchain::Monero => match network {
+            AccordantBlockchain::Monero => match network {
                 Network::Mainnet => Some(Self::xmr_mainnet_default()),
                 Network::Testnet => Some(Self::xmr_testnet_default()),
                 Network::Local => None,
             },
-            // NOTE: could return defaults for mainnet and testnet as AccConfig too
-            Blockchain::Bitcoin => None,
         }
     }
 
