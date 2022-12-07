@@ -307,3 +307,14 @@ pub fn parse_config(path: &str) -> Result<Config, Error> {
         Ok(config)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_config;
+
+    #[test]
+    fn config_example_parse() {
+        let config = parse_config("./farcasterd.toml").expect("correct config example");
+        dbg!(config);
+    }
+}
