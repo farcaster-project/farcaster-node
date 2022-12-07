@@ -41,11 +41,11 @@ monero_rpc_wallet = "http://localhost:38084"
 [swap.bitcoin]
 # Avoid broadcasting a transaction if a race can happen in # blocks
 #
-# E.g. if the safety margin is set to 3 and the the cancel transaction becomes
+# E.g. if the safety is set to 3 and the the cancel transaction becomes
 # broadcastable in 4 blocks we are safe and we do publish buy, if it becomes
-# broadcastable in 3 blocks or less we do not publish the buy as the safety
-# margin is not respected.
-safety_margin = 3
+# broadcastable in 3 blocks or less we do not publish the buy as the safety is
+# not respected.
+safety = 3
 # Number of confirmations required to consider a transaction final
 finality = 1
 

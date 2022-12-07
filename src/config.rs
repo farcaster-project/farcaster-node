@@ -176,8 +176,9 @@ pub struct SwapConfig {
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(crate = "serde_crate")]
 pub struct BitcoinConfig {
-    /// Avoid broadcasting a transaction if a race can happen in # blocks
-    pub safety_margin: u8,
+    /// Avoid broadcasting a transaction if a race can happen with the next available execution
+    /// fork in # blocks
+    pub safety: u8,
     /// Number of confirmations required to consider a transaction final
     pub finality: u8,
 }
