@@ -1,5 +1,5 @@
-//! This module defines the currently support blockchains in the node for arbitraing and accordant
-//! roles.
+//! This module defines the currently supported blockchains in the node for the arbitraing and the
+//! accordant roles. The types defined here are convertible with core `Blockchain` type.
 
 use std::convert::TryFrom;
 use std::str::FromStr;
