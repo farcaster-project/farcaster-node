@@ -257,12 +257,12 @@ impl SwapConfig {
             Network::Local => {
                 let bitcoin = self
                     .bitcoin
-                    .testnet
+                    .local
                     .clone()
                     .expect("No local bitcoin swap config found");
                 let monero = self
                     .monero
-                    .testnet
+                    .local
                     .clone()
                     .expect("No local monero swap config found");
                 ParsedSwapConfig { bitcoin, monero }
