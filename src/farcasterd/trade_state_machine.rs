@@ -5,7 +5,7 @@ use crate::bus::ctl::{
 use crate::bus::info::{InfoMsg, MadeOffer, OfferInfo, TookOffer};
 use crate::bus::p2p::PeerMsg;
 use crate::bus::{CheckpointEntry, Failure, FailureCode, OfferStatus, OfferStatusPair};
-use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
+use crate::farcasterd::runtime::{launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;
 use crate::{
     bus::{BusMsg, Outcome},
@@ -13,7 +13,6 @@ use crate::{
     event::{Event, StateMachine, StateMachineExecutor},
     ServiceId,
 };
-use bitcoin::hashes::hex::ToHex;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::role::TradeRole;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
@@ -600,30 +599,24 @@ fn attempt_transition_to_restoring_swapd(
                 false
             };
 
+            let network = public_offer.offer.network;
+            let swap_config = runtime.config.get_swap_config(network);
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
-                Blockchain::Bitcoin,
-                public_offer.offer.network,
+                public_offer.offer.arbitrating_blockchain,
+                network,
                 &runtime.config,
             )?;
             let accordant_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
-                Blockchain::Monero,
-                public_offer.offer.network,
+                public_offer.offer.accordant_blockchain,
+                network,
                 &runtime.config,
             )?;
 
-            let _child = launch(
-                "swapd",
-                &[
-                    swap_id.to_hex(),
-                    public_offer.to_string(),
-                    trade_role.to_string(),
-                ],
-            )?;
-
+            launch_swapd(trade_role, public_offer.clone(), swap_id, swap_config)?;
             event.complete_client_info(InfoMsg::String("Restoring checkpoint.".to_string()))?;
 
             Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
