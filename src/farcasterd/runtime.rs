@@ -1232,13 +1232,14 @@ pub fn syncer_up(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Launch a swapd instance with all the necessary paramters for: swap id, offer to use, trade role
+/// to execute, temporal safety arguments.
 pub fn launch_swapd(
     local_trade_role: TradeRole,
     public_offer: PublicOffer,
     swap_id: SwapId,
     swap_config: ParsedSwapConfig,
-) -> Result<String, Error> {
+) -> Result<(), Error> {
     debug!("Instantiating swapd...");
     let child = launch(
         "swapd",
@@ -1249,15 +1250,17 @@ pub fn launch_swapd(
             swap_config.bitcoin.safety.to_string(),
             "--acc-finality".to_string(),
             swap_config.monero.finality.to_string(),
+            "--id".to_string(),
             swap_id.to_hex(),
+            "--public-offer".to_string(),
             public_offer.to_string(),
+            "--trade-role".to_string(),
             local_trade_role.to_string(),
         ],
     )?;
-    let msg = format!("New instance of swapd launched with PID {}", child.id());
-    debug!("{}", msg);
+    debug!("New instance of swapd launched with PID {}", child.id());
     debug!("Awaiting for swapd to connect...");
-    Ok(msg)
+    Ok(())
 }
 
 /// Return the list of needed arguments for a syncer given a config and a network.

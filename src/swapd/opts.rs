@@ -12,8 +12,10 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use farcaster_core::swap::SwapId;
-use farcaster_core::{role::TradeRole, swap::btcxmr::PublicOffer};
+use farcaster_core::{
+    role::TradeRole,
+    swap::{btcxmr::PublicOffer, SwapId},
+};
 use std::str::FromStr;
 
 /// Swap executor daemon; part of Farcaster Node
@@ -23,27 +25,34 @@ use std::str::FromStr;
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
 #[clap(name = "swapd", bin_name = "swapd", author, version)]
 pub struct Opts {
-    /// Swap id
-    #[clap(parse(try_from_str = SwapId::from_str))]
+    /// The unique swap identifier; used between nodes to reference this unique swap
+    #[clap(long = "id", parse(try_from_str = SwapId::from_str))]
     pub swap_id: SwapId,
 
-    /// Public offer to initiate swapd runtime
-    #[clap(parse(try_from_str = FromStr::from_str))]
+    /// Public offer to initiate the swap runtime
+    #[clap(long, parse(try_from_str = FromStr::from_str))]
     pub public_offer: PublicOffer,
 
-    /// Trade role of participant (Maker or Taker)
-    #[clap(parse(try_from_str = FromStr::from_str))]
+    /// Trade role to execute; maker propose the trade, taker accept the trade. Swap role (Alice or
+    /// Bob) is defined by the executed trade role and the public offer, if we are the maker we
+    /// execute the `maker role` defined in the public offer, otherwise we execute the
+    /// complementary role
+    #[clap(long, parse(try_from_str = FromStr::from_str), possible_values = &["maker", "Maker", "taker", "Taker"])]
     pub trade_role: TradeRole,
 
-    /// Finality argument, used for the arbitrating blockchain
+    /// Finality argument used for the arbitrating blockchain; defines when transactions are
+    /// considered final
     #[clap(long = "arb-finality")]
     pub arbitrating_finality: u8,
 
-    /// Safety argument, used for the arbitrating blockchain to avoid races
+    /// Safety argument used for the arbitrating blockchain to avoid races; a transaction will not
+    /// be broadcasted if the safety number of blocks unmined before unlocking another transaction
+    /// is not respected
     #[clap(long = "arb-safety")]
     pub arbitrating_safety: u8,
 
-    /// Finality argument, used for the accordant blockchain
+    /// Finality argument used for the accordant blockchain; defines when transactions are
+    /// considered final
     #[clap(long = "acc-finality")]
     pub accordant_finality: u8,
 
