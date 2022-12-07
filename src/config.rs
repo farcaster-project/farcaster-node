@@ -35,6 +35,14 @@ pub const FARCASTER_BIND_IP: &str = "0.0.0.0";
 
 pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
 
+pub const SWAP_MAINNET_BITCOIN_SAFETY: u8 = 7;
+pub const SWAP_MAINNET_BITCOIN_FINALITY: u8 = 6;
+pub const SWAP_MAINNET_MONERO_FINALITY: u8 = 20;
+
+pub const SWAP_TESTNET_BITCOIN_SAFETY: u8 = 3;
+pub const SWAP_TESTNET_BITCOIN_FINALITY: u8 = 1;
+pub const SWAP_TESTNET_MONERO_FINALITY: u8 = 1;
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct Config {
@@ -144,7 +152,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             farcasterd: Some(FarcasterdConfig::default()),
-            swap: None,
+            swap: Some(SwapConfig::default()),
             grpc: None,
             syncers: Some(SyncersConfig::default()),
         }
@@ -164,16 +172,16 @@ pub struct FarcasterdConfig {
     pub auto_restore: Option<bool>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct SwapConfig {
-    /// Swap parameters for the Bitcoin blockchain
-    pub bitcoin: BitcoinConfig,
-    /// Swap parameters for the Monero blockchain
-    pub monero: MoneroConfig,
+    /// Swap parameters for the Bitcoin blockchain per network
+    pub bitcoin: Networked<Option<BitcoinConfig>>,
+    /// Swap parameters for the Monero blockchain per network
+    pub monero: Networked<Option<MoneroConfig>>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct BitcoinConfig {
     /// Avoid broadcasting a transaction if a race can happen with the next available execution
@@ -183,7 +191,7 @@ pub struct BitcoinConfig {
     pub finality: u8,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct MoneroConfig {
     /// Number of confirmations required to consider a transaction final
@@ -253,6 +261,45 @@ pub struct SyncerServers {
     pub monero_lws: Option<String>,
     /// Monero wallet directory
     pub monero_wallet_dir: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct Networked<T> {
+    /// A configuration section applied to the mainnet network
+    pub mainnet: T,
+    /// A configuration section applied to the live testnet network
+    pub testnet: T,
+    /// A configuration section applied to the local network (regtest)
+    pub local: T,
+}
+
+// Default implementation is used to generate the config file on disk if not found
+impl Default for SwapConfig {
+    fn default() -> Self {
+        SwapConfig {
+            bitcoin: Networked {
+                mainnet: Some(BitcoinConfig {
+                    safety: SWAP_MAINNET_BITCOIN_SAFETY,
+                    finality: SWAP_MAINNET_BITCOIN_FINALITY,
+                }),
+                testnet: Some(BitcoinConfig {
+                    safety: SWAP_TESTNET_BITCOIN_SAFETY,
+                    finality: SWAP_TESTNET_BITCOIN_FINALITY,
+                }),
+                local: None,
+            },
+            monero: Networked {
+                mainnet: Some(MoneroConfig {
+                    finality: SWAP_MAINNET_MONERO_FINALITY,
+                }),
+                testnet: Some(MoneroConfig {
+                    finality: SWAP_TESTNET_MONERO_FINALITY,
+                }),
+                local: None,
+            },
+        }
+    }
 }
 
 // Default implementation is used to generate the config file on disk if not found
