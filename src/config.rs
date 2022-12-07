@@ -264,7 +264,7 @@ impl SwapConfig {
                     .monero
                     .testnet
                     .clone()
-                    .expect("No local bitcoin swap config found");
+                    .expect("No local monero swap config found");
                 ParsedSwapConfig { bitcoin, monero }
             }
         }
