@@ -146,6 +146,28 @@ impl Config {
             Network::Local => self.syncers.as_ref()?.local.clone(),
         }
     }
+
+    /// Returns the swap config for the specified network
+    ///
+    /// ## Safety
+    /// This function panic if the specified network is `Network::Local` and no parameters are
+    /// registered in the configuration file.
+    pub fn get_swap_config(&self, network: Network) -> ParsedSwapConfig {
+        match &self.swap {
+            Some(swap) => swap.get_swap_config(network),
+            None => match network {
+                Network::Mainnet => ParsedSwapConfig::new(
+                    BitcoinConfig::mainnet_default(),
+                    MoneroConfig::mainnet_default(),
+                ),
+                Network::Testnet => ParsedSwapConfig::new(
+                    BitcoinConfig::testnet_default(),
+                    MoneroConfig::testnet_default(),
+                ),
+                Network::Local => panic!("No configuration found for swap local network"),
+            },
+        }
+    }
 }
 
 // Default implementation is used to generate the config file on disk if not found
@@ -198,6 +220,72 @@ pub struct SwapConfig {
     pub monero: Networked<Option<MoneroConfig>>,
 }
 
+impl SwapConfig {
+    // Returns the swap config for the specified network
+    //
+    // ## Safety
+    // This function panic if the specified network is `Network::Local` and no parameters are
+    // registered in the configuration file.
+    fn get_swap_config(&self, network: Network) -> ParsedSwapConfig {
+        match network {
+            Network::Mainnet => {
+                let bitcoin = self
+                    .bitcoin
+                    .mainnet
+                    .clone()
+                    .unwrap_or_else(|| BitcoinConfig::mainnet_default());
+                let monero = self
+                    .monero
+                    .mainnet
+                    .clone()
+                    .unwrap_or_else(|| MoneroConfig::mainnet_default());
+                ParsedSwapConfig { bitcoin, monero }
+            }
+            Network::Testnet => {
+                let bitcoin = self
+                    .bitcoin
+                    .testnet
+                    .clone()
+                    .unwrap_or_else(|| BitcoinConfig::testnet_default());
+                let monero = self
+                    .monero
+                    .testnet
+                    .clone()
+                    .unwrap_or_else(|| MoneroConfig::testnet_default());
+                ParsedSwapConfig { bitcoin, monero }
+            }
+            Network::Local => {
+                let bitcoin = self
+                    .bitcoin
+                    .testnet
+                    .clone()
+                    .expect("No local bitcoin swap config found");
+                let monero = self
+                    .monero
+                    .testnet
+                    .clone()
+                    .expect("No local bitcoin swap config found");
+                ParsedSwapConfig { bitcoin, monero }
+            }
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct ParsedSwapConfig {
+    /// Swap parameters for Bitcoin
+    pub bitcoin: BitcoinConfig,
+    /// Swap parameters for Monero
+    pub monero: MoneroConfig,
+}
+
+impl ParsedSwapConfig {
+    fn new(bitcoin: BitcoinConfig, monero: MoneroConfig) -> Self {
+        Self { bitcoin, monero }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct BitcoinConfig {
@@ -208,11 +296,41 @@ pub struct BitcoinConfig {
     pub finality: u8,
 }
 
+impl BitcoinConfig {
+    fn mainnet_default() -> Self {
+        BitcoinConfig {
+            safety: SWAP_MAINNET_BITCOIN_SAFETY,
+            finality: SWAP_MAINNET_BITCOIN_FINALITY,
+        }
+    }
+
+    fn testnet_default() -> Self {
+        BitcoinConfig {
+            safety: SWAP_TESTNET_BITCOIN_SAFETY,
+            finality: SWAP_TESTNET_BITCOIN_FINALITY,
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct MoneroConfig {
     /// Number of confirmations required to consider a transaction final
     pub finality: u8,
+}
+
+impl MoneroConfig {
+    fn mainnet_default() -> Self {
+        MoneroConfig {
+            finality: SWAP_MAINNET_MONERO_FINALITY,
+        }
+    }
+
+    fn testnet_default() -> Self {
+        MoneroConfig {
+            finality: SWAP_TESTNET_MONERO_FINALITY,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -285,23 +403,13 @@ impl Default for SwapConfig {
     fn default() -> Self {
         SwapConfig {
             bitcoin: Networked {
-                mainnet: Some(BitcoinConfig {
-                    safety: SWAP_MAINNET_BITCOIN_SAFETY,
-                    finality: SWAP_MAINNET_BITCOIN_FINALITY,
-                }),
-                testnet: Some(BitcoinConfig {
-                    safety: SWAP_TESTNET_BITCOIN_SAFETY,
-                    finality: SWAP_TESTNET_BITCOIN_FINALITY,
-                }),
+                mainnet: Some(BitcoinConfig::mainnet_default()),
+                testnet: Some(BitcoinConfig::testnet_default()),
                 local: None,
             },
             monero: Networked {
-                mainnet: Some(MoneroConfig {
-                    finality: SWAP_MAINNET_MONERO_FINALITY,
-                }),
-                testnet: Some(MoneroConfig {
-                    finality: SWAP_TESTNET_MONERO_FINALITY,
-                }),
+                mainnet: Some(MoneroConfig::mainnet_default()),
+                testnet: Some(MoneroConfig::testnet_default()),
                 local: None,
             },
         }

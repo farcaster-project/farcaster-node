@@ -35,6 +35,18 @@ pub struct Opts {
     #[clap(parse(try_from_str = FromStr::from_str))]
     pub trade_role: TradeRole,
 
+    /// Finality argument, used for the arbitrating blockchain
+    #[clap(long = "arb-finality")]
+    pub arbitrating_finality: u8,
+
+    /// Safety argument, used for the arbitrating blockchain to avoid races
+    #[clap(long = "arb-safety")]
+    pub arbitrating_safety: u8,
+
+    /// Finality argument, used for the accordant blockchain
+    #[clap(long = "acc-finality")]
+    pub accordant_finality: u8,
+
     /// These params can be read also from the configuration file, not just
     /// Command-line args or environment variables
     #[clap(flatten)]

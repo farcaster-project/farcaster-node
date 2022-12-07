@@ -908,17 +908,18 @@ fn transition_to_swapd_launched_tsm(
         ..
     } = launch_swap;
     let network = public_offer.offer.network;
+    let swap_config = runtime.config.get_swap_config(network);
     let arbitrating_syncer_up = syncer_up(
         &mut runtime.spawning_services,
         &mut runtime.registered_services,
-        Blockchain::Bitcoin,
+        public_offer.offer.arbitrating_blockchain,
         network,
         &runtime.config,
     )?;
     let accordant_syncer_up = syncer_up(
         &mut runtime.spawning_services,
         &mut runtime.registered_services,
-        Blockchain::Monero,
+        public_offer.offer.accordant_blockchain,
         network,
         &runtime.config,
     )?;
@@ -928,7 +929,7 @@ fn transition_to_swapd_launched_tsm(
     );
 
     runtime.stats.incr_initiated();
-    launch_swapd(local_trade_role, public_offer.clone(), swap_id)?;
+    launch_swapd(local_trade_role, public_offer.clone(), swap_id, swap_config)?;
 
     Ok(TradeStateMachine::SwapdLaunched(SwapdLaunched {
         peerd: peerd.clone(),

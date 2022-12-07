@@ -45,23 +45,8 @@ fn main() {
     debug!("MSG RPC socket {}", &service_config.msg_endpoint);
     debug!("CTL RPC socket {}", &service_config.ctl_endpoint);
 
-    /*
-    use self::internal::ResultExt;
-    let (config_from_file, _) =
-        internal::Config::custom_args_and_optional_files(std::iter::empty::<
-            &str,
-        >())
-        .unwrap_or_exit();
-     */
-
     debug!("Starting runtime ...");
-    swapd::run(
-        service_config,
-        opts.swap_id,
-        opts.public_offer,
-        opts.trade_role,
-    )
-    .expect("Error running swapd runtime");
+    swapd::run(service_config, opts).expect("Error running swapd runtime");
 
     unreachable!()
 }

@@ -2,16 +2,34 @@ use crate::Error;
 use farcaster_core::blockchain::Blockchain;
 use strict_encoding::{StrictDecode, StrictEncode};
 
+/// Represent a blockchain height
 pub type BlockHeight = u32;
 
+/// Represent a block length or a block number
+pub type BlockSpan = u32;
+
+/// The minimum number of block confirmations required before sweeping
+pub const SWEEP_MONERO_THRESHOLD: u32 = 10;
+
+/// List of parameters used to determined if a transaction should be considered final or not and if
+/// it is safe to broadcast a transaction given the timelocks and confirmations of other
+/// transactions.
 #[derive(Debug, Clone, StrictEncode, StrictDecode)]
 pub struct TemporalSafety {
+    /// First timelock in the protocol, used to abort the swap instead of buying tx
     pub cancel_timelock: BlockHeight,
+    /// Second timelock in the protocol, if this timelock is reached Bob miss-behaved and will lose
+    /// money
     pub punish_timelock: BlockHeight,
-    pub race_thr: BlockHeight,
-    pub btc_finality_thr: BlockHeight,
-    pub xmr_finality_thr: BlockHeight,
-    pub sweep_monero_thr: BlockHeight,
+    /// The minimum number of blocks that should remain unmined before the next transaction to be
+    /// considered safe
+    pub race_thr: BlockSpan,
+    /// Number of confirmation required for the arbitrating blockchain to consider a tx final
+    pub btc_finality_thr: BlockSpan,
+    /// Number of confirmation required for the accordant blockchain to consider a tx final
+    pub xmr_finality_thr: BlockSpan,
+    // FIXME: this should be removed, used only const instead
+    pub sweep_monero_thr: BlockSpan,
 }
 
 impl TemporalSafety {
