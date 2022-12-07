@@ -53,7 +53,7 @@ pub struct Config {
     /// Sets the grpc server port, if none is given, no grpc server is run
     pub grpc: Option<GrpcConfig>,
     /// Syncer configuration
-    pub syncers: Option<SyncersConfig>,
+    pub syncers: Option<Networked<Option<SyncerServers>>>,
 }
 
 impl Config {
@@ -138,6 +138,7 @@ impl Config {
         Ok(InetSocketAddr::from_str(&addr).map_err(|e| Error::Farcaster(e.to_string()))?)
     }
 
+    /// Returns a syncer configuration, if found in config, for the specified network
     pub fn get_syncer_servers(&self, network: Network) -> Option<SyncerServers> {
         match network {
             Network::Mainnet => self.syncers.as_ref()?.mainnet.clone(),
@@ -154,7 +155,23 @@ impl Default for Config {
             farcasterd: Some(FarcasterdConfig::default()),
             swap: Some(SwapConfig::default()),
             grpc: None,
-            syncers: Some(SyncersConfig::default()),
+            syncers: Some(Networked {
+                mainnet: Some(SyncerServers {
+                    electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
+                    monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),
+                    monero_rpc_wallet: FARCASTER_MAINNET_MONERO_RPC_WALLET.into(),
+                    monero_lws: None,
+                    monero_wallet_dir: None,
+                }),
+                testnet: Some(SyncerServers {
+                    electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
+                    monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
+                    monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
+                    monero_lws: None,
+                    monero_wallet_dir: None,
+                }),
+                local: None,
+            }),
         }
     }
 }
@@ -237,17 +254,6 @@ pub struct AutoFundingServers {
     pub monero_rpc_wallet: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(crate = "serde_crate")]
-pub struct SyncersConfig {
-    /// Mainnet syncer configuration
-    pub mainnet: Option<SyncerServers>,
-    /// Testnet syncer configuration
-    pub testnet: Option<SyncerServers>,
-    /// Local syncer configuration
-    pub local: Option<SyncerServers>,
-}
-
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct SyncerServers {
@@ -298,29 +304,6 @@ impl Default for SwapConfig {
                 }),
                 local: None,
             },
-        }
-    }
-}
-
-// Default implementation is used to generate the config file on disk if not found
-impl Default for SyncersConfig {
-    fn default() -> Self {
-        SyncersConfig {
-            mainnet: Some(SyncerServers {
-                electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
-                monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),
-                monero_rpc_wallet: FARCASTER_MAINNET_MONERO_RPC_WALLET.into(),
-                monero_lws: None,
-                monero_wallet_dir: None,
-            }),
-            testnet: Some(SyncerServers {
-                electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
-                monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
-                monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
-                monero_lws: None,
-                monero_wallet_dir: None,
-            }),
-            local: None,
         }
     }
 }
