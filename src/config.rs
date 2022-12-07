@@ -292,6 +292,7 @@ impl Default for FarcasterdConfig {
     }
 }
 
+/// Parse a configuration file and return a [`Config`]
 pub fn parse_config(path: &str) -> Result<Config, Error> {
     if Path::new(path).exists() {
         let config_file = path;
