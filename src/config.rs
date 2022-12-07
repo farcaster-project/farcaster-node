@@ -13,7 +13,7 @@
 // If not, see <https://opensource.org/licenses/MIT>.
 
 use crate::Error;
-use farcaster_core::blockchain::Network;
+use farcaster_core::blockchain::{Blockchain, Network};
 use internet2::addr::InetSocketAddr;
 use std::fs::File;
 use std::io::prelude::*;
@@ -147,25 +147,59 @@ impl Config {
         }
     }
 
-    /// Returns the swap config for the specified network
-    ///
-    /// ## Safety
-    /// This function panic if the specified network is `Network::Local` and no parameters are
-    /// registered in the configuration file.
-    pub fn get_swap_config(&self, network: Network) -> ParsedSwapConfig {
+    /// Returns the swap config for the specified network and arbitrating/accordant blockchains
+    pub fn get_swap_config(
+        &self,
+        arb: Blockchain,
+        acc: Blockchain,
+        network: Network,
+    ) -> Result<ParsedSwapConfig, config::ConfigError> {
         match &self.swap {
-            Some(swap) => swap.get_swap_config(network),
-            None => match network {
-                Network::Mainnet => ParsedSwapConfig::new(
-                    BitcoinConfig::mainnet_default(),
-                    MoneroConfig::mainnet_default(),
-                ),
-                Network::Testnet => ParsedSwapConfig::new(
-                    BitcoinConfig::testnet_default(),
-                    MoneroConfig::testnet_default(),
-                ),
-                Network::Local => panic!("No configuration found for swap local network"),
-            },
+            Some(swap) => {
+                let arbitrating = match arb {
+                    Blockchain::Bitcoin => swap
+                        .bitcoin
+                        .get_for_network(network)
+                        .or_else(|| ArbConfig::get(arb, network))
+                        .ok_or(config::ConfigError::Message(
+                            "No configuration nor defaults founds!".to_string(),
+                        ))?,
+                    Blockchain::Monero => Err(config::ConfigError::Message(
+                        "Monero cannot be the arbitrating blockchain".to_string(),
+                    ))?,
+                };
+                let accordant = match arb {
+                    // NOTE: this is theoricly correct but not used in reality
+                    //Blockchain::Bitcoin => swap.bitcoin.get_for_network(network)?.into(),
+                    Blockchain::Bitcoin => Err(config::ConfigError::Message(
+                        "Are you sure you want to use Bitcoin as the accordant blockchain?"
+                            .to_string(),
+                    ))?,
+                    Blockchain::Monero => swap
+                        .monero
+                        .get_for_network(network)
+                        .or_else(|| AccConfig::get(acc, network))
+                        .ok_or(config::ConfigError::Message(
+                            "No configuration nor defaults founds!".to_string(),
+                        ))?,
+                };
+                Ok(ParsedSwapConfig {
+                    arbitrating,
+                    accordant,
+                })
+            }
+            None => {
+                let arbitrating = ArbConfig::get(arb, network).ok_or(
+                    config::ConfigError::Message("No defaults founds!".to_string()),
+                )?;
+                let accordant = AccConfig::get(arb, network).ok_or(
+                    config::ConfigError::Message("No defaults founds!".to_string()),
+                )?;
+                Ok(ParsedSwapConfig {
+                    arbitrating,
+                    accordant,
+                })
+            }
         }
     }
 }
@@ -215,80 +249,23 @@ pub struct FarcasterdConfig {
 #[serde(crate = "serde_crate")]
 pub struct SwapConfig {
     /// Swap parameters for the Bitcoin blockchain per network
-    pub bitcoin: Networked<Option<BitcoinConfig>>,
+    pub bitcoin: Networked<Option<ArbConfig>>,
     /// Swap parameters for the Monero blockchain per network
-    pub monero: Networked<Option<MoneroConfig>>,
-}
-
-impl SwapConfig {
-    // Returns the swap config for the specified network
-    //
-    // ## Safety
-    // This function panic if the specified network is `Network::Local` and no parameters are
-    // registered in the configuration file.
-    fn get_swap_config(&self, network: Network) -> ParsedSwapConfig {
-        match network {
-            Network::Mainnet => {
-                let bitcoin = self
-                    .bitcoin
-                    .mainnet
-                    .clone()
-                    .unwrap_or_else(|| BitcoinConfig::mainnet_default());
-                let monero = self
-                    .monero
-                    .mainnet
-                    .clone()
-                    .unwrap_or_else(|| MoneroConfig::mainnet_default());
-                ParsedSwapConfig { bitcoin, monero }
-            }
-            Network::Testnet => {
-                let bitcoin = self
-                    .bitcoin
-                    .testnet
-                    .clone()
-                    .unwrap_or_else(|| BitcoinConfig::testnet_default());
-                let monero = self
-                    .monero
-                    .testnet
-                    .clone()
-                    .unwrap_or_else(|| MoneroConfig::testnet_default());
-                ParsedSwapConfig { bitcoin, monero }
-            }
-            Network::Local => {
-                let bitcoin = self
-                    .bitcoin
-                    .local
-                    .clone()
-                    .expect("No local bitcoin swap config found");
-                let monero = self
-                    .monero
-                    .local
-                    .clone()
-                    .expect("No local monero swap config found");
-                ParsedSwapConfig { bitcoin, monero }
-            }
-        }
-    }
+    pub monero: Networked<Option<AccConfig>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct ParsedSwapConfig {
-    /// Swap parameters for Bitcoin
-    pub bitcoin: BitcoinConfig,
-    /// Swap parameters for Monero
-    pub monero: MoneroConfig,
-}
-
-impl ParsedSwapConfig {
-    fn new(bitcoin: BitcoinConfig, monero: MoneroConfig) -> Self {
-        Self { bitcoin, monero }
-    }
+    /// Swap parameters for an arbitrating blockchain
+    pub arbitrating: ArbConfig,
+    /// Swap parameters for an accordant blockchain
+    pub accordant: AccConfig,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
-pub struct BitcoinConfig {
+pub struct ArbConfig {
     /// Avoid broadcasting a transaction if a race can happen with the next available execution
     /// fork in # blocks
     pub safety: u8,
@@ -296,16 +273,27 @@ pub struct BitcoinConfig {
     pub finality: u8,
 }
 
-impl BitcoinConfig {
-    fn mainnet_default() -> Self {
-        BitcoinConfig {
+impl ArbConfig {
+    fn get(blockchain: Blockchain, network: Network) -> Option<Self> {
+        match blockchain {
+            Blockchain::Bitcoin => match network {
+                Network::Mainnet => Some(Self::btc_mainnet_default()),
+                Network::Testnet => Some(Self::btc_testnet_default()),
+                Network::Local => None,
+            },
+            Blockchain::Monero => None,
+        }
+    }
+
+    fn btc_mainnet_default() -> Self {
+        ArbConfig {
             safety: SWAP_MAINNET_BITCOIN_SAFETY,
             finality: SWAP_MAINNET_BITCOIN_FINALITY,
         }
     }
 
-    fn testnet_default() -> Self {
-        BitcoinConfig {
+    fn btc_testnet_default() -> Self {
+        ArbConfig {
             safety: SWAP_TESTNET_BITCOIN_SAFETY,
             finality: SWAP_TESTNET_BITCOIN_FINALITY,
         }
@@ -314,21 +302,42 @@ impl BitcoinConfig {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
-pub struct MoneroConfig {
+pub struct AccConfig {
     /// Number of confirmations required to consider a transaction final
     pub finality: u8,
 }
 
-impl MoneroConfig {
-    fn mainnet_default() -> Self {
-        MoneroConfig {
+impl AccConfig {
+    fn get(blockchain: Blockchain, network: Network) -> Option<Self> {
+        match blockchain {
+            Blockchain::Monero => match network {
+                Network::Mainnet => Some(Self::xmr_mainnet_default()),
+                Network::Testnet => Some(Self::xmr_testnet_default()),
+                Network::Local => None,
+            },
+            // NOTE: could return defaults for mainnet and testnet as AccConfig too
+            Blockchain::Bitcoin => None,
+        }
+    }
+
+    fn xmr_mainnet_default() -> Self {
+        AccConfig {
             finality: SWAP_MAINNET_MONERO_FINALITY,
         }
     }
 
-    fn testnet_default() -> Self {
-        MoneroConfig {
+    fn xmr_testnet_default() -> Self {
+        AccConfig {
             finality: SWAP_TESTNET_MONERO_FINALITY,
+        }
+    }
+}
+
+// Arbitrating blockchains are a superset of accordant ones
+impl From<ArbConfig> for AccConfig {
+    fn from(arb: ArbConfig) -> Self {
+        Self {
+            finality: arb.finality,
         }
     }
 }
@@ -398,18 +407,31 @@ pub struct Networked<T> {
     pub local: T,
 }
 
+impl<T> Networked<T>
+where
+    T: Clone,
+{
+    fn get_for_network(&self, network: Network) -> T {
+        match network {
+            Network::Mainnet => self.mainnet.clone(),
+            Network::Testnet => self.testnet.clone(),
+            Network::Local => self.local.clone(),
+        }
+    }
+}
+
 // Default implementation is used to generate the config file on disk if not found
 impl Default for SwapConfig {
     fn default() -> Self {
         SwapConfig {
             bitcoin: Networked {
-                mainnet: Some(BitcoinConfig::mainnet_default()),
-                testnet: Some(BitcoinConfig::testnet_default()),
+                mainnet: Some(ArbConfig::btc_mainnet_default()),
+                testnet: Some(ArbConfig::btc_testnet_default()),
                 local: None,
             },
             monero: Networked {
-                mainnet: Some(MoneroConfig::mainnet_default()),
-                testnet: Some(MoneroConfig::testnet_default()),
+                mainnet: Some(AccConfig::xmr_mainnet_default()),
+                testnet: Some(AccConfig::xmr_testnet_default()),
                 local: None,
             },
         }

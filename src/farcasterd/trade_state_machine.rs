@@ -600,7 +600,11 @@ fn attempt_transition_to_restoring_swapd(
             };
 
             let network = public_offer.offer.network;
-            let swap_config = runtime.config.get_swap_config(network);
+            let swap_config = runtime.config.get_swap_config(
+                public_offer.offer.arbitrating_blockchain,
+                public_offer.offer.accordant_blockchain,
+                network,
+            )?;
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
@@ -901,7 +905,11 @@ fn transition_to_swapd_launched_tsm(
         ..
     } = launch_swap;
     let network = public_offer.offer.network;
-    let swap_config = runtime.config.get_swap_config(network);
+    let swap_config = runtime.config.get_swap_config(
+        public_offer.offer.arbitrating_blockchain,
+        public_offer.offer.accordant_blockchain,
+        network,
+    )?;
     let arbitrating_syncer_up = syncer_up(
         &mut runtime.spawning_services,
         &mut runtime.registered_services,
