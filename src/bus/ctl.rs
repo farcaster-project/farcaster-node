@@ -62,6 +62,8 @@ pub enum CtlMsg {
     #[display("create_swap_keys({0})")]
     CreateSwapKeys(PublicOffer, Token),
 
+    // A message sent from wallet to farcaster containing keys for a swap.
+    #[display("swap_keys({0})")]
     SwapKeys(SwapKeys),
 
     /// A message sent from the wallet to notify farcaster the successful initialisation of the
