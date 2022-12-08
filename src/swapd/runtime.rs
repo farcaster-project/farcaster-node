@@ -484,9 +484,6 @@ impl Runtime {
                 if let Some(msg) = pending_msg {
                     self.send_peer(endpoints, msg)?;
                 }
-
-                // let msg = format!("Restored swap at state {}", self.state);
-                // let _ = self.report_progress_message_to(endpoints, ServiceId::Farcasterd, msg);
             }
 
             req => {
@@ -715,7 +712,9 @@ impl Runtime {
             self.swap_state_machine.clone(),
         )? {
             self.swap_state_machine = ssm;
+            // On SwapEnd, report immediately to ensure the progress message goes out before the swap is terminated.
             if matches!(self.swap_state_machine, SwapStateMachine::SwapEnd(_)) {
+                self.report_potential_state_change(endpoints)?;
                 return Ok(());
             }
             // Unset previously set unhandled peer message

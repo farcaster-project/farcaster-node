@@ -48,7 +48,7 @@ use crate::{
     syncerd::AddressTransaction,
 };
 use crate::{
-    bus::{sync::SyncMsg, Outcome, ServiceBus},
+    bus::{sync::SyncMsg, Outcome},
     LogStyle,
 };
 use crate::{swapd::wallet::HandleCoreArbitratingSetupRes, syncerd::types::Event as SyncEvent};
@@ -614,13 +614,13 @@ fn attempt_transition_to_init_taker(
     runtime: &mut Runtime,
     swap_role: SwapRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Ctl(CtlMsg::TakeSwap(InitTakerSwap {
-            peerd,
-            report_to,
+            ref peerd,
+            ref report_to,
             swap_id,
-            key_manager,
-            target_bitcoin_address,
+            ref key_manager,
+            ref target_bitcoin_address,
             target_monero_address,
         })) => {
             if ServiceId::Swap(swap_id) != runtime.identity {
@@ -632,7 +632,7 @@ fn attempt_transition_to_init_taker(
             };
             // start fee estimation and block height changes
             runtime.syncer_state.watch_fee_and_height(event.endpoints)?;
-            runtime.peer_service = peerd;
+            runtime.peer_service = peerd.clone();
             if let ServiceId::Peer(0, _) = runtime.peer_service {
                 runtime.connected = false;
             } else {
@@ -642,9 +642,9 @@ fn attempt_transition_to_init_taker(
             let wallet = Wallet::new_taker(
                 event.endpoints,
                 runtime.public_offer.clone(),
-                target_bitcoin_address,
+                target_bitcoin_address.clone(),
                 target_monero_address,
-                key_manager.0,
+                key_manager.0.clone(),
                 swap_id,
             )?;
             let local_params = wallet.local_params();
@@ -756,7 +756,7 @@ fn attempt_transition_to_init_maker(
 }
 
 fn try_bob_init_taker_to_bob_taker_maker_commit(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     bob_init_taker: BobInitTaker,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -788,11 +788,9 @@ fn try_bob_init_taker_to_bob_taker_maker_commit(
                 let task = runtime
                     .syncer_state
                     .watch_addr_btc(funding_address.clone(), txlabel);
-                event.endpoints.send_to(
-                    ServiceBus::Sync,
-                    runtime.identity.clone(),
+                event.send_sync_service(
                     runtime.syncer_state.bitcoin_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(task)),
+                    SyncMsg::Task(task),
                 )?;
             }
             let reveal =
@@ -833,7 +831,7 @@ fn try_alice_init_taker_to_alice_taker_maker_commit(
         local_params,
         mut wallet,
     } = bob_init_taker;
-    match event.request.clone() {
+    match event.request {
         BusMsg::P2p(PeerMsg::OfferNotFound(swap_id)) => {
             error!(
                 "{} | Taken offer {} was not found by the maker, aborting this swap.",
@@ -975,7 +973,7 @@ fn try_bob_reveal_to_bob_funded(
         required_funding_amount,
         funding_address,
     } = bob_reveal;
-    match event.request.clone() {
+    match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
             id,
             amount,
@@ -984,8 +982,9 @@ fn try_bob_reveal_to_bob_funded(
         }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::Funding)
             && runtime.syncer_state.awaiting_funding =>
         {
-            let tx =
-                bitcoin::Transaction::deserialize(&tx.into_iter().flatten().collect::<Vec<u8>>())?;
+            let tx = bitcoin::Transaction::deserialize(
+                &tx.into_iter().flatten().copied().collect::<Vec<u8>>(),
+            )?;
             info!(
                 "Received AddressTransaction, processing tx {}",
                 &tx.txid().tx_hash()
@@ -993,7 +992,7 @@ fn try_bob_reveal_to_bob_funded(
             log_tx_seen(runtime.swap_id, &TxLabel::Funding, &tx.txid());
             runtime.syncer_state.awaiting_funding = false;
             // If the bitcoin amount does not match the expected funding amount, abort the swap
-            let amount = bitcoin::Amount::from_sat(amount);
+            let amount = bitcoin::Amount::from_sat(*amount);
             // Abort the swap in case of bad funding amount
             if amount != required_funding_amount {
                 // incorrect funding, start aborting procedure
@@ -1035,11 +1034,9 @@ fn try_bob_reveal_to_bob_funded(
                 if !runtime.syncer_state.is_watched_tx(&tx_label) {
                     let txid = tx.clone().extract_tx().txid();
                     let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.send_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(task)),
+                        SyncMsg::Task(task),
                     )?;
                 }
             }
@@ -1082,7 +1079,7 @@ fn try_bob_reveal_to_bob_funded(
 }
 
 fn try_bob_funded_to_bob_refund_procedure_signature(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     bob_funded: BobFunded,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -1093,7 +1090,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
         mut wallet,
         local_trade_role,
     } = bob_funded;
-    match event.request.clone() {
+    match &event.request {
         BusMsg::P2p(PeerMsg::RefundProcedureSignatures(refund_proc)) => {
             debug!("{} | forward refund proc sig to wallet", runtime.swap_id);
             let HandleRefundProcedureSignaturesRes {
@@ -1116,11 +1113,9 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     let task = runtime
                         .syncer_state
                         .watch_addr_xmr(spend, view, txlabel, None);
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.send_sync_service(
                         runtime.syncer_state.monero_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(task)),
+                        SyncMsg::Task(task),
                     )?
                 }
             } else {
@@ -1152,11 +1147,9 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                 let task = runtime
                     .syncer_state
                     .watch_tx_btc(buy_tx.txid(), TxLabel::Buy);
-                event.endpoints.send_to(
-                    ServiceBus::Sync,
-                    runtime.identity(),
+                event.send_sync_service(
                     runtime.syncer_state.bitcoin_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(task)),
+                    SyncMsg::Task(task),
                 )?;
             }
             // Checkpoint Bob pre buy
@@ -1184,7 +1177,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
 }
 
 fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     bob_refund_procedure_signatures: BobRefundProcedureSignatures,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -1196,7 +1189,7 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
         local_trade_role,
         buy_procedure_signature,
     } = bob_refund_procedure_signatures;
-    match event.request.clone() {
+    match &event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
             id,
             hash,
@@ -1207,7 +1200,7 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
             && runtime.syncer_state.is_watched_addr(&TxLabel::AccLock)
             && runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock) =>
         {
-            let amount = monero::Amount::from_pico(amount);
+            let amount = monero::Amount::from_pico(amount.clone());
             if amount < runtime.syncer_state.monero_amount {
                 warn!(
                     "Not enough monero locked: expected {}, found {}",
@@ -1216,21 +1209,17 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
                 return Ok(None);
             }
             if let Some(tx_label) = runtime.syncer_state.tasks.watched_addrs.remove(&id) {
+                let abort_task = runtime.syncer_state.abort_task(id.clone());
                 if !runtime.syncer_state.is_watched_tx(&tx_label) {
                     let watch_tx = runtime.syncer_state.watch_tx_xmr(hash.clone(), tx_label);
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.send_sync_service(
                         runtime.syncer_state.monero_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(watch_tx)),
+                        SyncMsg::Task(watch_tx),
                     )?;
                 }
-                let abort_task = runtime.syncer_state.abort_task(id);
-                event.endpoints.send_to(
-                    ServiceBus::Sync,
-                    runtime.identity(),
+                event.send_sync_service(
                     runtime.syncer_state.monero_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(abort_task)),
+                    SyncMsg::Task(abort_task),
                 )?;
             }
             Ok(Some(SwapStateMachine::BobAccordantLock(BobAccordantLock {
@@ -1259,7 +1248,7 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
         local_trade_role,
         buy_procedure_signature,
     } = bob_accordant_lock;
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1290,7 +1279,7 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
 }
 
 fn try_bob_accordant_lock_final_to_bob_buy_final(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     bob_accordant_lock_final: BobAccordantLockFinal,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -1301,7 +1290,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
         mut wallet,
         local_trade_role,
     } = bob_accordant_lock_final;
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1331,12 +1320,7 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 .remove_entry(&TxLabel::Buy)
                 .unwrap();
             let task = runtime.syncer_state.retrieve_tx_btc(txid, txlabel);
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
-                runtime.syncer_state.bitcoin_syncer(),
-                BusMsg::Sync(SyncMsg::Task(task)),
-            )?;
+            event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
             Ok(Some(SwapStateMachine::BobAccordantLockFinal(
                 BobAccordantLockFinal {
                     local_params,
@@ -1408,30 +1392,26 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
 }
 
 fn try_bob_buy_final_to_bob_buy_sweeping(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     local_trade_role: TradeRole,
     task: SweepAddress,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 confirmations: Some(confirmations),
                 ..
             },
         ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
-            let request = BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(task)));
+            // safe cast
+            let request = SyncMsg::Task(Task::SweepAddress(task));
             info!(
                 "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
                 runtime.swap_id.swap_id(),
                 runtime.syncer_state.monero_height.label()
             );
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
-                runtime.syncer_state.monero_syncer.clone(),
-                request,
-            )?;
+            event.send_sync_service(runtime.syncer_state.monero_syncer(), request)?;
             Ok(Some(SwapStateMachine::BobBuySweeping(local_trade_role)))
         }
         _ => Ok(None),
@@ -1439,10 +1419,10 @@ fn try_bob_buy_final_to_bob_buy_sweeping(
 }
 
 fn try_bob_cancel_final_to_swap_end(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1464,26 +1444,25 @@ fn try_bob_cancel_final_to_swap_end(
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
             });
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all.clone())),
+                SyncMsg::Task(abort_all.clone()),
             )?;
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.bitcoin_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all)),
+                SyncMsg::Task(abort_all),
             )?;
-            let outcome = Outcome::FailureRefund;
-            let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(outcome.clone()));
-            runtime.send_ctl(event.endpoints, ServiceId::Farcasterd, swap_success_req)?;
             // remove txs to invalidate outdated states
             runtime.txs.remove(&TxLabel::Cancel);
             runtime.txs.remove(&TxLabel::Refund);
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
+            // send swap outcome to farcasterd
+            let outcome = Outcome::FailureRefund;
+            event.complete_ctl_service(
+                ServiceId::Farcasterd,
+                CtlMsg::SwapOutcome(outcome.clone()),
+            )?;
             Ok(Some(SwapStateMachine::SwapEnd(outcome)))
         }
         _ => Ok(None),
@@ -1495,7 +1474,7 @@ fn try_bob_canceled_to_bob_cancel_final(
     runtime: &mut Runtime,
     local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         // If Cancel Broadcast failed, then we need to go into Buy
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
@@ -1548,7 +1527,7 @@ fn try_awaiting_sweep_to_swap_end(
 }
 
 fn try_alice_reveal_to_alice_core_arbitrating_setup(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     alice_reveal: AliceReveal,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -1570,11 +1549,9 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 if !runtime.syncer_state.is_watched_tx(&tx_label) {
                     let txid = tx.clone().extract_tx().txid();
                     let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.send_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(task)),
+                        SyncMsg::Task(task),
                     )?;
                 }
             }
@@ -1633,7 +1610,7 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
 }
 
 fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     alice_core_arbitrating_setup: AliceCoreArbitratingSetup,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -1643,7 +1620,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
         wallet,
         local_trade_role,
     } = alice_core_arbitrating_setup;
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1683,11 +1660,9 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                         txlabel,
                         runtime.monero_address_creation_height,
                     );
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.send_sync_service(
                         runtime.syncer_state.monero_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(watch_addr_task)),
+                        SyncMsg::Task(watch_addr_task),
                     )?;
                 }
                 Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
@@ -1708,7 +1683,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
 }
 
 fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     alice_arbitrating_lock_final: AliceArbitratingLockFinal,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -1718,7 +1693,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
         funding_info,
         required_funding_amount,
     } = alice_arbitrating_lock_final;
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::Empty(id)))
             if runtime.syncer_state.tasks.watched_addrs.contains_key(&id)
                 && runtime.syncer_state.tasks.watched_addrs.get(&id).unwrap()
@@ -1730,16 +1705,11 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 funding_info.amount.bright_green_bold(),
                 funding_info.address.addr(),
             );
-            let funding_request = BusMsg::Ctl(CtlMsg::FundingInfo(FundingInfo::Monero(
-                funding_info.clone(),
-            )));
             runtime.syncer_state.awaiting_funding = true;
             if let Some(enquirer) = runtime.enquirer.clone() {
-                event.endpoints.send_to(
-                    ServiceBus::Ctl,
-                    runtime.identity(),
+                event.send_ctl_service(
                     enquirer,
-                    funding_request,
+                    CtlMsg::FundingInfo(FundingInfo::Monero(funding_info.clone())),
                 )?;
             }
             Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
@@ -1751,6 +1721,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 },
             )))
         }
+
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1784,12 +1755,13 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 },
             )))
         }
+
         BusMsg::Sync(SyncMsg::Event(SyncEvent::AddressTransaction(AddressTransaction {
             id,
-            hash,
+            ref hash,
             amount,
-            block,
-            tx,
+            ref block,
+            ref tx,
         }))) if runtime.syncer_state.tasks.watched_addrs.contains_key(&id)
             && runtime.syncer_state.tasks.watched_addrs.get(&id).unwrap() == &TxLabel::AccLock =>
         {
@@ -1799,22 +1771,16 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             );
             let txlabel = TxLabel::AccLock;
             if !runtime.syncer_state.is_watched_tx(&txlabel) {
+                let task = runtime.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
                 if runtime.syncer_state.awaiting_funding {
-                    event.endpoints.send_to(
-                        ServiceBus::Ctl,
-                        runtime.identity(),
+                    event.send_ctl_service(
                         ServiceId::Farcasterd,
-                        BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Monero)),
+                        CtlMsg::FundingCompleted(Blockchain::Monero),
                     )?;
                     runtime.syncer_state.awaiting_funding = false;
                 }
-                let task = runtime.syncer_state.watch_tx_xmr(hash.clone(), txlabel);
-                event.endpoints.send_to(
-                    ServiceBus::Sync,
-                    runtime.identity(),
-                    runtime.syncer_state.monero_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(task)),
-                )?;
+                event
+                    .send_sync_service(runtime.syncer_state.monero_syncer(), SyncMsg::Task(task))?;
             }
             if runtime
                 .syncer_state
@@ -1824,11 +1790,9 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 .is_some()
             {
                 let abort_task = runtime.syncer_state.abort_task(id);
-                event.endpoints.send_to(
-                    ServiceBus::Sync,
-                    runtime.identity(),
+                event.send_sync_service(
                     runtime.syncer_state.monero_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(abort_task)),
+                    SyncMsg::Task(abort_task),
                 )?;
             }
 
@@ -1876,7 +1840,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
 }
 
 fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     alice_accordant_lock: AliceAccordantLock,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -1892,11 +1856,9 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             if !runtime.syncer_state.is_watched_tx(&TxLabel::Buy) {
                 let txid = buy_procedure_signature.buy.clone().extract_tx().txid();
                 let task = runtime.syncer_state.watch_tx_btc(txid, TxLabel::Buy);
-                event.endpoints.send_to(
-                    ServiceBus::Sync,
-                    runtime.identity(),
+                event.send_sync_service(
                     runtime.syncer_state.bitcoin_syncer(),
-                    BusMsg::Sync(SyncMsg::Task(task)),
+                    SyncMsg::Task(task),
                 )?;
             }
             // Handle the received buy procedure signature message with the wallet
@@ -1946,10 +1908,10 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
 }
 
 fn try_alice_buy_procedure_signature_to_swap_end(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -1971,30 +1933,26 @@ fn try_alice_buy_procedure_signature_to_swap_end(
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
             });
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all.clone())),
+                SyncMsg::Task(abort_all.clone()),
             )?;
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.bitcoin_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all)),
+                SyncMsg::Task(abort_all),
             )?;
-            let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(Outcome::SuccessSwap));
-            runtime.send_ctl(event.endpoints, ServiceId::Farcasterd, swap_success_req)?;
             runtime.txs.remove(&TxLabel::Cancel);
             runtime.txs.remove(&TxLabel::Punish);
-            Ok(Some(SwapStateMachine::SwapEnd(Outcome::SuccessSwap)))
+            let outcome = Outcome::SuccessSwap;
+            event.send_ctl_service(ServiceId::Farcasterd, CtlMsg::SwapOutcome(outcome.clone()))?;
+            Ok(Some(SwapStateMachine::SwapEnd(outcome.clone())))
         }
         _ => Ok(None),
     }
 }
 
 fn try_alice_canceled_to_alice_refund_or_alice_punish(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     alice_canceled: AliceCanceled,
 ) -> Result<Option<SwapStateMachine>, Error> {
@@ -2002,7 +1960,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
         mut wallet,
         local_trade_role,
     } = alice_canceled;
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -2023,7 +1981,6 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         .contains_key(&TxLabel::Refund) =>
                 {
                     debug!("subscribe Refund address task");
-                    // self.state.a_sup_refundsig_refund_seen();
                     let (txlabel, txid) = runtime
                         .syncer_state
                         .tasks
@@ -2031,11 +1988,9 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         .remove_entry(&TxLabel::Refund)
                         .unwrap();
                     let task = runtime.syncer_state.retrieve_tx_btc(txid, txlabel);
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.send_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(task)),
+                        SyncMsg::Task(task),
                     )?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         wallet,
@@ -2053,11 +2008,9 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     if !runtime.syncer_state.is_watched_tx(&tx_label) {
                         let txid = punish_tx.txid();
                         let task = runtime.syncer_state.watch_tx_btc(txid, tx_label);
-                        event.endpoints.send_to(
-                            ServiceBus::Sync,
-                            runtime.identity(),
+                        event.send_sync_service(
                             runtime.syncer_state.bitcoin_syncer(),
-                            BusMsg::Sync(SyncMsg::Task(task)),
+                            SyncMsg::Task(task),
                         )?;
                     }
                     runtime.broadcast(punish_tx, tx_label, event.endpoints)?;
@@ -2069,118 +2022,109 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
 
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionRetrieved(TransactionRetrieved {
             id,
-            tx: Some(tx),
-        }))) if runtime.syncer_state.tasks.retrieving_txs.contains_key(&id) => {
+            tx: Some(ref tx),
+        }))) if matches!(
+            runtime.syncer_state.tasks.retrieving_txs.get(&id),
+            Some((TxLabel::Refund, _))
+        ) =>
+        {
             let (txlabel, _) = runtime
                 .syncer_state
                 .tasks
                 .retrieving_txs
                 .remove(&id)
                 .unwrap();
-            match txlabel {
-                TxLabel::Refund => {
-                    log_tx_seen(runtime.swap_id, &txlabel, &tx.txid());
-                    let sweep_xmr = wallet.process_refund_tx(
-                        event.endpoints,
-                        tx.clone(),
-                        runtime.swap_id.clone(),
-                        runtime.monero_address_creation_height,
-                    )?;
-                    // Check if we already registered the lock transaction, if so, initiate sweeping procedure
-                    info!("{:?}", runtime.syncer_state.confirmations);
-                    if runtime
+            log_tx_seen(runtime.swap_id, &txlabel, &tx.txid());
+            let sweep_xmr = wallet.process_refund_tx(
+                event.endpoints,
+                tx.clone(),
+                runtime.swap_id.clone(),
+                runtime.monero_address_creation_height,
+            )?;
+            // Check if we already registered the lock transaction, if so, initiate sweeping procedure
+            info!("{:?}", runtime.syncer_state.confirmations);
+            if runtime
+                .syncer_state
+                .confirmations
+                .get(&TxLabel::AccLock)
+                .is_some()
+            {
+                let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
+                let sweep_address = if let Task::SweepAddress(sweep_address) = task {
+                    sweep_address
+                } else {
+                    return Ok(None);
+                };
+                let acc_confs_needs = runtime
+                    .syncer_state
+                    .get_confs(TxLabel::AccLock)
+                    .map(|c| {
+                        runtime
+                            .temporal_safety
+                            .sweep_monero_thr
+                            .checked_sub(c)
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(runtime.temporal_safety.sweep_monero_thr);
+                let sweep_block =
+                    runtime.syncer_state.height(Blockchain::Monero) + acc_confs_needs as u64;
+                info!(
+                    "{} | Tx {} needs {} more confirmations, and has {} confirmations",
+                    runtime.swap_id.swap_id(),
+                    TxLabel::AccLock.label(),
+                    acc_confs_needs.bright_green_bold(),
+                    runtime
                         .syncer_state
-                        .confirmations
-                        .get(&TxLabel::AccLock)
-                        .is_some()
-                    {
-                        let task = runtime.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
-                        let sweep_address = if let Task::SweepAddress(sweep_address) = task {
-                            sweep_address
-                        } else {
-                            return Ok(None);
-                        };
-                        let acc_confs_needs = runtime
-                            .syncer_state
-                            .get_confs(TxLabel::AccLock)
-                            .map(|c| {
-                                runtime
-                                    .temporal_safety
-                                    .sweep_monero_thr
-                                    .checked_sub(c)
-                                    .unwrap_or(0)
-                            })
-                            .unwrap_or(runtime.temporal_safety.sweep_monero_thr);
-                        let sweep_block = runtime.syncer_state.height(Blockchain::Monero)
-                            + acc_confs_needs as u64;
-                        info!(
-                            "{} | Tx {} needs {} more confirmations, and has {} confirmations",
-                            runtime.swap_id.swap_id(),
-                            TxLabel::AccLock.label(),
-                            acc_confs_needs.bright_green_bold(),
-                            runtime
-                                .syncer_state
-                                .get_confs(TxLabel::AccLock)
-                                .unwrap_or(0),
-                        );
-                        info!(
-                            "{} | {} reaches your address {} after block {}",
-                            runtime.swap_id.swap_id(),
-                            Blockchain::Monero.label(),
-                            sweep_xmr.destination_address.addr(),
-                            sweep_block.bright_blue_bold(),
-                        );
-                        warn!(
-                            "Peerd might crash, just ignore it, counterparty closed\
-                                               connection but you don't need it anymore!"
-                        );
-                        Ok(Some(SwapStateMachine::AliceRefund(
-                            local_trade_role,
-                            sweep_address,
-                        )))
-                    } else {
-                        if runtime.syncer_state.awaiting_funding {
-                            warn!("FundingCompleted never emitted, emitting it now to clean up farcasterd");
-                            runtime.syncer_state.awaiting_funding = false;
-                            event.endpoints.send_to(
-                                ServiceBus::Ctl,
-                                runtime.identity(),
-                                ServiceId::Farcasterd,
-                                BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Monero)),
-                            )?;
-                        }
-                        let abort_all = Task::Abort(Abort {
-                            task_target: TaskTarget::AllTasks,
-                            respond: Boolean::False,
-                        });
-                        event.endpoints.send_to(
-                            ServiceBus::Sync,
-                            runtime.identity(),
-                            runtime.syncer_state.monero_syncer(),
-                            BusMsg::Sync(SyncMsg::Task(abort_all.clone())),
-                        )?;
-                        event.endpoints.send_to(
-                            ServiceBus::Sync,
-                            runtime.identity(),
-                            runtime.syncer_state.bitcoin_syncer(),
-                            BusMsg::Sync(SyncMsg::Task(abort_all)),
-                        )?;
-                        let outcome = Outcome::FailureRefund;
-                        let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(outcome.clone()));
-                        runtime.send_ctl(
-                            event.endpoints,
-                            ServiceId::Farcasterd,
-                            swap_success_req,
-                        )?;
-                        // remove txs to invalidate outdated states
-                        runtime.txs.remove(&TxLabel::Cancel);
-                        runtime.txs.remove(&TxLabel::Refund);
-                        runtime.txs.remove(&TxLabel::Buy);
-                        runtime.txs.remove(&TxLabel::Punish);
-                        Ok(Some(SwapStateMachine::SwapEnd(outcome)))
-                    }
+                        .get_confs(TxLabel::AccLock)
+                        .unwrap_or(0),
+                );
+                info!(
+                    "{} | {} reaches your address {} after block {}",
+                    runtime.swap_id.swap_id(),
+                    Blockchain::Monero.label(),
+                    sweep_xmr.destination_address.addr(),
+                    sweep_block.bright_blue_bold(),
+                );
+                warn!(
+                    "Peerd might crash, just ignore it, counterparty closed\
+                                       connection but you don't need it anymore!"
+                );
+                Ok(Some(SwapStateMachine::AliceRefund(
+                    local_trade_role,
+                    sweep_address,
+                )))
+            } else {
+                if runtime.syncer_state.awaiting_funding {
+                    warn!("FundingCompleted never emitted, emitting it now to clean up farcasterd");
+                    runtime.syncer_state.awaiting_funding = false;
+                    event.send_ctl_service(
+                        ServiceId::Farcasterd,
+                        CtlMsg::FundingCompleted(Blockchain::Monero),
+                    )?;
                 }
-                _ => Ok(None),
+                let abort_all = Task::Abort(Abort {
+                    task_target: TaskTarget::AllTasks,
+                    respond: Boolean::False,
+                });
+                event.send_sync_service(
+                    runtime.syncer_state.monero_syncer(),
+                    SyncMsg::Task(abort_all.clone()),
+                )?;
+                event.send_sync_service(
+                    runtime.syncer_state.bitcoin_syncer(),
+                    SyncMsg::Task(abort_all),
+                )?;
+                // remove txs to invalidate outdated states
+                runtime.txs.remove(&TxLabel::Cancel);
+                runtime.txs.remove(&TxLabel::Refund);
+                runtime.txs.remove(&TxLabel::Buy);
+                runtime.txs.remove(&TxLabel::Punish);
+                let outcome = Outcome::FailureRefund;
+                event.complete_ctl_service(
+                    ServiceId::Farcasterd,
+                    CtlMsg::SwapOutcome(outcome.clone()),
+                )?;
+                Ok(Some(SwapStateMachine::SwapEnd(outcome)))
             }
         }
         _ => Ok(None),
@@ -2188,29 +2132,26 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
 }
 
 fn try_alice_refund_to_alice_refund_sweeping(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     local_trade_role: TradeRole,
     sweep_address: SweepAddress,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 confirmations: Some(confirmations),
                 ..
             },
         ))) if confirmations >= runtime.temporal_safety.sweep_monero_thr => {
-            let request = BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(sweep_address)));
             info!(
                 "{} | Monero are spendable now (height {}), sweeping ephemeral wallet",
                 runtime.swap_id.swap_id(),
                 runtime.syncer_state.monero_height.label()
             );
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
-                runtime.syncer_state.monero_syncer.clone(),
-                request,
+            event.send_sync_service(
+                runtime.syncer_state.monero_syncer(),
+                SyncMsg::Task(Task::SweepAddress(sweep_address)),
             )?;
             Ok(Some(SwapStateMachine::AliceRefundSweeping(
                 local_trade_role,
@@ -2221,10 +2162,10 @@ fn try_alice_refund_to_alice_refund_sweeping(
 }
 
 fn try_alice_refund_sweeping_to_swap_end(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::SweepSuccess(SweepSuccess { id, .. })))
             if runtime.syncer_state.tasks.sweeping_addr.is_some()
                 && runtime.syncer_state.tasks.sweeping_addr.unwrap() == id =>
@@ -2236,37 +2177,33 @@ fn try_alice_refund_sweeping_to_swap_end(
                         emitting it now to clean up farcasterd"
                 );
                 runtime.syncer_state.awaiting_funding = false;
-                event.endpoints.send_to(
-                    ServiceBus::Ctl,
-                    runtime.identity(),
+                event.send_ctl_service(
                     ServiceId::Farcasterd,
-                    BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Monero)),
+                    CtlMsg::FundingCompleted(Blockchain::Monero),
                 )?;
             }
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
             });
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all.clone())),
+                SyncMsg::Task(abort_all.clone()),
             )?;
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.bitcoin_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all)),
+                SyncMsg::Task(abort_all),
             )?;
-            let outcome = Outcome::FailureRefund;
-            let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(outcome.clone()));
-            runtime.send_ctl(event.endpoints, ServiceId::Farcasterd, swap_success_req)?;
             // remove txs to invalidate outdated states
             runtime.txs.remove(&TxLabel::Cancel);
             runtime.txs.remove(&TxLabel::Refund);
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
+            let outcome = Outcome::FailureRefund;
+            event.complete_ctl_service(
+                ServiceId::Farcasterd,
+                CtlMsg::SwapOutcome(outcome.clone()),
+            )?;
             Ok(Some(SwapStateMachine::SwapEnd(outcome)))
         }
         _ => Ok(None),
@@ -2274,7 +2211,7 @@ fn try_alice_refund_sweeping_to_swap_end(
 }
 
 fn try_alice_punish_to_swap_end(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
@@ -2285,28 +2222,24 @@ fn try_alice_punish_to_swap_end(
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
             });
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all.clone())),
+                SyncMsg::Task(abort_all.clone()),
             )?;
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.bitcoin_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all)),
-            )?;
-            let outcome = Outcome::FailurePunish;
-            event.complete_ctl_service(
-                ServiceId::Farcasterd,
-                CtlMsg::SwapOutcome(outcome.clone()),
+                SyncMsg::Task(abort_all),
             )?;
             // remove txs to invalidate outdated states
             runtime.txs.remove(&TxLabel::Cancel);
             runtime.txs.remove(&TxLabel::Refund);
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
+            let outcome = Outcome::FailurePunish;
+            event.complete_ctl_service(
+                ServiceId::Farcasterd,
+                CtlMsg::SwapOutcome(outcome.clone()),
+            )?;
             Ok(Some(SwapStateMachine::SwapEnd(outcome)))
         }
         _ => Ok(None),
@@ -2314,11 +2247,11 @@ fn try_alice_punish_to_swap_end(
 }
 
 fn try_bob_buy_sweeping_to_swap_end(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     _local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::SweepSuccess(SweepSuccess { id, .. })))
             if runtime.syncer_state.tasks.sweeping_addr.is_some()
                 && runtime.syncer_state.tasks.sweeping_addr.unwrap() == id =>
@@ -2330,37 +2263,33 @@ fn try_bob_buy_sweeping_to_swap_end(
                                    emitting it now to clean up farcasterd"
                 );
                 runtime.syncer_state.awaiting_funding = false;
-                event.endpoints.send_to(
-                    ServiceBus::Ctl,
-                    runtime.identity(),
+                event.send_ctl_service(
                     ServiceId::Farcasterd,
-                    BusMsg::Ctl(CtlMsg::FundingCompleted(Blockchain::Bitcoin)),
+                    CtlMsg::FundingCompleted(Blockchain::Bitcoin),
                 )?;
             }
             let abort_all = Task::Abort(Abort {
                 task_target: TaskTarget::AllTasks,
                 respond: Boolean::False,
             });
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.monero_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all.clone())),
+                SyncMsg::Task(abort_all.clone()),
             )?;
-            event.endpoints.send_to(
-                ServiceBus::Sync,
-                runtime.identity(),
+            event.send_sync_service(
                 runtime.syncer_state.bitcoin_syncer(),
-                BusMsg::Sync(SyncMsg::Task(abort_all)),
+                SyncMsg::Task(abort_all),
             )?;
-            let outcome = Outcome::SuccessSwap;
-            let swap_success_req = BusMsg::Ctl(CtlMsg::SwapOutcome(outcome.clone()));
-            runtime.send_ctl(event.endpoints, ServiceId::Farcasterd, swap_success_req)?;
             // remove txs to invalidate outdated states
             runtime.txs.remove(&TxLabel::Cancel);
             runtime.txs.remove(&TxLabel::Refund);
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
+            let outcome = Outcome::SuccessSwap;
+            event.complete_ctl_service(
+                ServiceId::Farcasterd,
+                CtlMsg::SwapOutcome(outcome.clone()),
+            )?;
             Ok(Some(SwapStateMachine::SwapEnd(outcome)))
         }
         _ => Ok(None),
@@ -2368,7 +2297,7 @@ fn try_bob_buy_sweeping_to_swap_end(
 }
 
 fn attempt_transition_to_bob_reveal(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     local_commit: Commit,
     local_params: Params,
@@ -2383,7 +2312,6 @@ fn attempt_transition_to_bob_reveal(
             let remote_params =
                 if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
                     debug!("{} | remote params successfully validated", runtime.swap_id);
-                    // self.state.sup_remote_params(validated_params);
                     validated_params
                 } else {
                     let msg = format!("{} | remote params validation failed", runtime.swap_id);
@@ -2402,11 +2330,9 @@ fn attempt_transition_to_bob_reveal(
                     let watch_addr_task = runtime
                         .syncer_state
                         .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.send_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(watch_addr_task)),
+                        SyncMsg::Task(watch_addr_task),
                     )?;
                 }
                 Ok(Some(SwapStateMachine::BobReveal(BobReveal {
@@ -2456,7 +2382,6 @@ fn attempt_transition_to_bob_reveal(
                 let remote_params =
                     if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
                         debug!("{} | remote params successfully validated", runtime.swap_id);
-                        // self.state.sup_remote_params(validated_params);
                         validated_params
                     } else {
                         let msg = format!("{} | remote params validation failed", runtime.swap_id);
@@ -2473,11 +2398,9 @@ fn attempt_transition_to_bob_reveal(
                     let watch_addr_task = runtime
                         .syncer_state
                         .watch_addr_btc(funding_address.clone(), TxLabel::Funding);
-                    event.endpoints.send_to(
-                        ServiceBus::Sync,
-                        runtime.identity(),
+                    event.complete_sync_service(
                         runtime.syncer_state.bitcoin_syncer(),
-                        BusMsg::Sync(SyncMsg::Task(watch_addr_task)),
+                        SyncMsg::Task(watch_addr_task),
                     )?;
                 }
                 Ok(Some(SwapStateMachine::BobReveal(BobReveal {
@@ -2504,7 +2427,7 @@ fn attempt_transition_to_alice_reveal(
     local_trade_role: TradeRole,
     mut wallet: Wallet,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::P2p(PeerMsg::Reveal(reveal)) => {
             let remote_params =
                 if let Ok(validated_params) = validate_reveal(&reveal, remote_commit.clone()) {
@@ -2543,7 +2466,7 @@ fn handle_bob_swap_interrupt_after_lock(
     runtime: &mut Runtime,
     local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_impossible(event, runtime),
 
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -2578,12 +2501,12 @@ fn handle_bob_swap_interrupt_after_lock(
 }
 
 fn handle_alice_swap_interrupt_afer_lock(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     wallet: Wallet,
     local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    match event.request.clone() {
+    match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
                 id,
@@ -2596,11 +2519,9 @@ fn handle_alice_swap_interrupt_afer_lock(
                 runtime.swap_id.swap_id()
             );
             if runtime.syncer_state.awaiting_funding {
-                event.endpoints.send_to(
-                    ServiceBus::Ctl,
-                    runtime.identity(),
+                event.send_ctl_service(
                     ServiceId::Farcasterd,
-                    BusMsg::Ctl(CtlMsg::FundingCanceled(Blockchain::Monero)),
+                    CtlMsg::FundingCanceled(Blockchain::Monero),
                 )?;
                 runtime.syncer_state.awaiting_funding = false;
             }
@@ -2666,7 +2587,7 @@ fn handle_abort_impossible(
 }
 
 fn handle_bob_abort_swap(
-    event: Event,
+    mut event: Event,
     runtime: &mut Runtime,
     mut wallet: Wallet,
     funding_address: bitcoin::Address,
@@ -2680,14 +2601,7 @@ fn handle_bob_abort_swap(
         sweep_btc.destination_address.addr()
     );
     let task = runtime.syncer_state.sweep_btc(sweep_btc, false);
-    event.endpoints.send_to(
-        ServiceBus::Sync,
-        runtime.identity(),
-        runtime.syncer_state.bitcoin_syncer(),
-        BusMsg::Sync(SyncMsg::Task(task)),
-    )?;
-
-    // cancel the swap to invalidate its state
+    event.send_sync_service(runtime.syncer_state.bitcoin_syncer(), SyncMsg::Task(task))?;
     event.complete_client_info(InfoMsg::String(
         "Aborting swap, checking if funds can be sweeped.".to_string(),
     ))?;
