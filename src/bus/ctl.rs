@@ -161,9 +161,6 @@ pub enum CtlMsg {
     #[display("funding_canceled({0})")]
     FundingCanceled(Blockchain),
 
-    #[display("transaction({0})")]
-    Tx(Tx),
-
     #[display("failed peer message")]
     FailedPeerMessage(PeerMsg),
 
