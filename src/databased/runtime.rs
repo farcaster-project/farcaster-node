@@ -90,7 +90,7 @@ impl Runtime {
                     trade_role: state.local_trade_role.clone(),
                     expected_counterparty_node_id: state.connected_counterparty_node_id.clone(),
                 };
-                debug!("setting checkpoint info entry");
+                debug!("{} | setting checkpoint info entry", swap_id.swap_id());
                 let mut info_encoded = vec![];
                 let _info_size = info.strict_encode(&mut info_encoded);
                 self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
@@ -103,7 +103,7 @@ impl Runtime {
                 let mut state_encoded = vec![];
                 state.strict_encode(&mut state_encoded)?;
                 self.database.set_checkpoint_state(&key, &state_encoded)?;
-                debug!("checkpoint set");
+                debug!("{} | checkpoint set", swap_id.swap_id());
             }
 
             CtlMsg::RestoreCheckpoint(CheckpointEntry { swap_id, .. }) => {
