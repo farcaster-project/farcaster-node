@@ -8,7 +8,6 @@ use farcaster_core::impl_strict_encoding;
 use farcaster_core::swap::btcxmr::KeyManager;
 use farcaster_core::{
     blockchain::Blockchain,
-    role::TradeRole,
     swap::btcxmr::{Offer, Parameters, PublicOffer},
     swap::SwapId,
 };
@@ -65,11 +64,6 @@ pub enum CtlMsg {
     // A message sent from wallet to farcaster containing keys for a swap.
     #[display("swap_keys({0})")]
     SwapKeys(SwapKeys),
-
-    /// A message sent from the wallet to notify farcaster the successful initialisation of the
-    /// maker/taker wallet.
-    #[display("launch_swap({0})")]
-    LaunchSwap(LaunchSwap),
 
     #[display("params({0})")]
     Params(Params),
@@ -219,14 +213,6 @@ pub struct Token(pub String);
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("token({0})")]
 pub struct GetKeys(pub Token);
-
-#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
-#[display("{public_offer}, ..")]
-pub struct LaunchSwap {
-    pub local_trade_role: TradeRole,
-    pub public_offer: PublicOffer,
-    pub swap_id: SwapId,
-}
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{public_offer}, ..")]

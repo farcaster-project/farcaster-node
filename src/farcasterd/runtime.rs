@@ -25,7 +25,7 @@ use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachin
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
-    bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
+    bus::ctl::{Keys, ProgressStack, Token},
     bus::info::{InfoMsg, NodeInfo, OfferInfo, OfferStatusSelector, ProgressEvent, SwapProgress},
     bus::{Failure, FailureCode, Progress},
     clap::Parser,
@@ -942,8 +942,7 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (BusMsg::Ctl(CtlMsg::LaunchSwap(LaunchSwap { public_offer, .. })), _)
-            | (BusMsg::Ctl(CtlMsg::SwapKeys(SwapKeys { public_offer, .. })), _) => Ok(self
+            (BusMsg::Ctl(CtlMsg::SwapKeys(SwapKeys { public_offer, .. })), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
