@@ -178,14 +178,15 @@ pub struct SwapdRunning {
     trade_role: TradeRole,
 }
 
+#[derive(Clone)]
 pub enum ConsumedOfferRole {
     Taker,
     Maker(Commit),
 }
 
-impl ConsumedOfferRole {
-    pub fn trade_role(&self) -> TradeRole {
-        match self {
+impl From<ConsumedOfferRole> for TradeRole {
+    fn from(consumed_offer: ConsumedOfferRole) -> Self {
+        match consumed_offer {
             ConsumedOfferRole::Taker => TradeRole::Taker,
             ConsumedOfferRole::Maker(_) => TradeRole::Maker,
         }
@@ -966,7 +967,7 @@ fn transition_to_swapd_launched_tsm(
 
     runtime.stats.incr_initiated();
     launch_swapd(
-        consumed_offer_role.trade_role(),
+        consumed_offer_role.clone().into(),
         public_offer.clone(),
         swap_id,
     )?;
@@ -1053,7 +1054,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             "{} | swap daemon is known: we spawned it to create a swap. \
                  BusMsging swapd to be the {} of this swap",
             swap_id,
-            consumed_offer_role.trade_role(),
+            TradeRole::from(consumed_offer_role.clone()),
         );
         let init_swap_req = match &consumed_offer_role {
             ConsumedOfferRole::Maker(commit) => CtlMsg::MakeSwap(InitMakerSwap {
@@ -1091,7 +1092,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             funding_info: None,
             auto_funded: false,
             clients_awaiting_connect_result: vec![],
-            trade_role: consumed_offer_role.trade_role(),
+            trade_role: consumed_offer_role.into(),
         })))
     } else {
         debug!(
