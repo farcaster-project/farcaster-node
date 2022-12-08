@@ -63,7 +63,7 @@ end
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg Reveal (taker is sender)
 group for Bob swap role
-m_swap -> m_swap : ADD Msg CoreArb
+m_swap -> m_swap : ADD Msg Reveal
 m_swap -> m_farcasterd : Ctl FundingInfo
 m_swap -> m_syncer: Watch Arbitrating Funding Address
 
@@ -72,7 +72,7 @@ peerd <- m_swap : Msg Reveal (maker is sender)
 peerd -> t_swap : Msg Reveal (maker is sender)
 
 group for Bob swap role
-t_swap -> t_swap : ADD Msg CoreArb
+t_swap -> t_swap : ADD Msg Reveal
 t_swap -> t_farcasterd : Ctl FundingInfo
 m_swap -> m_syncer: Watch Arbitrating Funding Address
 end
