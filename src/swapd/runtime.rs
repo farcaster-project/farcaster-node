@@ -472,7 +472,7 @@ impl Runtime {
         )?)
     }
 
-    pub fn handle_msg(
+    fn handle_msg(
         &mut self,
         endpoints: &mut Endpoints,
         source: ServiceId,
