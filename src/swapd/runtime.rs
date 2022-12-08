@@ -558,7 +558,7 @@ impl Runtime {
                     .as_mut()
                     .expect("should be initialized")
                     .handle_maker_commit(remote_commit, self.swap_id.clone())?;
-                info!(
+                debug!(
                     "{} | Wallet handled maker commit and produced reveal",
                     self.swap_id.swap_id()
                 );
