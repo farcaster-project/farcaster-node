@@ -584,9 +584,9 @@ impl Runtime {
             //
             // Upon reception Bob needs to
             //  1. Validate the parameters
-            //  2. IF the fee estimation is completed, add the reveal message to the state
-            //  2.3. Send the funding information message to farcaster
-            //  2.4. Watch the arbitrating funding address if we are maker
+            //  2.1 IF the fee estimation is completed, add the reveal message to the state
+            //  2.2 Send the funding information message to farcaster
+            //  2.3 Watch the arbitrating funding address if we are maker
             //  3. OR add a pending request for the reveal message
             //
             // Reveal message is received by maker first on his commit state and by taker second on
