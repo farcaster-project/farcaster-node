@@ -495,8 +495,8 @@ fn attempt_transition_to_taker_connect_or_take_offer(
     match event.request.clone() {
         BusMsg::Ctl(CtlMsg::TakeOffer(PubOffer {
             public_offer,
-            bitcoin_address: external_address,
-            monero_address: internal_address,
+            bitcoin_address: arb_addr,
+            monero_address: acc_addr,
         })) => {
             if runtime.consumed_offers_contains(&public_offer)
                 || runtime.public_offers.contains(&public_offer)
@@ -549,15 +549,15 @@ fn attempt_transition_to_taker_connect_or_take_offer(
                         runtime.public_offers.insert(public_offer.clone());
                         Ok(Some(TradeStateMachine::TakeOffer(TakeOffer {
                             public_offer,
-                            arb_addr: external_address,
-                            acc_addr: internal_address,
+                            arb_addr,
+                            acc_addr,
                             peerd: peer_service_id,
                         })))
                     } else {
                         Ok(Some(TradeStateMachine::TakerConnect(TakerConnect {
                             public_offer,
-                            arb_addr: external_address,
-                            acc_addr: internal_address,
+                            arb_addr,
+                            acc_addr,
                             source: event.source,
                         })))
                     }
