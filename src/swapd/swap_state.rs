@@ -128,13 +128,13 @@ pub enum SwapStateMachine {
     // request TakeSwap, or Swap End on AbortSwap. Triggers watch fee and
     // height.  Creates new taker wallet. Sends TakerCommit to the counterparty
     // peer.
-    #[display("Start Taker")]
+    #[display("Start {0} Taker")]
     StartTaker(SwapRole),
     // StartMaker state - transition to AliceInitMaker or BobInitMaker on
     // request MakeSwap, or Swap End on AbortSwap. Triggers watch fee and
     // height.  Creates new maker wallet. Sends MakerCommit to the counterparty
     // peer.
-    #[display("Start Maker")]
+    #[display("Start {0} Maker")]
     StartMaker(SwapRole),
 
     /*
@@ -1458,12 +1458,7 @@ fn try_bob_cancel_final_to_swap_end(
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
             // send swap outcome to farcasterd
-            let outcome = Outcome::FailureRefund;
-            event.complete_ctl_service(
-                ServiceId::Farcasterd,
-                CtlMsg::SwapOutcome(outcome.clone()),
-            )?;
-            Ok(Some(SwapStateMachine::SwapEnd(outcome)))
+            Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
         }
         _ => Ok(None),
     }
@@ -1943,9 +1938,7 @@ fn try_alice_buy_procedure_signature_to_swap_end(
             )?;
             runtime.txs.remove(&TxLabel::Cancel);
             runtime.txs.remove(&TxLabel::Punish);
-            let outcome = Outcome::SuccessSwap;
-            event.send_ctl_service(ServiceId::Farcasterd, CtlMsg::SwapOutcome(outcome.clone()))?;
-            Ok(Some(SwapStateMachine::SwapEnd(outcome.clone())))
+            Ok(Some(SwapStateMachine::SwapEnd(Outcome::SuccessSwap)))
         }
         _ => Ok(None),
     }
@@ -2119,12 +2112,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                 runtime.txs.remove(&TxLabel::Refund);
                 runtime.txs.remove(&TxLabel::Buy);
                 runtime.txs.remove(&TxLabel::Punish);
-                let outcome = Outcome::FailureRefund;
-                event.complete_ctl_service(
-                    ServiceId::Farcasterd,
-                    CtlMsg::SwapOutcome(outcome.clone()),
-                )?;
-                Ok(Some(SwapStateMachine::SwapEnd(outcome)))
+                Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
             }
         }
         _ => Ok(None),
@@ -2199,12 +2187,7 @@ fn try_alice_refund_sweeping_to_swap_end(
             runtime.txs.remove(&TxLabel::Refund);
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
-            let outcome = Outcome::FailureRefund;
-            event.complete_ctl_service(
-                ServiceId::Farcasterd,
-                CtlMsg::SwapOutcome(outcome.clone()),
-            )?;
-            Ok(Some(SwapStateMachine::SwapEnd(outcome)))
+            Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureRefund)))
         }
         _ => Ok(None),
     }
@@ -2236,10 +2219,6 @@ fn try_alice_punish_to_swap_end(
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
             let outcome = Outcome::FailurePunish;
-            event.complete_ctl_service(
-                ServiceId::Farcasterd,
-                CtlMsg::SwapOutcome(outcome.clone()),
-            )?;
             Ok(Some(SwapStateMachine::SwapEnd(outcome)))
         }
         _ => Ok(None),
@@ -2285,12 +2264,7 @@ fn try_bob_buy_sweeping_to_swap_end(
             runtime.txs.remove(&TxLabel::Refund);
             runtime.txs.remove(&TxLabel::Buy);
             runtime.txs.remove(&TxLabel::Punish);
-            let outcome = Outcome::SuccessSwap;
-            event.complete_ctl_service(
-                ServiceId::Farcasterd,
-                CtlMsg::SwapOutcome(outcome.clone()),
-            )?;
-            Ok(Some(SwapStateMachine::SwapEnd(outcome)))
+            Ok(Some(SwapStateMachine::SwapEnd(Outcome::SuccessSwap)))
         }
         _ => Ok(None),
     }
@@ -2563,14 +2537,12 @@ fn handle_alice_swap_interrupt_afer_lock(
 }
 
 fn handle_abort_swap(
-    mut event: Event,
+    event: Event,
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let outcome = Outcome::FailureAbort;
-    event.send_ctl_service(ServiceId::Farcasterd, CtlMsg::SwapOutcome(outcome.clone()))?;
     event.complete_client_info(InfoMsg::String("Aborted swap".to_string()))?;
     info!("{} | Aborted swap.", runtime.swap_id.swap_id());
-    Ok(Some(SwapStateMachine::SwapEnd(outcome)))
+    Ok(Some(SwapStateMachine::SwapEnd(Outcome::FailureAbort)))
 }
 
 fn handle_abort_impossible(
