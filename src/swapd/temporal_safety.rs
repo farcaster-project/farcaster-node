@@ -48,7 +48,7 @@ impl TemporalSafety {
             Ok(())
         } else {
             Err(Error::Farcaster(s!(
-                "Unsafe or invalid temporal parameters between: timelocks, finality and safety"
+                "Unsafe or invalid temporal parameters between: timelocks, finality, and safety"
             )))
         }
     }

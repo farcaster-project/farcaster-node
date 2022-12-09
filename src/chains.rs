@@ -1,5 +1,5 @@
-//! This module defines the currently supported blockchains in the node for the arbitraing and the
-//! accordant roles. The types defined here are convertible with core `Blockchain` type.
+//! This module defines the currently supported blockchains in the node for the arbitrating and
+//! the accordant roles. The types defined here are convertible with core `Blockchain` type.
 
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -79,7 +79,7 @@ impl TryFrom<Blockchain> for ArbitratingBlockchain {
 pub enum AccordantBlockchain {
     /// The Monero (XMR) blockchain.
     Monero,
-    // NOTE: we could add in theory Bitcoin here, but currently the node does not support it
+    // NOTE: we could in theory add Bitcoin here, but currently the node does not support it
 }
 
 impl FromStr for AccordantBlockchain {
