@@ -627,8 +627,8 @@ impl Runtime {
                             return Err(Error::Farcaster(msg));
                         }
 
-                        // fee estimate not available yet, defer handling for later
                         if let Some(sat_per_kvb) = self.syncer_state.btc_fee_estimate_sat_per_kvb {
+                            // 1. transition from Commit to Reveal
                             let next_state = self.state.clone().sup_commit_to_reveal();
                             self.state_update(next_state)?;
                             self.state.b_sup_alice_reveal(reveal.clone());
@@ -654,6 +654,7 @@ impl Runtime {
                                 }
                             }
                         } else {
+                            // if fee estimate not available yet, defer handling for later
                             debug!("{} | bob: deferring for when fee available", self.swap_id);
                             self.pending_requests.defer_request(
                                 self.syncer_state.bitcoin_syncer(),
