@@ -3,9 +3,9 @@ extern crate log;
 
 use crate::farcaster::{
     farcaster_client::FarcasterClient, AbortSwapRequest, CheckpointSelector, CheckpointsRequest,
-    InfoResponse, ListOffersRequest, MakeRequest, NeedsFundingRequest, OfferInfoRequest,
-    OfferSelector, PeersRequest, ProgressRequest, RestoreCheckpointRequest, RevokeOfferRequest,
-    SwapInfoRequest, SweepAddressRequest, TakeRequest,
+    InfoResponse, ListOffersRequest, MakeRequest, NeedsFundingRequest, NetworkSelector,
+    OfferInfoRequest, OfferSelector, PeersRequest, ProgressRequest, RestoreCheckpointRequest,
+    RevokeOfferRequest, SwapInfoRequest, SweepAddressRequest, TakeRequest,
 };
 use bitcoincore_rpc::RpcApi;
 use farcaster::{InfoRequest, MakeResponse, NeedsFundingResponse};
@@ -58,7 +58,8 @@ async fn grpc_server_functional_test() {
     // Test list checkpoints
     let request = tonic::Request::new(CheckpointsRequest {
         id: 2,
-        selector: CheckpointSelector::AllCheckpoints.into(),
+        checkpoint_selector: CheckpointSelector::AllCheckpoints.into(),
+        network_selector: NetworkSelector::AllNetworks.into(),
     });
     let response = farcaster_client_1.checkpoints(request).await;
     assert_eq!(response.unwrap().into_inner().id, 2);
@@ -121,7 +122,8 @@ async fn grpc_server_functional_test() {
     // Test List offers
     let list_offers_request = tonic::Request::new(ListOffersRequest {
         id: 22,
-        selector: OfferSelector::All.into(),
+        offer_selector: OfferSelector::All.into(),
+        network_selector: NetworkSelector::AllNetworks.into(),
     });
     let response = farcaster_client_1.list_offers(list_offers_request).await;
     assert_eq!(response.unwrap().into_inner().id, 22);
@@ -247,6 +249,7 @@ async fn retry_until_bitcoin_funding_info(
         let request = tonic::Request::new(NeedsFundingRequest {
             id: 11,
             blockchain: farcaster::Blockchain::Bitcoin.into(),
+            network_selector: NetworkSelector::LocalNetworks.into(),
         });
         let response = client.needs_funding(request).await;
         let NeedsFundingResponse { funding_infos, .. } = response.unwrap().into_inner();

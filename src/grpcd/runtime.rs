@@ -16,6 +16,7 @@ use crate::bus::Failure;
 use crate::bus::HealthCheckSelector;
 use crate::bus::OptionDetails;
 use crate::bus::Outcome;
+use crate::grpcd::runtime::farcaster::NetworkSelector;
 use crate::service::Endpoints;
 use crate::swapd::StateReport;
 use crate::syncerd::SweepAddressAddendum;
@@ -93,6 +94,17 @@ impl From<farcaster::Network> for Network {
             farcaster::Network::Mainnet => Network::Mainnet,
             farcaster::Network::Testnet => Network::Testnet,
             farcaster::Network::Local => Network::Local,
+        }
+    }
+}
+
+impl From<NetworkSelector> for Option<Network> {
+    fn from(t: NetworkSelector) -> Option<Network> {
+        match t {
+            NetworkSelector::AllNetworks => None,
+            NetworkSelector::MainnetNetworks => Some(Network::Mainnet),
+            NetworkSelector::TestnetNetworks => Some(Network::Testnet),
+            NetworkSelector::LocalNetworks => Some(Network::Local),
         }
     }
 }
@@ -291,17 +303,17 @@ impl From<StateReport> for farcaster::State {
     }
 }
 
-impl From<farcaster::HealthCheckSelector> for HealthCheckSelector {
-    fn from(s: farcaster::HealthCheckSelector) -> Self {
+impl From<farcaster::NetworkSelector> for HealthCheckSelector {
+    fn from(s: farcaster::NetworkSelector) -> Self {
         match s {
-            farcaster::HealthCheckSelector::CheckAll => HealthCheckSelector::All,
-            farcaster::HealthCheckSelector::CheckLocal => {
+            farcaster::NetworkSelector::AllNetworks => HealthCheckSelector::All,
+            farcaster::NetworkSelector::LocalNetworks => {
                 HealthCheckSelector::Network(Network::Local)
             }
-            farcaster::HealthCheckSelector::CheckMainnet => {
+            farcaster::NetworkSelector::MainnetNetworks => {
                 HealthCheckSelector::Network(Network::Mainnet)
             }
-            farcaster::HealthCheckSelector::CheckTestnet => {
+            farcaster::NetworkSelector::TestnetNetworks => {
                 HealthCheckSelector::Network(Network::Testnet)
             }
         }
@@ -477,14 +489,18 @@ impl Farcaster for FarcasterService {
         debug!("Received a grpc request: {:?}", request);
         let ListOffersRequest {
             id,
-            selector: grpc_offer_selector,
+            offer_selector: grpc_offer_selector,
+            network_selector: grpc_network_selector,
         } = request.into_inner();
-        let selector = farcaster::OfferSelector::from_i32(grpc_offer_selector)
-            .ok_or(Status::invalid_argument("selector"))?
+        let offer_selector = farcaster::OfferSelector::from_i32(grpc_offer_selector)
+            .ok_or(Status::invalid_argument("offer_selector"))?
             .into();
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
-                request: InfoMsg::ListOffers(selector),
+                request: InfoMsg::ListOffers(offer_selector),
                 service_id: ServiceId::Farcasterd,
             }))
             .await?;
@@ -492,7 +508,18 @@ impl Farcaster for FarcasterService {
             Ok(BusMsg::Info(InfoMsg::OfferList(mut offers))) => {
                 let reply = ListOffersResponse {
                     id,
-                    public_offers: offers.drain(..).map(|o| o.offer).collect(),
+                    public_offers: offers
+                        .drain(..)
+                        .map(|o| o.details)
+                        .filter(|o| {
+                            if network_selector == NetworkSelector::AllNetworks {
+                                true
+                            } else {
+                                Some(o.offer.network) == network_selector.into()
+                            }
+                        })
+                        .map(|o| o.to_string())
+                        .collect(),
                 };
                 Ok(GrpcResponse::new(reply))
             }
@@ -550,13 +577,21 @@ impl Farcaster for FarcasterService {
         request: GrpcRequest<CheckpointsRequest>,
     ) -> Result<GrpcResponse<CheckpointsResponse>, Status> {
         debug!("Received a grpc checkpoints request: {:?}", request);
-        let CheckpointsRequest { id, selector } = request.into_inner();
+        let CheckpointsRequest {
+            id,
+            checkpoint_selector: grpc_checkpoint_selector,
+            network_selector: grpc_network_selector,
+        } = request.into_inner();
 
-        let selector = farcaster::CheckpointSelector::from_i32(selector)
-            .ok_or(Status::invalid_argument("selector"))?
+        let checkpoint_selector = farcaster::CheckpointSelector::from_i32(grpc_checkpoint_selector)
+            .ok_or(Status::invalid_argument("checkpoint_selector"))?
             .into();
 
-        let oneshot_rx = match selector {
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
+
+        let oneshot_rx = match checkpoint_selector {
             farcaster::CheckpointSelector::AllCheckpoints => {
                 self.process_request(BusMsg::Bridge(BridgeMsg::Info {
                     request: InfoMsg::RetrieveAllCheckpointInfo,
@@ -598,6 +633,13 @@ impl Farcaster for FarcasterService {
                     id,
                     checkpoint_entries: checkpoint_entries
                         .iter()
+                        .filter(|entry| {
+                            if network_selector == NetworkSelector::AllNetworks {
+                                true
+                            } else {
+                                Some(entry.public_offer.offer.network) == network_selector.into()
+                            }
+                        })
                         .map(|entry| farcaster::CheckpointEntry {
                             swap_id: format!("{:#x}", entry.swap_id),
                             public_offer: format!("{}", entry.public_offer),
@@ -662,11 +704,16 @@ impl Farcaster for FarcasterService {
         let FundingAddressesRequest {
             id,
             blockchain: grpc_blockchain,
+            network_selector: grpc_network_selector,
         } = request.into_inner();
 
         let blockchain: Blockchain = farcaster::Blockchain::from_i32(grpc_blockchain)
             .ok_or(Status::invalid_argument("arbitrating blockchain"))?
             .into();
+
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
@@ -680,6 +727,13 @@ impl Farcaster for FarcasterService {
                     id,
                     addresses: addresses
                         .iter()
+                        .filter(|a| {
+                            if network_selector == NetworkSelector::AllNetworks {
+                                true
+                            } else {
+                                Some(Network::from(a.address.network)) == network_selector.into()
+                            }
+                        })
                         .map(|a| AddressSwapIdPair {
                             address: a.address.to_string(),
                             address_swap_id: a.swap_id.map(|c| {
@@ -977,11 +1031,16 @@ impl Farcaster for FarcasterService {
         let NeedsFundingRequest {
             id,
             blockchain: int_blockchain,
+            network_selector: grpc_network_selector,
         } = request.into_inner();
 
         let blockchain: Blockchain = farcaster::Blockchain::from_i32(int_blockchain)
             .ok_or(Status::invalid_argument("blockchain"))?
             .into();
+
+        let network_selector: NetworkSelector =
+            farcaster::NetworkSelector::from_i32(grpc_network_selector)
+                .ok_or(Status::invalid_argument("network_selector"))?;
 
         let oneshot_rx = self
             .process_request(BusMsg::Bridge(BridgeMsg::Info {
@@ -997,6 +1056,22 @@ impl Farcaster for FarcasterService {
                     funding_infos: infos
                         .swaps_need_funding
                         .iter()
+                        .filter(|info| {
+                            if network_selector == NetworkSelector::AllNetworks {
+                                true
+                            } else {
+                                match info {
+                                    FundingInfo::Bitcoin(b_info) => {
+                                        Some(Network::from(b_info.address.network))
+                                            == network_selector.into()
+                                    }
+                                    FundingInfo::Monero(m_info) => {
+                                        Some(Network::from(m_info.address.network))
+                                            == network_selector.into()
+                                    }
+                                }
+                            }
+                        })
                         .map(|info| match info {
                             FundingInfo::Bitcoin(b_info) => farcaster::FundingInfo {
                                 swap_id: b_info.swap_id.to_string(),
@@ -1026,7 +1101,7 @@ impl Farcaster for FarcasterService {
             selector: grpc_selector,
         } = request.into_inner();
 
-        let selector: HealthCheckSelector = farcaster::HealthCheckSelector::from_i32(grpc_selector)
+        let selector: HealthCheckSelector = farcaster::NetworkSelector::from_i32(grpc_selector)
             .ok_or(Status::invalid_argument("selector"))?
             .into();
 
