@@ -504,8 +504,8 @@ impl Exec for Command {
                         ServiceId::Farcasterd,
                         CtlMsg::TakeOffer(ctl::PubOffer {
                             public_offer,
-                            external_address: bitcoin_address,
-                            internal_address: monero_address,
+                            bitcoin_address,
+                            monero_address,
                         }),
                     )?;
                     // report success of failure of the request to cli

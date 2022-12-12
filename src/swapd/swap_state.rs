@@ -4,9 +4,12 @@ use farcaster_core::{
 };
 use strict_encoding::{StrictDecode, StrictEncode};
 
-use crate::bus::ctl::{MoneroFundingInfo, Params};
 use crate::bus::p2p::Commit;
 use crate::bus::Outcome;
+use crate::bus::{
+    ctl::{MoneroFundingInfo, Params},
+    p2p::Reveal,
+};
 
 #[derive(Display, Debug, Clone, StrictEncode, StrictDecode)]
 pub enum AliceState {
@@ -64,6 +67,7 @@ pub enum BobState {
         remote_commit: Option<Commit>,
         b_address: bitcoin::Address,
         required_funding_amount: Option<bitcoin::Amount>,
+        alice_reveal: Option<Reveal>,
     },
     // #[display("Reveal: {0:#?}")]
     #[display("Reveal")]
@@ -75,6 +79,7 @@ pub enum BobState {
         local_trade_role: TradeRole,
         remote_params: Option<Params>,
         required_funding_amount: Option<bitcoin::Amount>,
+        alice_reveal: Option<Reveal>,
     }, // local, remote, local, ..missing, remote
     // #[display("CoreArb: {0:#?}")]
     #[display("CoreArb")]
@@ -443,6 +448,7 @@ impl State {
                         remote_params,
                         b_address,
                         required_funding_amount: None,
+                        alice_reveal: None,
                     },
                 )
             }
@@ -490,6 +496,7 @@ impl State {
                 remote_params,
                 b_address,
                 required_funding_amount,
+                alice_reveal,
                 ..
             }) => State::Bob(BobState::RevealB {
                 local_params,
@@ -499,6 +506,7 @@ impl State {
                 remote_params,
                 last_checkpoint_type: None,
                 required_funding_amount,
+                alice_reveal,
             }),
 
             _ => unreachable!("checked state on pattern to be Commit"),
@@ -548,6 +556,35 @@ impl State {
             _ => unreachable!("checked state"),
         }
     }
+
+    /// Update Bob Reveal with Alice's reveal
+    pub fn b_sup_alice_reveal(&mut self, reveal: Reveal) -> bool {
+        match self {
+            State::Bob(BobState::CommitB { alice_reveal, .. }) => {
+                if alice_reveal.is_none() {
+                    *alice_reveal = Some(reveal);
+                    true
+                } else {
+                    trace!("alice reveal was already set");
+                    false
+                }
+            }
+            State::Bob(BobState::RevealB { alice_reveal, .. }) => {
+                if alice_reveal.is_none() {
+                    *alice_reveal = Some(reveal);
+                    true
+                } else {
+                    trace!("alice reveal was already set");
+                    false
+                }
+            }
+            _ => {
+                error!("Can only set alice reveal on RevealB state");
+                false
+            }
+        }
+    }
+
     /// Update Bob with the required Monero funding amount
     pub fn b_sup_required_funding_amount(&mut self, amount: bitcoin::Amount) -> bool {
         match self {
@@ -736,6 +773,15 @@ impl State {
         } else {
             error!("Not on CoreArbB state");
             false
+        }
+    }
+
+    /// Get the reveal message contained in Bob Reveal state if any.
+    pub fn get_alice_reveal(&self) -> Option<Reveal> {
+        match self {
+            Self::Bob(BobState::CommitB { alice_reveal, .. }) => alice_reveal.clone(),
+            Self::Bob(BobState::RevealB { alice_reveal, .. }) => alice_reveal.clone(),
+            _ => None,
         }
     }
 

@@ -13,11 +13,9 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::bus::ctl::FundingInfo;
-use crate::bus::ctl::{CtlMsg, GetKeys};
+use crate::bus::ctl::{CtlMsg, FundingInfo, GetKeys, SwapKeys};
 use crate::bus::info::FundingInfos;
-use crate::bus::p2p::PeerMsg;
-use crate::bus::p2p::TakerCommit;
+use crate::bus::p2p::{PeerMsg, TakerCommit};
 use crate::bus::sync::SyncMsg;
 use crate::bus::{BusMsg, List, ServiceBus};
 use crate::event::StateMachineExecutor;
@@ -27,7 +25,7 @@ use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachin
 use crate::farcasterd::Opts;
 use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
-    bus::ctl::{Keys, LaunchSwap, ProgressStack, Token},
+    bus::ctl::{Keys, ProgressStack, Token},
     bus::info::{InfoMsg, NodeInfo, OfferInfo, OfferStatusSelector, ProgressEvent, SwapProgress},
     bus::{Failure, FailureCode, Progress},
     clap::Parser,
@@ -112,7 +110,7 @@ pub fn run(
 
 pub struct Runtime {
     identity: ServiceId,                         // Set on Runtime instantiation
-    wallet_token: Token,                         // Set on Runtime instantiation
+    pub wallet_token: Token,                     // Set on Runtime instantiation
     started: SystemTime,                         // Set on Runtime instantiation
     auto_restored: bool,                         // Set on Runtime instantiation
     node_secret_key: Option<SecretKey>, // Set by Keys request shortly after Hello from walletd
@@ -945,7 +943,7 @@ impl Runtime {
                     }
                 })
                 .map(|pos| self.trade_state_machines.remove(pos))),
-            (BusMsg::Ctl(CtlMsg::LaunchSwap(LaunchSwap { public_offer, .. })), _) => Ok(self
+            (BusMsg::Ctl(CtlMsg::SwapKeys(SwapKeys { public_offer, .. })), _) => Ok(self
                 .trade_state_machines
                 .iter()
                 .position(|tsm| {
