@@ -439,9 +439,8 @@ pub fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
 
 pub fn log_tx_received(swap_id: SwapId, txlabel: TxLabel) {
     info!(
-        "{} | {} transaction received from {}",
+        "{} | {} transaction created",
         swap_id.swap_id(),
         txlabel.label(),
-        ServiceId::Wallet.label(),
     );
 }
