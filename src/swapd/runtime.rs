@@ -15,7 +15,7 @@
 
 use super::{
     swap_state::{AliceState, BobState, State, SwapCheckpointType},
-    syncer_client::{log_tx_received, log_tx_seen, SyncerState, SyncerTasks},
+    syncer_client::{log_tx_created, log_tx_seen, SyncerState, SyncerTasks},
     temporal_safety::TemporalSafety,
     wallet::Wallet,
 };
@@ -722,9 +722,9 @@ impl Runtime {
                     .handle_core_arbitrating_setup(setup.clone(), self.swap_id.clone())?;
 
                 // handle Cancel and Punish transactions
-                log_tx_received(self.swap_id, TxLabel::Cancel);
+                log_tx_created(self.swap_id, TxLabel::Cancel);
                 self.txs.insert(TxLabel::Cancel, cancel_tx);
-                log_tx_received(self.swap_id, TxLabel::Punish);
+                log_tx_created(self.swap_id, TxLabel::Punish);
                 self.txs.insert(TxLabel::Punish, punish_tx);
                 if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
                     self.handle_sync(
@@ -805,7 +805,7 @@ impl Runtime {
                     )?;
 
                 // Process and broadcast lock tx
-                log_tx_received(self.swap_id, TxLabel::Lock);
+                log_tx_created(self.swap_id, TxLabel::Lock);
                 self.broadcast(lock_tx, TxLabel::Lock, endpoints)?;
 
                 // Process params, aggregate and watch xmr address
@@ -831,8 +831,8 @@ impl Runtime {
                 }
 
                 // Handle Cancel and Refund transaction
-                log_tx_received(self.swap_id, TxLabel::Cancel);
-                log_tx_received(self.swap_id, TxLabel::Refund);
+                log_tx_created(self.swap_id, TxLabel::Cancel);
+                log_tx_created(self.swap_id, TxLabel::Refund);
                 self.txs.insert(TxLabel::Cancel, cancel_tx);
                 self.txs.insert(TxLabel::Refund, refund_tx);
                 if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {
@@ -931,8 +931,8 @@ impl Runtime {
                     )?;
 
                 // Handle Cancel and Buy transactions
-                log_tx_received(self.swap_id, TxLabel::Cancel);
-                log_tx_received(self.swap_id, TxLabel::Buy);
+                log_tx_created(self.swap_id, TxLabel::Cancel);
+                log_tx_created(self.swap_id, TxLabel::Buy);
                 self.txs.insert(TxLabel::Cancel, cancel_tx);
                 self.txs.insert(TxLabel::Buy, buy_tx);
                 if let Some(lock_tx_confs_req) = self.syncer_state.lock_tx_confs.clone() {

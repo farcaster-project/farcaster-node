@@ -437,7 +437,7 @@ pub fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
     );
 }
 
-pub fn log_tx_received(swap_id: SwapId, txlabel: TxLabel) {
+pub fn log_tx_created(swap_id: SwapId, txlabel: TxLabel) {
     info!(
         "{} | {} transaction created",
         swap_id.swap_id(),
