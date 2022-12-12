@@ -1199,7 +1199,7 @@ impl Runtime {
                     sweep_btc.source_address.addr(),
                     sweep_btc.destination_address.addr()
                 );
-                let task = self.syncer_state.sweep_btc(sweep_btc.clone(), false);
+                let task = self.syncer_state.sweep_btc(sweep_btc, false);
                 endpoints.send_to(
                     ServiceBus::Sync,
                     self.identity(),
