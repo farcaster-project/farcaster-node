@@ -25,6 +25,7 @@ use crate::swapd::wallet::{
     HandleBuyProcedureSignatureRes, HandleCoreArbitratingSetupRes,
     HandleRefundProcedureSignaturesRes,
 };
+use crate::swapd::{Opts, StateReport};
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{AddressTransaction, Boolean, Event, Task, TransactionConfirmations};
 use crate::syncerd::{FeeEstimation, FeeEstimations};
@@ -40,7 +41,6 @@ use crate::{
         Abort, HeightChanged, SweepSuccess, TaskTarget, TransactionRetrieved, XmrAddressAddendum,
     },
 };
-use crate::swapd::{Opts, StateReport};
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 use std::collections::HashMap;
