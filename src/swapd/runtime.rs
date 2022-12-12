@@ -1781,7 +1781,9 @@ impl Runtime {
                     Event::AddressTransaction(AddressTransaction { id, amount, tx, .. })
                         if self.syncer_state.tasks.watched_addrs.get(id).is_some() =>
                     {
-                        let tx = bitcoin::Transaction::deserialize(tx)?;
+                        let tx = bitcoin::Transaction::deserialize(
+                            &tx.into_iter().flatten().copied().collect::<Vec<u8>>(),
+                        )?;
                         info!(
                             "Received AddressTransaction, processing tx {}",
                             &tx.txid().tx_hash()
@@ -1914,7 +1916,9 @@ impl Runtime {
                     }
 
                     Event::AddressTransaction(AddressTransaction { tx, .. }) => {
-                        let tx = bitcoin::Transaction::deserialize(tx)?;
+                        let tx = bitcoin::Transaction::deserialize(
+                            &tx.into_iter().flatten().copied().collect::<Vec<u8>>(),
+                        )?;
                         warn!(
                             "unknown address transaction with txid {}",
                             &tx.txid().addr()
