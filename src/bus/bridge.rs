@@ -29,4 +29,6 @@ pub enum BridgeMsg {
         request: SyncMsg,
         service_id: ServiceId,
     },
+    #[display("Grpc Server Terminated")]
+    GrpcServerTerminated,
 }
