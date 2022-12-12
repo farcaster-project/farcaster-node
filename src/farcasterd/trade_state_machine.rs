@@ -683,7 +683,7 @@ fn attempt_transition_to_taker_committed(
                 let source = event.source.clone();
                 let swap_id = taker_commit.swap_id();
                 info!(
-                    "{} | Received TakerCommit for swap - forwarding to walletd",
+                    "{} | Received TakerCommit for swap - requesting walletd to create swap keys.",
                     swap_id.swap_id(),
                 );
                 event.send_ctl_service(
