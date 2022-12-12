@@ -5,8 +5,8 @@ title Farcaster node
 // `activate` and `deactivate` are used on swap services to signify the list of
 // actions/messages done/sent upon above message reception
 
-participant t_syncer
 participant t_wallet
+participant t_syncer
 participant t_swap
 participant t_database
 participant t_farcasterd
@@ -16,8 +16,8 @@ participant m_cli
 participant m_farcasterd
 participant m_database
 participant m_swap
-participant m_wallet
 participant m_syncer
+participant m_wallet
 
 entryspacing 0.5
 ==Start farcaster - same for Maker and Taker==
@@ -36,9 +36,8 @@ t_farcasterd <- t_cli : TakeOffer
 t_farcasterd -> t_farcasterd : launch\npeerd connect
 peerd -> t_farcasterd: Ctl ConnectSuccess
 peerd -> m_farcasterd: Ctl Hello
-t_wallet <- t_farcasterd : Ctl TakeOffer
-t_wallet -> t_wallet : create taker wallet
-t_wallet -> t_farcasterd : Ctl LaunchSwap
+t_wallet <- t_farcasterd : Ctl CreateSwapKeys
+t_wallet -> t_farcasterd : Ctl SwapKeys
 t_farcasterd -> t_farcasterd:launch syncer
 t_syncer->t_farcasterd:Ctl Hello [from Syncer Bitcoin [if newly launched] OR Swapd (if syncer reused)]
 t_swap <- t_farcasterd : Ctl TakeSwap
@@ -47,9 +46,8 @@ t_syncer <- t_swap : Ctl WatchHeight
 t_swap -> peerd : Msg TakerCommit
 peerd -> m_farcasterd : Msg TakerCommit
 
-m_farcasterd -> m_wallet : Ctl TakerCommitted
-m_wallet -> m_wallet : create maker wallet
-m_wallet -> m_farcasterd : Ctl LaunchSwap
+m_farcasterd -> m_wallet : Ctl CreateSwapKeys
+m_wallet -> m_farcasterd : Ctl SwapKeys
 m_farcasterd -> m_farcasterd:launch syncer
 m_farcasterd -> m_swap : Ctl MakeSwap
 
@@ -62,49 +60,32 @@ m_farcasterd<-m_syncer:Ctl Hello [from Syncer Bitcoin (if newly launched) OR Swa
 group for Bob swap role
 t_syncer <- t_swap : Watch Arbitrating Funding Address
 end
-t_swap -> t_wallet : Msg MakerCommit
-t_wallet -> t_swap : Msg Reveal (taker is sender)
 t_swap -> peerd : Msg Reveal (taker is sender)
 peerd -> m_swap : Msg Reveal (taker is sender)
-group for Alice swap role
-m_swap -> m_wallet : Msg Reveal (taker is sender)
-end
 group for Bob swap role
-m_swap -> m_swap : ADD PENDING Msg Reveal
+m_swap -> m_swap : ADD Msg Reveal
 m_swap -> m_farcasterd : Ctl FundingInfo
 m_swap -> m_syncer: Watch Arbitrating Funding Address
-m_swap <- m_syncer: Arbitrating Funding event
-m_farcasterd<-m_swap: Ctl FundingCompleted Bitcoin
-m_swap->m_wallet: Ctl Tx::Funding
-m_swap<-m_wallet: Ctl FundingUpdated
-m_swap -> m_wallet : SEND PENDING Msg Reveal (taker is sender)
+
 end
-m_wallet -> m_swap : Msg Reveal (maker is sender)
 peerd <- m_swap : Msg Reveal (maker is sender)
 peerd -> t_swap : Msg Reveal (maker is sender)
-group for Alice swap role
-t_swap -> t_wallet : Msg Reveal (maker is sender)
-end
+
 group for Bob swap role
-t_swap -> t_swap : ADD PENDING Msg Reveal
+t_swap -> t_swap : ADD Msg Reveal
 t_swap -> t_farcasterd : Ctl FundingInfo
-t_syncer -> t_swap: Arbitrating Funding event
-t_swap->t_farcasterd: Ctl FundingCompleted Bitcoin
-t_swap->t_wallet: Ctl Tx::Funding
-t_swap<-t_wallet: Ctl FundingUpdated
-t_swap -> t_wallet : SEND PENDING Msg Reveal (maker is sender)
+m_swap -> m_syncer: Watch Arbitrating Funding Address
 end
 ==Commit-Reveal Complete==
 ==Changing semantics: On Commit-Reveal, Maker and Taker were the key roles. From now on Bob or Alice are the key roles. Now t_ is bob_ on the left and m_ is alice_ on the right.==
 ==Swap setup: Bob is left, Alice right==
-t_wallet -> t_database: Ctl CheckpointWalletBobPrelockBob
-t_wallet -> t_swap : Msg CoreArbitratingSetup
+t_syncer -> t_swap: Arbitrating Funding event
 activate t_swap
-t_swap -> t_database: Ctl CheckpointSwapBobPrelockBob
-// TODO: During replay of CheckpointSwapBobPrelockBob, Bob has to rewatch these 3 txs
+t_swap->t_farcasterd: Ctl FundingCompleted Bitcoin
 t_syncer <- t_swap : Sync Task(Watch Arbitrating Lock)
 t_syncer <- t_swap : Sync Task(Watch Cancel)
 t_syncer <- t_swap : Sync Task(Watch Refund)
+t_swap -> t_database: Ctl CheckpointSwapBobPrelockBob
 peerd <- t_swap : Msg CoreArbitratingSetup
 deactivate t_swap
 m_swap <- peerd : Msg CoreArbitratingSetup
@@ -113,41 +94,18 @@ m_swap -> m_syncer : Sync Task(Watch Arbitrating Lock)
 // TODO: During replay of CheckpointWalletAlicePrelockBob, Alice has to rewatch these 2 txs (arbitrating already final then)
 m_swap -> m_syncer : Sync Task(Watch Cancel)
 m_swap -> m_syncer : Sync Task(Watch Refund)
-
-m_wallet <- m_swap : Msg CoreArbitratingSetup
-deactivate m_swap
-m_wallet -> m_database : Ctl CheckpointWalletAlicePrelockBob
-m_wallet -> m_swap : Msg RefundProcedureSignatures
-activate m_swap
 m_swap -> m_database : Ctl CheckpointSwapAlicePrelockBob
 m_swap -> peerd : Msg RefundProcedureSignatures
 deactivate m_swap
 peerd -> t_swap : Msg RefundProcedureSignatures
 activate t_swap
-t_wallet <- t_swap : Msg RefundProcedureSignatures
-deactivate t_swap
 // DONE: do we know that same inputs are being used in case of replay?
 // -> yes, but create different sig
-t_wallet -> t_database : Ctl CheckpointWalletBobPreBuySig
-t_wallet -> t_swap : Ctl Tx::Lock
-activate t_swap
 t_swap -> t_syncer: Sync Task(Broadcast Arbitrating Lock)
 t_swap -> t_syncer : Sync Task(Watch Accordant Lock)
-deactivate t_swap
-// messages below are grouped in "sync messages" and crossover to signify that
-// ordering of the Msg BuyProcedureSignature wrt the other two messages on the
-// Ctl bus is not guaranteed and the implementation must sync them before
-// proceeding
-group sync messages
-t_wallet -> t_swap: Ctl Tx::Cancel
-t_wallet ->(6) t_swap: Ctl Tx::Refund
-space -5
-t_wallet -> t_swap : Msg BuyProcedureSignature
-space 2
-activate t_swap
-end
-t_swap -> t_database : Ctl CheckpointSwapBobPreBuySig
 t_swap -> t_syncer : Sync Task(Watch Buy)
+t_swap -> t_swap: ADD Pending Msg BuyProcSig
+t_swap -> t_database : Ctl CheckpointSwapBobPreBuySig
 deactivate t_swap
 
 parallel
@@ -173,22 +131,22 @@ peerd <- t_swap : Msg BuyProcedureSignature
 deactivate t_swap
 m_swap <- peerd : Msg BuyProcedureSignature
 activate m_swap
-m_swap -> m_database : Ctl CheckpointSwapAlicePreBuy
 m_swap -> m_syncer: Sync Task(Watch Buy)
-m_swap -> m_wallet : Msg BuyProcedureSignature
+m_swap -> m_database : Ctl CheckpointSwapAlicePreBuy
 deactivate m_swap
-m_wallet -> m_database : Ctl CheckpointWalletAlicePreBuy
 ==Swap Setup Complete==
 ==Buy Procedure: Bob is left, Alice right==
 
-m_swap <- m_wallet : Fully signed buy
+t_syncer<-t_swap:info
 m_swap -> m_syncer : Sync Task(Broadcast Buy)
 parallel
 m_swap <- m_syncer : Sync Event(Buy seen on mempool)
+activate t_swap
 t_swap <- t_syncer : Sync Event(Buy seen on mempool)
 parallel off
-t_wallet <- t_swap : Ctl Tx::Buy
-t_wallet -> t_wallet : recover accordant keys
+t_swap -> t_swap : recover accordant keys
+t_swap -> t_swap : ADD Pending SweepMonero
+deactivate t_swap
 
 ==Cancel Init t > t0: Bob is left, Alice right, either have a fully signed and valid cancel tx, and can publish==
 parallel
@@ -204,17 +162,14 @@ t_swap <- t_syncer: Sync Event(Cancel final)
 t_swap -> t_syncer : Sync Task(Broadcast Refund)
 parallel
 t_syncer -> t_swap : Sync Event(Refund seen)
+activate m_swap
 m_syncer -> m_swap : Sync Event(Refund seen)
 parallel off
-m_swap -> m_wallet : Ctl Tx::Refund
-m_wallet -> m_wallet : recover accordant keys
+m_swap -> m_swap : recover accordant keys
+m_swap -> m_swap : ADD Pending SweepMonero
+deactivate m_swap
 
 == Punish process t > t1 > t0 ==
-// TODO: none of this is true except last step
 m_swap<-m_syncer:Ctl Punish valid
-m_swap->m_wallet:Ctl Event: punish valid
-m_wallet->m_wallet:fully sign punish
-// TODO: in the code, this actually already happens after CoreArbitratingSetup - think about this and move either this or that
-m_swap<-m_wallet:Ctl Tx::Punish
 m_swap->m_syncer: Sync Task(Broadcast Punish)
 

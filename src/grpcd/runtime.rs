@@ -1388,8 +1388,8 @@ impl Farcaster for FarcasterService {
             .process_request(BusMsg::Bridge(BridgeMsg::Ctl {
                 request: CtlMsg::TakeOffer(PubOffer {
                     public_offer,
-                    external_address: bitcoin_address,
-                    internal_address: monero_address,
+                    bitcoin_address: bitcoin_address,
+                    monero_address: monero_address,
                 }),
                 service_id: ServiceId::Farcasterd,
             }))

@@ -1,10 +1,13 @@
 use std::fmt::{self, Debug};
+use std::io;
 use std::str::FromStr;
 
 use farcaster_core::blockchain::Network;
+use farcaster_core::consensus::{self, Decodable, Encodable};
+use farcaster_core::impl_strict_encoding;
+use farcaster_core::swap::btcxmr::KeyManager;
 use farcaster_core::{
     blockchain::Blockchain,
-    role::TradeRole,
     swap::btcxmr::{Offer, Parameters, PublicOffer},
     swap::SwapId,
 };
@@ -14,14 +17,15 @@ use bitcoin::Transaction;
 use internet2::addr::{InetSocketAddr, NodeAddr};
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
-use crate::bus::p2p::{Commit, PeerMsg, TakerCommit};
+use crate::bus::p2p::{PeerMsg, TakerCommit};
 use crate::bus::{
     AddressSecretKey, CheckpointEntry, Failure, OfferStatusPair, OptionDetails, Outcome, Progress,
 };
 use crate::swapd::CheckpointSwapd;
 use crate::syncerd::{Health, SweepAddressAddendum};
-use crate::walletd::runtime::CheckpointWallet;
 use crate::{Error, ServiceId};
+
+use super::p2p::Commit;
 
 #[derive(Clone, Debug, Display, From, NetworkEncode, NetworkDecode)]
 #[non_exhaustive]
@@ -47,16 +51,19 @@ pub enum CtlMsg {
 
     /// A message sent from farcaster to maker swap service to begin the swap.
     #[display("make_swap({0})")]
-    MakeSwap(InitSwap),
+    MakeSwap(InitMakerSwap),
 
     /// A message sent from farcaster to taker swap service to begin the swap.
     #[display("take_swap({0})")]
-    TakeSwap(InitSwap),
+    TakeSwap(InitTakerSwap),
 
-    /// A message sent from the wallet to notify farcaster the successful initialisation of the
-    /// maker/taker wallet.
-    #[display("launch_swap({0})")]
-    LaunchSwap(LaunchSwap),
+    /// A message sent from farcaster to wallet service to create swap keys.
+    #[display("create_swap_keys({0})")]
+    CreateSwapKeys(PublicOffer, Token),
+
+    // A message sent from wallet to farcaster containing keys for a swap.
+    #[display("swap_keys({0})")]
+    SwapKeys(SwapKeys),
 
     #[display("params({0})")]
     Params(Params),
@@ -154,9 +161,6 @@ pub enum CtlMsg {
     #[display("funding_canceled({0})")]
     FundingCanceled(Blockchain),
 
-    #[display("transaction({0})")]
-    Tx(Tx),
-
     #[display("failed peer message")]
     FailedPeerMessage(PeerMsg),
 
@@ -191,8 +195,8 @@ pub struct ProtoPublicOffer {
 #[display("{public_offer}, ..")]
 pub struct PubOffer {
     pub public_offer: PublicOffer,
-    pub external_address: bitcoin::Address,
-    pub internal_address: monero::Address,
+    pub bitcoin_address: bitcoin::Address,
+    pub monero_address: monero::Address,
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
@@ -209,14 +213,24 @@ pub struct GetKeys(pub Token);
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{public_offer}, ..")]
-pub struct LaunchSwap {
-    pub local_trade_role: TradeRole,
+pub struct SwapKeys {
+    pub key_manager: WrappedKeyManager,
     pub public_offer: PublicOffer,
-    pub local_params: Params,
-    pub swap_id: SwapId,
-    pub remote_commit: Option<Commit>,
-    pub funding_address: Option<bitcoin::Address>,
 }
+
+#[derive(Clone, Debug)]
+pub struct WrappedKeyManager(pub KeyManager);
+impl Encodable for WrappedKeyManager {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        Ok(self.0.consensus_encode(writer)?)
+    }
+}
+impl Decodable for WrappedKeyManager {
+    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, consensus::Error> {
+        Ok(WrappedKeyManager(Decodable::consensus_decode(d)?))
+    }
+}
+impl_strict_encoding!(WrappedKeyManager);
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 pub enum Params {
@@ -228,28 +242,32 @@ pub enum Params {
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
 #[display("{swap_id}, ..")]
-pub struct InitSwap {
+pub struct InitTakerSwap {
     pub peerd: ServiceId,
-    pub report_to: Option<ServiceId>,
-    pub local_params: Params,
+    pub report_to: ServiceId,
     pub swap_id: SwapId,
-    pub remote_commit: Option<Commit>,
-    pub funding_address: Option<bitcoin::Address>,
+    pub key_manager: WrappedKeyManager,
+    pub target_bitcoin_address: bitcoin::Address,
+    pub target_monero_address: monero::Address,
+}
+
+#[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode)]
+#[display("{swap_id}, ..")]
+pub struct InitMakerSwap {
+    pub peerd: ServiceId,
+    pub report_to: ServiceId,
+    pub swap_id: SwapId,
+    pub key_manager: WrappedKeyManager,
+    pub target_bitcoin_address: bitcoin::Address,
+    pub target_monero_address: monero::Address,
+    pub commit: Commit,
 }
 
 #[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
 #[display(Debug)]
 pub struct Checkpoint {
     pub swap_id: SwapId,
-    pub state: CheckpointState,
-}
-
-#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
-pub enum CheckpointState {
-    #[display("Checkpoint Wallet")]
-    CheckpointWallet(CheckpointWallet),
-    #[display("Checkpoint Swap")]
-    CheckpointSwapd(CheckpointSwapd),
+    pub state: CheckpointSwapd,
 }
 
 #[derive(Clone, Debug, Display, NetworkEncode, NetworkDecode, Eq, PartialEq)]

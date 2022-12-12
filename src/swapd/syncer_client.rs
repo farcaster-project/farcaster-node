@@ -430,18 +430,17 @@ impl SyncerState {
 
 pub fn log_tx_seen(swap_id: SwapId, txlabel: &TxLabel, txid: &Txid) {
     info!(
-        "{} | {} transaction ({}) in mempool or blockchain, forward to walletd",
+        "{} | {} transaction ({}) in mempool or blockchain, handling with swap wallet",
         swap_id.swap_id(),
         txlabel.label(),
         txid.tx_hash(),
     );
 }
 
-pub fn log_tx_received(swap_id: SwapId, txlabel: TxLabel) {
+pub fn log_tx_created(swap_id: SwapId, txlabel: TxLabel) {
     info!(
-        "{} | {} transaction received from {}",
+        "{} | {} transaction created",
         swap_id.swap_id(),
         txlabel.label(),
-        ServiceId::Wallet.label(),
     );
 }

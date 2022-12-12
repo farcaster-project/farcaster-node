@@ -11,14 +11,14 @@ use std::path::PathBuf;
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::{
-    ctl::{Checkpoint, CheckpointState, CtlMsg},
+    ctl::{Checkpoint, CtlMsg},
     info::{Address, InfoMsg, OfferStatusSelector},
     AddressSecretKey, BusMsg, CheckpointEntry, Failure, FailureCode, List, OfferStatus,
     OfferStatusPair, ServiceBus,
 };
-use crate::Endpoints;
+use crate::{swapd::CheckpointSwapd, Endpoints};
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
-use microservices::esb::{self};
+use microservices::esb::{self, Handler};
 
 pub fn run(config: ServiceConfig, data_dir: PathBuf) -> Result<(), Error> {
     let runtime = Runtime {
@@ -84,27 +84,18 @@ impl Runtime {
             }
 
             CtlMsg::Checkpoint(Checkpoint { swap_id, state }) => {
-                match &state {
-                    CheckpointState::CheckpointWallet(_) => {
-                        debug!("setting wallet checkpoint");
-                    }
-                    CheckpointState::CheckpointSwapd(swap_checkpoint) => {
-                        let info = CheckpointEntry {
-                            swap_id,
-                            public_offer: swap_checkpoint.public_offer.clone(),
-                            trade_role: swap_checkpoint.local_trade_role.clone(),
-                            expected_counterparty_node_id: swap_checkpoint
-                                .connected_counterparty_node_id
-                                .clone(),
-                        };
-                        debug!("setting checkpoint info entry");
-                        let mut info_encoded = vec![];
-                        info.strict_encode(&mut info_encoded)?;
-                        self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
-
-                        debug!("setting swap checkpoint");
-                    }
+                let info = CheckpointEntry {
+                    swap_id,
+                    public_offer: state.public_offer.clone(),
+                    trade_role: state.local_trade_role.clone(),
+                    expected_counterparty_node_id: state.connected_counterparty_node_id.clone(),
                 };
+                debug!("{} | setting checkpoint info entry", swap_id.swap_id());
+                let mut info_encoded = vec![];
+                let _info_size = info.strict_encode(&mut info_encoded);
+                self.database.set_checkpoint_info(&swap_id, &info_encoded)?;
+
+                debug!("setting swap checkpoint");
                 let key = CheckpointKey {
                     swap_id,
                     service_id: source,
@@ -112,61 +103,23 @@ impl Runtime {
                 let mut state_encoded = vec![];
                 state.strict_encode(&mut state_encoded)?;
                 self.database.set_checkpoint_state(&key, &state_encoded)?;
-                debug!("checkpoint set");
+                debug!("{} | checkpoint set", swap_id.swap_id());
             }
 
             CtlMsg::RestoreCheckpoint(CheckpointEntry { swap_id, .. }) => {
                 match self.database.get_checkpoint_state(&CheckpointKey {
                     swap_id,
-                    service_id: ServiceId::Wallet,
-                }) {
-                    Ok(raw_state) => {
-                        match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
-                            Ok(CheckpointState::CheckpointWallet(wallet)) => {
-                                checkpoint_send(
-                                    endpoints,
-                                    swap_id,
-                                    ServiceId::Database,
-                                    ServiceId::Wallet,
-                                    CheckpointState::CheckpointWallet(wallet),
-                                )?;
-                            }
-                            Ok(CheckpointState::CheckpointSwapd(_)) => {
-                                error!(
-                                    "Decoded swapd checkpoint where walletd checkpoint was stored"
-                                );
-                            }
-                            Err(err) => {
-                                error!("Decoding the checkpoint failed: {}", err);
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        error!(
-                            "Failed to retrieve checkpointed state for swap {}: {}",
-                            swap_id, err
-                        );
-                    }
-                }
-                match self.database.get_checkpoint_state(&CheckpointKey {
-                    swap_id,
                     service_id: ServiceId::Swap(swap_id),
                 }) {
                     Ok(raw_state) => {
-                        match CheckpointState::strict_decode(std::io::Cursor::new(raw_state)) {
-                            Ok(CheckpointState::CheckpointSwapd(state)) => {
-                                checkpoint_send(
-                                    endpoints,
-                                    swap_id,
-                                    ServiceId::Database,
+                        match CheckpointSwapd::strict_decode(std::io::Cursor::new(raw_state)) {
+                            Ok(state) => {
+                                endpoints.send_to(
+                                    ServiceBus::Ctl,
+                                    self.identity(),
                                     ServiceId::Swap(swap_id),
-                                    CheckpointState::CheckpointSwapd(state),
+                                    BusMsg::Ctl(CtlMsg::Checkpoint(Checkpoint { swap_id, state })),
                                 )?;
-                            }
-                            Ok(CheckpointState::CheckpointWallet(_)) => {
-                                error!(
-                                    "Decoded walletd checkpoint were swapd checkpoint was stored"
-                                );
                             }
                             Err(err) => {
                                 error!("Decoding the checkpoint failed: {}", err);
@@ -183,15 +136,6 @@ impl Runtime {
             }
 
             CtlMsg::RemoveCheckpoint(swap_id) => {
-                if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
-                    swap_id,
-                    service_id: ServiceId::Wallet,
-                }) {
-                    debug!(
-                        "{} | Did not delete checkpoint wallet entry: {}",
-                        swap_id, err
-                    );
-                }
                 if let Err(err) = self.database.delete_checkpoint_state(CheckpointKey {
                     swap_id,
                     service_id: ServiceId::Swap(swap_id),
@@ -409,7 +353,7 @@ pub fn checkpoint_send(
     swap_id: SwapId,
     source: ServiceId,
     destination: ServiceId,
-    state: CheckpointState,
+    state: CheckpointSwapd,
 ) -> Result<(), Error> {
     endpoints.send_to(
         ServiceBus::Ctl,
