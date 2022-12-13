@@ -61,7 +61,11 @@ use super::{
 /// State machine for running a swap.
 ///
 /// State machine automaton: The states are named after the message that
-/// triggers their transition.
+/// triggers their transition. Note that the BobAbortAwaitingBitcoinSweep state
+/// is not shown in the diagram, as it would overcomplicate the diagram for little gain.
+/// So merely note that Bob can abort at any time before he transitions to
+/// BobRefundProcedureSignatures.
+///
 /// ```ignore
 ///                           StartMaker                            StartTaker
 ///                               |                                     |
