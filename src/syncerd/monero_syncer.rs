@@ -812,6 +812,7 @@ async fn fetch_balance(
     wallet_dir_path: Option<PathBuf>,
     address: monero::Address,
     viewkey: PrivateKey,
+    creation_height: Option<u64>,
 ) -> Result<monero::Amount, Error> {
     let wallet_filename = format!("balance:{}", address);
     let password = s!(" ");
@@ -829,7 +830,7 @@ async fn fetch_balance(
         );
         wallet
             .generate_from_keys(GenerateFromKeysArgs {
-                restore_height: Some(0), // fixme
+                restore_height: creation_height,
                 filename: wallet_filename.clone(),
                 address,
                 spendkey: None,
@@ -841,7 +842,7 @@ async fn fetch_balance(
     }
 
     let (account, addrs) = (0, None);
-    wallet.refresh(Some(0)).await?; // fixme
+    wallet.refresh(creation_height).await?;
     let balance = wallet.get_balance(account, addrs).await?;
 
     if let Some(path) = wallet_dir_path {
@@ -877,6 +878,7 @@ fn balance_fetcher(
                         wallet_dir_path.clone(),
                         address,
                         secret_key_info.view,
+                        secret_key_info.creation_height,
                     )
                     .await
                     {
