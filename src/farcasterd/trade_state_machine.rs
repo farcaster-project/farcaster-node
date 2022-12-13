@@ -635,13 +635,29 @@ fn attempt_transition_to_restoring_swapd(
                 public_offer.offer.accordant_blockchain.try_into()?,
                 public_offer.offer.network,
             )?;
-            let listening =
-                if let Err(err) = runtime.listen(runtime.config.get_bind_addr().unwrap()) {
-                    warn!("failed to re-listen on restore: {}", err);
-                    false
-                } else {
-                    true
-                };
+
+            let listening = if trade_role == TradeRole::Maker {
+                match runtime.config.get_bind_addr() {
+                    Ok(bind_addr) => {
+                        if let Err(err) = runtime.listen(bind_addr) {
+                            warn!("failed to re-listen on restore: {}", err);
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    Err(err) => {
+                        let msg = format!(
+                            "Failed to relisten on restore, bad bind address configuration: {}",
+                            err
+                        );
+                        error!("{}", msg);
+                        false
+                    }
+                }
+            } else {
+                false
+            };
 
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
@@ -1194,19 +1210,18 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             expect_connection = false;
         }
         (BusMsg::Ctl(CtlMsg::Hello), source) if trade_role == TradeRole::Maker => {
-            if let Some(node_id) = expected_counterparty_node_id {
-                if source.node_addr()
-                    == Some(NodeAddr::new(
-                        node_id,
-                        runtime.config.get_bind_addr().unwrap(),
-                    ))
-                {
-                    info!(
-                        "{} | Peerd connection for restored swap",
-                        swap_id.bright_blue_italic()
-                    );
-                    peerd = Some(source);
+            if let Ok(bind_addr) = runtime.config.get_bind_addr() {
+                if let Some(node_id) = expected_counterparty_node_id {
+                    if source.node_addr() == Some(NodeAddr::new(node_id, bind_addr)) {
+                        info!(
+                            "{} | Peerd connection for restored swap",
+                            swap_id.bright_blue_italic()
+                        );
+                        peerd = Some(source);
+                    }
                 }
+            } else {
+                error!("Invalid bind addr configuration");
             }
         }
         _ => {}
