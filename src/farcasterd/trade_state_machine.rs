@@ -1463,9 +1463,10 @@ fn attempt_transition_to_end(
                         .unwrap();
                     rt.block_on(async {
                         let host = auto_fund_config.monero_rpc_wallet;
-                        let wallet_client =
-                            monero_rpc::RpcClient::new(host);
-                        let wallet = wallet_client.wallet();
+                        let wallet = monero_rpc::RpcClientBuilder::new()
+                            .build(host)
+                            .expect("client builder failed, cannot recover from bad configuration")
+                            .wallet();
                         let options = monero_rpc::TransferOptions::default();
 
                         let mut auto_funded = false;

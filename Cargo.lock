@@ -948,7 +948,7 @@ dependencies = [
  "clap",
  "curve25519-dalek",
  "ecdsa_fun",
- "fixed-hash",
+ "fixed-hash 0.7.0",
  "hex",
  "inet2_addr",
  "lightning_encoding",
@@ -1037,6 +1037,18 @@ name = "fixed-hash"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcf0ed7fe52a17a03854ec54a9f76d6d84508d1c0e66bc1793301c73fc8493c"
+dependencies = [
+ "byteorder",
+ "rand 0.8.5",
+ "rustc-hex",
+ "static_assertions",
+]
+
+[[package]]
+name = "fixed-hash"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "835c052cb0c08c1acf6ffd71c022172e18723949c8282f2b9f27efbc51e64534"
 dependencies = [
  "byteorder",
  "rand 0.8.5",
@@ -1752,7 +1764,7 @@ checksum = "8afa5d322a573d345588c3255aaf3316b6a13f3b94f8e776c5ffcde237ec481d"
 dependencies = [
  "base58-monero",
  "curve25519-dalek",
- "fixed-hash",
+ "fixed-hash 0.7.0",
  "hex",
  "hex-literal",
  "sealed",
@@ -1769,7 +1781,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "772fe43b864d2f2e6e1bd223640b32563fe3b9b7158cec32ac33236a6d3e0dd0"
 dependencies = [
  "anyhow",
- "fixed-hash",
+ "fixed-hash 0.7.0",
  "hex",
  "http",
  "jsonrpc-core",
@@ -1783,13 +1795,13 @@ dependencies = [
 
 [[package]]
 name = "monero-rpc"
-version = "0.2.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66a7d67be6fc453829e6e0913f239741b0520a40ff6c7e8300f35444a163d257"
+checksum = "e016b5ed7dbf76e123516b22f35653a95d8c4b784d2ce2113395863dfd9f482f"
 dependencies = [
  "anyhow",
  "chrono",
- "fixed-hash",
+ "fixed-hash 0.8.0",
  "hex",
  "http",
  "jsonrpc-core",
@@ -2531,6 +2543,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-socks",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -3261,6 +3274,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-socks"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51165dfa029d2a65969413a6cc96f354b86b464498702f174a4efa13608fd8c0"
+dependencies = [
+ "either",
+ "futures-util",
+ "thiserror",
  "tokio",
 ]
 

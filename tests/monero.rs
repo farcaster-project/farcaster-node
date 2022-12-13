@@ -922,13 +922,17 @@ async fn setup_monero() -> (
 ) {
     let conf = config::TestConfig::parse();
 
-    let client = monero_rpc::RpcClient::new(format!("{}", conf.monero.daemon));
+    let client = monero_rpc::RpcClientBuilder::new()
+        .build(format!("{}", conf.monero.daemon))
+        .unwrap();
     let regtest = client.daemon().regtest();
 
-    let client = monero_rpc::RpcClient::new(format!(
-        "{}",
-        conf.monero.get_wallet(config::WalletIndex::Primary)
-    ));
+    let client = monero_rpc::RpcClientBuilder::new()
+        .build(format!(
+            "{}",
+            conf.monero.get_wallet(config::WalletIndex::Primary)
+        ))
+        .unwrap();
     let wallet = client.wallet();
 
     // Ignore if fails, maybe the wallet already exists
