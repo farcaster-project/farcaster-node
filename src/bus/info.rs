@@ -170,6 +170,9 @@ pub enum InfoMsg {
     // - End GetCheckpointEntry section
     #[display("{0}")]
     FundingInfos(FundingInfos),
+
+    #[display("{0}")]
+    AddressBalance(AddressBalance),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
@@ -369,7 +372,13 @@ pub enum ProgressEvent {
     Failure(Failure),
 }
 
+#[cfg_attr(feature = "serde", serde_as)]
 #[derive(Eq, PartialEq, Clone, Debug, Display, Hash, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum Address {
     #[display("{0}")]
     Bitcoin(bitcoin::Address),
@@ -387,6 +396,19 @@ impl FromStr for Address {
                 .map(|a| Address::Monero(a))
                 .map_err(|e| Error::Farcaster(e.to_string())))
     }
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Eq, PartialEq, Clone, Debug, Display, Hash, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(AddressBalance::to_yaml_string)]
+pub struct AddressBalance {
+    pub address: Address,
+    pub balance: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
@@ -463,3 +485,5 @@ impl ToYamlString for SyncerInfo {}
 impl ToYamlString for ProgressEvent {}
 #[cfg(feature = "serde")]
 impl ToYamlString for FundingInfos {}
+#[cfg(feature = "serde")]
+impl ToYamlString for AddressBalance {}
