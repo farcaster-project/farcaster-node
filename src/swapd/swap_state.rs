@@ -1080,7 +1080,7 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     SyncMsg::Task(task),
                 )?;
             }
-            // Checkpoint Bob pre buy
+            // Checkpoint BobRefundProcedureSignatures
             let new_ssm =
                 SwapStateMachine::BobRefundProcedureSignatures(BobRefundProcedureSignatures {
                     local_params,
@@ -1089,7 +1089,9 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     wallet,
                     buy_procedure_signature,
                 });
-            runtime.log_debug("Checkpointing bob pre buy swapd state.");
+            runtime.log_debug("Checkpointing bob refund signature swapd state.");
+            // manually add lock_tx to pending broadcasts to ensure it's checkpointed
+            runtime.syncer_state.broadcast(lock_tx.clone());
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             runtime.broadcast(lock_tx, TxLabel::Lock, event.endpoints)?;
             Ok(Some(new_ssm))
