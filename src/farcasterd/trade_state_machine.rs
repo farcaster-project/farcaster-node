@@ -1290,7 +1290,8 @@ fn attempt_transition_to_end(
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
-            if source.node_addr() == peerd.as_ref().map(|p| p.node_addr()).flatten() =>
+            if matches!(source, ServiceId::Peer(..))
+                && source.node_addr() == peerd.as_ref().map(|p| p.node_addr()).flatten() =>
         {
             let swap_service_id = ServiceId::Swap(swap_id);
             debug!(
