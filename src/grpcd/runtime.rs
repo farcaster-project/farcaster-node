@@ -1279,6 +1279,7 @@ impl Farcaster for FarcasterService {
                                     source_view_key: secret_key_info.view,
                                     destination_address,
                                     minimum_balance: monero::Amount::from_pico(0),
+                                    from_height: secret_key_info.creation_height,
                                 },
                             )),
                             service_id: ServiceId::Farcasterd,

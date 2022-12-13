@@ -969,7 +969,6 @@ fn bitcoin_syncer_sweep_address_test() {
         task: Task::SweepAddress(SweepAddress {
             id: TaskId(0),
             lifetime: blocks,
-            from_height: None,
             retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 source_secret_key,
@@ -1031,7 +1030,6 @@ fn bitcoin_syncer_sweep_address_test() {
         task: Task::SweepAddress(SweepAddress {
             id: TaskId(0),
             lifetime: blocks,
-            from_height: None,
             retry: true,
             addendum: SweepAddressAddendum::Bitcoin(SweepBitcoinAddress {
                 source_secret_key,

@@ -1088,7 +1088,6 @@ async fn syncer_state_sweep_addresses() {
         id: TaskId(0),
         lifetime: 11,
         retry: true,
-        from_height: None,
         addendum: SweepAddressAddendum::Monero(SweepMoneroAddress {
             source_view_key: monero::PrivateKey::from_str(
                 "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -1103,6 +1102,7 @@ async fn syncer_state_sweep_addresses() {
             )
             .unwrap(),
             minimum_balance: monero::Amount::from_pico(1),
+            from_height: None,
         }),
     };
     let source1 = ServiceId::Syncer(Blockchain::Monero, Network::Mainnet);

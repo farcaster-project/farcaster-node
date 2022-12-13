@@ -68,7 +68,6 @@ pub struct SweepAddress {
     pub id: TaskId,
     pub lifetime: u64,
     pub addendum: SweepAddressAddendum,
-    pub from_height: Option<u64>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -99,6 +98,7 @@ pub struct SweepMoneroAddress {
     pub destination_address: monero::Address,
     #[serde(with = "monero::util::amount::serde::as_xmr")]
     pub minimum_balance: monero::Amount,
+    pub from_height: Option<u64>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

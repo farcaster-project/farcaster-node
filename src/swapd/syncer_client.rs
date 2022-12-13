@@ -265,7 +265,6 @@ impl SyncerState {
             lifetime,
             addendum: SweepAddressAddendum::Bitcoin(addendum),
             retry,
-            from_height: None,
         };
         let task = Task::SweepAddress(sweep_task);
         self.tasks.tasks.insert(id, task.clone());
@@ -281,7 +280,6 @@ impl SyncerState {
             lifetime,
             addendum: SweepAddressAddendum::Monero(addendum),
             retry,
-            from_height: None,
         };
         let task = Task::SweepAddress(sweep_task);
         self.tasks.tasks.insert(id, task.clone());

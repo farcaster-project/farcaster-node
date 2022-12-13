@@ -703,7 +703,7 @@ fn sweep_polling(
                         addendum.minimum_balance,
                         &network,
                         Arc::clone(&wallet),
-                        sweep_address_task.from_height,
+                        addendum.from_height,
                         wallet_dir_path.clone(),
                     )
                     .await
