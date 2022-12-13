@@ -1068,20 +1068,6 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
             log_tx_created(runtime.swap_id, TxLabel::Refund);
             runtime.txs.insert(TxLabel::Cancel, cancel_tx);
             runtime.txs.insert(TxLabel::Refund, refund_tx);
-            if let Some(lock_tx_confs_req) = runtime.syncer_state.lock_tx_confs.clone() {
-                runtime.handle_sync(
-                    event.endpoints,
-                    runtime.syncer_state.bitcoin_syncer(),
-                    lock_tx_confs_req,
-                )?;
-            }
-            if let Some(cancel_tx_confs_req) = runtime.syncer_state.cancel_tx_confs.clone() {
-                runtime.handle_sync(
-                    event.endpoints,
-                    runtime.syncer_state.bitcoin_syncer(),
-                    cancel_tx_confs_req,
-                )?;
-            }
             // register a watch task for buy
             runtime.log_debug("register watch buy tx task");
             if !runtime.syncer_state.is_watched_tx(&TxLabel::Buy) {
@@ -1495,20 +1481,6 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
             runtime.txs.insert(TxLabel::Cancel, cancel_tx);
             log_tx_created(runtime.swap_id, TxLabel::Punish);
             runtime.txs.insert(TxLabel::Punish, punish_tx);
-            if let Some(lock_tx_confs_req) = runtime.syncer_state.lock_tx_confs.clone() {
-                runtime.handle_sync(
-                    event.endpoints,
-                    runtime.syncer_state.bitcoin_syncer(),
-                    lock_tx_confs_req,
-                )?;
-            }
-            if let Some(cancel_tx_confs_req) = runtime.syncer_state.cancel_tx_confs.clone() {
-                runtime.handle_sync(
-                    event.endpoints,
-                    runtime.syncer_state.bitcoin_syncer(),
-                    cancel_tx_confs_req,
-                )?;
-            }
             // checkpoint alice pre lock bob
             let new_ssm = SwapStateMachine::AliceCoreArbitratingSetup(AliceCoreArbitratingSetup {
                 local_params,
