@@ -492,7 +492,7 @@ impl SyncerState {
                             tx: new_tx
                                 .tx
                                 .clone()
-                                .chunks(65534)
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
                                 .map(|c| c.to_vec())
                                 .collect(), // chunk as a workaround for the strict encoding length limit
                         };
@@ -579,7 +579,11 @@ impl SyncerState {
                             id: watched_tx.task.id,
                             block: block.clone(),
                             confirmations,
-                            tx: tx.clone().chunks(65534).map(|c| c.to_vec()).collect(), // chunk as a workaround for the strict encoding length limit
+                            tx: tx
+                                .clone()
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
+                                .map(|c| c.to_vec())
+                                .collect(), // chunk as a workaround for the strict encoding length limit
                         };
                         events.push((
                             Event::TransactionConfirmations(tx_confs.clone()),

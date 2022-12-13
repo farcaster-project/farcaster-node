@@ -2,6 +2,9 @@
 use serde_with::DisplayFromStr;
 use strict_encoding::{StrictDecode, StrictEncode};
 
+// The strict encoding length limit
+pub const STRICT_ENCODE_MAX_ITEMS: u16 = u16::MAX - 1;
+
 #[derive(
     Clone, Copy, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Ord, PartialOrd, Hash,
 )]
