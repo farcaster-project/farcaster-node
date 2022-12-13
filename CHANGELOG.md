@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Swap wallet by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/789>
+- Config: expose swap finality parameters by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/800>
+- Tests: Add retries to grpc progress message test by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/823>
+- Grpc: Handle recoverable server runtime panics by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/816>
+- Feat: Use creation height when sweeping Monero by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/784>
+- Relisten maker restore by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/772>
+- Syncer: Chunk Txs to overcome strict encoding limitation by @TheCharlatan in <https://github.com/farcaster-project/farcaster-node/pull/820>
+- Chore: update headers and housekeeping by @h4sh3d in <https://github.com/farcaster-project/farcaster-node/pull/807>
+
 ## [0.6.0] - 2022-12-06
 
 ### Changed
