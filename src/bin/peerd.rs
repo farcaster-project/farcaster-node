@@ -1,16 +1,8 @@
-// LNP Node: node running lightning network protocol and generalized lightning
-// channels.
-// Written in 2020 by
-//     Dr. Maxim Orlovsky <orlovsky@pandoracore.com>
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
 //
-// To the extent possible under law, the author(s) have dedicated all
-// copyright and related and neighboring rights to this software to
-// the public domain worldwide. This software is distributed without
-// any warranty.
-//
-// You should have received a copy of the MIT License
-// along with this software.
-// If not, see <https://opensource.org/licenses/MIT>.
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
 
 #![recursion_limit = "256"]
 // Coding conventions
@@ -24,8 +16,7 @@
     missing_docs
 )]
 
-//! Main executable for peerd: lightning peer network connection
-//! microservice.
+//! Main executable for peerd: peer network connection microservice.
 //!
 //! Program operations
 //! ==================
@@ -85,8 +76,7 @@
 //! --------
 //!
 //! Node key, used for node identification and in generation of the encryption
-//! keys, is read from the file specified in `--key-file` parameter, or (if the
-//! parameter is absent) from `LNP_NODE_KEY_FILE` environment variable.
+//! keys, is read from the file specified in `--peer-secret-key` parameter.
 
 #[macro_use]
 extern crate log;

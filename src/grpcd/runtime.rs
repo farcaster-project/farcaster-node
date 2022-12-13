@@ -1,3 +1,9 @@
+// Copyright 2020-2022 Farcaster Devs & LNP/BP Standards Association
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
 use crate::bus::bridge::BridgeMsg;
 use crate::bus::ctl::FundingInfo;
 use crate::bus::ctl::ProtoPublicOffer;
@@ -46,48 +52,9 @@ use microservices::esb;
 use microservices::ZMQ_CONTEXT;
 
 use farcaster::farcaster_server::{Farcaster, FarcasterServer};
-use farcaster::{InfoRequest, InfoResponse};
 use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
 
-use self::farcaster::AbortSwapRequest;
-use self::farcaster::AbortSwapResponse;
-use self::farcaster::AddressSwapIdPair;
-use self::farcaster::CheckpointsRequest;
-use self::farcaster::CheckpointsResponse;
-use self::farcaster::CompleteHealthReport;
-use self::farcaster::ConnectSwapRequest;
-use self::farcaster::ConnectSwapResponse;
-use self::farcaster::FundingAddressesRequest;
-use self::farcaster::FundingAddressesResponse;
-use self::farcaster::HealthCheckRequest;
-use self::farcaster::HealthCheckResponse;
-use self::farcaster::ListOffersRequest;
-use self::farcaster::ListOffersResponse;
-use self::farcaster::MakeRequest;
-use self::farcaster::MakeResponse;
-use self::farcaster::NeedsFundingRequest;
-use self::farcaster::NeedsFundingResponse;
-use self::farcaster::OfferInfoRequest;
-use self::farcaster::OfferInfoResponse;
-use self::farcaster::PeersRequest;
-use self::farcaster::PeersResponse;
-use self::farcaster::ProgressRequest;
-use self::farcaster::ProgressResponse;
-use self::farcaster::ReducedHealthReport;
-use self::farcaster::RestoreCheckpointRequest;
-use self::farcaster::RestoreCheckpointResponse;
-use self::farcaster::RevokeOfferRequest;
-use self::farcaster::RevokeOfferResponse;
-use self::farcaster::SwapInfoRequest;
-use self::farcaster::SwapInfoResponse;
-use self::farcaster::SweepAddressRequest;
-use self::farcaster::SweepAddressResponse;
-use self::farcaster::TakeRequest;
-use self::farcaster::TakeResponse;
-use self::farcaster::{
-    BuySigB, CommitA, CommitB, CoreArbB, FinishA, FinishB, RefundSigA, RevealA, RevealB, StartA,
-    StartB,
-};
+use self::farcaster::*;
 
 pub mod farcaster {
     tonic::include_proto!("farcaster");
