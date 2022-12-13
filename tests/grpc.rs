@@ -139,17 +139,8 @@ async fn grpc_server_functional_test() {
 
     let swap_id = retry_until_swap_id(&mut farcaster_client_2).await;
 
-    tokio::time::sleep(time::Duration::from_secs(5)).await;
-
     // Test progress
-    let request = tonic::Request::new(ProgressRequest {
-        id: 10,
-        swap_id: swap_id.clone(),
-    });
-    let response = farcaster_client_2.progress(request).await;
-    assert_eq!(response.unwrap().into_inner().id, 10);
-
-    tokio::time::sleep(time::Duration::from_secs(5)).await;
+    retry_until_progress(&mut farcaster_client_2, swap_id.clone()).await;
 
     // Test needs funding
     let (address, amount) = retry_until_bitcoin_funding_info(&mut farcaster_client_1).await;
@@ -258,7 +249,7 @@ async fn retry_until_bitcoin_funding_info(
             blockchain: farcaster::Blockchain::Bitcoin.into(),
         });
         let response = client.needs_funding(request).await;
-        let NeedsFundingResponse { id, funding_infos } = response.unwrap().into_inner();
+        let NeedsFundingResponse { funding_infos, .. } = response.unwrap().into_inner();
         if !funding_infos.is_empty() {
             return (
                 bitcoin::Address::from_str(&funding_infos[0].address).unwrap(),
@@ -268,4 +259,22 @@ async fn retry_until_bitcoin_funding_info(
         tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
     panic!("timeout before funding info could be retrieved")
+}
+
+async fn retry_until_progress(
+    client: &mut FarcasterClient<tonic::transport::Channel>,
+    swap_id: String,
+) {
+    for _ in 0..ALLOWED_RETRIES {
+        let request = tonic::Request::new(ProgressRequest {
+            id: 10,
+            swap_id: swap_id.clone(),
+        });
+        let response = client.progress(request).await;
+        if let Ok(response) = response {
+            assert_eq!(response.into_inner().id, 10);
+            return;
+        }
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
+    }
 }
