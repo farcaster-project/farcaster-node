@@ -1210,10 +1210,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             if let Ok(bind_addr) = runtime.config.get_bind_addr() {
                 if let Some(node_id) = expected_counterparty_node_id {
                     if source.node_addr() == Some(NodeAddr::new(node_id, bind_addr)) {
-                        info!(
-                            "{} | Peerd connected for restored swap",
-                            swap_id.bright_blue_italic()
-                        );
+                        info!("{} | Peerd connected for restored swap", swap_id.swap_id());
                         peerd = Some(source);
                     }
                 }
@@ -1361,20 +1358,20 @@ fn attempt_transition_to_end(
                             Some(cookie) => {
                                 let path = PathBuf::from_str(&shellexpand::tilde(&cookie)).unwrap();
                                 debug!("{} | bitcoin-rpc connecting with cookie auth",
-                                       swap_id.bright_blue_italic());
+                                       swap_id.swap_id());
                                 Client::new(&host, Auth::CookieFile(path))
                             }
                             None => {
                                 match (auto_fund_config.bitcoin_rpc_user, auto_fund_config.bitcoin_rpc_pass) {
                                     (Some(rpc_user), Some(rpc_pass)) => {
                                         debug!("{} | bitcoin-rpc connecting with userpass auth",
-                                               swap_id.bright_blue_italic());
+                                               swap_id.swap_id());
                                         Client::new(&host, Auth::UserPass(rpc_user, rpc_pass))
                                     }
                                     _ => {
                                         error!(
                                             "{} | Couldn't instantiate Bitcoin RPC - provide either `bitcoin_cookie_path` or `bitcoin_rpc_user` AND `bitcoin_rpc_pass` configuration parameters",
-                                            swap_id.bright_blue_italic()
+                                            swap_id.swap_id()
                                         );
 
                                         Err(Error::InvalidCookieFile)}
@@ -1408,7 +1405,7 @@ fn attempt_transition_to_end(
                             warn!("{}", err);
                             error!(
                                     "{} | Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount",
-                                    swap_id.bright_blue_italic()
+                                    swap_id.swap_id()
                                 );
                             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                                 peerd,
@@ -1486,10 +1483,10 @@ fn attempt_transition_to_end(
                                 Err(err) => {
                                     if (err.to_string().contains("not enough") && err.to_string().contains("money")) || retries == 0 {
                                         warn!("{}", err);
-                                        error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
+                                        error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.swap_id());
                                         break;
                                     } else {
-                                        warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.bright_blue_italic(), err, retries);
+                                        warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.swap_id(), err, retries);
                                     }
                                 }
                             }
