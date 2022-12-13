@@ -14,7 +14,7 @@ use crate::farcasterd::stats::Stats;
 use crate::farcasterd::syncer_state_machine::{SyncerStateMachine, SyncerStateMachineExecutor};
 use crate::farcasterd::trade_state_machine::{TradeStateMachine, TradeStateMachineExecutor};
 use crate::farcasterd::Opts;
-use crate::syncerd::AddressBalance;
+use crate::syncerd::{AddressBalance, TaskAborted};
 use crate::syncerd::{Event as SyncerEvent, HealthResult, SweepSuccess, TaskId};
 use crate::{
     bus::ctl::{Keys, ProgressStack, Token},
@@ -916,6 +916,14 @@ impl Runtime {
                 }))),
                 _,
             ) => Ok(self.syncer_state_machines.remove(id)),
+            (BusMsg::Sync(SyncMsg::Event(SyncerEvent::TaskAborted(TaskAborted { id, .. }))), _) => {
+                if let Some(id) = id.clone().pop() {
+                    Ok(self.syncer_state_machines.remove(&id))
+                } else {
+                    Ok(None)
+                }
+            }
+
             _ => Ok(None),
         }
     }
