@@ -209,11 +209,11 @@ pub enum SwapStateMachine {
     // BobBuyFinal state - transitions to BobBuySweeping on event
     // TransactionConfirmations. Sends sweep Monero to Monero syncer.
     #[display("Bob Buy Final")]
-    BobBuyFinal(TradeRole, SweepAddress),
+    BobBuyFinal(SweepAddress),
     // BobBuySweeping state - transitions to SwapEnd on request SweepSuccess.
     // Cleans up remaining swap data and report to Farcasterd.
     #[display("Bob Buy Sweeping")]
-    BobBuySweeping(TradeRole),
+    BobBuySweeping,
 
     /*
         Bob Cancel States
@@ -221,12 +221,12 @@ pub enum SwapStateMachine {
     // BobCanceled state - transitions to BobCancelFinal on event
     // TransactionConfirmations. Broadcasts the Refund transaction.
     #[display("Bob Cancel")]
-    BobCanceled(TradeRole),
+    BobCanceled,
     // BobCancelFinal state - transitions to SwapEnd on event
     // AddressTransaction. Cleans up remaining swap data and report to
     // Farcasterd.
     #[display("Bob Cancel Final")]
-    BobCancelFinal(TradeRole),
+    BobCancelFinal,
 
     /*
         Bob Abort State
@@ -268,7 +268,7 @@ pub enum SwapStateMachine {
     // TransactionConfirmations. Cleans up remaining swap data and report to
     // Farcasterd.
     #[display("Alice Buy Procedure Signature")]
-    AliceBuyProcedureSignature(TradeRole),
+    AliceBuyProcedureSignature,
 
     /*
         Alice Cancel States
@@ -281,16 +281,16 @@ pub enum SwapStateMachine {
     // AliceRefund state - transitions to AliceRefundSweeping on event
     // TransactionConfirmations. Submits sweep Monero address task.
     #[display("Alice Refund")]
-    AliceRefund(TradeRole, SweepAddress),
+    AliceRefund(SweepAddress),
     // AliceRefundSweeping state - transitions to SwapEnd on event SweepSuccess.
     // Cleans up remaining swap data and reports to Farcasterd.
     #[display("Alice Refund Sweeping")]
-    AliceRefundSweeping(TradeRole),
+    AliceRefundSweeping,
     // AlicePunish state - transitions to SwapEnd on envet
     // TransactionConfirmations. Cleans up remaning swap data and reports to
     // Farcasterd.
     #[display("Alice Punish")]
-    AlicePunish(TradeRole),
+    AlicePunish,
 
     // End state
     #[display("Swap End: {0}")]
@@ -353,7 +353,6 @@ pub struct BobReveal {
     remote_params: Params,
     wallet: Wallet,
     alice_reveal: Reveal,
-    local_trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -361,7 +360,6 @@ pub struct AliceReveal {
     local_params: Params,
     remote_params: Params,
     wallet: Wallet,
-    local_trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -370,7 +368,6 @@ pub struct BobFunded {
     funding_address: bitcoin::Address,
     remote_params: Params,
     wallet: Wallet,
-    local_trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -378,7 +375,6 @@ pub struct AliceCoreArbitratingSetup {
     local_params: Params,
     remote_params: Params,
     wallet: Wallet,
-    local_trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -387,14 +383,12 @@ pub struct BobRefundProcedureSignatures {
     funding_address: bitcoin::Address,
     remote_params: Params,
     wallet: Wallet,
-    local_trade_role: TradeRole,
     buy_procedure_signature: BuyProcedureSignature,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceArbitratingLockFinal {
     wallet: Wallet,
-    local_trade_role: TradeRole,
     funding_info: MoneroFundingInfo,
     required_funding_amount: monero::Amount,
 }
@@ -405,14 +399,12 @@ pub struct BobAccordantLock {
     funding_address: bitcoin::Address,
     remote_params: Params,
     wallet: Wallet,
-    local_trade_role: TradeRole,
     buy_procedure_signature: BuyProcedureSignature,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceAccordantLock {
     wallet: Wallet,
-    local_trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
@@ -421,13 +413,11 @@ pub struct BobAccordantLockFinal {
     funding_address: bitcoin::Address,
     remote_params: Params,
     wallet: Wallet,
-    local_trade_role: TradeRole,
 }
 
 #[derive(Clone, Debug, StrictEncode, StrictDecode)]
 pub struct AliceCanceled {
     wallet: Wallet,
-    local_trade_role: TradeRole,
 }
 
 impl StateMachine<Runtime, Error> for SwapStateMachine {
@@ -495,17 +485,13 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
                     bob_accordant_lock_final,
                 )
             }
-            SwapStateMachine::BobBuyFinal(local_trade_role, task) => {
-                try_bob_buy_final_to_bob_buy_sweeping(event, runtime, local_trade_role, task)
+            SwapStateMachine::BobBuyFinal(task) => {
+                try_bob_buy_final_to_bob_buy_sweeping(event, runtime, task)
             }
-            SwapStateMachine::BobBuySweeping(local_trade_role) => {
-                try_bob_buy_sweeping_to_swap_end(event, runtime, local_trade_role)
-            }
+            SwapStateMachine::BobBuySweeping => try_bob_buy_sweeping_to_swap_end(event, runtime),
 
-            SwapStateMachine::BobCanceled(local_trade_role) => {
-                try_bob_canceled_to_bob_cancel_final(event, runtime, local_trade_role)
-            }
-            SwapStateMachine::BobCancelFinal(_) => try_bob_cancel_final_to_swap_end(event, runtime),
+            SwapStateMachine::BobCanceled => try_bob_canceled_to_bob_cancel_final(event, runtime),
+            SwapStateMachine::BobCancelFinal => try_bob_cancel_final_to_swap_end(event, runtime),
 
             SwapStateMachine::BobAbortAwaitingBitcoinSweep => {
                 try_awaiting_sweep_to_swap_end(event, runtime)
@@ -535,25 +521,20 @@ impl StateMachine<Runtime, Error> for SwapStateMachine {
                     alice_accordant_lock,
                 )
             }
-            SwapStateMachine::AliceBuyProcedureSignature(_) => {
+            SwapStateMachine::AliceBuyProcedureSignature => {
                 try_alice_buy_procedure_signature_to_swap_end(event, runtime)
             }
 
             SwapStateMachine::AliceCanceled(alice_canceled) => {
                 try_alice_canceled_to_alice_refund_or_alice_punish(event, runtime, alice_canceled)
             }
-            SwapStateMachine::AliceRefund(local_trade_role, sweep_address) => {
-                try_alice_refund_to_alice_refund_sweeping(
-                    event,
-                    runtime,
-                    local_trade_role,
-                    sweep_address,
-                )
+            SwapStateMachine::AliceRefund(sweep_address) => {
+                try_alice_refund_to_alice_refund_sweeping(event, runtime, sweep_address)
             }
-            SwapStateMachine::AliceRefundSweeping(_) => {
+            SwapStateMachine::AliceRefundSweeping => {
                 try_alice_refund_sweeping_to_swap_end(event, runtime)
             }
-            SwapStateMachine::AlicePunish(_) => try_alice_punish_to_swap_end(event, runtime),
+            SwapStateMachine::AlicePunish => try_alice_punish_to_swap_end(event, runtime),
 
             _ => Ok(Some(self)),
         }
@@ -903,14 +884,7 @@ fn try_alice_taker_maker_commit_to_alice_reveal(
         remote_commit,
         wallet,
     } = alice_taker_maker_commit;
-    attempt_transition_to_alice_reveal(
-        event,
-        runtime,
-        local_params,
-        remote_commit,
-        TradeRole::Taker,
-        wallet,
-    )
+    attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
 }
 
 fn try_bob_init_maker_to_bob_reveal(
@@ -949,14 +923,7 @@ fn try_alice_init_maker_to_alice_reveal(
         remote_commit,
         wallet,
     } = alice_init_maker;
-    attempt_transition_to_alice_reveal(
-        event,
-        runtime,
-        local_params,
-        remote_commit,
-        TradeRole::Maker,
-        wallet,
-    )
+    attempt_transition_to_alice_reveal(event, runtime, local_params, remote_commit, wallet)
 }
 
 fn try_bob_reveal_to_bob_funded(
@@ -967,7 +934,6 @@ fn try_bob_reveal_to_bob_funded(
     let BobReveal {
         local_params,
         remote_params,
-        local_trade_role,
         mut wallet,
         alice_reveal,
         required_funding_amount,
@@ -1054,7 +1020,6 @@ fn try_bob_reveal_to_bob_funded(
                 local_params,
                 remote_params,
                 funding_address,
-                local_trade_role,
                 wallet,
             });
             runtime.checkpoint_state(
@@ -1088,7 +1053,6 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
         funding_address,
         remote_params,
         mut wallet,
-        local_trade_role,
     } = bob_funded;
     match &event.request {
         BusMsg::P2p(PeerMsg::RefundProcedureSignatures(refund_proc)) => {
@@ -1159,7 +1123,6 @@ fn try_bob_funded_to_bob_refund_procedure_signature(
                     funding_address,
                     remote_params,
                     wallet,
-                    local_trade_role,
                     buy_procedure_signature,
                 });
             debug!(
@@ -1186,7 +1149,6 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
         remote_params,
         funding_address,
         wallet,
-        local_trade_role,
         buy_procedure_signature,
     } = bob_refund_procedure_signatures;
     match &event.request {
@@ -1227,11 +1189,10 @@ fn try_bob_refund_procedure_signatures_to_bob_accordant_lock(
                 remote_params,
                 funding_address,
                 wallet,
-                local_trade_role,
                 buy_procedure_signature,
             })))
         }
-        _ => handle_bob_swap_interrupt_after_lock(event, runtime, local_trade_role),
+        _ => handle_bob_swap_interrupt_after_lock(event, runtime),
     }
 }
 
@@ -1245,7 +1206,6 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
         funding_address,
         remote_params,
         wallet,
-        local_trade_role,
         buy_procedure_signature,
     } = bob_accordant_lock;
     match event.request {
@@ -1270,11 +1230,10 @@ fn try_bob_accordant_lock_to_bob_accordant_lock_final(
                     funding_address,
                     remote_params,
                     wallet,
-                    local_trade_role,
                 },
             )))
         }
-        _ => handle_bob_swap_interrupt_after_lock(event, runtime, local_trade_role),
+        _ => handle_bob_swap_interrupt_after_lock(event, runtime),
     }
 }
 
@@ -1288,7 +1247,6 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
         funding_address,
         remote_params,
         mut wallet,
-        local_trade_role,
     } = bob_accordant_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -1327,7 +1285,6 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                     funding_address,
                     remote_params,
                     wallet,
-                    local_trade_role,
                 },
             )))
         }
@@ -1382,19 +1339,15 @@ fn try_bob_accordant_lock_final_to_bob_buy_final(
                 sweep_xmr.destination_address.addr(),
                 sweep_block.bright_blue_bold(),
             );
-            Ok(Some(SwapStateMachine::BobBuyFinal(
-                local_trade_role,
-                sweep_address,
-            )))
+            Ok(Some(SwapStateMachine::BobBuyFinal(sweep_address)))
         }
-        _ => handle_bob_swap_interrupt_after_lock(event, runtime, local_trade_role),
+        _ => handle_bob_swap_interrupt_after_lock(event, runtime),
     }
 }
 
 fn try_bob_buy_final_to_bob_buy_sweeping(
     mut event: Event,
     runtime: &mut Runtime,
-    local_trade_role: TradeRole,
     task: SweepAddress,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
@@ -1412,7 +1365,7 @@ fn try_bob_buy_final_to_bob_buy_sweeping(
                 runtime.syncer_state.monero_height.label()
             );
             event.send_sync_service(runtime.syncer_state.monero_syncer(), request)?;
-            Ok(Some(SwapStateMachine::BobBuySweeping(local_trade_role)))
+            Ok(Some(SwapStateMachine::BobBuySweeping))
         }
         _ => Ok(None),
     }
@@ -1467,7 +1420,6 @@ fn try_bob_cancel_final_to_swap_end(
 fn try_bob_canceled_to_bob_cancel_final(
     event: Event,
     runtime: &mut Runtime,
-    local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         // If Cancel Broadcast failed, then we need to go into Buy
@@ -1496,7 +1448,7 @@ fn try_bob_canceled_to_bob_cancel_final(
             }
             let (tx_label, refund_tx) = runtime.txs.remove_entry(&TxLabel::Refund).unwrap();
             runtime.broadcast(refund_tx, tx_label, event.endpoints)?;
-            Ok(Some(SwapStateMachine::BobCancelFinal(local_trade_role)))
+            Ok(Some(SwapStateMachine::BobCancelFinal))
         }
         _ => Ok(None),
     }
@@ -1529,7 +1481,6 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
     let AliceReveal {
         local_params,
         remote_params,
-        local_trade_role,
         mut wallet,
     } = alice_reveal;
     match event.request.clone() {
@@ -1581,7 +1532,6 @@ fn try_alice_reveal_to_alice_core_arbitrating_setup(
                 local_params,
                 remote_params,
                 wallet,
-                local_trade_role,
             });
             debug!("{} | checkpointing alice pre lock state", runtime.swap_id);
             runtime.checkpoint_state(
@@ -1613,7 +1563,6 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
         local_params,
         remote_params,
         wallet,
-        local_trade_role,
     } = alice_core_arbitrating_setup;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -1663,7 +1612,6 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
                     AliceArbitratingLockFinal {
                         wallet,
-                        local_trade_role,
                         required_funding_amount: amount,
                         funding_info,
                     },
@@ -1673,7 +1621,7 @@ fn try_alice_core_arbitrating_setup_to_alice_arbitrating_lock_final(
                 Ok(None)
             }
         }
-        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet, local_trade_role),
+        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet),
     }
 }
 
@@ -1684,7 +1632,6 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
 ) -> Result<Option<SwapStateMachine>, Error> {
     let AliceArbitratingLockFinal {
         wallet,
-        local_trade_role,
         funding_info,
         required_funding_amount,
     } = alice_arbitrating_lock_final;
@@ -1710,7 +1657,6 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
                 AliceArbitratingLockFinal {
                     wallet,
-                    local_trade_role,
                     funding_info,
                     required_funding_amount,
                 },
@@ -1744,7 +1690,6 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             Ok(Some(SwapStateMachine::AliceArbitratingLockFinal(
                 AliceArbitratingLockFinal {
                     wallet,
-                    local_trade_role,
                     funding_info,
                     required_funding_amount,
                 },
@@ -1820,17 +1765,13 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
                 )?;
                 return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                     wallet,
-                    local_trade_role,
                 })));
             }
             Ok(Some(SwapStateMachine::AliceAccordantLock(
-                AliceAccordantLock {
-                    wallet,
-                    local_trade_role,
-                },
+                AliceAccordantLock { wallet },
             )))
         }
-        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet, local_trade_role),
+        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet),
     }
 }
 
@@ -1839,10 +1780,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
     runtime: &mut Runtime,
     alice_accordant_lock: AliceAccordantLock,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let AliceAccordantLock {
-        mut wallet,
-        local_trade_role,
-    } = alice_accordant_lock;
+    let AliceAccordantLock { mut wallet } = alice_accordant_lock;
 
     match event.request.clone() {
         BusMsg::P2p(PeerMsg::BuyProcedureSignature(buy_procedure_signature)) => {
@@ -1881,7 +1819,6 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
                     runtime.broadcast(cancel_tx, TxLabel::Cancel, event.endpoints)?;
                     return Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         wallet,
-                        local_trade_role,
                     })));
                 }
             }
@@ -1890,7 +1827,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             runtime.broadcast(buy_tx, TxLabel::Buy, event.endpoints)?;
 
             // checkpoint swap alice pre buy
-            let new_ssm = SwapStateMachine::AliceBuyProcedureSignature(local_trade_role);
+            let new_ssm = SwapStateMachine::AliceBuyProcedureSignature;
             debug!(
                 "{} | checkpointing alice pre buy swapd state",
                 runtime.swap_id
@@ -1898,7 +1835,7 @@ fn try_alice_accordant_lock_to_alice_buy_procedure_signature(
             runtime.checkpoint_state(event.endpoints, None, new_ssm.clone())?;
             Ok(Some(new_ssm))
         }
-        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet, local_trade_role),
+        _ => handle_alice_swap_interrupt_afer_lock(event, runtime, wallet),
     }
 }
 
@@ -1949,10 +1886,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
     runtime: &mut Runtime,
     alice_canceled: AliceCanceled,
 ) -> Result<Option<SwapStateMachine>, Error> {
-    let AliceCanceled {
-        mut wallet,
-        local_trade_role,
-    } = alice_canceled;
+    let AliceCanceled { mut wallet } = alice_canceled;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
             TransactionConfirmations {
@@ -1987,7 +1921,6 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     )?;
                     Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                         wallet,
-                        local_trade_role,
                     })))
                 }
                 Some(TxLabel::Cancel)
@@ -2007,7 +1940,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                         )?;
                     }
                     runtime.broadcast(punish_tx, tx_label, event.endpoints)?;
-                    Ok(Some(SwapStateMachine::AlicePunish(local_trade_role)))
+                    Ok(Some(SwapStateMachine::AlicePunish))
                 }
                 _ => Ok(None),
             }
@@ -2082,10 +2015,7 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
                     "Peerd might crash, just ignore it, counterparty closed\
                                        connection but you don't need it anymore!"
                 );
-                Ok(Some(SwapStateMachine::AliceRefund(
-                    local_trade_role,
-                    sweep_address,
-                )))
+                Ok(Some(SwapStateMachine::AliceRefund(sweep_address)))
             } else {
                 if runtime.syncer_state.awaiting_funding {
                     warn!("FundingCompleted never emitted, emitting it now to clean up farcasterd");
@@ -2122,7 +2052,6 @@ fn try_alice_canceled_to_alice_refund_or_alice_punish(
 fn try_alice_refund_to_alice_refund_sweeping(
     mut event: Event,
     runtime: &mut Runtime,
-    local_trade_role: TradeRole,
     sweep_address: SweepAddress,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
@@ -2141,9 +2070,7 @@ fn try_alice_refund_to_alice_refund_sweeping(
                 runtime.syncer_state.monero_syncer(),
                 SyncMsg::Task(Task::SweepAddress(sweep_address)),
             )?;
-            Ok(Some(SwapStateMachine::AliceRefundSweeping(
-                local_trade_role,
-            )))
+            Ok(Some(SwapStateMachine::AliceRefundSweeping))
         }
         _ => Ok(None),
     }
@@ -2228,7 +2155,6 @@ fn try_alice_punish_to_swap_end(
 fn try_bob_buy_sweeping_to_swap_end(
     mut event: Event,
     runtime: &mut Runtime,
-    _local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::SweepSuccess(SweepSuccess { id, .. })))
@@ -2316,7 +2242,6 @@ fn attempt_transition_to_bob_reveal(
                     remote_params,
                     wallet,
                     alice_reveal: reveal,
-                    local_trade_role,
                 })))
             } else {
                 // fee estimate not available yet, defer handling for later
@@ -2384,7 +2309,6 @@ fn attempt_transition_to_bob_reveal(
                     remote_params,
                     wallet,
                     alice_reveal: reveal,
-                    local_trade_role,
                 })))
             } else {
                 Ok(None)
@@ -2398,7 +2322,6 @@ fn attempt_transition_to_alice_reveal(
     runtime: &mut Runtime,
     local_params: Params,
     remote_commit: Commit,
-    local_trade_role: TradeRole,
     mut wallet: Wallet,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
@@ -2426,7 +2349,6 @@ fn attempt_transition_to_alice_reveal(
                 local_params,
                 remote_params,
                 wallet,
-                local_trade_role,
             })))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_swap(event, runtime),
@@ -2438,7 +2360,6 @@ fn attempt_transition_to_alice_reveal(
 fn handle_bob_swap_interrupt_after_lock(
     event: Event,
     runtime: &mut Runtime,
-    local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_impossible(event, runtime),
@@ -2468,7 +2389,7 @@ fn handle_bob_swap_interrupt_after_lock(
                 ..
             },
         ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel) => {
-            Ok(Some(SwapStateMachine::BobCanceled(local_trade_role)))
+            Ok(Some(SwapStateMachine::BobCanceled))
         }
         _ => Ok(None),
     }
@@ -2478,7 +2399,6 @@ fn handle_alice_swap_interrupt_afer_lock(
     mut event: Event,
     runtime: &mut Runtime,
     wallet: Wallet,
-    local_trade_role: TradeRole,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -2501,7 +2421,6 @@ fn handle_alice_swap_interrupt_afer_lock(
             }
             Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                 wallet,
-                local_trade_role,
             })))
         }
         BusMsg::Sync(SyncMsg::Event(SyncEvent::TransactionConfirmations(
@@ -2527,7 +2446,6 @@ fn handle_alice_swap_interrupt_afer_lock(
         ))) if runtime.syncer_state.tasks.watched_txs.get(&id) == Some(&TxLabel::Cancel) => {
             Ok(Some(SwapStateMachine::AliceCanceled(AliceCanceled {
                 wallet,
-                local_trade_role,
             })))
         }
         BusMsg::Ctl(CtlMsg::AbortSwap) => handle_abort_impossible(event, runtime),
