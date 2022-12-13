@@ -1196,10 +1196,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         {
             runtime.handle_new_connection(event.source.clone());
 
-            info!(
-                "{} | Peerd connected for restored swap",
-                swap_id.bright_blue_italic()
-            );
+            info!("{} | Peerd connected for restored swap", swap_id.swap_id());
             peerd = Some(event.source.clone());
         }
         (BusMsg::Ctl(CtlMsg::ConnectFailed), source)
@@ -1214,7 +1211,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
                 if let Some(node_id) = expected_counterparty_node_id {
                     if source.node_addr() == Some(NodeAddr::new(node_id, bind_addr)) {
                         info!(
-                            "{} | Peerd connection for restored swap",
+                            "{} | Peerd connected for restored swap",
                             swap_id.bright_blue_italic()
                         );
                         peerd = Some(source);
