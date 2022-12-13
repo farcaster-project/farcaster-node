@@ -164,18 +164,29 @@ pub struct RestoringSwapd {
     swapd_up: bool,
     expect_connection: bool,
     peerd: Option<ServiceId>,
+    listening: bool,
 }
 
 pub struct SwapdRunning {
+    // Peerd is some, if the running swap has a connection through this peerd.
+    // It can change values for listener-spawned connections.
+    // Peerd is None, in case of a restored swap. It can change to some either
+    // through the Connect command or by registering an incoming connection with
+    // an expected counterparty node id.
     peerd: Option<ServiceId>,
     public_offer: PublicOffer,
     arbitrating_syncer: ServiceId,
     accordant_syncer: ServiceId,
     swap_id: SwapId,
+    // This is Some if funding is required for this swap, None if not.
     funding_info: Option<FundingInfo>,
+    // Tracks the auto-funding status of the swap.
     auto_funded: bool,
+    // A list of clients to report back to on Connect success.
     clients_awaiting_connect_result: Vec<ServiceId>,
     trade_role: TradeRole,
+    // Some for a restore Maker swap, None otherwise.
+    expected_counterparty_node_id: Option<NodeId>,
 }
 
 #[derive(Clone)]
@@ -624,6 +635,30 @@ fn attempt_transition_to_restoring_swapd(
                 public_offer.offer.accordant_blockchain.try_into()?,
                 public_offer.offer.network,
             )?;
+
+            let listening = if trade_role == TradeRole::Maker {
+                match runtime.config.get_bind_addr() {
+                    Ok(bind_addr) => {
+                        if let Err(err) = runtime.listen(bind_addr) {
+                            warn!("failed to re-listen on restore: {}", err);
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    Err(err) => {
+                        let msg = format!(
+                            "Failed to relisten on restore, bad bind address configuration: {}",
+                            err
+                        );
+                        error!("{}", msg);
+                        false
+                    }
+                }
+            } else {
+                false
+            };
+
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
@@ -652,6 +687,7 @@ fn attempt_transition_to_restoring_swapd(
                 swapd_up: false,
                 peerd: None,
                 expect_connection,
+                listening,
             })))
         }
         req => {
@@ -1095,6 +1131,7 @@ fn attempt_transition_from_swapd_launched_to_swapd_running(
             auto_funded: false,
             clients_awaiting_connect_result: vec![],
             trade_role: consumed_offer_role.into(),
+            expected_counterparty_node_id: None,
         })))
     } else {
         debug!(
@@ -1137,6 +1174,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         mut swapd_up,
         mut peerd,
         mut expect_connection,
+        listening,
     } = restoring_swapd;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
@@ -1158,10 +1196,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         {
             runtime.handle_new_connection(event.source.clone());
 
-            info!(
-                "{} | Peerd connected for restored swap",
-                swap_id.bright_blue_italic()
-            );
+            info!("{} | Peerd connected for restored swap", swap_id.swap_id());
             peerd = Some(event.source.clone());
         }
         (BusMsg::Ctl(CtlMsg::ConnectFailed), source)
@@ -1170,6 +1205,18 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
         {
             runtime.handle_failed_connection(event.endpoints, source.clone())?;
             expect_connection = false;
+        }
+        (BusMsg::Ctl(CtlMsg::Hello), source) if trade_role == TradeRole::Maker => {
+            if let Ok(bind_addr) = runtime.config.get_bind_addr() {
+                if let Some(node_id) = expected_counterparty_node_id {
+                    if source.node_addr() == Some(NodeAddr::new(node_id, bind_addr)) {
+                        info!("{} | Peerd connected for restored swap", swap_id.swap_id());
+                        peerd = Some(source);
+                    }
+                }
+            } else {
+                error!("Invalid bind addr configuration");
+            }
         }
         _ => {}
     }
@@ -1206,6 +1253,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             funding_info: None,
             clients_awaiting_connect_result: vec![],
             trade_role,
+            expected_counterparty_node_id,
         })))
     } else {
         Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
@@ -1218,6 +1266,7 @@ fn attempt_transition_from_restoring_swapd_to_swapd_running(
             swapd_up,
             peerd,
             expect_connection,
+            listening,
         })))
     }
 }
@@ -1237,6 +1286,7 @@ fn attempt_transition_to_end(
         auto_funded,
         mut clients_awaiting_connect_result,
         trade_role,
+        expected_counterparty_node_id,
     } = swapd_running;
     match (event.request.clone(), event.source.clone()) {
         (BusMsg::Ctl(CtlMsg::Hello), source)
@@ -1258,6 +1308,31 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
+            })))
+        }
+
+        (BusMsg::Ctl(CtlMsg::Hello), source)
+            if peerd.is_none()
+                && expected_counterparty_node_id == source.node_addr().map(|a| a.id) =>
+        {
+            let swap_service_id = ServiceId::Swap(swap_id);
+            debug!(
+                "{} | Letting you know of peer reconnection.",
+                swap_service_id
+            );
+            event.complete_ctl_service(swap_service_id, CtlMsg::PeerdReconnected(source))?;
+            Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
+                peerd,
+                public_offer,
+                swap_id,
+                arbitrating_syncer,
+                accordant_syncer,
+                funding_info,
+                auto_funded,
+                clients_awaiting_connect_result,
+                trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1283,20 +1358,20 @@ fn attempt_transition_to_end(
                             Some(cookie) => {
                                 let path = PathBuf::from_str(&shellexpand::tilde(&cookie)).unwrap();
                                 debug!("{} | bitcoin-rpc connecting with cookie auth",
-                                       swap_id.bright_blue_italic());
+                                       swap_id.swap_id());
                                 Client::new(&host, Auth::CookieFile(path))
                             }
                             None => {
                                 match (auto_fund_config.bitcoin_rpc_user, auto_fund_config.bitcoin_rpc_pass) {
                                     (Some(rpc_user), Some(rpc_pass)) => {
                                         debug!("{} | bitcoin-rpc connecting with userpass auth",
-                                               swap_id.bright_blue_italic());
+                                               swap_id.swap_id());
                                         Client::new(&host, Auth::UserPass(rpc_user, rpc_pass))
                                     }
                                     _ => {
                                         error!(
                                             "{} | Couldn't instantiate Bitcoin RPC - provide either `bitcoin_cookie_path` or `bitcoin_rpc_user` AND `bitcoin_rpc_pass` configuration parameters",
-                                            swap_id.bright_blue_italic()
+                                            swap_id.swap_id()
                                         );
 
                                         Err(Error::InvalidCookieFile)}
@@ -1323,13 +1398,14 @@ fn attempt_transition_to_end(
                                 auto_funded: true,
                                 clients_awaiting_connect_result,
                                 trade_role,
+                                expected_counterparty_node_id,
                             })))
                         }
                         Err(err) => {
                             warn!("{}", err);
                             error!(
                                     "{} | Auto-funding Bitcoin transaction failed, pushing to cli, use `swap-cli needs-funding Bitcoin` to retrieve address and amount",
-                                    swap_id.bright_blue_italic()
+                                    swap_id.swap_id()
                                 );
                             Ok(Some(TradeStateMachine::SwapdRunning(SwapdRunning {
                                 peerd,
@@ -1341,6 +1417,7 @@ fn attempt_transition_to_end(
                                 auto_funded: false,
                                 clients_awaiting_connect_result,
                                 trade_role,
+                                expected_counterparty_node_id,
                             })))
                         }
                     }
@@ -1355,6 +1432,7 @@ fn attempt_transition_to_end(
                         auto_funded: false,
                         clients_awaiting_connect_result,
                         trade_role,
+                        expected_counterparty_node_id,
                     })))
                 }
             }
@@ -1405,10 +1483,10 @@ fn attempt_transition_to_end(
                                 Err(err) => {
                                     if (err.to_string().contains("not enough") && err.to_string().contains("money")) || retries == 0 {
                                         warn!("{}", err);
-                                        error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.bright_blue_italic());
+                                        error!("{} | Auto-funding Monero transaction failed, pushing to cli, use `swap-cli needs-funding Monero` to retrieve address and amount", &swap_id.swap_id());
                                         break;
                                     } else {
-                                        warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.bright_blue_italic(), err, retries);
+                                        warn!("{} | Auto-funding Monero transaction failed with {}, retrying, {} retries left", &swap_id.swap_id(), err, retries);
                                     }
                                 }
                             }
@@ -1423,6 +1501,7 @@ fn attempt_transition_to_end(
                              auto_funded,
                              clients_awaiting_connect_result,
                              trade_role,
+                             expected_counterparty_node_id,
                          })))
                     })
                 } else {
@@ -1436,6 +1515,7 @@ fn attempt_transition_to_end(
                         auto_funded: false,
                         clients_awaiting_connect_result,
                         trade_role,
+                        expected_counterparty_node_id,
                     })))
                 }
             }
@@ -1458,6 +1538,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1478,6 +1559,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1518,6 +1600,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1539,6 +1622,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result: vec![],
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1566,6 +1650,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result: vec![],
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1592,6 +1677,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
 
@@ -1648,6 +1734,7 @@ fn attempt_transition_to_end(
                 auto_funded,
                 clients_awaiting_connect_result,
                 trade_role,
+                expected_counterparty_node_id,
             })))
         }
     }
