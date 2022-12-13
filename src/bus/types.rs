@@ -12,6 +12,7 @@ use farcaster_core::{
 use amplify::{ToYamlString, Wrapper};
 use internet2::addr::NodeId;
 use microservices::rpc;
+use serde_with::DisplayFromStr;
 use strict_encoding::{NetworkDecode, NetworkEncode};
 
 use crate::swapd::StateReport;
@@ -32,7 +33,12 @@ pub struct CheckpointEntry {
     pub expected_counterparty_node_id: Option<NodeId>,
 }
 
-#[derive(Clone, Debug, Display, NetworkDecode, NetworkEncode)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, Hash, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum AddressSecretKey {
     #[display("addr_key({address}, ..)")]
     Bitcoin {
@@ -46,18 +52,31 @@ pub enum AddressSecretKey {
     },
 }
 
-#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, Hash, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display("bitcoin secret key info")]
 pub struct BitcoinSecretKeyInfo {
     pub swap_id: Option<SwapId>,
     pub secret_key: bitcoin::secp256k1::SecretKey,
 }
 
-#[derive(Clone, Debug, Display, Eq, PartialEq, NetworkDecode, NetworkEncode)]
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Clone, Debug, Display, Eq, PartialEq, Hash, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 #[display("monero secret key info")]
 pub struct MoneroSecretKeyInfo {
     pub swap_id: Option<SwapId>,
+    #[serde_as(as = "DisplayFromStr")]
     pub view: monero::PrivateKey,
+    #[serde_as(as = "DisplayFromStr")]
     pub spend: monero::PrivateKey,
     pub creation_height: Option<u64>,
 }

@@ -1,5 +1,6 @@
 use clap::Parser;
 use farcaster_core::blockchain::{Blockchain, Network};
+use farcaster_node::bus::{AddressSecretKey, MoneroSecretKeyInfo};
 use farcaster_node::syncerd::monero_syncer::MoneroSyncer;
 use farcaster_node::syncerd::opts::Opts;
 use farcaster_node::syncerd::runtime::SyncerdTask;
@@ -7,6 +8,7 @@ use farcaster_node::syncerd::types::{
     Abort, AddressAddendum, Boolean, BroadcastTransaction, Task, WatchAddress, WatchHeight,
     WatchTransaction,
 };
+use farcaster_node::syncerd::GetAddressBalance;
 use farcaster_node::syncerd::{
     runtime::Synclet, SweepAddress, SweepAddressAddendum, SweepMoneroAddress, TaskId, TaskTarget,
     XmrAddressAddendum,
@@ -190,6 +192,69 @@ async fn monero_syncer_sweep_test() {
     info!("received sweep success message");
     let request = misc::get_request_from_message(message);
     assert::sweep_success(request, TaskId(0));
+
+    // check that only a single sweep message has been received
+    assert!(rx_event.recv_multipart(1).is_err());
+}
+
+#[tokio::test]
+#[timeout(300000)]
+#[ignore]
+async fn monero_syncer_address_balance_test() {
+    setup_logging();
+    let (regtest, wallet) = setup_monero().await;
+    let address = wallet.get_address(0, None).await.unwrap();
+    let height = regtest.generate_blocks(200, address.address).await.unwrap();
+
+    let duration = std::time::Duration::from_secs(20);
+    std::thread::sleep(duration);
+
+    let (tx, rx_event) = create_monero_syncer("sweep", false);
+
+    let target_spend_key = monero::PrivateKey::from_str(
+        "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09",
+    )
+    .unwrap();
+    let target_view_key = monero::PrivateKey::from_str(
+        "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09",
+    )
+    .unwrap();
+    let keypair = monero::KeyPair {
+        view: target_view_key,
+        spend: target_spend_key,
+    };
+    let target_address = monero::Address::from_keypair(monero::Network::Mainnet, &keypair);
+    let amount = 500000000000;
+    send_monero(&wallet, target_address, amount).await;
+
+    let task = SyncerdTask {
+        task: Task::GetAddressBalance(GetAddressBalance {
+            id: TaskId(0),
+            address_secret_key: AddressSecretKey::Monero {
+                address: target_address,
+                secret_key_info: MoneroSecretKeyInfo {
+                    swap_id: None,
+                    spend: target_spend_key,
+                    view: target_view_key,
+                    creation_height: Some(height.height),
+                },
+            },
+        }),
+        source: SOURCE2.clone(),
+    };
+    tx.send(task).unwrap();
+
+    // the minimum amount is not reached, so let it mature and later check that no sweep has been executed
+    regtest.generate_blocks(20, address.address).await.unwrap();
+    let duration = std::time::Duration::from_secs(20);
+    std::thread::sleep(duration);
+
+    info!("waiting for address balance message");
+    let message = rx_event.recv_multipart(0).unwrap();
+    info!("received address balance message");
+    let request = misc::get_request_from_message(message);
+
+    assert::address_balance_min(request, amount);
 
     // check that only a single sweep message has been received
     assert!(rx_event.recv_multipart(1).is_err());

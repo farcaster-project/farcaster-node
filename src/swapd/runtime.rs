@@ -2553,6 +2553,10 @@ impl Runtime {
                         debug!("{}", event)
                     }
 
+                    Event::AddressBalance(event) => {
+                        debug!("{}", event)
+                    }
+
                     Event::FeeEstimation(FeeEstimation {
                         fee_estimations:
                             FeeEstimations::BitcoinFeeEstimation {

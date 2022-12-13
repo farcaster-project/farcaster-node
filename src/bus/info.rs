@@ -17,6 +17,7 @@ use crate::cli::OfferSelector;
 use crate::farcasterd::stats::Stats;
 use crate::swapd::StateReport;
 use crate::syncerd::runtime::SyncerdTask;
+use crate::Error;
 
 use super::ctl::FundingInfo;
 use super::StateTransition;
@@ -169,6 +170,9 @@ pub enum InfoMsg {
     // - End GetCheckpointEntry section
     #[display("{0}")]
     FundingInfos(FundingInfos),
+
+    #[display("{0}")]
+    AddressBalance(AddressBalance),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Display, NetworkEncode, NetworkDecode)]
@@ -368,12 +372,43 @@ pub enum ProgressEvent {
     Failure(Failure),
 }
 
-#[derive(Eq, PartialEq, Clone, Debug, Display, NetworkDecode, NetworkEncode)]
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Eq, PartialEq, Clone, Debug, Display, Hash, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum Address {
     #[display("{0}")]
     Bitcoin(bitcoin::Address),
     #[display("{0}")]
     Monero(monero::Address),
+}
+
+impl FromStr for Address {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        bitcoin::Address::from_str(s)
+            .map(|a| Address::Bitcoin(a))
+            .map_err(|e| Error::Farcaster(e.to_string()))
+            .or(monero::Address::from_str(s)
+                .map(|a| Address::Monero(a))
+                .map_err(|e| Error::Farcaster(e.to_string())))
+    }
+}
+
+#[cfg_attr(feature = "serde", serde_as)]
+#[derive(Eq, PartialEq, Clone, Debug, Display, Hash, NetworkDecode, NetworkEncode)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+#[display(AddressBalance::to_yaml_string)]
+pub struct AddressBalance {
+    pub address: Address,
+    pub balance: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Display, NetworkEncode, NetworkDecode)]
@@ -450,3 +485,5 @@ impl ToYamlString for SyncerInfo {}
 impl ToYamlString for ProgressEvent {}
 #[cfg(feature = "serde")]
 impl ToYamlString for FundingInfos {}
+#[cfg(feature = "serde")]
+impl ToYamlString for AddressBalance {}

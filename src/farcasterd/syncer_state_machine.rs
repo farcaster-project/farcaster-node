@@ -4,12 +4,13 @@ use farcaster_core::blockchain::{Blockchain, Network};
 use crate::{
     bus::ctl::CtlMsg,
     bus::info::InfoMsg,
-    bus::sync::SyncMsg,
     bus::BusMsg,
+    bus::{sync::SyncMsg, AddressSecretKey, Failure, FailureCode},
     error::Error,
     event::{Event, StateMachine, StateMachineExecutor},
     syncerd::{
-        Event as SyncerEvent, Health, HealthCheck, SweepAddress, SweepAddressAddendum, Task, TaskId,
+        Event as SyncerEvent, GetAddressBalance, Health, HealthCheck, SweepAddress,
+        SweepAddressAddendum, Task, TaskId,
     },
     ServiceId,
 };
@@ -180,6 +181,47 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
             }
         }
 
+        BusMsg::Ctl(CtlMsg::GetBalance(address_secret_key)) => {
+            let syncer_task_id = TaskId(runtime.syncer_task_counter);
+            runtime.syncer_task_counter += 1;
+            let (blockchain, network) = match &address_secret_key {
+                AddressSecretKey::Bitcoin { address, .. } => {
+                    (Blockchain::Bitcoin, address.network.into())
+                }
+                AddressSecretKey::Monero { address, .. } => {
+                    (Blockchain::Monero, address.network.into())
+                }
+            };
+            let syncer_task = Task::GetAddressBalance(GetAddressBalance {
+                id: syncer_task_id,
+                address_secret_key,
+            });
+            // check if a monero syncer is up
+            if let Some(service_id) = syncer_up(
+                &mut runtime.spawning_services,
+                &mut runtime.registered_services,
+                blockchain,
+                network,
+                &runtime.config,
+            )? {
+                event.complete_sync_service(service_id, SyncMsg::Task(syncer_task))?;
+                Ok(Some(SyncerStateMachine::AwaitingSyncerRequest(
+                    AwaitingSyncerRequest {
+                        source,
+                        syncer_task_id,
+                        syncer: ServiceId::Syncer(blockchain, network),
+                    },
+                )))
+            } else {
+                Ok(Some(SyncerStateMachine::AwaitingSyncer(AwaitingSyncer {
+                    source,
+                    syncer: ServiceId::Syncer(blockchain, network),
+                    syncer_task: syncer_task,
+                    syncer_task_id,
+                })))
+            }
+        }
+
         BusMsg::Ctl(CtlMsg::HealthCheck(blockchain, network)) => {
             let syncer_task_id = TaskId(runtime.syncer_task_counter);
             runtime.syncer_task_counter += 1;
@@ -303,6 +345,48 @@ fn attempt_transition_to_end(
                 event.send_client_info(source, InfoMsg::String("Nothing to sweep.".to_string()))?;
             }
 
+            runtime.registered_services = runtime
+                .registered_services
+                .clone()
+                .drain()
+                .filter(|service| {
+                    if let ServiceId::Syncer(..) = service {
+                        if !runtime.syncer_has_client(service) {
+                            info!("Terminating {}", service);
+                            event
+                                .send_ctl_service(service.clone(), CtlMsg::Terminate)
+                                .is_err()
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+            Ok(None)
+        }
+
+        (BusMsg::Sync(SyncMsg::Event(SyncerEvent::AddressBalance(res))), syncer_id)
+            if syncer == syncer_id && res.id == syncer_task_id =>
+        {
+            if let Some(err) = res.err {
+                event.send_client_ctl(
+                    source,
+                    CtlMsg::Failure(Failure {
+                        code: FailureCode::Unknown,
+                        info: format!("Failed to get adddress balance {}", err),
+                    }),
+                )?;
+            } else {
+                event.send_client_info(
+                    source,
+                    InfoMsg::AddressBalance(crate::bus::info::AddressBalance {
+                        address: res.address,
+                        balance: res.balance,
+                    }),
+                )?;
+            }
             runtime.registered_services = runtime
                 .registered_services
                 .clone()
