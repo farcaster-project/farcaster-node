@@ -1619,9 +1619,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
     } = alice_arbitrating_lock_final;
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::Empty(id)))
-            if runtime.syncer_state.tasks.watched_addrs.contains_key(&id)
-                && runtime.syncer_state.tasks.watched_addrs.get(&id).unwrap()
-                    == &TxLabel::AccLock =>
+            if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock) =>
         {
             runtime.log_info(format!(
                 "Send {} to {}",
@@ -1680,9 +1678,7 @@ fn try_alice_arbitrating_lock_final_to_alice_accordant_lock(
             amount,
             ref block,
             ref tx,
-        }))) if runtime.syncer_state.tasks.watched_addrs.contains_key(&id)
-            && runtime.syncer_state.tasks.watched_addrs.get(&id).unwrap() == &TxLabel::AccLock =>
-        {
+        }))) if runtime.syncer_state.tasks.watched_addrs.get(&id) == Some(&TxLabel::AccLock) => {
             runtime.log_debug(format!(
                 "Event details: {} {:?} {} {:?} {:?}",
                 id, hash, amount, block, tx
@@ -2055,8 +2051,7 @@ fn try_alice_refund_sweeping_to_swap_end(
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::SweepSuccess(SweepSuccess { id, .. })))
-            if runtime.syncer_state.tasks.sweeping_addr.is_some()
-                && runtime.syncer_state.tasks.sweeping_addr.unwrap() == id =>
+            if runtime.syncer_state.tasks.sweeping_addr == Some(id) =>
         {
             if runtime.syncer_state.awaiting_funding {
                 runtime.log_warn(
@@ -2131,8 +2126,7 @@ fn try_bob_buy_sweeping_to_swap_end(
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
         BusMsg::Sync(SyncMsg::Event(SyncEvent::SweepSuccess(SweepSuccess { id, .. })))
-            if runtime.syncer_state.tasks.sweeping_addr.is_some()
-                && runtime.syncer_state.tasks.sweeping_addr.unwrap() == id =>
+            if runtime.syncer_state.tasks.sweeping_addr == Some(id) =>
         {
             if runtime.syncer_state.awaiting_funding {
                 runtime.log_warn(
