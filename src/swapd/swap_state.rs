@@ -21,7 +21,7 @@ use crate::{
         BusMsg, Failure, FailureCode,
     },
     event::{Event, StateMachine},
-    syncerd::SweepAddress,
+    syncerd::{SweepAddress, TaskAborted},
     CtlServer, ServiceId,
 };
 use crate::{
@@ -1432,9 +1432,18 @@ fn try_awaiting_sweep_to_swap_end(
     runtime: &mut Runtime,
 ) -> Result<Option<SwapStateMachine>, Error> {
     match event.request {
+        BusMsg::Sync(SyncMsg::Event(SyncEvent::TaskAborted(TaskAborted { ref id, .. })))
+            if id.len() == 1 && runtime.syncer_state.tasks.sweeping_addr == Some(id[0]) =>
+        {
+            event.send_client_ctl(
+                ServiceId::Farcasterd,
+                CtlMsg::FundingCanceled(Blockchain::Bitcoin),
+            )?;
+            handle_abort_swap(event, runtime)
+        }
+
         BusMsg::Sync(SyncMsg::Event(SyncEvent::SweepSuccess(SweepSuccess { id, .. })))
-            if runtime.syncer_state.tasks.sweeping_addr.is_some()
-                && runtime.syncer_state.tasks.sweeping_addr.unwrap() == id =>
+            if runtime.syncer_state.tasks.sweeping_addr == Some(id) =>
         {
             event.send_client_ctl(
                 ServiceId::Farcasterd,

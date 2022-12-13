@@ -673,7 +673,7 @@ impl SyncerState {
                 &self.tx_event,
                 &mut vec![(
                     Event::TaskAborted(TaskAborted {
-                        id: vec![],
+                        id: vec![sweep_address.id],
                         error: Some(
                             "Sweep failed, did not find any assets associated with the address"
                                 .to_string(),
