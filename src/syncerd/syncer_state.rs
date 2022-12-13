@@ -489,7 +489,12 @@ impl SyncerState {
                             hash: new_tx.tx_id.clone(),
                             amount: new_tx.our_amount,
                             block: vec![], // eventually this should be removed from the event
-                            tx: new_tx.tx.clone(),
+                            tx: new_tx
+                                .tx
+                                .clone()
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
+                                .map(|c| c.to_vec())
+                                .collect(), // chunk as a workaround for the strict encoding length limit
                         };
                         events.push((
                             Event::AddressTransaction(address_transaction),
@@ -574,7 +579,11 @@ impl SyncerState {
                             id: watched_tx.task.id,
                             block: block.clone(),
                             confirmations,
-                            tx: tx.clone(),
+                            tx: tx
+                                .clone()
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
+                                .map(|c| c.to_vec())
+                                .collect(), // chunk as a workaround for the strict encoding length limit
                         };
                         events.push((
                             Event::TransactionConfirmations(tx_confs.clone()),
@@ -1088,7 +1097,6 @@ async fn syncer_state_sweep_addresses() {
         id: TaskId(0),
         lifetime: 11,
         retry: true,
-        from_height: None,
         addendum: SweepAddressAddendum::Monero(SweepMoneroAddress {
             source_view_key: monero::PrivateKey::from_str(
                 "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
@@ -1103,6 +1111,7 @@ async fn syncer_state_sweep_addresses() {
             )
             .unwrap(),
             minimum_balance: monero::Amount::from_pico(1),
+            from_height: None,
         }),
     };
     let source1 = ServiceId::Syncer(Blockchain::Monero, Network::Mainnet);

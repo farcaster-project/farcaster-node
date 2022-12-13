@@ -166,13 +166,13 @@ async fn monero_syncer_sweep_test() {
         task: Task::SweepAddress(SweepAddress {
             id: TaskId(0),
             lifetime: blocks + 40,
-            from_height: None,
             retry: true,
             addendum: SweepAddressAddendum::Monero(SweepMoneroAddress {
                 source_spend_key,
                 source_view_key,
                 destination_address,
                 minimum_balance: monero::Amount::from_pico(1000000000000),
+                from_height: None,
             }),
         }),
         source: SOURCE2.clone(),

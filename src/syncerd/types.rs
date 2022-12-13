@@ -4,6 +4,9 @@ use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::bus::{info::Address, AddressSecretKey};
 
+// The strict encoding length limit
+pub const STRICT_ENCODE_MAX_ITEMS: u16 = u16::MAX - 1;
+
 #[derive(
     Clone, Copy, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Ord, PartialOrd, Hash,
 )]
@@ -70,7 +73,6 @@ pub struct SweepAddress {
     pub id: TaskId,
     pub lifetime: u64,
     pub addendum: SweepAddressAddendum,
-    pub from_height: Option<u64>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -101,6 +103,7 @@ pub struct SweepMoneroAddress {
     pub destination_address: monero::Address,
     #[serde(with = "monero::util::amount::serde::as_xmr")]
     pub minimum_balance: monero::Amount,
+    pub from_height: Option<u64>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -308,8 +311,9 @@ pub struct AddressTransaction {
     pub hash: Vec<u8>,
     pub amount: u64,
     pub block: Vec<u8>,
-    // for bitcoin with bitcoin::consensus encoding
-    pub tx: Vec<u8>,
+    // for bitcoin with bitcoin::consensus encoding, chunked into chunks with
+    // length < 2^16 as a workaround for the strict encoding length limit
+    pub tx: Vec<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]
@@ -318,8 +322,9 @@ pub struct TransactionConfirmations {
     pub id: TaskId,
     pub block: Vec<u8>,
     pub confirmations: Option<u32>,
-    // for bitcoin with bitcoin::consensus encoding
-    pub tx: Vec<u8>,
+    // for bitcoin with bitcoin::consensus encoding, chunked into chunks with
+    // length < 2^16 as a workaround for the strict encoding length limit
+    pub tx: Vec<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode, Eq, PartialEq, Hash)]

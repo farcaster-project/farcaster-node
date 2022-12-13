@@ -1566,13 +1566,10 @@ impl Runtime {
                             .pop()
                             .unwrap();
                         if let (
-                            BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(mut task))),
+                            BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(task))),
                             ServiceBus::Sync,
                         ) = (request.clone(), bus_id)
                         {
-                            // safe cast
-                            task.from_height =
-                                Some(self.syncer_state.monero_height - *confirmations as u64);
                             let request = BusMsg::Sync(SyncMsg::Task(Task::SweepAddress(task)));
 
                             info!(
@@ -1781,7 +1778,9 @@ impl Runtime {
                     Event::AddressTransaction(AddressTransaction { id, amount, tx, .. })
                         if self.syncer_state.tasks.watched_addrs.get(id).is_some() =>
                     {
-                        let tx = bitcoin::Transaction::deserialize(tx)?;
+                        let tx = bitcoin::Transaction::deserialize(
+                            &tx.into_iter().flatten().copied().collect::<Vec<u8>>(),
+                        )?;
                         info!(
                             "Received AddressTransaction, processing tx {}",
                             &tx.txid().tx_hash()
@@ -1914,7 +1913,9 @@ impl Runtime {
                     }
 
                     Event::AddressTransaction(AddressTransaction { tx, .. }) => {
-                        let tx = bitcoin::Transaction::deserialize(tx)?;
+                        let tx = bitcoin::Transaction::deserialize(
+                            &tx.into_iter().flatten().copied().collect::<Vec<u8>>(),
+                        )?;
                         warn!(
                             "unknown address transaction with txid {}",
                             &tx.txid().addr()
@@ -1934,7 +1935,7 @@ impl Runtime {
                                     tx.clone(),
                                     endpoints,
                                     self.swap_id.clone(),
-                                    self.syncer_state.monero_height,
+                                    self.monero_address_creation_height,
                                 )?;
                                 let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
                                 let acc_confs_needs = self
@@ -1984,7 +1985,7 @@ impl Runtime {
                                     tx.clone(),
                                     endpoints,
                                     self.swap_id.clone(),
-                                    self.syncer_state.monero_height,
+                                    self.monero_address_creation_height,
                                 )?;
                                 let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
                                 let acc_confs_needs = self
@@ -2054,7 +2055,7 @@ impl Runtime {
                                     endpoints,
                                     tx.clone(),
                                     self.swap_id.clone(),
-                                    self.syncer_state.monero_height,
+                                    self.monero_address_creation_height,
                                 )?;
                                 let task = self.syncer_state.sweep_xmr(sweep_xmr.clone(), true);
                                 let acc_confs_needs = self

@@ -152,7 +152,6 @@ fn attempt_transition_to_awaiting_syncer_or_awaiting_syncer_request(
                 retry: false,
                 lifetime: u64::MAX,
                 addendum: sweep_address,
-                from_height: None,
             });
             runtime.syncer_task_counter += 1;
 

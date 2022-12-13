@@ -31,6 +31,7 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::sync::Arc;
 use tokio::runtime::Builder;
 use tokio::sync::oneshot::error::RecvError;
@@ -43,7 +44,6 @@ use crate::{CtlServer, Error, Service, ServiceConfig, ServiceId};
 use internet2::{zeromq::ZmqSocketType, TypedEnum};
 use microservices::esb;
 use microservices::ZMQ_CONTEXT;
-use std::sync::mpsc::{Receiver, Sender};
 
 use farcaster::farcaster_server::{Farcaster, FarcasterServer};
 use farcaster::{InfoRequest, InfoResponse};
@@ -350,29 +350,6 @@ impl IdCounter {
         self.0 += 1;
         self.0
     }
-}
-
-pub fn run(config: ServiceConfig, grpc_port: u16, grpc_ip: String) -> Result<(), Error> {
-    let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
-        std::sync::mpsc::channel();
-
-    let tx_request = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    let rx_request = ZMQ_CONTEXT.socket(zmq::PAIR)?;
-    tx_request.connect("inproc://grpcdbridge")?;
-    rx_request.bind("inproc://grpcdbridge")?;
-
-    let mut server = GrpcServer { grpc_port, grpc_ip };
-    server.run(rx_response, tx_request)?;
-
-    let runtime = Runtime {
-        identity: ServiceId::Grpcd,
-        tx_response,
-    };
-
-    let mut service = Service::service(config, runtime)?;
-    service.add_bridge_service_bus(rx_request)?;
-    service.run_loop()?;
-    unreachable!()
 }
 
 pub struct FarcasterService {
@@ -1302,6 +1279,7 @@ impl Farcaster for FarcasterService {
                                     source_view_key: secret_key_info.view,
                                     destination_address,
                                     minimum_balance: monero::Amount::from_pico(0),
+                                    from_height: secret_key_info.creation_height,
                                 },
                             )),
                             service_id: ServiceId::Farcasterd,
@@ -1413,61 +1391,86 @@ pub struct GrpcServer {
 fn request_loop(
     mut tokio_rx_request: tokio::sync::mpsc::Receiver<(u64, BusMsg)>,
     tx_request: zmq::Socket,
-) -> tokio::task::JoinHandle<()> {
+) -> tokio::task::JoinHandle<Result<(), Error>> {
     tokio::task::spawn(async move {
         let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx_request);
         while let Some((id, request)) = tokio_rx_request.recv().await {
             debug!("sending request over grpc bridge: {:?}", request);
             let grpc_client_address: Vec<u8> = ServiceId::GrpcdClient(id).into();
             let grpc_address: Vec<u8> = ServiceId::Grpcd.into();
-
-            session
-                .send_routed_message(
-                    &grpc_client_address,
-                    &grpc_address,
-                    &grpc_address,
-                    &request.serialize(),
-                )
-                .expect("failed to send from grpc server to grpc runtime over bridge");
+            if let Err(err) = session.send_routed_message(
+                &grpc_client_address,
+                &grpc_address,
+                &grpc_address,
+                &request.serialize(),
+            ) {
+                error!(
+                    "Error encountered while sending request to GRPC runtime: {}",
+                    err
+                );
+                return Err(Error::Farcaster(err.to_string()));
+            }
         }
+        Ok(())
     })
 }
 
 fn response_loop(
     mpsc_rx_response: Receiver<(u64, BusMsg)>,
     pending_requests_lock: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<BusMsg>>>>,
-) -> tokio::task::JoinHandle<()> {
+) -> tokio::task::JoinHandle<Result<(), Error>> {
     tokio::task::spawn(async move {
         loop {
             let response = mpsc_rx_response.try_recv();
-            if let Ok((id, request)) = response {
-                let mut pending_requests = pending_requests_lock.lock().await;
-                if pending_requests.contains_key(&id) {
-                    let sender = pending_requests.remove(&id).unwrap();
-                    sender
-                        .send(request)
-                        .expect("unable to send response from grpc response loop to its handler");
-                } else {
-                    error!("id {} not found in pending grpc requests", id);
+            match response {
+                Ok((id, request)) => {
+                    let mut pending_requests = pending_requests_lock.lock().await;
+                    if let Some(sender) = pending_requests.remove(&id) {
+                        if let Err(err) = sender.send(request) {
+                            error!(
+                                "Error encountered while sending response to Grpc server: {}",
+                                err
+                            );
+                            break;
+                        }
+                    } else {
+                        error!("id {} not found in pending grpc requests", id);
+                    }
                 }
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                Err(TryRecvError::Disconnected) => {
+                    return Err(Error::Farcaster(
+                        "Response receiver disconnected in grpc runtime".to_string(),
+                    ))
+                }
+                _ => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            };
         }
+        Ok(())
     })
 }
 
-fn server_loop(service: FarcasterService, addr: SocketAddr) -> tokio::task::JoinHandle<()> {
+fn server_loop(
+    service: FarcasterService,
+    addr: SocketAddr,
+) -> tokio::task::JoinHandle<Result<(), Error>> {
     tokio::task::spawn(async move {
         let web_service = tonic_web::config()
             .allow_all_origins()
             .enable(FarcasterServer::new(service));
 
-        Server::builder()
+        if let Err(err) = Server::builder()
             .accept_http1(true)
             .add_service(web_service)
             .serve(addr)
             .await
-            .expect("error running grpc server");
+        {
+            error!("Error encountered while running grpc server: {}", err);
+            Err(Error::Farcaster(err.to_string()))
+        } else {
+            Ok(())
+        }
     })
 }
 
@@ -1477,12 +1480,15 @@ impl GrpcServer {
         rx_response: Receiver<(u64, BusMsg)>,
         tx_request: zmq::Socket,
     ) -> Result<(), Error> {
+        // We panic here, because we cannot recover from a bad configuration
         let addr = format!("{}:{}", self.grpc_ip, self.grpc_port)
             .parse()
             .expect("invalid grpc server bind address");
         info!("Binding grpc to address: {}", addr);
 
         std::thread::spawn(move || {
+            // We panic on the async runtime failing, because this is indicative
+            // of a deeper problem that won't be solved by re-trying
             let rt = Builder::new_multi_thread()
                 .worker_threads(3)
                 .enable_all()
@@ -1509,15 +1515,68 @@ impl GrpcServer {
                 let res = tokio::try_join!(request_handle, response_handle, server_handle);
                 warn!("exiting grpc server run routine with: {:?}", res);
             });
-        });
 
+            // Connect to the PULL inproc socket to let the microserver runtime
+            // know that the server runtime terminated
+            let tx_request = ZMQ_CONTEXT
+                .socket(zmq::PUSH)
+                .expect("Panic while creating a zmq socket");
+            tx_request
+                .connect("inproc://grpcdbridge")
+                .expect("Panic while connecting to bridge socket");
+            let mut session = LocalSession::with_zmq_socket(ZmqSocketType::Push, tx_request);
+            let request = BusMsg::Bridge(BridgeMsg::GrpcServerTerminated);
+            debug!(
+                "sending grpc runtime exited request over grpc bridge: {:?}",
+                request
+            );
+            let grpc_address: Vec<u8> = ServiceId::Grpcd.into();
+            if let Err(err) = session.send_routed_message(
+                &grpc_address,
+                &grpc_address,
+                &grpc_address,
+                &request.serialize(),
+            ) {
+                error!("Failed to send the grpc server terminated message to the runtime. The Grpc server will not recover. Error: {}", err);
+            }
+        });
         Ok(())
     }
+}
+
+pub fn run(config: ServiceConfig, grpc_port: u16, grpc_ip: String) -> Result<(), Error> {
+    let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
+        std::sync::mpsc::channel();
+
+    let tx_request = ZMQ_CONTEXT.socket(zmq::PUSH)?;
+    let rx_request = ZMQ_CONTEXT.socket(zmq::PULL)?;
+    tx_request.connect("inproc://grpcdbridge")?;
+    rx_request.bind("inproc://grpcdbridge")?;
+
+    let mut server = GrpcServer {
+        grpc_port,
+        grpc_ip: grpc_ip.clone(),
+    };
+    server.run(rx_response, tx_request)?;
+
+    let runtime = Runtime {
+        identity: ServiceId::Grpcd,
+        tx_response,
+        grpc_port,
+        grpc_ip,
+    };
+
+    let mut service = Service::service(config, runtime)?;
+    service.add_bridge_service_bus(rx_request)?;
+    service.run_loop()?;
+    unreachable!()
 }
 
 pub struct Runtime {
     identity: ServiceId,
     tx_response: Sender<(u64, BusMsg)>,
+    grpc_port: u16,
+    grpc_ip: String,
 }
 
 impl CtlServer for Runtime {}
@@ -1573,7 +1632,7 @@ impl Runtime {
                 if let ServiceId::GrpcdClient(id) = source {
                     self.tx_response
                         .send((id, BusMsg::Ctl(req)))
-                        .expect("could not send response from grpc runtime to server");
+                        .map_err(|err| Error::Farcaster(err.to_string()))?;
                 } else {
                     error!("Grpcd server can only handle messages addressed to a grpcd client");
                 }
@@ -1592,7 +1651,7 @@ impl Runtime {
         if let ServiceId::GrpcdClient(id) = source {
             self.tx_response
                 .send((id, BusMsg::Info(request)))
-                .expect("could not send response from grpc runtime to server");
+                .map_err(|err| Error::Farcaster(err.to_string()))?;
         } else {
             error!("Grpcd server can only handle messages addressed to a grpcd client");
         }
@@ -1616,9 +1675,23 @@ impl Runtime {
                 request,
                 service_id,
             }) => endpoints.send_to(ServiceBus::Info, source, service_id, BusMsg::Info(request))?,
+            BusMsg::Bridge(BridgeMsg::GrpcServerTerminated) => {
+                // Re-create the grpc server runtime.
+                let (tx_response, rx_response): (Sender<(u64, BusMsg)>, Receiver<(u64, BusMsg)>) =
+                    std::sync::mpsc::channel();
+
+                let tx_request = ZMQ_CONTEXT.socket(zmq::PUSH)?;
+                tx_request.connect("inproc://grpcdbridge")?;
+
+                let mut server = GrpcServer {
+                    grpc_port: self.grpc_port.clone(),
+                    grpc_ip: self.grpc_ip.clone(),
+                };
+                server.run(rx_response, tx_request)?;
+                self.tx_response = tx_response;
+            }
             _ => error!("Could not send this type of request over the bridge"),
         }
-
         Ok(())
     }
 }

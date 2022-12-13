@@ -483,7 +483,7 @@ impl Wallet {
         buy_tx: bitcoin::Transaction,
         endpoints: &mut Endpoints,
         swap_id: SwapId,
-        current_monero_block_height: u64,
+        monero_address_creation_height: Option<u64>,
     ) -> Result<SweepMoneroAddress, Error> {
         if let Wallet::Bob(BobState {
             bob,
@@ -558,7 +558,7 @@ impl Wallet {
                         swap_id: Some(swap_id),
                         view: keypair.view.as_bytes().try_into().unwrap(),
                         spend: keypair.spend.as_bytes().try_into().unwrap(),
-                        creation_height: Some(current_monero_block_height),
+                        creation_height: monero_address_creation_height,
                     },
                 })),
             )?;
@@ -568,6 +568,7 @@ impl Wallet {
                 source_spend_key: spend,
                 destination_address: target_monero_address.clone(),
                 minimum_balance: pub_offer.offer.accordant_amount,
+                from_height: monero_address_creation_height,
             };
             Ok(sweep_keys)
         } else {
@@ -580,7 +581,7 @@ impl Wallet {
         endpoints: &mut Endpoints,
         refund_tx: bitcoin::Transaction,
         swap_id: SwapId,
-        current_monero_block_height: u64,
+        monero_address_creation_height: Option<u64>,
     ) -> Result<SweepMoneroAddress, Error> {
         if let Wallet::Alice(AliceState {
             alice,
@@ -657,7 +658,7 @@ impl Wallet {
                         swap_id: Some(swap_id),
                         view: keypair.view.as_bytes().try_into().unwrap(),
                         spend: keypair.spend.as_bytes().try_into().unwrap(),
-                        creation_height: Some(current_monero_block_height),
+                        creation_height: monero_address_creation_height,
                     },
                 })),
             )?;
@@ -667,6 +668,7 @@ impl Wallet {
                 source_spend_key: spend,
                 destination_address: target_monero_address.clone(),
                 minimum_balance: pub_offer.offer.accordant_amount,
+                from_height: monero_address_creation_height,
             };
             Ok(sweep_keys)
         } else {
