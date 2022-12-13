@@ -489,7 +489,12 @@ impl SyncerState {
                             hash: new_tx.tx_id.clone(),
                             amount: new_tx.our_amount,
                             block: vec![], // eventually this should be removed from the event
-                            tx: new_tx.tx.clone(),
+                            tx: new_tx
+                                .tx
+                                .clone()
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
+                                .map(|c| c.to_vec())
+                                .collect(), // chunk as a workaround for the strict encoding length limit
                         };
                         events.push((
                             Event::AddressTransaction(address_transaction),
@@ -574,7 +579,11 @@ impl SyncerState {
                             id: watched_tx.task.id,
                             block: block.clone(),
                             confirmations,
-                            tx: tx.clone(),
+                            tx: tx
+                                .clone()
+                                .chunks(STRICT_ENCODE_MAX_ITEMS.into())
+                                .map(|c| c.to_vec())
+                                .collect(), // chunk as a workaround for the strict encoding length limit
                         };
                         events.push((
                             Event::TransactionConfirmations(tx_confs.clone()),
