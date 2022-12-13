@@ -29,6 +29,7 @@ use crate::{
     bus::info::{InfoMsg, NodeInfo, OfferInfo, OfferStatusSelector, ProgressEvent, SwapProgress},
     bus::{Failure, FailureCode, Progress},
     clap::Parser,
+    config::ParsedSwapConfig,
     error::SyncerError,
     service::Endpoints,
 };
@@ -121,7 +122,7 @@ pub struct Runtime {
     progress: HashMap<ServiceId, VecDeque<ProgressStack>>, // A mapping from Swap ServiceId to its sent and received progress messages (Progress, Success, Failure)
     progress_subscriptions: HashMap<ServiceId, HashSet<ServiceId>>, // A mapping from a Client ServiceId to its subsribed swap progresses
     pub stats: Stats,             // Some stats about offers and swaps
-    pub config: Config,           // Configuration for syncers, auto-funding, and grpc
+    pub config: Config,           // The complete node configuration
     pub syncer_task_counter: u32, // A strictly incrementing counter of issued syncer tasks
     pub trade_state_machines: Vec<TradeStateMachine>, // New trade state machines are inserted on creation and destroyed upon state machine end transitions
     syncer_state_machines: HashMap<TaskId, SyncerStateMachine>, // New syncer state machines are inserted by their syncer task id when sending a syncer request and destroyed upon matching syncer request receival
@@ -1229,25 +1230,35 @@ pub fn syncer_up(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Launch a swapd instance with all the necessary paramters for: swap id, offer to use, trade role
+/// to execute, temporal safety arguments.
 pub fn launch_swapd(
     local_trade_role: TradeRole,
     public_offer: PublicOffer,
     swap_id: SwapId,
-) -> Result<String, Error> {
+    swap_config: ParsedSwapConfig,
+) -> Result<(), Error> {
     debug!("Instantiating swapd...");
     let child = launch(
         "swapd",
         &[
+            "--arb-finality".to_string(),
+            swap_config.arbitrating.finality.to_string(),
+            "--arb-safety".to_string(),
+            swap_config.arbitrating.safety.to_string(),
+            "--acc-finality".to_string(),
+            swap_config.accordant.finality.to_string(),
+            "--id".to_string(),
             swap_id.to_hex(),
+            "--public-offer".to_string(),
             public_offer.to_string(),
+            "--trade-role".to_string(),
             local_trade_role.to_string(),
         ],
     )?;
-    let msg = format!("New instance of swapd launched with PID {}", child.id());
-    debug!("{}", msg);
+    debug!("New instance of swapd launched with PID {}", child.id());
     debug!("Awaiting for swapd to connect...");
-    Ok(msg)
+    Ok(())
 }
 
 /// Return the list of needed arguments for a syncer given a config and a network.

@@ -37,6 +37,24 @@ bitcoin_cookie_path = "~/.bitcoin/testnet3/.cookie"
 # the wallet should have spendable funds
 monero_rpc_wallet = "http://localhost:38084"
 
+# Swap parameter for the Bitcoin blockchain
+[swap.bitcoin.testnet]
+# Avoid broadcasting a transaction if a race can happen in # blocks
+#
+# E.g. if the safety is set to 3 and the the cancel transaction becomes
+# broadcastable in 4 blocks we are safe and we do publish buy, if it becomes
+# broadcastable in 3 blocks or less we do not publish the buy as the safety is
+# not respected.
+safety = 3
+# Number of confirmations required to consider a transaction final. Must be
+# smaller than safety.
+finality = 1
+
+# Swap parameter for the Monero blockchain
+[swap.monero.testnet]
+# Number of confirmations required to consider a transaction final
+finality = 1
+
 # Defines grpc options
 [grpc]
 # Set this to true to enable the grpc daemon

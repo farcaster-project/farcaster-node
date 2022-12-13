@@ -12,7 +12,7 @@
 // along with this software.
 // If not, see <https://opensource.org/licenses/MIT>.
 
-use crate::Error;
+use crate::{AccordantBlockchain, ArbitratingBlockchain, Error};
 use farcaster_core::blockchain::Network;
 use internet2::addr::InetSocketAddr;
 use std::fs::File;
@@ -35,15 +35,25 @@ pub const FARCASTER_BIND_IP: &str = "0.0.0.0";
 
 pub const GRPC_BIND_IP_ADDRESS: &str = "127.0.0.1";
 
+pub const SWAP_MAINNET_BITCOIN_SAFETY: u8 = 7;
+pub const SWAP_MAINNET_BITCOIN_FINALITY: u8 = 6;
+pub const SWAP_MAINNET_MONERO_FINALITY: u8 = 20;
+
+pub const SWAP_TESTNET_BITCOIN_SAFETY: u8 = 3;
+pub const SWAP_TESTNET_BITCOIN_FINALITY: u8 = 1;
+pub const SWAP_TESTNET_MONERO_FINALITY: u8 = 1;
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct Config {
     /// Farcasterd configuration
     pub farcasterd: Option<FarcasterdConfig>,
+    /// Swap configuration, applies to all swaps launched by this node
+    pub swap: Option<SwapConfig>,
     /// Sets the grpc server port, if none is given, no grpc server is run
     pub grpc: Option<GrpcConfig>,
     /// Syncer configuration
-    pub syncers: Option<SyncersConfig>,
+    pub syncers: Option<Networked<Option<SyncerServers>>>,
 }
 
 impl Config {
@@ -128,11 +138,59 @@ impl Config {
         Ok(InetSocketAddr::from_str(&addr).map_err(|e| Error::Farcaster(e.to_string()))?)
     }
 
+    /// Returns a syncer configuration, if found in config, for the specified network
     pub fn get_syncer_servers(&self, network: Network) -> Option<SyncerServers> {
         match network {
             Network::Mainnet => self.syncers.as_ref()?.mainnet.clone(),
             Network::Testnet => self.syncers.as_ref()?.testnet.clone(),
             Network::Local => self.syncers.as_ref()?.local.clone(),
+        }
+    }
+
+    /// Returns the swap config for the specified network and arbitrating/accordant blockchains
+    pub fn get_swap_config(
+        &self,
+        arb: ArbitratingBlockchain,
+        acc: AccordantBlockchain,
+        network: Network,
+    ) -> Result<ParsedSwapConfig, config::ConfigError> {
+        match &self.swap {
+            Some(swap) => {
+                let arbitrating = match arb {
+                    ArbitratingBlockchain::Bitcoin => swap
+                        .bitcoin
+                        .get_for_network(network)
+                        .or_else(|| ArbConfig::get(arb, network))
+                        .ok_or(config::ConfigError::Message(
+                            "No configuration nor defaults founds!".to_string(),
+                        ))?,
+                };
+                let accordant = match acc {
+                    AccordantBlockchain::Monero => swap
+                        .monero
+                        .get_for_network(network)
+                        .or_else(|| AccConfig::get(acc, network))
+                        .ok_or(config::ConfigError::Message(
+                            "No configuration nor defaults founds!".to_string(),
+                        ))?,
+                };
+                Ok(ParsedSwapConfig {
+                    arbitrating,
+                    accordant,
+                })
+            }
+            None => {
+                let arbitrating = ArbConfig::get(arb, network).ok_or(
+                    config::ConfigError::Message("No defaults founds!".to_string()),
+                )?;
+                let accordant = AccConfig::get(acc, network).ok_or(
+                    config::ConfigError::Message("No defaults founds!".to_string()),
+                )?;
+                Ok(ParsedSwapConfig {
+                    arbitrating,
+                    accordant,
+                })
+            }
         }
     }
 }
@@ -142,8 +200,25 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             farcasterd: Some(FarcasterdConfig::default()),
+            swap: Some(SwapConfig::default()),
             grpc: None,
-            syncers: Some(SyncersConfig::default()),
+            syncers: Some(Networked {
+                mainnet: Some(SyncerServers {
+                    electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
+                    monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),
+                    monero_rpc_wallet: FARCASTER_MAINNET_MONERO_RPC_WALLET.into(),
+                    monero_lws: None,
+                    monero_wallet_dir: None,
+                }),
+                testnet: Some(SyncerServers {
+                    electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
+                    monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
+                    monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
+                    monero_lws: None,
+                    monero_wallet_dir: None,
+                }),
+                local: None,
+            }),
         }
     }
 }
@@ -159,6 +234,100 @@ pub struct FarcasterdConfig {
     pub bind_ip: Option<String>,
     /// Whether checkpoints should be auto restored at start-up, or not
     pub auto_restore: Option<bool>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct SwapConfig {
+    /// Swap parameters for the Bitcoin blockchain per network
+    pub bitcoin: Networked<Option<ArbConfig>>,
+    /// Swap parameters for the Monero blockchain per network
+    pub monero: Networked<Option<AccConfig>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct ParsedSwapConfig {
+    /// Swap parameters for an arbitrating blockchain
+    pub arbitrating: ArbConfig,
+    /// Swap parameters for an accordant blockchain
+    pub accordant: AccConfig,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct ArbConfig {
+    /// Avoid broadcasting a transaction if a race can happen with the next available execution
+    /// fork in # blocks
+    pub safety: u8,
+    /// Number of confirmations required to consider a transaction final
+    pub finality: u8,
+}
+
+impl ArbConfig {
+    fn get(blockchain: ArbitratingBlockchain, network: Network) -> Option<Self> {
+        match blockchain {
+            ArbitratingBlockchain::Bitcoin => match network {
+                Network::Mainnet => Some(Self::btc_mainnet_default()),
+                Network::Testnet => Some(Self::btc_testnet_default()),
+                Network::Local => None,
+            },
+        }
+    }
+
+    fn btc_mainnet_default() -> Self {
+        ArbConfig {
+            safety: SWAP_MAINNET_BITCOIN_SAFETY,
+            finality: SWAP_MAINNET_BITCOIN_FINALITY,
+        }
+    }
+
+    fn btc_testnet_default() -> Self {
+        ArbConfig {
+            safety: SWAP_TESTNET_BITCOIN_SAFETY,
+            finality: SWAP_TESTNET_BITCOIN_FINALITY,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct AccConfig {
+    /// Number of confirmations required to consider a transaction final
+    pub finality: u8,
+}
+
+impl AccConfig {
+    fn get(blockchain: AccordantBlockchain, network: Network) -> Option<Self> {
+        match blockchain {
+            AccordantBlockchain::Monero => match network {
+                Network::Mainnet => Some(Self::xmr_mainnet_default()),
+                Network::Testnet => Some(Self::xmr_testnet_default()),
+                Network::Local => None,
+            },
+        }
+    }
+
+    fn xmr_mainnet_default() -> Self {
+        AccConfig {
+            finality: SWAP_MAINNET_MONERO_FINALITY,
+        }
+    }
+
+    fn xmr_testnet_default() -> Self {
+        AccConfig {
+            finality: SWAP_TESTNET_MONERO_FINALITY,
+        }
+    }
+}
+
+// Arbitrating blockchains are a superset of accordant ones
+impl From<ArbConfig> for AccConfig {
+    fn from(arb: ArbConfig) -> Self {
+        Self {
+            finality: arb.finality,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -200,17 +369,6 @@ pub struct AutoFundingServers {
     pub monero_rpc_wallet: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(crate = "serde_crate")]
-pub struct SyncersConfig {
-    /// Mainnet syncer configuration
-    pub mainnet: Option<SyncerServers>,
-    /// Testnet syncer configuration
-    pub testnet: Option<SyncerServers>,
-    /// Local syncer configuration
-    pub local: Option<SyncerServers>,
-}
-
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
 #[serde(crate = "serde_crate")]
 pub struct SyncerServers {
@@ -226,25 +384,44 @@ pub struct SyncerServers {
     pub monero_wallet_dir: Option<String>,
 }
 
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[serde(crate = "serde_crate")]
+pub struct Networked<T> {
+    /// A configuration section applied to the mainnet network
+    pub mainnet: T,
+    /// A configuration section applied to the live testnet network
+    pub testnet: T,
+    /// A configuration section applied to the local network (regtest)
+    pub local: T,
+}
+
+impl<T> Networked<T>
+where
+    T: Clone,
+{
+    fn get_for_network(&self, network: Network) -> T {
+        match network {
+            Network::Mainnet => self.mainnet.clone(),
+            Network::Testnet => self.testnet.clone(),
+            Network::Local => self.local.clone(),
+        }
+    }
+}
+
 // Default implementation is used to generate the config file on disk if not found
-impl Default for SyncersConfig {
+impl Default for SwapConfig {
     fn default() -> Self {
-        SyncersConfig {
-            mainnet: Some(SyncerServers {
-                electrum_server: FARCASTER_MAINNET_ELECTRUM_SERVER.into(),
-                monero_daemon: FARCASTER_MAINNET_MONERO_DAEMON.into(),
-                monero_rpc_wallet: FARCASTER_MAINNET_MONERO_RPC_WALLET.into(),
-                monero_lws: None,
-                monero_wallet_dir: None,
-            }),
-            testnet: Some(SyncerServers {
-                electrum_server: FARCASTER_TESTNET_ELECTRUM_SERVER.into(),
-                monero_daemon: FARCASTER_TESTNET_MONERO_DAEMON.into(),
-                monero_rpc_wallet: FARCASTER_TESTNET_MONERO_RPC_WALLET.into(),
-                monero_lws: None,
-                monero_wallet_dir: None,
-            }),
-            local: None,
+        SwapConfig {
+            bitcoin: Networked {
+                mainnet: Some(ArbConfig::btc_mainnet_default()),
+                testnet: Some(ArbConfig::btc_testnet_default()),
+                local: None,
+            },
+            monero: Networked {
+                mainnet: Some(AccConfig::xmr_mainnet_default()),
+                testnet: Some(AccConfig::xmr_testnet_default()),
+                local: None,
+            },
         }
     }
 }
@@ -263,6 +440,7 @@ impl Default for FarcasterdConfig {
     }
 }
 
+/// Parse a configuration file and return a [`Config`]
 pub fn parse_config(path: &str) -> Result<Config, Error> {
     if Path::new(path).exists() {
         let config_file = path;
@@ -276,5 +454,16 @@ pub fn parse_config(path: &str) -> Result<Config, Error> {
         let mut file = File::create(path)?;
         file.write_all(toml::to_vec(&config).unwrap().as_ref())?;
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_config;
+
+    #[test]
+    fn config_example_parse() {
+        let config = parse_config("./farcasterd.toml").expect("correct config example");
+        dbg!(config);
     }
 }

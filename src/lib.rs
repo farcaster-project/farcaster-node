@@ -44,6 +44,7 @@ extern crate serde_with;
 
 #[cfg(feature = "_rpc")]
 pub mod bus;
+mod chains;
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod client;
@@ -75,6 +76,7 @@ pub mod walletd;
 pub use crate::config::Config;
 #[cfg(feature = "_rpc")]
 pub use crate::service::ServiceConfig;
+pub use chains::{AccordantBlockchain, ArbitratingBlockchain};
 pub use error::Error;
 #[cfg(feature = "_rpc")]
 pub use service::{CtlServer, Endpoints, LogStyle, Service, ServiceId, TryToServiceId};

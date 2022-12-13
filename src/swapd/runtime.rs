@@ -25,7 +25,7 @@ use crate::swapd::wallet::{
     HandleBuyProcedureSignatureRes, HandleCoreArbitratingSetupRes,
     HandleRefundProcedureSignaturesRes,
 };
-use crate::swapd::StateReport;
+use crate::swapd::{Opts, StateReport};
 use crate::syncerd::bitcoin_syncer::p2wpkh_signed_tx_fee;
 use crate::syncerd::types::{AddressTransaction, Boolean, Event, Task, TransactionConfirmations};
 use crate::syncerd::{FeeEstimation, FeeEstimations};
@@ -41,7 +41,6 @@ use crate::{
         Abort, HeightChanged, SweepSuccess, TaskTarget, TransactionRetrieved, XmrAddressAddendum,
     },
 };
-
 use crate::{CtlServer, Error, LogStyle, Service, ServiceConfig, ServiceId};
 
 use std::collections::HashMap;
@@ -69,12 +68,17 @@ use internet2::{
 use microservices::esb::{self, Handler};
 use strict_encoding::{StrictDecode, StrictEncode};
 
-pub fn run(
-    config: ServiceConfig,
-    swap_id: SwapId,
-    public_offer: PublicOffer,
-    local_trade_role: TradeRole,
-) -> Result<(), Error> {
+pub fn run(config: ServiceConfig, opts: Opts) -> Result<(), Error> {
+    let Opts {
+        swap_id,
+        public_offer,
+        trade_role: local_trade_role,
+        arbitrating_finality,
+        arbitrating_safety,
+        accordant_finality,
+        ..
+    } = opts;
+
     let Offer {
         cancel_timelock,
         punish_timelock,
@@ -84,6 +88,7 @@ pub fn run(
         arbitrating_amount: bitcoin_amount,
         ..
     } = public_offer.offer;
+
     // alice or bob
     let local_swap_role = match local_trade_role {
         TradeRole::Maker => maker_role,
@@ -94,7 +99,6 @@ pub fn run(
         SwapRole::Alice => State::Alice(AliceState::StartA { local_trade_role }),
         SwapRole::Bob => State::Bob(BobState::StartB { local_trade_role }),
     };
-    let sweep_monero_thr = 10;
     info!(
         "{}: {}",
         "Starting swap".to_string().bright_green_bold(),
@@ -109,10 +113,10 @@ pub fn run(
     let temporal_safety = TemporalSafety {
         cancel_timelock: cancel_timelock.as_u32(),
         punish_timelock: punish_timelock.as_u32(),
-        btc_finality_thr: 1,
-        race_thr: 3,
-        xmr_finality_thr: 1,
-        sweep_monero_thr,
+        btc_finality_thr: arbitrating_finality.into(),
+        race_thr: arbitrating_safety.into(),
+        xmr_finality_thr: accordant_finality.into(),
+        sweep_monero_thr: crate::swapd::temporal_safety::SWEEP_MONERO_THRESHOLD,
     };
 
     temporal_safety.valid_params()?;

@@ -5,7 +5,7 @@ use crate::bus::ctl::{
 use crate::bus::info::{InfoMsg, MadeOffer, OfferInfo, TookOffer};
 use crate::bus::p2p::{Commit, PeerMsg};
 use crate::bus::{CheckpointEntry, Failure, FailureCode, OfferStatus, OfferStatusPair};
-use crate::farcasterd::runtime::{launch, launch_swapd, syncer_up, Runtime};
+use crate::farcasterd::runtime::{launch_swapd, syncer_up, Runtime};
 use crate::LogStyle;
 use crate::{
     bus::{BusMsg, Outcome},
@@ -13,12 +13,12 @@ use crate::{
     event::{Event, StateMachine, StateMachineExecutor},
     ServiceId,
 };
-use bitcoin::hashes::hex::ToHex;
 use farcaster_core::blockchain::Blockchain;
 use farcaster_core::role::TradeRole;
 use farcaster_core::swap::{btcxmr::PublicOffer, SwapId};
 use internet2::addr::{NodeAddr, NodeId};
 use microservices::esb::Handler;
+use std::convert::TryInto;
 use std::str::FromStr;
 
 /// State machine for launching a swap and cleaning up once done.
@@ -619,30 +619,27 @@ fn attempt_transition_to_restoring_swapd(
                 false
             };
 
+            let swap_config = runtime.config.get_swap_config(
+                public_offer.offer.arbitrating_blockchain.try_into()?,
+                public_offer.offer.accordant_blockchain.try_into()?,
+                public_offer.offer.network,
+            )?;
             let arbitrating_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
-                Blockchain::Bitcoin,
+                public_offer.offer.arbitrating_blockchain,
                 public_offer.offer.network,
                 &runtime.config,
             )?;
             let accordant_syncer_up = syncer_up(
                 &mut runtime.spawning_services,
                 &mut runtime.registered_services,
-                Blockchain::Monero,
+                public_offer.offer.accordant_blockchain,
                 public_offer.offer.network,
                 &runtime.config,
             )?;
 
-            let _child = launch(
-                "swapd",
-                &[
-                    swap_id.to_hex(),
-                    public_offer.to_string(),
-                    trade_role.to_string(),
-                ],
-            )?;
-
+            launch_swapd(trade_role, public_offer.clone(), swap_id, swap_config)?;
             event.complete_client_info(InfoMsg::String("Restoring checkpoint.".to_string()))?;
 
             Ok(Some(TradeStateMachine::RestoringSwapd(RestoringSwapd {
@@ -944,20 +941,24 @@ fn transition_to_swapd_launched_tsm(
     target_monero_address: monero::Address,
     swap_id: SwapId,
 ) -> Result<TradeStateMachine, Error> {
+    let swap_config = runtime.config.get_swap_config(
+        public_offer.offer.arbitrating_blockchain.try_into()?,
+        public_offer.offer.accordant_blockchain.try_into()?,
+        public_offer.offer.network,
+    )?;
     let SwapKeys { key_manager, .. } = swap_keys;
-    let network = public_offer.offer.network;
     let arbitrating_syncer_up = syncer_up(
         &mut runtime.spawning_services,
         &mut runtime.registered_services,
-        Blockchain::Bitcoin,
-        network,
+        public_offer.offer.arbitrating_blockchain,
+        public_offer.offer.network,
         &runtime.config,
     )?;
     let accordant_syncer_up = syncer_up(
         &mut runtime.spawning_services,
         &mut runtime.registered_services,
-        Blockchain::Monero,
-        network,
+        public_offer.offer.accordant_blockchain,
+        public_offer.offer.network,
         &runtime.config,
     )?;
     trace!(
@@ -970,6 +971,7 @@ fn transition_to_swapd_launched_tsm(
         consumed_offer_role.clone().into(),
         public_offer.clone(),
         swap_id,
+        swap_config,
     )?;
 
     Ok(TradeStateMachine::SwapdLaunched(SwapdLaunched {
